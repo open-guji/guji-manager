@@ -12,6 +12,9 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
+[project.entry-points."guji.commands"]
+manager = "guji_manager.commands"
+
 [project.scripts]
 guji-manager = "guji_manager.cli:main"
 
@@ -21,3 +24,6 @@ include = ["guji_manager*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+guji_manager = ["opinions/rules.json"]

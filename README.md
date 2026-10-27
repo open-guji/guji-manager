@@ -20,3 +20,11 @@ cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `console` `review` `sn
 ```
 pip install -e ".[dev]" && pytest
 ```
+
+## 已搬来的子命令（过渡期两边都有，cv 自带的优先）
+
+| 子命令 | 来自 cv | 状态 |
+|---|---|---|
+| `guji opinions` | `opinions/`、`cli_opinions.py`、`config/opinions/rules.json` | 代码已复制进本仓，测试 80 项通过；cv 的 PATCH 删掉后本仓的才生效 |
+
+装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
