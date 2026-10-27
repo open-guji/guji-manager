@@ -28,3 +28,12 @@ pip install -e ".[dev]" && pytest
 | `guji opinions` | `opinions/`、`cli_opinions.py`、`config/opinions/rules.json` | 代码已复制进本仓，测试 80 项通过；cv 的 PATCH 删掉后本仓的才生效 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
+
+## 搬迁工具
+
+`python tools/move_from_cv.py --cv <cv 检出> --pkg <包> --cli <cli_xxx> --tests <测试>`：复制包（和命令行模块、测试），自动改 import，并列出要人看的 `__file__`／`parents[`／`REPO_ROOT` 用法。只复制，不删 cv 里的。
+
+踩到的坑（下次别重来）：
+- 数据文件跟着包走（`opinions/rules.json` 要进 `package-data`，路径改成包内相对）。
+- 指向 cv 仓里脚本或数据的 `parents[N]` 要改成 `open_guji_cv.__file__` 推出来的路径。
+- `exp`、`snap` 暂未搬：`exp` 的测试用 cv 的 `tests/helpers.py`、`scripts/`，`snap` 的命令 `cmd_snap` 还在 cv 的 `cli_v2.py` 里。要搬先把测试公共件（helpers、conftest 里的夹具）抽成两边共用，或把用到的搬过来。
