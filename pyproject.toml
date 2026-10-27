@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guji-manager"
+version = "0.0.1"
+description = "古籍 pipeline manager：工作区、取图、打包推中心库、任务库等对外交互；调用 open-guji-cv（pipeline）但自己不含识别算法"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+guji-manager = "guji_manager.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["guji_manager*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
