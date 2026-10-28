@@ -15,7 +15,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("version", help="manager 版本")
     c = sub.add_parser("check", help="核对装着的 pipeline 与本 manager 兼容")
     c.add_argument("--json", action="store_true")
-    a = ap.parse_args(argv)
+    sub.add_parser("pending-stats", help="全部待审格分类统计（查中心库）；参数见 guji_manager.pending_stats", add_help=False)
+    a, rest = ap.parse_known_args(argv)
+    if a.cmd == "pending-stats":
+        from .pending_stats import main as stats_main
+        return stats_main(rest)
+    if rest:
+        ap.error(f"不认识的参数：{' '.join(rest)}")
     if a.cmd == "check":
         info = pipeline_version()
         try:
