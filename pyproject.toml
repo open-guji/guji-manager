@@ -15,6 +15,9 @@ dev = ["pytest>=7"]
 [project.entry-points."guji.commands"]
 manager = "guji_manager.commands"
 
+[project.entry-points."guji.post_promote"]
+online_lists = "guji_manager.online_lists:on_promote"
+
 [project.scripts]
 guji-manager = "guji_manager.cli:main"
 
