@@ -16,7 +16,7 @@
 ## 相关设计与素材
 - book-text `docs/design/2026-10-已发1x文本修订流程.md`、`2026-10-修订流程自动化设计.md`（完整设计、对象与 schema、落地顺序）
 - book-text `CLAUDE.md`（dev／main、PR、校验规矩）
-- cv `doc/受控重跑.md`、`doc/design/重跑任务库.md`；ai-team `domain/CV/规范/受控重跑方法论.md`、`冻结基线与重跑分级.md`、`重跑需求与执行规范.md`
+- cv `doc/受控重跑.md`、`doc/design/重跑任务库.md`；[受控重跑方法论](../02-粗校/受控重跑方法论.md)、[冻结基线与重跑分级](../03-精校/冻结基线与重跑分级.md)、[重跑需求与执行规范](../02-粗校/重跑需求与执行规范.md)
 - cv `doc/formats/人裁事件规范.md`
 
 ## 负责撰写与维护
