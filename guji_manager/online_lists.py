@@ -31,8 +31,25 @@ def _cfg() -> dict:
             "cv": os.environ.get("GUJI_CV_REPO", "/home/user/open-guji/open-guji-cv")}
 
 
+def record_main(book: str, label: str) -> None:
+    """把「这册现在的 ★ main 标签」记到后台看板（progress.volume.extra 的 a31.main），页面据此标出线上单有没有追上 main。
+    只写看板、永远不抛；连不上库（没有 NEON_DATABASE_URL／没装 cv）就静默跳过。"""
+    try:
+        if not (book.startswith("vol") and book[3:].isdigit()):
+            return
+        if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
+            return
+        from open_guji_cv.datastore.connect import connect
+        payload = json.dumps({"extra": {"a31.main": {"label": label, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}})
+        with connect() as con:
+            con.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (BOOK_ID, book[3:].zfill(3), payload, "A31"))
+    except Exception as e:  # noqa: BLE001
+        print(f"（后台看板没记上 main 标签：{e}）")
+
+
 def on_promote(book: str, label: str, ws: str | None = None) -> None:
     """cv 标 main 后调用。永远不抛：自动重出失败不能挡标 main。"""
+    record_main(book, label)
     try:
         if os.environ.get("GUJI_AUTO_ONLINE_LISTS", "1") == "0":
             return
