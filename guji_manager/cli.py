@@ -16,7 +16,11 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("check", help="核对装着的 pipeline 与本 manager 兼容")
     c.add_argument("--json", action="store_true")
     sub.add_parser("pending-stats", help="全部待审格分类统计（查中心库）；参数见 guji_manager.pending_stats", add_help=False)
+    sub.add_parser("triage", help="参校字快审分流（skip/pass/withdraw/review）；见 guji_manager.review_triage", add_help=False)
     a, rest = ap.parse_known_args(argv)
+    if a.cmd == "triage":
+        from .review_triage.__main__ import main as triage_main
+        return triage_main(rest)
     if a.cmd == "pending-stats":
         from .pending_stats import main as stats_main
         return stats_main(rest)

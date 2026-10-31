@@ -11,6 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+triage = ["numpy", "opencv-python-headless", "scikit-learn", "rapidocr-onnxruntime>=1.2,<1.3"]
 
 [project.entry-points."guji.commands"]
 manager = "guji_manager.commands"
@@ -29,4 +30,4 @@ include = ["guji_manager*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-guji_manager = ["opinions/rules.json", "jobs/schema.sql"]
+guji_manager = ["opinions/rules.json", "jobs/schema.sql", "review_triage/review_grid.tpl.html"]
