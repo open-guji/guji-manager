@@ -29,4 +29,4 @@ include = ["guji_manager*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-guji_manager = ["opinions/rules.json"]
+guji_manager = ["opinions/rules.json", "jobs/schema.sql"]

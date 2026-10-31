@@ -6,7 +6,10 @@ from __future__ import annotations
 
 from .cli_opinions import add_parser as _add_opinions
 from .cli_opinions import cmd_opinions
+from .jobs.cli import add_parser as _add_job
+from .jobs.cli import cmd_job
 
 COMMANDS = {
     "opinions": (_add_opinions, cmd_opinions),
+    "job": (_add_job, cmd_job),
 }
