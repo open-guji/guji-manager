@@ -41,5 +41,6 @@
 | `metrics.py`、`cmp_kanripo.py`、`draw_page.py`、`sheet.py`、`sheet_ids.py` | 核对与看图 |
 | `thumb_rebind.py` | 用快审页里的缩略字块把旧人裁重绑到新切分的格 |
 | `borrow.py`、`pull_small.py` | 借库重建 glyph.db；分页拉中心库 |
+| `fix_b_heads.py`、`apply_pb_moves.py` | Kanripo 半叶分界标错时，按页内容挪 b 面分界，再写回 book-text 的 `pages.tsv`（2026-11-01 卷20–34，book-text #376） |
 
 册 04 时试过但没用上的两个脚本（降低整列顺移门槛、用快审缩略图走 backfill_anchors）没收进来，记录在开书经验 S11。
