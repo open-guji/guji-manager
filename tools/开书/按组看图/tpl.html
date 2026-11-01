@@ -1,0 +1,157 @@
+<title>按组看图定夺</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版式：顶部粘性进度条 + 一列逐组卡片；每组每字一行刻形样本，下方选项 */
+:root{
+  --paper:#f6f7f9; --leaf:#ffffff; --ink:#1e2430; --ink2:#5a6273; --rule:#dde1e8;
+  --indigo:#2f4f8f; --indigo-soft:#e6ecf7; --seal:#a8322d; --ok:#2d6a4f; --ok-soft:#e3f1ea;
+  --serif:"Noto Serif TC","Songti TC","Source Han Serif TC","SimSun",serif;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#14171d; --leaf:#1c2028; --ink:#e7e9ee; --ink2:#9aa2b2; --rule:#2c323d;
+  --indigo:#8fa9e0; --indigo-soft:#232c3d; --seal:#e07a73; --ok:#7cc4a0; --ok-soft:#1e3029; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#14171d; --leaf:#1c2028; --ink:#e7e9ee; --ink2:#9aa2b2; --rule:#2c323d;
+  --indigo:#8fa9e0; --indigo-soft:#232c3d; --seal:#e07a73; --ok:#7cc4a0; --ok-soft:#1e3029; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--leaf)}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.intro{padding-block:28px 8px}
+h1{font-family:var(--serif);font-weight:700;font-size:28px;margin:0 0 6px;text-wrap:balance;letter-spacing:.04em}
+.lede{color:var(--ink2);max-width:66ch;margin:0 0 10px}
+.lede b{color:var(--ink)}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin:8px 0 0;padding:0;list-style:none}
+.key li b{color:var(--ink);font-weight:500}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--leaf);border-bottom:1px solid var(--rule)}
+.bar .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-block:10px}
+.prog{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums}
+.meter{flex:1 1 120px;height:6px;border-radius:3px;background:var(--rule);overflow:hidden;min-width:80px}
+.meter i{display:block;height:100%;background:var(--ok);width:0;transition:width .3s}
+.bar label{font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:4px;cursor:pointer}
+.status{font-size:13px;color:var(--ink2);width:100%}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--indigo);color:var(--indigo);background:transparent;border-radius:6px;padding:4px 12px;font-size:13px}
+.btn.warn{border-color:var(--seal);color:var(--seal)}
+.btn:focus-visible,.opt:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+main.wrap{display:flex;flex-direction:column;gap:14px;padding-block:16px 60px}
+.pair{background:var(--leaf);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.pair.done{border-color:color-mix(in srgb,var(--ok) 45%,var(--rule))}
+.ph{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.no{font-family:var(--mono);font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.pt{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:.08em}
+.pt span{color:var(--ink2);font-weight:500;font-size:16px;margin:0 6px}
+.sug{font-size:12px;color:var(--indigo);background:var(--indigo-soft);border-radius:4px;padding:1px 8px}
+.row{display:grid;grid-template-columns:112px 1fr;gap:10px;align-items:center}
+.lab{display:flex;align-items:center;gap:8px}
+.lab .g{font-family:var(--serif);font-size:30px;line-height:1;width:38px;text-align:center}
+.lab .n{font-family:var(--mono);font-size:11.5px;line-height:1.4;color:var(--ink2);font-variant-numeric:tabular-nums}
+.thumbs{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.thumbs img{height:60px;width:auto;border-radius:3px;border:1px solid var(--rule);background:#fff}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:6px;padding:6px 12px;font-size:14px}
+.opt .s{font-family:var(--serif);font-weight:700;font-size:17px}
+.opt.on{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.opt.hint{border-style:dashed;border-color:var(--indigo)}
+.empty{color:var(--ink2);font-size:14px}
+@media (max-width:520px){.row{grid-template-columns:1fr}.thumbs img{height:52px}h1{font-size:24px}}
+@media (prefers-reduced-motion:reduce){.meter i{transition:none}}
+.other{display:flex;align-items:center;gap:6px;font-size:14px}
+.other input{width:3.2em;font-family:var(--serif);font-size:18px;text-align:center;border:1px solid var(--rule);border-radius:6px;background:var(--leaf);color:var(--ink);padding:2px 4px}
+.opt.on .s,.other.on input{color:var(--ok)}
+.other.on input{border-color:var(--ok);background:var(--ok-soft)}
+</style>
+
+<header class="intro wrap">
+  <h1 id="h1"></h1>
+  <p class="lede" id="lede"></p>
+  <p class="lede">每组每个字一行，是本书里认成这个字的格随机抽的原图。请对每一组选一项：<b>统一作哪个字</b>（刻法一样）、<b>分开</b>（刻法确实不同，各认各的），或者<b>合并到别的字</b>（填一个组外的字）。虚线框是建议，点「其余按建议」可以一次填完没点过的。点过就存，Claude 那边能直接读到。</p>
+  <ul class="key"><li><b>已认</b>：本书按这个码位放行的格数</li><li><b>整理本</b>：参校本全书用这个码位的处数</li></ul>
+</header>
+<div class="bar"><div class="wrap">
+  <span class="prog" id="prog"></span>
+  <span class="meter"><i id="meter"></i></span>
+  <label for="only"><input type="checkbox" id="only"> 只看未定</label>
+  <button class="btn" id="fill">其余按建议</button>
+  <span class="status" id="status" hidden></span>
+</div></div>
+<main class="wrap" id="list"><p class="empty">正在载入……</p></main>
+
+<script>
+/* 数据由 build_page.py 填：GROUPS=[{id,chars,adm,kr,suggest,ref,imgs:{字:[[格id,dataURI]…]}}]，META={title,lede,collection} */
+const GROUPS=/*DATA*/[];
+const META=/*META*/{};
+const choice={}; // id → {choice:'unify'|'split'|'other', target}
+let coll=null;
+const $=s=>document.querySelector(s);
+const nf=n=>(n||0).toLocaleString('en-US');
+const cpHex=c=>'U+'+c.codePointAt(0).toString(16).toUpperCase();
+document.title=META.title||document.title;$('#h1').textContent=META.title||'';$('#lede').innerHTML=META.lede||'';
+function same(v,k,t){return v&&v.choice===k&&(k==='split'||v.target===t)}
+function render(){
+  const only=$('#only').checked,L=$('#list');L.textContent='';let shown=0;
+  GROUPS.forEach((g,n)=>{
+    const v=choice[g.id];if(only&&v)return;shown++;
+    const c=document.createElement('section');c.className='pair'+(v?' done':'');c.id=g.id;
+    const ph=document.createElement('div');ph.className='ph';
+    ph.innerHTML=`<span class="no">${String(n+1).padStart(2,'0')} / ${GROUPS.length}</span><span class="pt"></span>`;
+    ph.querySelector('.pt').innerHTML=g.chars.map(x=>x).join('<span>／</span>');
+    if(g.suggest){const s=document.createElement('span');s.className='sug';s.textContent='建议：统一作 '+g.suggest+(g.ref?'（同参考表）':'');ph.append(s)}
+    c.append(ph);
+    for(const ch of g.chars){
+      const r=document.createElement('div');r.className='row';
+      r.innerHTML=`<div class="lab"><span class="g"></span><span class="n">${cpHex(ch)}<br>已认 ${nf(g.adm[ch])}<br>整理本 ${nf(g.kr[ch])}</span></div>`;
+      r.querySelector('.g').textContent=ch;
+      const t=document.createElement('div');t.className='thumbs';
+      for(const [id,src] of (g.imgs[ch]||[])){const im=new Image();im.src=src;im.alt=ch;im.loading='lazy';
+        im.title='册'+id.replace(/^(\d+):(\d+):(\d+):(\d+)$/,'$1 页$2 列$3 字$4');t.append(im)}
+      if(!(g.imgs[ch]||[]).length){const e=document.createElement('span');e.className='empty';e.textContent='本书没有认成这个字的格';t.append(e)}
+      r.append(t);c.append(r);
+    }
+    const o=document.createElement('div');o.className='opts';
+    const opt=(k,t,label,strong)=>{const b=document.createElement('button');
+      b.className='opt'+(same(v,k,t)?' on':'')+(!v&&k==='unify'&&g.suggest===t?' hint':'');
+      b.innerHTML=label+(strong?'<span class="s"></span>':'');if(strong)b.querySelector('.s').textContent=strong;
+      b.onclick=()=>pick(g,{choice:k,target:t||null});return b};
+    for(const ch of g.chars)o.append(opt('unify',ch,'统一作 ',ch));
+    o.append(opt('split',null,g.chars.length>2?'刻法不同，分开':'两种刻法，分开'));
+    const w=document.createElement('label');w.className='other'+(v&&v.choice==='other'?' on':'');
+    w.innerHTML='合并到别的字 <input maxlength="2" aria-label="合并到的字">';
+    const inp=w.querySelector('input');if(v&&v.choice==='other')inp.value=v.target||'';
+    inp.onchange=()=>{const t=[...inp.value.trim()][0];if(t)pick(g,{choice:g.chars.includes(t)?'unify':'other',target:t})};
+    o.append(w);c.append(o);L.append(c);
+  });
+  if(!shown){const e=document.createElement('p');e.className='empty';e.textContent=GROUPS.length+' 组都定了，可以关掉了。';L.append(e)}
+  const d=Object.keys(choice).length;$('#prog').textContent=`已定 ${d} / ${GROUPS.length}`;$('#meter').style.width=(100*d/Math.max(1,GROUPS.length))+'%';
+}
+function status(t){const s=$('#status');s.textContent=t;s.hidden=!t}
+async function save(g,v){
+  if(!coll){status('这个视图存不了（没登录或没权限），选择只留在本页。');return}
+  try{await coll.doc(g.id).set({chars:g.chars,choice:v.choice,target:v.target,at:new Date().toISOString()})}
+  catch(e){status('保存失败：'+(e&&e.message||e)+'。刷新后再点一次。')}
+}
+function pick(g,v){choice[g.id]=v;render();save(g,v)}
+let armed=false;
+$('#fill').onclick=async()=>{
+  const todo=GROUPS.filter(g=>!choice[g.id]&&g.suggest);
+  if(!todo.length){status('没有待填的组。');return}
+  if(!armed){armed=true;$('#fill').textContent=`确认把 ${todo.length} 组按建议填上`;$('#fill').classList.add('warn');return}
+  armed=false;$('#fill').textContent='其余按建议';$('#fill').classList.remove('warn');
+  for(const g of todo)choice[g.id]={choice:'unify',target:g.suggest};render();
+  for(const g of todo)await save(g,choice[g.id]);status(`已按建议填 ${todo.length} 组。`);
+};
+$('#only').onchange=render;
+render();
+(async()=>{
+  let db=null;try{db=await window.claude?.use?.('db')}catch(e){db=null}
+  if(!db){status('这个视图存不了（没登录或没权限），选择只留在本页。');return}
+  coll=db.collection(META.collection||'cp');
+  const timer=setTimeout(()=>status('已存的选择还没读回来，可以先点，点的会存。'),10000);
+  coll.onSnapshot(s=>{clearTimeout(timer);status('');for(const d of s.docs){const x=d.data();if(x&&x.choice)choice[d.id]={choice:x.choice,target:x.target||null}}render()},
+    e=>{clearTimeout(timer);status('读已存选择失败：'+(e&&e.message||e))});
+})();
+</script>
