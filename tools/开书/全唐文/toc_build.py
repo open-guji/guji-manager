@@ -1,5 +1,5 @@
-# 目录页配篇题（第二步，含补短题）：读 toc_match.json 生成目录页参照段（#@ QTW_TOC_<册>_pNNNN）与页钉位行；卷首「欽定全唐文卷N目錄」、帝号行（高祖/太宗＋卷次）按图补，长题按图上字数跨列拆，MANUAL 里放人看图定的列。
-# 用法：VOL=05 python3 toc_build.py <toc_corpus.txt> <toc_pins.jsonl> [toc_match.json]，再把两份分别追加进语料与 page_pins.jsonl
+# 目录页配篇题（第二步，含补短题）：读 toc_match.json 生成目录页参照段（#@ QTW_TOC_04_pNNNN）与页钉位行；卷首「欽定全唐文卷N目錄」、帝号行（高祖/太宗＋卷次）按图补，长题按图上字数跨列拆，MANUAL 里放人看图定的列。
+# 用法：python3 toc_build.py <toc_corpus.txt> <toc_pins.jsonl>，再把两份分别追加进语料与 page_pins.jsonl
 #
 """由 toc_match.json 生成目录页参照：每列＝本卷正文 Kanripo 里配上的篇题（跨列的长题按图上字数拆），
 卷首「欽定全唐文卷N目錄」按图补。输出语料追加段与页钉位行。"""
@@ -7,6 +7,14 @@ import json,re,sys,difflib
 from volcfg import *
 m=json.load(open(sys.argv[3] if len(sys.argv)>3 else f'/tmp/claude/toc_match_{VOL}.json'))
 CN='〇一二三四五六七八九十'
+def cn(n):
+    '''卷次 → 中文數字（1–999）：十一、二十、一百五、一百十'''
+    D='〇一二三四五六七八九'; h,t,u=n//100,n//10%10,n%10; o=''
+    if h: o+=D[h]+'百'
+    if t: o+=('' if (t==1 and not h) else D[t])+'十'
+    elif h and u: o+='〇'
+    if u: o+=D[u]
+    return o
 #: 识别全错、自动配不上的列，人看图定（Kanripo 正文里有同名篇题）
 sec=[];pins=[];stat={'title':0,'split':0,'head':0,'skip':0}
 for pg,cols in sorted(m.items(),key=lambda x:int(x[0])):
@@ -17,8 +25,8 @@ for pg,cols in sorted(m.items(),key=lambda x:int(x[0])):
         if pend:
             lines.append(pend[:len(s)]); pend=pend[len(s):] or None; stat['split']+=1; continue
         if '目錄' in s or s.startswith('欽定'):
-            lines.append(f'欽定全唐文卷{CN[JUAN[pg]]}目錄'); stat['head']+=1; continue
-        if re.fullmatch(r'(高祖|太宗)[一二三四五六七八九十]?', s):
+            lines.append(f'欽定全唐文卷{cn(JUAN[pg])}目錄'); stat['head']+=1; continue
+        if re.fullmatch(r'(高祖|太宗|高宗|中宗|睿宗|玄宗|肅宗|代宗|德宗|順宗|憲宗|穆宗|敬宗|文宗|武宗|宣宗|懿宗|僖宗|昭宗|哀帝|殤帝|則天皇后)[一二三四五六七八九十]*', s):
             lines.append(s); stat['head']+=1; continue
         t=(best or '').replace('<','').replace('>','')
         cov=sum(b.size for b in difflib.SequenceMatcher(None,s,t).get_matching_blocks())/max(1,len(t))

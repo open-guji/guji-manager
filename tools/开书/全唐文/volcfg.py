@@ -12,7 +12,12 @@ CFG={
            #: 自动配错或配不上、按 Kanripo 正文篇题人定的列（2026-10-31 看识别串＋Kanripo 定）
            MANUAL={(1,9):'立晉王為皇太子詔',(2,3):'以旱減膳詔',(4,3):'破高麗賜酺詔',(57,3):'停封禪詔',(57,4):'伐龜茲詔',
                    (109,5):'遺詔',(110,4):'手勅',(112,4):'陳讓禪位表',(152,8):'賜韋挺書',(155,2):'金鏡'}),
-}[VOL]
+}.get(VOL)
+if CFG is None:   # 其余册：auto_pins.py 产出的 json（TOC/BODY，MANUAL 为 [[页,列,题],…]）
+    _p=os.environ.get('VOLCFG',f'/home/user/batch1/cfg_{VOL}.json')
+    _j=json.load(open(_p)) if os.path.exists(_p) else dict(TOC={},BODY={})   # auto_pins 还没写出来时
+    CFG=dict(TOC={int(k):v for k,v in _j['TOC'].items()},BODY={int(k):range(*v) for k,v in _j['BODY'].items()},
+             MANUAL={(p,c):t for p,c,t in _j.get('MANUAL',[])})
 TOC,BODY,MANUAL=CFG['TOC'],CFG['BODY'],CFG['MANUAL']
 JUAN={p:j for j,ps in TOC.items() for p in ps}
 def load_pins():
