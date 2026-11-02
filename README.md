@@ -14,7 +14,7 @@
 ## 现状（2026-10-27）
 
 骨架阶段：`guji_manager.pipeline`（调用与兼容检查）、`guji-manager check`。
-cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `console` `review` `snap` `opinions` `exp` 等）还没搬过来，搬迁（设计 M4）等换图源批量收尾、pipeline 的下一个 PATCH 发出后再做。
+cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `review` `snap` `opinions` `exp` 等）还没搬过来。2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
 
 ## 开发
 
@@ -22,17 +22,15 @@ cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `console` `review` `sn
 pip install -e ".[dev]" && pytest
 ```
 
-## 已搬来的子命令（过渡期两边都有，cv 自带的优先）
+## 已搬来的子命令
 
-| 子命令 | 来自 cv | 状态 |
-|---|---|---|
-| `guji opinions` | `opinions/`、`cli_opinions.py`、`config/opinions/rules.json` | 代码已复制进本仓，测试 80 项通过；cv 的 PATCH 删掉后本仓的才生效 |
+暂无（见上）。
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 
 ## 搬迁工具
 
-`python tools/move_from_cv.py --cv <cv 检出> --pkg <包> --cli <cli_xxx> --tests <测试>`：复制包（和命令行模块、测试），自动改 import，并列出要人看的 `__file__`／`parents[`／`REPO_ROOT` 用法。只复制，不删 cv 里的。
+`python tools/move_from_cv.py --cv <cv 检出> --pkg <包> --cli <cli_xxx> --tests <测试>`：复制包（和命令行模块、测试），自动改 import，并列出要人看的 `__file__`／`parents[`／`REPO_ROOT` 用法。只复制，不删 cv 里的；cv 的删除另开 PR，同一天合。
 
 踩到的坑（下次别重来）：
 - 数据文件跟着包走（`opinions/rules.json` 要进 `package-data`，路径改成包内相对）。
