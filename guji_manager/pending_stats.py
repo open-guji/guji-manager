@@ -79,7 +79,7 @@ def _group_of(ch: str) -> str | None:
     return gs[0].id if gs else None
 
 
-def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None) -> list[dict]:
+def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=None) -> list[dict]:
     """→ 每格一行 {vol, cell, big, sub, key, owner, fix, conc, cause}。"""
     cp = {**codepoints, **(extra_cp or {})}
     decided = lambda a, b: cp.get(a) == b or cp.get(b) == a   # noqa: E731
@@ -96,7 +96,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None) -> list
                     occ_page[pos[0]] += 1
         for c in cells:
             pos = cell_pos(c["cell"]) or ("?", "?")
-            v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of)
+            v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": c.get("cause") or "",
                          "slim": "cls" not in c})
@@ -193,6 +193,7 @@ def main(argv=None) -> int:
     ap.add_argument("--from-dir", type=Path, help="离线：读目录里的 <册号>.pending.json，不连库")
     ap.add_argument("--extra-codepoints", type=Path, help="再叠一份 {另一码位: 本书码位} 的 yaml（还没推库的码位）")
     ap.add_argument("--prev", type=Path, help="上一份 summary.json，报告里写增减")
+    ap.add_argument("--glyph-db", type=Path, help="字形库 db（<工作区>/output/glyph-gN.db）：给了就把「整理本字库样本≤2」的成因 I 单列成 L4 库样本过少")
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
@@ -203,7 +204,15 @@ def main(argv=None) -> int:
         import yaml
         raw = yaml.safe_load(a.extra_codepoints.read_text(encoding="utf-8")) or {}
         extra = raw.get("codepoints", raw)
-    rows = analyse(lists, cp, extra)
+    lib_n = None
+    if a.glyph_db:
+        import sqlite3
+        from collections import defaultdict
+        cnt = defaultdict(int)
+        for ch, k in sqlite3.connect(a.glyph_db).execute("select char,sum(n_confirmed) from glyphs group by char"):
+            cnt[ch] += k or 0
+        lib_n = lambda ch: cnt.get(ch, 0)   # noqa: E731
+    rows = analyse(lists, cp, extra, lib_n)
     s = summarize(rows, lists, total)
     prev = json.loads(a.prev.read_text(encoding="utf-8")) if a.prev else None
     a.out.mkdir(parents=True, exist_ok=True)

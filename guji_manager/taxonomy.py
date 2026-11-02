@@ -50,6 +50,7 @@ SUBS: dict[str, tuple[str, str, str, str, str]] = {
     "L1": ("L", "库里没有这个字", "A23", "auto", "成因 F：补刻例"),
     "L2": ("L", "库首选＝整理本，仍被拦", "A23", "auto", "成因 H：看 why，ctx_guard_ref＝文意与整理本不一"),
     "L3": ("L", "证据不足（库 unsure、文意不够）", "A23", "human", "成因 I：兜底，目标 <10%"),
+    "L4": ("L", "库样本过少（整理本字在字形库样本数≤2）", "A23", "human", "成因 I，且整理本字在字形库样本≤2（需给 lib_n；补库 sheldon 11-1 暂搁置，只统计，不动 Step）"),
     "R1": ("R", "与整理本冲突", "A31", "human", "成因 E：context_vs_ref／iron_vs_ref 等"),
     "R2": ("R", "对齐改字层（replace 段）", "A31", "human", "成因 G：整理本这段是 replace"),
     "P1": ("P", "整理本写〓（没码位的生僻字）", "A32", "human", "成因 A2"),
@@ -113,8 +114,13 @@ def pair_key(cell: dict) -> tuple[str, str] | None:
     return (a, b) if a and b else None
 
 
-def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None) -> Verdict:
-    """`occ_page_n`＝本页遮挡格数；`decided(a, b)`＝码位表里这对是否已定；`group_of(ch)`＝字→字组 id。"""
+#: 整理本字在字形库样本数 ≤ 这个数算「库样本过少」
+LIB_FEW = 2
+
+
+def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None, lib_n=None) -> Verdict:
+    """`occ_page_n`＝本页遮挡格数；`decided(a, b)`＝码位表里这对是否已定；`group_of(ch)`＝字→字组 id；
+    `lib_n(ch)`＝字在字形库的样本数（给了才判 L4；不给＝老行为，成因 I 全进 L3）。"""
     cause = cell.get("cause")
     tok = _tok(cell)
 
@@ -147,6 +153,11 @@ def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None) ->
     if cause == "H":
         return v("L2", "ctx_guard_ref" if "ctx_guard_ref" in tok else "group_dissent" if tok & _DISSENT else "其他")
     if cause == "I":
+        ref = _ref(cell)
+        if lib_n and ref not in _MISSING_REF and lib_n(ref) <= LIB_FEW:
+            p = pair_key(cell)
+            same = (not p) or p[0] == p[1] or _c(cell.get("ctx")) == ref
+            return v("L4", "上下文=整理本" if same else "机器字≠整理本")
         return v("L3", "ctx空" if not _c(cell.get("ctx")) else "ctx有字")
     if cause == "E":
         p = pair_key(cell)

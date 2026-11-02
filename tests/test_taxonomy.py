@@ -46,3 +46,14 @@ def test_h_i_reasons():
 
 def test_conc_tag():
     assert (conc_tag(20, 3), conc_tag(5, 6), conc_tag(3, 2)) == ("整页", "整列", "零散")
+
+
+def test_lib_few_samples_is_l4_only_with_lib_n():
+    cell = {"cause": "I", "cause_detail": "子/予", "ref": {"c": "予"}, "ctx": {"c": "子"}}
+    assert classify(cell).sub == "L3"                               # 不给 lib_n：老行为
+    n = {"予": 2, "子": 50}.get
+    v = classify(cell, lib_n=lambda c: n(c, 0))
+    assert (v.sub, v.key, v.owner) == ("L4", "机器字≠整理本", "A23")
+    same = {"cause": "I", "cause_detail": "予/予", "ref": {"c": "予"}}
+    assert classify(same, lib_n=lambda c: n(c, 0)).key == "上下文=整理本"
+    assert classify(cell, lib_n=lambda c: 9).sub == "L3"            # 样本够不进 L4
