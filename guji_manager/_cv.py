@@ -16,6 +16,7 @@ _FALLBACK: dict[str, tuple[str, str]] = {
     "connect": ("datastore.connect", "connect"),
     "WorkerSource": ("datastore.client", "WorkerSource"),
     "groups_of": ("groups.registry", "groups_of"),
+    "volume_of": ("core.volume_id", "volume_of"),
 }
 
 
