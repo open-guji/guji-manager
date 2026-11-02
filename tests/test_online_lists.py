@@ -8,6 +8,7 @@ from guji_manager import online_lists as OL
 @pytest.fixture(autouse=True)
 def _no_db(monkeypatch):
     monkeypatch.setattr(OL, "record_main", lambda *a: None)   # 标 main 记看板要连中心库，测试不连
+    monkeypatch.setattr(OL, "push_pack_rate", lambda *a: None)   # 包口径人审率要连库、写 ai-team，测试不碰
 
 
 def test_on_promote_skips_non_volume(capsys, monkeypatch):

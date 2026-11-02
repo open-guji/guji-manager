@@ -24,7 +24,9 @@ pip install -e ".[dev]" && pytest
 
 ## 已搬来的子命令
 
-暂无（见上）。
+| 子命令 | 来自 cv | 搬迁 |
+|---|---|---|
+| `guji opinions` | `opinions/`、`cli_opinions.py`、`config/opinions/rules.json` | P2，2026-11-02 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 
