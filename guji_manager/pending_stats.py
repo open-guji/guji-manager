@@ -43,7 +43,7 @@ def parse_vols(spec: str | None) -> set[int] | None:
 
 def load_db(ws: str, text: str, vols: set[int] | None):
     """→ (lists {册号: doc}, cells_total {册号: n}, codepoints {另一码位: 本书码位})。"""
-    from open_guji_cv.datastore.connect import connect
+    from ._cv import connect
     with connect() as con:
         cur = con.cursor()
         cur.execute("select src_path, doc from files where ws=%s and src_path like %s", (ws, f"feedback/lists/proofing/{text}/%.pending.json"))
@@ -74,7 +74,7 @@ def load_dir(path: Path, vols: set[int] | None):
 
 @lru_cache(maxsize=None)
 def _group_of(ch: str) -> str | None:
-    from open_guji_cv.groups.registry import groups_of
+    from ._cv import groups_of
     gs = groups_of(ch)
     return gs[0].id if gs else None
 
