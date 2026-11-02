@@ -39,7 +39,7 @@ def record_main(book: str, label: str) -> None:
             return
         if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
             return
-        from open_guji_cv.datastore.connect import connect
+        from ._cv import connect
         payload = json.dumps({"extra": {"a31.main": {"label": label, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}})
         with connect() as con:
             con.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (BOOK_ID, book[3:].zfill(3), payload, "A31"))

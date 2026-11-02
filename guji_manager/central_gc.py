@@ -51,7 +51,7 @@ class Pack:
 
 
 def _src(write: bool = False):
-    from open_guji_cv.datastore.client import WorkerSource
+    from ._cv import WorkerSource
     tok = os.environ.get("GUJI_DATA_TOKEN_PROD" if write else "GUJI_DATA_TOKEN_READ") or os.environ.get("GUJI_DATA_TOKEN")
     if not tok:
         raise SystemExit("缺令牌：只列清单要 GUJI_DATA_TOKEN_READ，--apply 要 GUJI_DATA_TOKEN_PROD")
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     src = _src(write=a.apply)
     packs, mains = list_packs(src, a.ws)
     read_manifests(src, packs)
-    from open_guji_cv.datastore.connect import connect
+    from ._cv import connect
     with connect() as conn:
         refs = db_refs(conn)
     drop = plan(packs, mains, refs, keep_days=a.keep_days, keep_mains=a.keep_mains)
