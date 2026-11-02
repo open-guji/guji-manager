@@ -1,15 +1,8 @@
 """并进 `guji` 的子命令（入口点组 `guji.commands`，见 open-guji-cv `cli_v2.load_plugin_commands`）。
 
-cv 里还有同名命令时 cv 自带的优先；cv 删掉之后这里的才生效。"""
+每批搬迁当天 manager 新增、cv 删除同时合（cv `doc/design/拆分-pipeline与manager.md`，2026-11-02 计划）；
+不再先复制并存：并存期间 cv 那份照样有人改，复制过来的会过期。"""
 
 from __future__ import annotations
 
-from .cli_opinions import add_parser as _add_opinions
-from .cli_opinions import cmd_opinions
-from .jobs.cli import add_parser as _add_job
-from .jobs.cli import cmd_job
-
-COMMANDS = {
-    "opinions": (_add_opinions, cmd_opinions),
-    "job": (_add_job, cmd_job),
-}
+COMMANDS: dict = {}
