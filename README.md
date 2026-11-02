@@ -14,7 +14,7 @@
 ## 现状（2026-10-27）
 
 骨架阶段：`guji_manager.pipeline`（调用与兼容检查）、`guji-manager check`。
-cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `review` `snap` `opinions` `exp` 等）还没搬过来。2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
+cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `review` `snap` `exp` 等）还没搬过来。2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
 
 ## 开发
 
@@ -27,6 +27,9 @@ pip install -e ".[dev]" && pytest
 | 子命令 | 来自 cv | 搬迁 |
 |---|---|---|
 | `guji opinions` | `opinions/`、`cli_opinions.py`、`config/opinions/rules.json` | P2，2026-11-02 |
+| `guji source` | `cli_source.py`（原图：R2 源件、页表） | P2 第二批，2026-11-02 |
+| `guji cellvotes` | `cli_cellvotes.py`（网站格级投票落事件） | P2 第二批，2026-11-02 |
+| `guji freeze` | `cli_freeze.py`（冻结登记） | P2 第二批，2026-11-02 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 

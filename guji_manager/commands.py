@@ -8,11 +8,20 @@ from __future__ import annotations
 
 import argparse
 
+from .cli_cellvotes import add_parser as _add_cellvotes
+from .cli_cellvotes import cmd_cellvotes
+from .cli_freeze import add_parser as _add_freeze
+from .cli_freeze import cmd_freeze
 from .cli_opinions import add_parser as _add_opinions
 from .cli_opinions import cmd_opinions
+from .cli_source import add_parser as _add_source
+from .cli_source import cmd_source
 
 COMMANDS: dict = {
-    "opinions": (_add_opinions, cmd_opinions),   # P2，原 cv cli_opinions + opinions/
+    "opinions": (_add_opinions, cmd_opinions),       # P2 第一批，原 cv cli_opinions + opinions/
+    "source": (_add_source, cmd_source),             # P2 第二批，原 cv cli_source（原图：R2 源件、页表）
+    "cellvotes": (_add_cellvotes, cmd_cellvotes),    # P2 第二批，原 cv cli_cellvotes（网站格级投票落事件）
+    "freeze": (_add_freeze, cmd_freeze),             # P2 第二批，原 cv cli_freeze（冻结登记）
 }
 
 
