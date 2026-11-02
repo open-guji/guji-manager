@@ -51,3 +51,21 @@ def test_on_promote_never_raises(monkeypatch):
     monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r")
     monkeypatch.setattr(OL.os, "makedirs", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
     OL.on_promote("vol13", "lbl", ws="/tmp")
+
+
+def test_ident_uses_book_config(monkeypatch):
+    """11-02 统一册号：书 id、章号按册配置给，不再只认殿本 volNN。"""
+    from types import SimpleNamespace
+
+    from guji_manager import _cv
+    cfg = {"bxgb": SimpleNamespace(book_id="988g7gsqhd", chapter="001"),
+           "05": SimpleNamespace(book_id=None, chapter="05"),
+           "vol13": SimpleNamespace(book_id=None, chapter="013"),
+           "junk": SimpleNamespace(book_id=None, chapter=None)}
+    monkeypatch.setattr(_cv, "volume_of", lambda b: cfg[b], raising=False)
+    monkeypatch.setenv("GUJI_WORKSPACE", "/x")       # ident 会 setdefault 工作区；先占住，测完还原
+    assert OL.ident("bxgb") == ("988g7gsqhd", "001")
+    assert OL.ident("05", "/x/988g3f0wsu-史記") == ("988g3f0wsu", "05")
+    assert OL.ident("vol13") == ("96mid1ogzk", "013")
+    assert OL.ident("junk") == (None, None)
+    assert OL.book_text_dir("/bt", "988g7gsqhd") == "/bt/Book/q/h/d/988g7gsqhd"

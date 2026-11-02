@@ -16,12 +16,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 import urllib.request
 
-BOOK_ID = "96mid1ogzk"
+BOOK_ID = "96mid1ogzk"          # 殿本；册 yaml 没写 book_id、工作区目录名也认不出时的老口径（只对 volNN）
+_BOOK_ID_RE = re.compile(r"[0-9a-z]{10}")
 DATA = "https://data.openguji.com"
 GUJI = os.environ.get("GUJI_BIN", "guji")
 
@@ -31,18 +33,43 @@ def _cfg() -> dict:
             "cv": os.environ.get("GUJI_CV_REPO", "/home/user/open-guji/open-guji-cv")}
 
 
-def record_main(book: str, label: str) -> None:
+def ident(book: str, ws: str | None = None) -> tuple[str | None, str | None]:
+    """册名 → (书 id, book-text 章号)。按册配置（cv `core/volume_id`，11-02 统一册号）；
+    书 id 依次取册 yaml 的 `book_id`、工作区目录名 `<书id>-<书名>`；老 cv 没有 volume_of 时只认殿本 volNN。"""
+    if ws:
+        os.environ.setdefault("GUJI_WORKSPACE", ws)
+    try:
+        from ._cv import volume_of
+        v = volume_of(book)
+        bid = v.book_id
+        if not bid and ws:
+            bid = os.path.basename(os.path.normpath(ws)).split("-", 1)[0]
+        if not (bid and _BOOK_ID_RE.fullmatch(bid)):
+            bid = BOOK_ID if re.fullmatch(r"vol\d+", book) else None
+        return bid, v.chapter
+    except Exception:  # noqa: BLE001 —— 老 cv：只认殿本 volNN
+        m = re.fullmatch(r"vol(\d+)", book)
+        return (BOOK_ID, m.group(1).zfill(3)) if m else (None, None)
+
+
+def book_text_dir(book_text: str, book_id: str) -> str:
+    """book-text 条目目录：Book/<id 倒数第三>/<倒数第二>/<末字>/<id>。"""
+    return f"{book_text}/Book/{book_id[-3]}/{book_id[-2]}/{book_id[-1]}/{book_id}"
+
+
+def record_main(book: str, label: str, ws: str | None = None) -> None:
     """把「这册现在的 ★ main 标签」记到后台看板（progress.volume.extra 的 a31.main），页面据此标出线上单有没有追上 main。
     只写看板、永远不抛；连不上库（没有 NEON_DATABASE_URL／没装 cv）就静默跳过。"""
     try:
-        if not (book.startswith("vol") and book[3:].isdigit()):
+        bid, ch = ident(book, ws)
+        if not (bid and ch):
             return
         if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
             return
         from ._cv import connect
         payload = json.dumps({"extra": {"a31.main": {"label": label, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}})
         with connect() as con:
-            con.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (BOOK_ID, book[3:].zfill(3), payload, "A31"))
+            con.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (bid, ch, payload, "A31"))
     except Exception as e:  # noqa: BLE001
         print(f"（后台看板没记上 main 标签：{e}）")
 
@@ -51,7 +78,8 @@ def push_pack_rate(book: str, ws: str | None) -> None:
     """标 main 后在后台统计这册 ★main 包的人审率，写进后台看板（progress.volume.extra['cv.pack']）。
     要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、NEON_DATABASE_URL；缺了就静默跳过。永远不抛。"""
     try:
-        if not ws or not (book.startswith("vol") and book[3:].isdigit()):
+        bid, ch = ident(book, ws)
+        if not ws or not (bid and ch):
             return
         if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
             return
@@ -64,7 +92,7 @@ def push_pack_rate(book: str, ws: str | None) -> None:
         os.makedirs(out, exist_ok=True)
         with open(os.path.join(out, "run.log"), "ab") as f:
             subprocess.Popen([sys.executable, "-u", run_py, "--ws", ws, "--vol-names", book, "--pick", "main",
-                              "--out", out, "--push-progress", BOOK_ID], stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+                              "--out", out, "--push-progress", bid], stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
         print(f"包口径人审率已在后台统计并写看板，日志 {out}/run.log")
     except Exception as e:  # noqa: BLE001
         print(f"（包口径人审率没起来：{e}）")
@@ -72,12 +100,13 @@ def push_pack_rate(book: str, ws: str | None) -> None:
 
 def on_promote(book: str, label: str, ws: str | None = None) -> None:
     """cv 标 main 后调用。永远不抛：自动重出失败不能挡标 main。"""
-    record_main(book, label)
+    record_main(book, label, ws)
     push_pack_rate(book, ws)
     try:
         if os.environ.get("GUJI_AUTO_ONLINE_LISTS", "1") == "0":
             return
-        if not (book.startswith("vol") and book[3:].isdigit()):
+        bid, ch = ident(book, ws)
+        if not (bid and ch):      # 认不出的册（试验册等）静默跳过，同 record_main
             return
         c = _cfg()
         missing = [n for n, ok in (("GUJI_DATA_TOKEN_PROD", bool(os.environ.get("GUJI_DATA_TOKEN_PROD"))),
@@ -108,8 +137,8 @@ def _packs(vol: str, ws: str, env: dict) -> list[dict]:
     return rows
 
 
-def _online_rev(ch: str) -> str | None:
-    with urllib.request.urlopen(f"{DATA}/proof/{BOOK_ID}/{ch}.pending.json") as r:
+def _online_rev(bid: str, ch: str) -> str | None:
+    with urllib.request.urlopen(f"{DATA}/proof/{bid}/{ch}.pending.json") as r:
         return json.loads(r.read()).get("rev")
 
 
@@ -133,15 +162,17 @@ def follow_main(vol: str, ws: str) -> int:
     read_env = {**base, "GUJI_DATA_TOKEN": os.environ["GUJI_DATA_TOKEN_READ"]}
     write_env = {**base, "GUJI_DATA_TOKEN": os.environ["GUJI_DATA_TOKEN_PROD"], "GUJI_PRODUCTS_DIR": "/home/user/prod_issue"}
     os.makedirs("/home/user/prod_issue", exist_ok=True)
-    ch = f"0{vol[3:]}"
+    bid, ch = ident(vol, ws)
+    if not (bid and ch):
+        print(f"{vol}: 认不出书 id 或章号（册 yaml 写上 book_id、volume）"); return 1
     rows = _packs(vol, ws, read_env)
     star = next((r for r in rows if r["star"]), None)
     if not star:
         print(f"{vol}: 没有 ★ main 包"); return 1
-    if os.path.exists(f"{c['book_text']}/Book/g/z/k/{BOOK_ID}/default/{ch}.punct.json"):
+    if os.path.exists(f"{book_text_dir(c['book_text'], bid)}/default/{ch}.punct.json"):
         print(f"{vol}: 文本挂了标点／实体层，不自动重出；走 proof_cycle plan/apply（A32）"); return 1
     try:
-        rev = _online_rev(ch)
+        rev = _online_rev(bid, ch)
     except Exception as e:  # noqa: BLE001
         print(f"{vol}: 还没有线上单（首发另行决定）：{e}"); return 1
     rp = next((r for r in rows if r["label"] == f"rev-{rev}"), None)
@@ -157,7 +188,8 @@ def follow_main(vol: str, ws: str) -> int:
     rc = 1
     for _ in range(3):   # 读票接口偶发 500／握手失败
         rc = subprocess.run([sys.executable, "-u", f"{c['cv']}/scripts/zhengli/republish.py", "issue", "--book", vol, "-w", ws,
-                             "--label", star["label"], "--book-text", c["book_text"], "--no-pull", "--no-wait"],
+                             "--label", star["label"], "--book-text", c["book_text"], "--no-pull", "--no-wait",
+                             "--chapter", ch, "--text-id", bid],
                             env=write_env, cwd=c["cv"]).returncode
         if rc == 0:
             break
@@ -165,7 +197,7 @@ def follow_main(vol: str, ws: str) -> int:
     print(f"{vol}: issue 退出码 {rc}")
     if rc == 0:
         subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", "open-guji/kaiyuanguji-web", "--ref", "main",
-                        "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={BOOK_ID}/{ch}"])
+                        "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={bid}/{ch}"])
         print(f"{vol}: 已触发网站 proofing-sync")
     return rc
 
