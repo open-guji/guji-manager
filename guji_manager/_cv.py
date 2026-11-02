@@ -16,6 +16,10 @@ _FALLBACK: dict[str, tuple[str, str]] = {
     "connect": ("datastore.connect", "connect"),
     "WorkerSource": ("datastore.client", "WorkerSource"),
     "groups_of": ("groups.registry", "groups_of"),
+    # opinions（P2 搬来）
+    "data_home": ("core.workspace", "data_home"),
+    "central_data_dir": ("core.workspace", "central_data_dir"),
+    "CentralError": ("datastore.client", "CentralError"),
     "volume_of": ("core.volume_id", "volume_of"),
 }
 
