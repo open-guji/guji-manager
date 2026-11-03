@@ -36,9 +36,11 @@ def short_notes(line):
     def f(m):
         if '|' in m.group(1): return m.group(0)
         t=re.sub(r'[^\u4e00-\u9fff□〓㐀]','',m.group(1))
-        if len(t)>NOTE_MAX: return m.group(0)
+        parts=split_note(t)
+        # 超长的注只要能按「其N」「闕(N字)」拆成每段都不超长，也拆（07p57「<闕二字其八闕二十四字>」，2026-11-03 看图三条各自双行）
+        if len(t)>NOTE_MAX and (len(parts)==1 or max(map(len,parts))>NOTE_MAX): return m.group(0)
         # 只有一个字的注（<闕>、<字>）当正文一字：非碑志页的「<闕>」书上多半占整格，册06 实测按半格标反而锚不上
-        return ''.join(x if len(x)<=1 else '<'+x+'>' for x in split_note(t))
+        return ''.join(x if len(x)<=1 else '<'+x+'>' for x in parts)
     return re.sub(r'<([^>]*)>',f,line)
 AUTHOR_ORD=re.compile(r"^(　?[^\s<>　]{1,8})<([一二三四五六七八九十百]+)>$")
 n=0
@@ -66,3 +68,8 @@ if MIN_JUAN:
     from add_juan_header import add_headers
     res,k=add_headers(open(out,encoding="utf-8").read().split("\n"),MIN_JUAN)
     open(out,"w",encoding="utf-8").write("\n".join(res)); print("补卷名栏",k,"行")
+# 长双行小注：Kanripo 把一列的右行、左行各录一行，半叶超 9 行时并成 <右|左>（06p141/142，2026-11-03）
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from pair_note_lines import pair_note_lines
+res,k=pair_note_lines(open(out,encoding="utf-8").read().split("\n"))
+open(out,"w",encoding="utf-8").write("\n".join(res)); print("并长注行",k)
