@@ -1,26 +1,41 @@
 # Kanripo 转带半叶头的逐列本语料。输入：book-text 里 Work d59f2nqla48x 的 default/ 目录（含 pages.tsv）。输出：qtw_kanripo_grid.txt（#@ <pb> 半叶头＋一行一列，:zi[..]→㐀）。
-# 用法：python3 make_grid_corpus.py <book-text>/Work/4/8/x/d59f2nqla48x/default <out.txt> [补卷名栏的最小卷号，缺省 7，0 不补] [短小注占位的字数上限，缺省 8，0 不改]
+# 用法：python3 make_grid_corpus.py <book-text>/Work/4/8/x/d59f2nqla48x/default <out.txt> [补卷名栏的最小卷号，缺省 7，0 不补] [短小注按双行拆注的字数上限，缺省 8，0 不改]
 #
 # Kanripo KR4h0168 (book-text Work d59f2nqla48x) → 逐列本语料（`#@ <pb>` 半叶头 ＋ 一行一列），供 align_ref 页钉位
 import re,sys,csv
 base,out=sys.argv[1:3]
 MIN_JUAN=int(sys.argv[3]) if len(sys.argv)>3 else 7
-NOTE_MAX=int(sys.argv[4]) if len(sys.argv)>4 else 8   # 小注（无 | 的 <…>）字数 ≤ 此值的，改成占位格；0＝不改   # 册04（卷3–6）已定稿，不补卷名栏；0＝不补
+NOTE_MAX=int(sys.argv[4]) if len(sys.argv)>4 else 8   # 小注（无 | 的 <…>）字数 ≤ 此值的，拆开并注（split_note）；0＝不改   # 册04（卷3–6）已定稿，不补卷名栏；0＝不补
 pb={}   # (file,line_no)->pb id
 for r in list(csv.reader(open(base+"/pages.tsv",encoding="utf-8"),delimiter="\t"))[1:]:
     pb[(r[0],int(r[1]))]=r[2]
 import glob,os
 import math
+NUM='[一二三四五六七八九十百]+'
+_HEAD=re.compile(r'其'+NUM+r'|闕(?:'+NUM+r'字)?')
+def split_note(t):
+    """Kanripo 常把相邻两条短注并成一条（<其五闕二十八字>），书上是 <其五><闕二十八字> 两条、各自双行排。
+    按「其N」「闕(N字)」起头处拆开，别的字并进前一段。"""
+    out=[];buf=''
+    for m in re.finditer(r'其'+NUM+r'|闕(?:'+NUM+r'字)?|[^其闕]+|[其闕]',t):
+        p=m.group(0)
+        if _HEAD.fullmatch(p):
+            if buf: out.append(buf); buf=''
+            out.append(p)
+        else: buf+=p
+    if buf: out.append(buf)
+    return out
 def short_notes(line):
-    """碑文页的「<闕>」「<其五>」「<闕三字>」这类短小注，书上占 ceil(字数/2) 个整格（两小字并排成一格），切分只当普通格（kind c），
-    而 cv 把无 | 的小注解成 n 单元，整列类型对不上、align_ref_coord 报「格与整理本 N 字对不上」（2026-11-02，册07–15 约 30% 的 S 格）。
-    这里：1 字小注→正文字；2–NOTE_MAX 字→ceil(n/2) 个「〓」占位（格数不变、该格不给参照字）；更长的夹注（双行小注页）原样保留。"""
+    """碑文页的「<闕>」「<其五>」「<闕三字>」这类短小注（无 |、≤NOTE_MAX 字）：书上是双行小注，两小字并排占一格位，
+    右行取前一半（cv parse_lines 按 ceil 切 a/b）。保留 <…>，只把并在一起的注拆开（split_note），让 align_ref 解成 n 单元，
+    与 row_segment 按 a/b 拆开的格类型一致；有格位表的列另由 make_note_layout.py 把这些格写进 notes／half。
+    2026-11-03 改：11-02 曾把它们换成〓当普通格，有表的列因此被强制并成一格（「七其」「字闕」只能出〓、永远人审），
+    册07 碑志 14 页实测改回双行后待审 256→82。"""
     def f(m):
         if '|' in m.group(1): return m.group(0)
-        t=re.sub(r'[^\u4e00-\u9fff□〓]','',m.group(1))
+        t=re.sub(r'[^\u4e00-\u9fff□〓㐀]','',m.group(1))
         if len(t)>NOTE_MAX: return m.group(0)
-        if len(t)<=1: return t
-        return '〓'*math.ceil(len(t)/2)
+        return ''.join('<'+x+'>' for x in split_note(t))
     return re.sub(r'<([^>]*)>',f,line)
 n=0
 with open(out,"w",encoding="utf-8") as f:
