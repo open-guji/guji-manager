@@ -1,10 +1,10 @@
-# 本仓测试：每次推送／PR 跑，另每天对 cv dev 最新跑一次。
+# 本仓测试：推 dev／rc／main 与每个 PR 都跑，另每天对 cv dev 最新跑一次。
 # cv 改了 manager 用到的内部（门面 manager_api 之外的也算），这里第二天就红，不等执行机上才炸。
 name: test
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main, "rc/**"]
   pull_request:
   schedule:
     - cron: "17 13 * * *"   # 每天 UTC 13:17（洛杉矶早上 5–6 点）
