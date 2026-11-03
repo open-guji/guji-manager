@@ -43,12 +43,18 @@ def short_notes(line):
         return ''.join(x if len(x)<=1 else '<'+x+'>' for x in parts)
     return re.sub(r'<([^>]*)>',f,line)
 AUTHOR_ORD=re.compile(r"^(　?[^\s<>　]{1,8})<([一二三四五六七八九十百]+)>$")
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+import kanripo_errata                   # 参照本勘误层：Kanripo 的错记在本仓 kanripo_errata.tsv，生成时叠上去，book-text 不动
+ERRATA=kanripo_errata.load(); USED=[]
 n=0
 with open(out,"w",encoding="utf-8") as f:
     f.write("#@ KR4h0168_header Kanripo KR4h0168 NKFB 嘉慶本逐列錄入 CC BY-SA 4.0 (book-text d59f2nqla48x)\n")
     for p in sorted(glob.glob(base+"/[0-9][0-9][0-9]*.md")):
         fn=os.path.basename(p)
         lines=open(p,encoding="utf-8").read().split("\n")
+        fpb={i:v for (a,i),v in pb.items() if a==fn}
+        lines,fpb,u=kanripo_errata.apply(fn,lines,fpb,ERRATA); USED+=u
+        pb={k:v for k,v in pb.items() if k[0]!=fn}; pb.update({(fn,i):v for i,v in fpb.items()})
         started=False
         for i,line in enumerate(lines,1):
             if (fn,i) in pb:
@@ -60,7 +66,8 @@ with open(out,"w",encoding="utf-8") as f:
             line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
             f.write(line+"\n"); n+=1
-print(n,"lines")
+print(n,"lines；勘误",len(USED),"/",len(ERRATA),"条")
+if len(USED)!=len(ERRATA): raise SystemExit("有勘误条目没用上："+",".join(sorted({e["id"] for e in ERRATA}-set(USED))))
 # 每卷 01a 首列是「欽定全唐文卷N」卷名栏，Kanripo 没录：补占位列，否则该页整页错 1 位（2026-11-01，册05–15 共 43 页）。
 # 数字写法（卷一百一十等）未对书影，卷≥100 的册开工前先核；0 关掉。
 if MIN_JUAN:
