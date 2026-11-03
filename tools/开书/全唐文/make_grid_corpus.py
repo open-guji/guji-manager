@@ -24,6 +24,8 @@ def split_note(t):
             out.append(p)
         else: buf+=p
     if buf: out.append(buf)
+    # 拆出单字段（<闕其四闕> → 闕／其四／闕）就不拆：单字段会被当正文一字，格数凭空多出来，书上未必这么排
+    if len(out)>1 and any(len(x)<=1 for x in out): return [t]
     return out
 def short_notes(line):
     """碑文页的「<闕>」「<其五>」「<闕三字>」这类短小注（无 |、≤NOTE_MAX 字）：书上是双行小注，两小字并排占一格位，
