@@ -79,13 +79,28 @@ def _expect(table_pages: list[dict], path: str | None, skip: str | None = None) 
     print(f"  ✓ {len(table_pages) - len(skipped)} 页与 {Path(path).name} 逐字节相同{note}")
 
 
+def _locate(src, S, book: str) -> tuple[str, str]:
+    """册 → (书 id, R2 册号)。R2 指针（`by-ws/<ws>/<册>.json`）只增不改，所以册号改了位数（全唐文 01→001，
+    2026-11-03）指针还指旧号：册配置有 `book_id` 与册序、且与指针是同一书同一册序时，按配置的位数取
+    （`core/volume_id`）；对不上（换图源等特例）以指针为准。"""
+    from ._cv import volume_of
+    book_id, vol = S.resolve(src, _ws_id(), book)
+    try:
+        v = volume_of(book)
+    except Exception:  # noqa: BLE001 —— 读不到配置就照指针
+        return book_id, vol
+    if v.book_id == book_id and v.volume is not None and v.volume == int(vol) and v.label != vol:
+        return book_id, v.label
+    return book_id, vol
+
+
 def cmd_pull(args) -> None:
     from ._cv import load_book
     from ._cv import sources as S
     if args.workspace:
         os.environ["GUJI_WORKSPACE"] = str(Path(args.workspace).expanduser().resolve())
     src = _src()
-    book_id, vol = (args.book_id, S.norm_vol(args.vol)) if args.book_id else S.resolve(src, _ws_id(), args.book)
+    book_id, vol = (args.book_id, S.norm_vol(args.vol)) if args.book_id else _locate(src, S, args.book)
     rev = args.rev
     if rev is None and args.book:
         rev = load_book(args.book).source_rev          # 册 yaml 钉了页表版就按钉取
