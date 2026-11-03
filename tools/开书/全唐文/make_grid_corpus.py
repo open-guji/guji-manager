@@ -40,6 +40,7 @@ def short_notes(line):
         # 只有一个字的注（<闕>、<字>）当正文一字：非碑志页的「<闕>」书上多半占整格，册06 实测按半格标反而锚不上
         return ''.join(x if len(x)<=1 else '<'+x+'>' for x in split_note(t))
     return re.sub(r'<([^>]*)>',f,line)
+AUTHOR_ORD=re.compile(r"^(　?[^\s<>　]{1,8})<([一二三四五六七八九十百]+)>$")
 n=0
 with open(out,"w",encoding="utf-8") as f:
     f.write("#@ KR4h0168_header Kanripo KR4h0168 NKFB 嘉慶本逐列錄入 CC BY-SA 4.0 (book-text d59f2nqla48x)\n")
@@ -53,6 +54,8 @@ with open(out,"w",encoding="utf-8") as f:
             if not started: continue
             if line.startswith("#") or not line.strip(): continue
             line=re.sub(r":zi\[[^\]]*\]","㐀",line)
+            # 卷首作者行「　元宗<十二>」：书上序号是单行小字、一字一格（11p7、13p105 看图，2026-11-03），照正文写，不当双行小注
+            line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
             f.write(line+"\n"); n+=1
 print(n,"lines")
