@@ -35,7 +35,8 @@ def short_notes(line):
         if '|' in m.group(1): return m.group(0)
         t=re.sub(r'[^\u4e00-\u9fff□〓㐀]','',m.group(1))
         if len(t)>NOTE_MAX: return m.group(0)
-        return ''.join('<'+x+'>' for x in split_note(t))
+        # 只有一个字的注（<闕>、<字>）当正文一字：非碑志页的「<闕>」书上多半占整格，册06 实测按半格标反而锚不上
+        return ''.join(x if len(x)<=1 else '<'+x+'>' for x in split_note(t))
     return re.sub(r'<([^>]*)>',f,line)
 n=0
 with open(out,"w",encoding="utf-8") as f:
