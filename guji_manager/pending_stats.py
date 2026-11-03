@@ -134,8 +134,8 @@ def _d(now: int, prev) -> str:
 def reason_specs() -> dict:
     """{pending_reason: (码, 名, 去向)}；真源 cv `review/pending_reason.py`，没装 cv 就只列英文名。"""
     try:
-        from open_guji_cv.review.pending_reason import specs
-    except ImportError:
+        from ._cv import pending_reason_specs as specs
+    except (ImportError, AttributeError):
         return {}
     return {r.value: (sp.code, sp.label, sp.route.value) for r, sp in specs().items()}
 

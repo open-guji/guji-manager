@@ -16,6 +16,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "connect": ("datastore.connect", "connect"),
     "WorkerSource": ("datastore.client", "WorkerSource"),
     "groups_of": ("groups.registry", "groups_of"),
+    "pending_reason_specs": ("review.pending_reason", "specs"),   # 待审原因码表（pending-stats，11-03）
     # opinions（P2 搬来）
     "data_home": ("core.workspace", "data_home"),
     "central_data_dir": ("core.workspace", "central_data_dir"),
