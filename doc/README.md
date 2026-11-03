@@ -37,3 +37,4 @@
 - 公开仓：不写令牌、密码、内部地址。
 - 迁自 ai-team 的文档，迁完在 ai-team 原位置留一行指向这里；ai-team 另有索引（`通用/整理流程文档索引.md`）。
 - 新踩的坑先写进对应步骤文档的「常见坑」，跨步骤的进 [经验](经验/)。
+- 本目录是操作手册；「看图懂系统」的入门在 [Wiki](https://github.com/open-guji/guji-manager/wiki)（源文件 `../wiki/`）。Wiki 不随 PATCH 改，每升一次 MINOR 版整体重改一遍。

@@ -1,0 +1,101 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:"WenQuanYi Zen Hei",sans-serif;color:#222}
+.d{display:inline-block;padding:28px 32px;background:#fff;margin:10px}
+h3{margin:0 0 18px;font-size:22px}
+.row{display:flex;align-items:center;gap:14px}
+.col{display:flex;flex-direction:column;gap:10px}
+.box{border:2px solid #555;border-radius:10px;padding:12px 16px;font-size:16px;line-height:1.55;background:#fafafa}
+.cv{border-color:#2f6b9a;background:#eef5fb}.mg{border-color:#2e7d4f;background:#eef8f1}
+.st{border-color:#a0682a;background:#fbf4ea}.hm{border-color:#9a2f5c;background:#fbeef3}.gy{border-color:#999;background:#f5f5f5;color:#555}
+.big{font-size:20px;font-weight:bold;margin-bottom:6px}
+.arr{font-size:28px;color:#666}.small{font-size:13px;color:#666}
+.tag{display:inline-block;font-size:13px;border-radius:5px;padding:1px 7px;margin:2px;background:#fff;border:1px solid #bbb}
+.bar{height:26px;border-radius:4px;display:inline-block;vertical-align:middle}
+table.c td{padding:4px 8px;font-size:15px;white-space:nowrap}
+</style></head><body>
+
+<div class="d" id="boundary"><h3>两个仓怎么分工</h3>
+<div class="row">
+ <div class="box cv" style="width:330px"><div class="big">open-guji-cv（pipeline）</div>
+ 凡是会改变<b>识别产物字节</b>的：<br>图像处理 · 切分 · 识别 · 定字 · 放行规则 · Step9 汇总与导出<br>
+ <span class="tag">tag：vX.Y.Z</span><span class="tag">钉到册、进产物指纹</span><br><span class="small">改它 = 相关册的产物过期、要重跑</span></div>
+ <div class="col" style="align-items:center"><div class="arr">⟵</div><div class="small" style="text-align:center;width:170px">manager 只通过子进程调<br><code>guji-cv --json</code><br>按契约（COMPAT.md）核对版本</div></div>
+ <div class="box mg" style="width:360px"><div class="big">guji-manager（本仓）</div>
+ 其余一切<b>与外界的交互</b>：<br>工作区 · 原图登记与取图 · 中心库与 R2 · 任务库 · 人审意见与投票 · 线上待审单 · 冻结登记 · 中心库清理<br>
+ <span class="tag">tag：m-vX.Y.Z</span><span class="tag">不钉到册、不进指纹</span><br><span class="small">改它不用给 pipeline 发版，不会让任何册过期</span></div>
+</div></div>
+
+<div class="d" id="dataflow"><h3>一册书的数据流（绿＝manager 负责，蓝＝pipeline，棕＝存储，红＝人）</h3>
+<div class="row">
+ <div class="col">
+  <div class="box st">book-index<br><span class="small">书目、Book ID</span></div>
+  <div class="box mg">原图登记 <code>guji source</code><br><span class="small">Commons／IA 源件 → 页表＋页图（R2）</span></div>
+  <div class="box st">工作区仓＋册 yaml<br><span class="small"><code>guji db push/pull</code> ⇄ 中心库</span></div>
+ </div>
+ <div class="arr">→</div>
+ <div class="col">
+  <div class="box mg">任务库 <code>guji job submit</code><br><span class="small">执行机领单</span></div>
+  <div class="box cv">pipeline <code>guji-cv</code><br><span class="small">切分 → 识别 → 定字 → 放行</span></div>
+  <div class="box st">产物包（R2）<br><span class="small">带 cv／语料／字形库标签，可标 ★main</span></div>
+ </div>
+ <div class="arr">→</div>
+ <div class="col">
+  <div class="box mg">标 main 后自动重出线上单<br><span class="small">online_lists</span></div>
+  <div class="box hm">网站精校页：读者投票</div>
+  <div class="box mg">票落事件 <code>guji cellvotes / opinions</code><br><span class="small">→ 受影响的页交任务库重跑</span></div>
+ </div>
+ <div class="arr">→</div>
+ <div class="col">
+  <div class="box st">导出 → book-text<br><span class="small">dev 提交，每日合 main</span></div>
+  <div class="box hm">kaiyuanguji.com 阅读页</div>
+  <div class="box mg">冻结登记 <code>guji freeze</code><br><span class="small">1.0 发布</span></div>
+ </div>
+</div></div>
+
+<div class="d" id="stages"><h3>一部书的五个阶段</h3>
+<div class="row">
+ <div class="box mg" style="width:170px"><div class="big">01 开新书</div>书目 · 原图登记 · 工作区 · 切分试跑 · 字形库冷启动<br><span class="small">出口：册进中心库、试跑通过</span></div><div class="arr">→</div>
+ <div class="box mg" style="width:170px"><div class="big">02 粗校</div>整册首跑 · 分析待审格 · 受控重跑<br><span class="small">出口：文本 0.1.0 进 book-text</span></div><div class="arr">→</div>
+ <div class="box mg" style="width:170px"><div class="big">03 精校</div>线上待审单 · 网站投票 · 重跑循环<br><span class="small">出口：1.0 发布标准、冻结</span></div><div class="arr">→</div>
+ <div class="box mg" style="width:170px"><div class="big">04 点校</div>标点层 · 专名／实体层<br><span class="small">推 book-text</span></div><div class="arr">→</div>
+ <div class="box gy" style="width:170px"><div class="big">05 反馈迭代</div>1.0 之后：用户报错、算法变好后的机器反馈</div>
+</div>
+<div class="small" style="margin-top:12px">第 2–4 步做的过程中就会发布到 book-text，发布不单列一步。</div></div>
+
+<div class="d" id="loop"><h3>精校循环：人投票 → 机器重跑 → 新单子</h3>
+<div class="row">
+ <div class="box st">产物包标 ★main</div><div class="arr">→</div>
+ <div class="box mg">online_lists<br>自动重出线上单</div><div class="arr">→</div>
+ <div class="box hm">网站校对页<br>读者认字、投票</div><div class="arr">→</div>
+ <div class="box mg">cellvotes／opinions<br>票 → 事件（中心库）</div><div class="arr">→</div>
+ <div class="box mg">任务库<br>只重跑受影响的页</div><div class="arr">→</div>
+ <div class="box st">新产物包</div><div class="arr">↺</div>
+</div>
+<div class="small" style="margin-top:12px">待审格少到一定程度、过了 1.0 发布标准，就做冻结登记（guji freeze），文本出 1.0。</div></div>
+
+<div class="d" id="gc"><h3>central-gc：每册哪些产物包要留（任一条成立就留，其余可删）</h3>
+<div class="row" style="flex-wrap:wrap;width:900px">
+ <div class="box mg" style="width:250px">① 现行 ★main 和上一份 main<br><span class="small">回退用（--keep-mains）</span></div>
+ <div class="box mg" style="width:250px">② 冻结记录点名的包</div>
+ <div class="box mg" style="width:250px">③ 线上单出自的那份包</div>
+ <div class="box mg" style="width:250px">④ 14 天内存的包<br><span class="small">留给对比和返工（--keep-days）</span></div>
+ <div class="box mg" style="width:250px">⑤ 任务库排队／在跑任务要用的包</div>
+ <div class="box mg" style="width:250px">⑥ 标签以 freeze- 开头的包</div>
+</div>
+<div class="small" style="margin-top:12px">缺省只列清单；人看过清单后 <code>--apply --from-list</code> 才删。main 指针、原图、字体库、实验桶一律不动。</div></div>
+
+<div class="d" id="wikirule"><h3>Wiki 什么时候改</h3>
+<div class="row">
+ <div class="box mg"><div class="big">m-v0.2.x</div>本版 Wiki 基线</div><div class="arr">→</div>
+ <div class="box gy">m-v0.2.1<br>PATCH：不动 Wiki</div><div class="arr">→</div>
+ <div class="box gy">m-v0.2.2<br>PATCH：不动 Wiki</div><div class="arr">→</div>
+ <div class="box hm"><div class="big">m-v0.3.0（MINOR）</div>列出 0.2.x 全部 PATCH<br>→ 归纳涉及的功能<br>→ 逐页重改、重截图<br>→ 首页改「对应 m-v0.3」</div>
+</div></div>
+
+<div class="d" id="pending"><h3>殿本总目 99 册线上待审格分类（2026-11-03，共 17,565 格，占全书 0.67%）</h3>
+<table class="c" id="pt"></table></div>
+<script>
+const rows=[["P","只能人审（复审格、〓生僻字）",10798,"#9a2f5c"],["Z","形近字组",2977,"#a0682a"],["L","字形库／识别",1889,"#2f6b9a"],["S","切分／对位",739,"#2e7d4f"],["O","遮挡（印章等）",577,"#777"],["R","整理本／语料",324,"#6a4fa0"],["M","码位异体",261,"#3a8c8c"]];
+const t=document.getElementById('pt');for(const [k,n,v,c] of rows){t.insertAdjacentHTML('beforeend',`<tr><td><b>${k}</b></td><td>${n}</td><td><span class="bar" style="width:${v/20}px;background:${c}"></span></td><td>${v.toLocaleString()}（${(v/175.65).toFixed(1)}%）</td></tr>`)}
+</script>
+</body></html>
