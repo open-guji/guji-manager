@@ -99,12 +99,14 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": c.get("cause") or "",
+                         "pending_reason": c.get("pending_reason") or "unknown",
                          "slim": "cls" not in c})
     return rows
 
 
 def summarize(rows: list[dict], lists: dict, total: dict) -> dict:
     by_sub, by_vol, keys, conc = Counter(), defaultdict(Counter), defaultdict(Counter), defaultdict(Counter)
+    by_reason = Counter(r["pending_reason"] for r in rows)
     for r in rows:
         by_sub[r["sub"]] += 1
         by_vol[r["vol"]][r["big"]] += 1
@@ -118,7 +120,7 @@ def summarize(rows: list[dict], lists: dict, total: dict) -> dict:
                    "by_big": {b: by_vol[v][b] for b in BIG if by_vol[v][b]},
                    "rev": doc.get("rev"), "cv": doc.get("cv_version"), "at": doc.get("routed_as_of"),
                    "slim": sum(1 for r in rows if r["vol"] == v and r["slim"])}
-    return {"n": len(rows), "by_sub": dict(by_sub), "keys": {k: dict(v) for k, v in keys.items()},
+    return {"n": len(rows), "by_reason": dict(by_reason), "by_sub": dict(by_sub), "keys": {k: dict(v) for k, v in keys.items()},
             "conc": {k: dict(v) for k, v in conc.items()}, "vols": vols}
 
 
@@ -127,6 +129,33 @@ def _d(now: int, prev) -> str:
         return ""
     d = now - prev
     return f"（{'+' if d > 0 else ''}{d}）" if d else "（0）"
+
+
+def reason_specs() -> dict:
+    """{pending_reason: (码, 名, 去向)}；真源 cv `review/pending_reason.py`，没装 cv 就只列英文名。"""
+    try:
+        from open_guji_cv.review.pending_reason import specs
+    except ImportError:
+        return {}
+    return {r.value: (sp.code, sp.label, sp.route.value) for r, sp in specs().items()}
+
+
+def render_reasons(s: dict, prev: dict | None) -> list[str]:
+    """按待审原因 pending_reason（sheldon 11-03 定，旧单没有的记 unknown）。"""
+    n = s["n"] or 1
+    pr = (prev or {}).get("by_reason", {})
+    sp = reason_specs()
+    out = ["## 零、按待审原因（pending_reason）", "",
+           "原因码表真源 `open_guji_cv/review/pending_reasons.yaml`；单上没有这个字段的格记 `unknown`。", "",
+           "| 原因 | 码 | 名 | 去向 | 格数 | 占比 |", "|---|---|---|---|---|---|"]
+    route_n = Counter()
+    for r, k in sorted(s.get("by_reason", {}).items(), key=lambda kv: -kv[1]):
+        code, label, route = sp.get(r, ("", "", ""))
+        route_n[route or "?"] += k
+        out.append(f"| `{r}` | {code} | {label} | {route} | {k}{_d(k, pr.get(r, 0) if prev else None)} | {k / n:.1%} |")
+    if sp:
+        out += ["", "按去向：" + "；".join(f"{r} {k}（{k / n:.0%}）" for r, k in route_n.most_common())]
+    return out + [""]
 
 
 def render(s: dict, prev: dict | None, top: int) -> str:
@@ -138,7 +167,8 @@ def render(s: dict, prev: dict | None, top: int) -> str:
            + (f"，占全册 {tot_cells} 格的 {n / tot_cells:.2%}" if tot_cells else "")
            + "。分类规则 `open_guji_cv/review/taxonomy.py`；跟进方见 ai-team `domain/CV/质检/待审分类规范.md`。"
            + ("括号里是比上一份的增减。" if prev else ""), "",
-           "## 一、大类／小类总账", "",
+           *render_reasons(s, prev),
+           "## 一、大类／小类总账（旧分类，过渡期保留）", "",
            "| 小类 | 名 | 格数 | 占比 | 跟进方 | 处理方式 | 集中度（整页／整列／零散） |", "|---|---|---|---|---|---|---|"]
     by_big = Counter()
     for sub, k in s["by_sub"].items():
@@ -218,7 +248,7 @@ def main(argv=None) -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / "report.md").write_text(render(s, prev, a.top), encoding="utf-8")
     (a.out / "summary.json").write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
-    cols = ["vol", "cell", "big", "sub", "key", "owner", "fix", "conc", "cause"]
+    cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause"]
     (a.out / "cells.tsv").write_text("\n".join(["\t".join(cols)] + ["\t".join(str(r[c]) for c in cols) for r in rows]) + "\n", encoding="utf-8")
     print(f"待审 {s['n']} 格，{len(lists)} 册 → {a.out}/report.md、cells.tsv、summary.json")
     return 0
