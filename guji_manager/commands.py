@@ -10,6 +10,7 @@ import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
 from .cli_cellvotes import add_parser as _add_cellvotes
+from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
 from .cli_freeze import add_parser as _add_freeze
 from .cli_freeze import cmd_freeze
@@ -34,6 +35,8 @@ COMMANDS: dict = {
     **cli_glyph.COMMANDS,      # store、recheck、glyphlib、rekey-cells、promote、corpus
     **cli_glyph_db.COMMANDS,   # glyph-db
     **cli_model.COMMANDS,      # model、font
+    # P3 jobs（2026-11-04），原 cv jobs/cli.py
+    **_jobs_cli.COMMANDS,      # job
 }
 
 

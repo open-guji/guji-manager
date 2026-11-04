@@ -339,6 +339,12 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "clustering_font_candidates": ("clustering.font_candidates", None),
     "_rare_charsets": ("clustering.rare_panel", "_rare_charsets"),
     "base_params": ("core.pipeline", "base_params"),
+    # 拆分 P3 jobs（2026-11-04）：搬去 manager 的代码仍要用的 cv 名字
+    "jobs_spec": ("jobs.spec", None),
+    "jobs_store": ("jobs.store", None),
+    "CTX_ENCODER": ("datastore.packs", "CTX_ENCODER"),
+    "core_glyph_pin_load_manifest": ("core.glyph_pin", "load_manifest"),
+    "pins_in_use": ("ops.glyph_snapshot", "pins_in_use"),
 }
 
 
@@ -407,6 +413,7 @@ _LOCAL: dict[str, tuple[str, str | None]] = {
     "write_report": ("report.run", "write_report"),
     "format_table": ("report.progress", "format_table"),
     "page_progress": ("report.progress", "page_progress"),
+    # 拆分 P3 jobs（2026-11-04）
 }
 
 
