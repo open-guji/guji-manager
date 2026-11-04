@@ -11,6 +11,7 @@
     heavy     分钟级以上（聚类 / OCR / 大矩阵）
     engine    要 OCR 引擎或 GPU
     corpus    要语料文件
+    bench     要 5b 评测集 cache/glyph_bench、oov_bench（缺了自动从冻结包解，见 bench_bundle.py）
 """
 
 from __future__ import annotations
@@ -124,24 +125,25 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 不能把答案捞进 top-10。主指标是**召回**不是准确率——目标是人在候选里点。
     # 位置参数是数据集分片目录（--dataset），不是分片父目录。
     _e("rare_char", "rare-char", arg_kind="none", out_flag="", pythonpath=True,
-       title="生僻字候选", needs=("products",),
+       title="生僻字候选", needs=("products", "bench", "corpus"),
        extra=("--dataset", "../open-guji-dataset/rare-char"),
        note="要建 4600 字 × 4 字体的索引，首跑约 1-2 分钟"),
     # 零样本识别（拆字识别研究，见 doc/ocr_engine_and_zero_shot.md）：
     # 字形库 unseen 档（≤2 样本的 1,022 字种，模板从未见过其刻例）。
     _e("zero_shot", "glyph-bench", arg_kind="none", out_flag="", pythonpath=True,
-       title="零样本·整字 vs 拆字", needs=("products", "heavy"),
+       title="零样本·整字 vs 拆字", needs=("products", "heavy", "bench"),
        extra=("--n", "300"),
        note="HOG 检索 vs 手工拆字重排；重活，unseen 300 条约 5 分钟"),
     _e("zero_shot_fusion", "glyph-bench", arg_kind="none", out_flag="", pythonpath=True,
-       title="零样本·HOG/CNN/融合", needs=("products", "heavy"),
+       extra=("--emb",),   # emb 检索是生产那一路（R6），不带就只量 HOG/CNN 分类头
+       title="零样本·HOG/CNN/融合", needs=("products", "heavy", "bench", "corpus"),
        note="需要 cache/glyph_cnn/best.pt；全 unseen 1,327 条约 3 分钟"),
     # 类外评测：金标字落在 CNN classes **之外**的真刻例（2026-09-17 建）。
     # 上面那几个零样本集 100% 落在 classes 内，量不出类外泛化——而扩字表的收益
     # 全由 embedding 兑现，分类头对类外字 top-10 恒为 0。集与基线见
     # scripts/build_oov_bench.py、cache/oov_bench/baseline.json。
     _e("oov", "glyph-bench", arg_kind="none", out_flag="--json", pythonpath=True,
-       title="类外泛化·emb", needs=("products", "heavy"),
+       title="类外泛化·emb", needs=("products", "heavy", "bench"),
        note="集在 cache/oov_bench（本地派生物，由 build_oov_bench.py 建，"
             "不在数据集仓）；314 条 / 138 字种"),
     # 固定退化协议（2026-09-21 补登记）：同一批真刻例加一组**写死**的扰动
@@ -149,16 +151,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 同源同形：数据在 cache/ 的本地派生物、没有位置参数、报告走 `--json`。
     # `--set` 不进 extra——缺省 oov 就是这条要量的那一档，unseen 那档手跑。
     _e("degradation", "glyph-bench", arg_kind="none", out_flag="--json", pythonpath=True,
-       title="固定退化·稳定性", needs=("products", "heavy"),
+       title="固定退化·稳定性", needs=("products", "heavy", "bench"),
        note="集在 cache/oov_bench（--set oov，缺省）或 glyph-bench unseen 档；"
             "模板均值优先复用 cache/struct_probe/emb_*.npz，没有就现渲染"),
-    # 真刻例多原型档（R2/T11，2026-09-26）验收协议之一：seen_test 每类只留 1 条
-    # 真刻例当模板、其余当查询，对照纯字体模板——与 oov/zero_shot_fusion 同源
-    # 同形（数据在 cache/glyph_bench，没有位置参数）。
-    _e("seen_test_single_proto", "glyph-bench", arg_kind="none", out_flag="", pythonpath=True,
-       title="真刻例单原型·seen_test", needs=("products", "heavy"),
-       note="`cnn_candidates.REAL_PROTO_ENABLED`（k<=3 多原型）的独立验证协议，"
-            "不经过 glyph_store，直接从 glyph_bench 按类拆模板/查询"),
+    # seen_test_single_proto（R2/T11 真刻例单原型验收）2026-11-04 撤登记：脚本早已挪到
+    # research/scripts_oneoff/，注册表还指着 scripts/ 下不存在的文件，一跑就失败。
     # Step5-d replace 段采信闸（2026-09-22 T7）：靶子不是数据集分片，是工作区 feedback 里
     # 用户 confirm 的 shape + 该工作区跑到 5-a 的产物。注册表这条只**重报**已 dump 的行
     # （cache/align_gate/<book>.jsonl）；dump 要手跑 `-w <工作区> --books vol01,vol02`。
@@ -187,11 +184,14 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 归一化 / 聚类 / 匹配 / 识别（多为重活）
     _e("normalize", "char-normalization", pythonpath=True,
        title="归一化回归门", note="纯函数 golden，最快"),
-    _e("match_triplets", "glyph-match/triplets", out_flag="--report", pythonpath=True,
+    # --report 是 store_true（逐条打印排查用），不是报告路径；报告走 --out（2026-11-04 补）。
+    _e("match_triplets", "glyph-match/triplets", pythonpath=True,
        title="匹配排序", needs=("heavy",)),
     _e("match_pairs", "glyph-match/pairs", pythonpath=True,
        title="匹配阈值", needs=("heavy",)),
-    _e("db_match", "glyph-match/pairs", pythonpath=True,
+    # 位置参数是 char-clustering 分片根（脚本自己按 --shards 拼 samples/<shard>），
+    # 2026-11-04 之前误登记成 glyph-match/pairs，一跑就找不到 expected.json。
+    _e("db_match", "char-clustering", pythonpath=True,
        title="库匹配", needs=("products", "heavy")),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
@@ -241,11 +241,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 结构感知识别（2026-09-21 合并进来的那条线；补进注册表，`test_registry_covers_every_eval_script`
     # 钉的就是「scripts/eval_*.py 一个都不许漏登记」）
     _e("struct_rerank", "rare-char", arg_kind="none", out_flag="--json", pythonpath=True,
-       title="结构重排（M0）", needs=("model", "engine"),
+       title="结构重排（M0）", needs=("model", "engine", "bench"),
        note="oov_bench 上量部件袋头一致性重排的开/关；主指标 top-10 与 top-1 **不掉**才算过，"
            "掉一个都不接。扫 权重 × top_m 两个旋钮，按 src 分层读"),
     _e("struct_heads", "rare-char", arg_kind="none", out_flag="--json", pythonpath=True,
-       title="结构头 + 槽位部件头（Step A）", needs=("model", "engine"),
+       title="结构头 + 槽位部件头（Step A）", needs=("model", "engine", "bench"),
        note="要 --ckpt 指到带结构头的 checkpoint；量结构头准确率（独体字单列）、槽位头 top-3、"
            "三种重排的 top-1/top-10。通过线见脚本头"),
 ]}
@@ -264,6 +264,16 @@ def _need_met(name: str) -> bool:
     if name == "v1_output":
         from pathlib import Path
         return any(Path("output").glob("*/phase3_char_grid"))
+    if name == "corpus":
+        # 没设 GUJI_WORKSPACE 时 corpus_path 退回仓内 17 KB 残片，zero_shot_fusion 的字表就只剩
+        # 金标的三分之一，unseen 严格 top-1 从 97.0 掉成 33.0 却照样报 ok（2026-11-04 实测）。
+        from .. import _cv
+        d = _cv.corpus_dir()
+        return d is not None and (d / "zongmu_wuyingdian_reference.txt").exists()
+    if name == "bench":
+        # 只看在不在（`eval list` 不该顺手解 62 MB）；真解包、核 sha 在 runner 起跑前
+        from .bench_bundle import bench_present, bundle_path
+        return bench_present() or bundle_path().exists()
     return False
 
 
@@ -273,7 +283,8 @@ def runnable(spec: EvalSpec, allow: tuple[str, ...] = ("products",)) -> tuple[bo
     if not blocked:
         return True, ""
     names = {"products": "需要产物", "heavy": "重活（分钟级以上）",
-             "engine": "需要 OCR 引擎 / GPU", "corpus": "需要语料",
+             "engine": "需要 OCR 引擎 / GPU", "corpus": "需要语料（设 GUJI_WORKSPACE 指到有整理本的工作区；仓内 corpus/ 只是残片）",
              "intermediate": "需要 s1~s6 中间产物目录",
-             "v1_output": "需要 v1 链产物 output/<册>/phase3_char_grid（退役链，云端没有；不满足时脚本会静默扫到 0 页、印假通过）", "dump": "需要上游评测器的 npz"}
+             "v1_output": "需要 v1 链产物 output/<册>/phase3_char_grid（退役链，云端没有；不满足时脚本会静默扫到 0 页、印假通过）", "dump": "需要上游评测器的 npz",
+             "bench": "需要 5b 评测集 cache/glyph_bench、cache/oov_bench（冻结包 guji-workspace/_shared/train_bundle.zip 不在或 sha 不符）"}
     return False, "；".join(names.get(b, b) for b in blocked)

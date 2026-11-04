@@ -44,6 +44,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     # exp、snap/archive/release/deploy、events/gold/batch、eval/check/collate 等（P2 第三批搬来，2026-11-04）
     "BadRequest": ("errors", "BadRequest"),
     "workspace_root": ("core.workspace", "workspace_root"),
+    "corpus_dir": ("core.workspace", "corpus_dir"),   # eval 注册表现查语料前提（2026-11-04）
     "books_dir": ("core.workspace", "books_dir"),
     "imread": ("utils.image_io", "imread"),
     "steps": ("steps", None),

@@ -66,6 +66,13 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
                 _fill_gold(rep, store, spec)
                 return rep
 
+    if "bench" in spec.needs:
+        from .bench_bundle import ensure_bench
+        ok_b, why_b = ensure_bench()
+        if not ok_b:
+            rep.status, rep.error = "skipped", f"5b 评测集不齐：{why_b}"
+            return rep
+
     target = spec.target(ds)
     if target is not None and not target.exists():
         rep.status = "skipped"
@@ -224,7 +231,7 @@ def _fill_gold(rep: EvalReport, store, spec: EvalSpec) -> None:
 
 
 _NUM_KEYS = ("accuracy", "recall", "precision", "f1", "rate", "acc", "mean", "median",
-             "pass", "ok", "match", "iou", "err", "diff", "score")
+             "pass", "ok", "match", "iou", "err", "diff", "score", "top")
 
 
 def _merge_json_metrics(existing: list[Metric], data: dict, limit: int = 12) -> list[Metric]:
@@ -254,6 +261,13 @@ def _merge_json_metrics(existing: list[Metric], data: dict, limit: int = 12) -> 
     for key in ("summary", "overall", "totals", "baseline", "report"):
         if isinstance(data.get(key), dict):
             take("", data[key])
+    # 分路结果：{"result": {"emb": {"top1": …, "top10": …}, "cls": {…}}}（eval_oov 等 5b 评测器），
+    # 以前一条都抠不出来，脚本跑通了也判 failed（2026-11-04）
+    for key in ("result", "results", "rows"):
+        if isinstance(data.get(key), dict):
+            for sub, d in data[key].items():
+                if isinstance(d, dict):
+                    take(f"{sub} ", d)
     for dk in ("n", "total", "n_samples", "count", "n_gold"):
         if isinstance(data.get(dk), int):
             for m in out:
