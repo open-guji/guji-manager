@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+## [0.3.2] - 测试中
+
 - 拆分 P3 jobs（PATCH，A31，用户 11-04「继续 都做完」）：任务库的执行方与命令从 cv 搬来 `guji_manager/jobs/`（runner、cli、board、notify、exit_trace、`__main__`；spec、store、jobsdb 仍在 cv，经 `_cv` 取）。`guji job` 由本包提供；执行方改为 `python -m guji_manager.jobs work`（cv `scripts/guji_jobs.sh` 同步改，老命令行 `python -m open_guji_cv.jobs` 在 cv 留转发）。执行方空闲换代码时除了 cv 的 runner 检出，也看本包检出（ensure_manager 管的那份，`GUJI_MANAGER_DIR` 缺省 /opt/guji-manager-seed）是否落后 main，落后就切到 main 再 exec；开发机自己的检出不动。15 个测试文件搬到 `tests/from_cv/`。
 
 ## [0.3.1] - 2026-11-04
