@@ -12,7 +12,7 @@ def test_check_pages_default_is_all_and_reports_which_pageset(monkeypatch, capsy
     都要把「用了哪个页集、算了几页」打出来（走 stderr，别混进 `_out` 的
     JSON，管道接 jq 的人不受影响）。"""
     import open_guji_cv.core.book as book_mod
-    import open_guji_cv.eval.quality as quality_mod
+    import guji_manager.eval.quality as quality_mod
     import open_guji_cv.eval.rulers as rulers_mod
     from open_guji_cv.core.book import BookSpec
     from guji_manager import cli_eval

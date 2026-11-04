@@ -38,7 +38,7 @@ def test_fallback_matches_cv_facade():
         pytest.skip("装的 cv 没有 manager_api（旧版），只靠兜底表")
     from guji_manager import _cv
     # 搬迁当天 manager 先合、cv 后合：兜底表可以比 cv 门面多（多出来的走兜底直取），两边都有的必须是同一个东西
-    missing = set(api.__all__) - set(_cv._FALLBACK)
+    missing = set(api.__all__) - set(_cv._FALLBACK) - set(_cv._LOCAL)   # _LOCAL：已搬进本包，cv 门面旧名还在也不管
     assert not missing, f"cv manager_api 有、本包 _FALLBACK 没登记：{sorted(missing)}"
     for name in _cv._FALLBACK:
         got = getattr(_cv, name)

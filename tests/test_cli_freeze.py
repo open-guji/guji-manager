@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from open_guji_cv.datastore import packs as PK
-from open_guji_cv.ops import freeze_register as FR
+from guji_manager.ops import freeze_register as FR
 
 
 def _products(tmp: Path) -> Path:
