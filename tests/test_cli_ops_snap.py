@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from open_guji_cv.snap import gitio, importer as imp, indexes as idx, pack as sp, watch as sw
+from guji_manager.snap import gitio, importer as imp, indexes as idx, pack as sp, watch as sw
 
 WS_DIR = "abcdefgh12-測試書"
 BOOK = "b1"
