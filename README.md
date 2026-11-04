@@ -23,6 +23,8 @@
 `feedback.consumers` 等、`gold.store`、`ops.prep` 等 `guji pipeline` 要用的、`console_api`。搬来的代码用 cv 留下的东西一律经 `_cv`；
 原来按 `Path(__file__).parents[2]` 找 cv 仓（脚本、formats/、doc/）的改用 `_cv.cv_repo()`。
 
+**2026-11-04 拆分 P4**：`ops` 剩下的（prep、glyph_snapshot、corpus_pack、cache_*、rerun_stale…，只留 model_blobs 在 cv，cv 测试开跑要用它取模型）、`render.overlay`、`review.verdict_view`、`feedback.vision`、`exp` 剩下的、`jobs.perf_push` 与 `cli_products`、`cli_perf` 搬来；`guji rerun／pagekinds／cache／product` 从 cv `cli_v2` 拆出搬来。`guji pipeline`／`status`／启动时原先夹在 cv 里的 manager 行为（开跑前取钉版的字形库、模型、语料，整册跑完自动存包，status 的收尾闸等报告）改成 cv 调钩子、本包经入口点 `guji.hooks` 登记（`hooks.py`）；没装本包时 cv 照跑，只有册钉了字形库／模型／语料时 `guji pipeline` 拒跑并提示装法（`--no-prep` 放行）。
+
 2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
 
 ## 开发
@@ -52,8 +54,11 @@ pip install -e <open-guji-cv 检出>[dev] && pip install -e ".[dev]" && pytest -
 | `guji glyph-db` | `cli_glyph_db.py` | P2 第四批，2026-11-04 |
 | `guji model`／`font` | `cli_model.py` | P2 第四批，2026-11-04 |
 | `guji job`（`python -m guji_manager.jobs`，执行方 `work`） | `jobs/`（runner、cli、board…） | P3，2026-11-04 |
+| `guji rerun`／`pagekinds`／`cache`／`product` | `cli_runs.py` | P4，2026-11-04 |
+| `guji products`／`perf` | `cli_products.py`／`cli_perf.py` | P4，2026-11-04 |
+| `guji pipeline`／`status` 的开跑准备、自动存包、收尾闸报告 | `hooks.py`（入口点 `guji.hooks`） | P4，2026-11-04 |
 
-装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
+装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`，经 `guji.hooks` 登记 `guji pipeline` 的钩子）。
 
 ## 搬迁工具
 

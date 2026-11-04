@@ -95,7 +95,7 @@ OLD_SHEET = {"rev": "006-r5", "routed_as_of": "2026-10-24T03:29:13Z"}       # �
 # ── 2. 看图结论 ──────────────────────────────────────────────────────
 
 def _vision_ev(key, seq, v="wrong", rev=None):
-    from open_guji_cv.feedback.vision import _STEP
+    from guji_manager.feedback.vision import _STEP
     book, pg, col, slot = key.split(":")
     return make_event("vision-x", seq, "vision_check",
                       EventTarget(step=_STEP, unit="cell", key=key, book=book, page=int(pg), col=int(col),

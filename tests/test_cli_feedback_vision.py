@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import open_guji_cv.steps  # noqa: F401  注册产物种类
-from open_guji_cv.feedback.vision import VisionLog
+from guji_manager.feedback.vision import VisionLog
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ import pytest
 
 import open_guji_cv.steps  # noqa: F401  注册产物种类
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
-from open_guji_cv.review.verdict_view import closure_gaps, closure_mismatches, decided_cells, decided_view
+from guji_manager.review.verdict_view import closure_gaps, closure_mismatches, decided_cells, decided_view
 
 
 def _ev(key: str, payload: dict, seq: int, *, kind: str = "confirm", batch: str = "b"):
