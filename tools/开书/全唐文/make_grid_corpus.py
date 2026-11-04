@@ -46,6 +46,7 @@ AUTHOR_ORD=re.compile(r"^(　?[^\s<>　]{1,8})<([一二三四五六七八九十�
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 import kanripo_errata                   # 参照本勘误层：Kanripo 的错记在本仓 kanripo_errata.tsv，生成时叠上去，book-text 不动
 ERRATA=kanripo_errata.load(); USED=[]
+ZOU_BROKEN=re.compile("楃□[\u4e00-\u9fff\U00020000-\U0003ffff]")
 n=0
 with open(out,"w",encoding="utf-8") as f:
     f.write("#@ KR4h0168_header Kanripo KR4h0168 NKFB 嘉慶本逐列錄入 CC BY-SA 4.0 (book-text d59f2nqla48x)\n")
@@ -62,6 +63,8 @@ with open(out,"w",encoding="utf-8") as f:
             if not started: continue
             if line.startswith("#") or not line.strip(): continue
             line=re.sub(r":zi\[[^\]]*\]","㐀",line)
+            # Kanripo 把「⿺辶X」这类走之底组字编坏成「楃□X」（3 个记号，书上只 1 字；07p23 遳、09p147 薖 看图，2026-11-04），全书 12 处，按 1 个造字计
+            line=ZOU_BROKEN.sub("㐀",line)
             # 卷首作者行「　元宗<十二>」：书上序号是单行小字、一字一格（11p7、13p105 看图，2026-11-03），照正文写，不当双行小注
             line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
