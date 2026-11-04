@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 
+from . import cli_eval, cli_exp, cli_feedback, cli_ops
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .cli_cellvotes import cmd_cellvotes
 from .cli_freeze import add_parser as _add_freeze
@@ -22,6 +23,11 @@ COMMANDS: dict = {
     "source": (_add_source, cmd_source),             # P2 第二批，原 cv cli_source（原图：R2 源件、页表）
     "cellvotes": (_add_cellvotes, cmd_cellvotes),    # P2 第二批，原 cv cli_cellvotes（网站格级投票落事件）
     "freeze": (_add_freeze, cmd_freeze),             # P2 第二批，原 cv cli_freeze（冻结登记）
+    # P2 第三批（2026-11-04），原 cv 同名模块；一个模块几条命令共用一个 add_parser
+    **cli_exp.COMMANDS,        # exp
+    **cli_ops.COMMANDS,        # snap、archive、release、deploy
+    **cli_feedback.COMMANDS,   # events、gold、batch、label-batch
+    **cli_eval.COMMANDS,       # eval、check、groups、cards、progress、collate
 }
 
 

@@ -1,4 +1,4 @@
-# Kanripo 转带半叶头的逐列本语料。输入：book-text 里 Work d59f2nqla48x 的 default/ 目录（含 pages.tsv）。输出：qtw_kanripo_grid.txt（#@ <pb> 半叶头＋一行一列，:zi[..]→㐀）。
+# Kanripo 转带半叶头的逐列本语料。输入：book-text 里 Work d59f2nqla48x 的 default/ 目录（含 pages.tsv）。输出：qtw_kanripo_grid.txt（#@ <pb> 半叶头＋一行一列，:zi[..]→〓）。
 # 用法：python3 make_grid_corpus.py <book-text>/Work/4/8/x/d59f2nqla48x/default <out.txt> [补卷名栏的最小卷号，缺省 7，0 不补] [短小注按双行拆注的字数上限，缺省 8，0 不改]
 #
 # Kanripo KR4h0168 (book-text Work d59f2nqla48x) → 逐列本语料（`#@ <pb>` 半叶头 ＋ 一行一列），供 align_ref 页钉位
@@ -35,7 +35,7 @@ def short_notes(line):
     册07 碑志 14 页实测改回双行后待审 256→82。"""
     def f(m):
         if '|' in m.group(1): return m.group(0)
-        t=re.sub(r'[^\u4e00-\u9fff□〓㐀]','',m.group(1))
+        t=re.sub(r'[^\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0003ffff□〓㐀]','',m.group(1))  # 11-04 补扩展 A／B 区：原先短注里的「㣥」等被丢
         parts=split_note(t)
         # 超长的注只要能按「其N」「闕(N字)」拆成每段都不超长，也拆（07p57「<闕二字其八闕二十四字>」，2026-11-03 看图三条各自双行）
         if len(t)>NOTE_MAX and (len(parts)==1 or max(map(len,parts))>NOTE_MAX): return m.group(0)
@@ -46,6 +46,7 @@ AUTHOR_ORD=re.compile(r"^(　?[^\s<>　]{1,8})<([一二三四五六七八九十�
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 import kanripo_errata                   # 参照本勘误层：Kanripo 的错记在本仓 kanripo_errata.tsv，生成时叠上去，book-text 不动
 ERRATA=kanripo_errata.load(); USED=[]
+ZOU_BROKEN=re.compile("楃□[\u4e00-\u9fff\U00020000-\U0003ffff]")
 n=0
 with open(out,"w",encoding="utf-8") as f:
     f.write("#@ KR4h0168_header Kanripo KR4h0168 NKFB 嘉慶本逐列錄入 CC BY-SA 4.0 (book-text d59f2nqla48x)\n")
@@ -61,11 +62,16 @@ with open(out,"w",encoding="utf-8") as f:
                 f.write("#@ "+pb[(fn,i)]+"\n"); started=True
             if not started: continue
             if line.startswith("#") or not line.strip(): continue
-            line=re.sub(r":zi\[[^\]]*\]","㐀",line)
+            # 造字占位用 〓（cv 约定的「逐列本生僻字占位」：对位占一格、不当证人、不放行，可走 pua_rule）。
+            # 11-04 前用 㐀（U+3400 真字），r9b 有 34 格被 coord_fallback／witnesses_coord 当真字放成「㐀」（字形线、码位线报）
+            line=re.sub(r":zi\[[^\]]*\]","〓",line)
+            # Kanripo 把「⿺辶X」这类走之底组字编坏成「楃□X」（3 个记号，书上只 1 字；07p23 遳、09p147 薖 看图，2026-11-04），全书 12 处，按 1 个造字计
+            line=ZOU_BROKEN.sub("〓",line)
             # 卷首作者行「　元宗<十二>」：书上序号是单行小字、一字一格（11p7、13p105 看图，2026-11-03），照正文写，不当双行小注
             line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
             f.write(line+"\n"); n+=1
+USED=list(dict.fromkeys(USED))  # 全书换字每章都算一次用上
 print(n,"lines；勘误",len(USED),"/",len(ERRATA),"条")
 if len(USED)!=len(ERRATA): raise SystemExit("有勘误条目没用上："+",".join(sorted({e["id"] for e in ERRATA}-set(USED))))
 # 每卷 01a 首列是「欽定全唐文卷N」卷名栏，Kanripo 没录：补占位列，否则该页整页错 1 位（2026-11-01，册05–15 共 43 页）。
