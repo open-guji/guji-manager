@@ -88,8 +88,9 @@ def test_cache_without_book_parses_with_and_without_workspace(tmp_path, monkeypa
     sub = parser.add_subparsers(dest="cmd")
     cli_v2.register_subcommands(sub)
     seen = []
-    monkeypatch.setattr(cli_runs, "_cmd_cache_build_font_index",
-                        lambda a: seen.append(os.environ.get("GUJI_WORKSPACE")))
+    for mod in (cli_runs, cli_v2):   # cv 删 cache 之前（manager 先发版）cv 自带的 cache 优先：两边都换
+        monkeypatch.setattr(mod, "_cmd_cache_build_font_index",
+                            lambda a: seen.append(os.environ.get("GUJI_WORKSPACE")), raising=False)
     args = parser.parse_args(["cache", "build-font-index", "-w", str(tmp_path)])
     cli_v2.COMMANDS_V2["cache"](args)
     assert seen == [str(tmp_path.resolve())]
