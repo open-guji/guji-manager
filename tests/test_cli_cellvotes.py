@@ -19,7 +19,7 @@ def test_draft_with_pack_uses_issue_products(tmp_path, monkeypatch):
     import argparse
 
     from guji_manager import cli_cellvotes as C
-    from open_guji_cv.datastore import packs as PK
+    from guji_manager.datastore import packs as PK
     ws = tmp_path / "ws"
     (ws / "feedback" / "events").mkdir(parents=True)
     monkeypatch.setenv("GUJI_WORKSPACE", str(ws))

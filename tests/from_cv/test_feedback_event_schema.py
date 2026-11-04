@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from open_guji_cv.feedback.events import Event, EventLog, EventTarget, make_event, replay_key
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 from open_guji_cv.gold.store import GoldStore
 from guji_manager.gold.transfer import rebuild_verdicts
 

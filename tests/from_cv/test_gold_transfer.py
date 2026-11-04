@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 from open_guji_cv.gold.item import Anchor, GoldItem
 from open_guji_cv.gold.store import GoldStore
 from guji_manager.gold.transfer import (ImportFilter, import_to_dataset, parse_pages,
@@ -138,7 +138,7 @@ def test_rebuild_verdicts_replays_events_into_the_verdict_store(tmp_path):
 
 def test_gold_add_defaults_to_workspace_verdicts_not_dataset(monkeypatch, tmp_path):
     """运行时消费的默认落点是 workspace 裁决表；测试集仓 GoldStore() 默认根不变（给评测用）。"""
-    from open_guji_cv.feedback.consumers import verdict_store
+    from guji_manager.feedback.consumers import verdict_store
     from open_guji_cv.gold.store import default_dataset_root
     monkeypatch.setenv("GUJI_WORKSPACE", str(tmp_path))
     monkeypatch.delenv("GUJI_VERDICTS_DIR", raising=False)

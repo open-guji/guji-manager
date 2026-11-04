@@ -6,7 +6,7 @@ import zipfile
 import pytest
 from PIL import Image
 
-from open_guji_cv.datastore import sources as S
+from guji_manager.datastore import sources as S
 from open_guji_cv.datastore.client import BlobCache, CentralError
 
 

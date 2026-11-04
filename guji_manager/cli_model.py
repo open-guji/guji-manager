@@ -41,9 +41,9 @@ def cmd_model(args) -> None:
         _out(mp.build_registry(), True)
         return
     if args.model_cmd == "upload" and not args.workspace:
-        from ._cv import ops_model_blobs as mb
+        from .ops import model_upload
         try:
-            _out(mb.upload_registry(execute=args.execute), True)
+            _out(model_upload.upload_registry(execute=args.execute), True)
         except ValueError as e:
             print(f"✗ {e}", file=sys.stderr)
             sys.exit(1)
@@ -91,8 +91,9 @@ def cmd_model(args) -> None:
         sys.exit(1 if bad else 0)
     elif args.model_cmd in ("upload", "fetch"):
         from ._cv import ops_model_blobs as mb
+        from .ops import model_upload
         try:
-            r = (mb.upload(ws, args.version, execute=args.execute) if args.model_cmd == "upload"
+            r = (model_upload.upload(ws, args.version, execute=args.execute) if args.model_cmd == "upload"
                  else mb.fetch(ws, args.version))
         except (ValueError, FileNotFoundError) as e:
             print(f"✗ {e}", file=sys.stderr)
@@ -142,11 +143,12 @@ def cmd_font(args) -> None:
     """``guji font registry|upload|fetch``：cv 的 ``fonts/`` 按 sha 进出 R2（`core/font_files.py`）。"""
     from ._cv import core_font_files as fp
     from ._cv import ops_model_blobs as mb
+    from .ops import model_upload
     if args.font_cmd == "registry":
         _out(fp.build_registry(), True)
     elif args.font_cmd == "upload":
         try:
-            _out(mb.upload_registry(execute=args.execute, kind="font"), True)
+            _out(model_upload.upload_registry(execute=args.execute, kind="font"), True)
         except ValueError as e:
             print(f"✗ {e}", file=sys.stderr)
             sys.exit(1)

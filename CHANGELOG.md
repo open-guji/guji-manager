@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.3.4] - 2026-11-04
+
+- 拆分 P5 底层（PATCH，A31，用户 11-04「继续 都做完」；归属照 11-04 决策卡推荐项「读的归 pipeline，写的归 manager」）：从 cv 搬来 21 个模块——`datastore` 除取件 `client` 外全部（connect、gitsource、importer、materialize、neonapi、packs、pull、r2、scope、sources、workcopy、wsbridge，连 `schema.sql`）、`feedback` 的消费者一组（consumers、routes、collate_consumers、glyph_audit）、`gold.atomic`／`v2_align`、`eval.round_check`、任务库存储（`jobs.spec`／`store`／`jobsdb`，连 `schema.sql`）。新增 `ops/model_upload.py`：模型、字体、底库语料往 R2 上传从 cv `ops/model_blobs` 拆来（取件留 cv），`guji model upload`／`font upload`／`corpus upload` 改用它。Step 读人裁用的 `verdict_store` 已在 cv `gold.store`，`_cv` 经 `gold_store_verdict_store` 取；`feedback/__init__` 照旧登记消费者与路由表。`_cv` 新增 98 个名字。命令与参数不变。测试 41 个文件搬到 `tests/from_cv/`（与前几批同名的另存 `*_p5.py`）。cv 那一半等本版发出后再合。
+
 ## [0.3.3] - 2026-11-04
 
 - 拆分 P4 中层（PATCH，A31，用户 11-04「继续 都做完」）：从 cv 搬来 31 个模块——`ops` 剩下的（prep、glyph_snapshot、corpus_pack、central_glyph、cache_verify／cache_warm、emb_pack_build、rare_index_build、rerun_stale、page_kinds_report、products_diff、pack_purity、glyph_release_gate、exclusion_rebind、exp_record；model_blobs 留 cv）、`render.overlay`、`review.verdict_view`、`feedback.vision`、`exp.compare／labels／stats`、`jobs.perf_push`、`cli_products`（products）、`cli_perf`（perf），以及从 cv `cli_v2` 拆出的 `cli_runs`（rerun、pagekinds、cache、product）。命令与参数不变。新增 `hooks.py`，经入口点 `guji.hooks` 给 cv 的 `guji` 登记四个钩子：startup（派生缓存取件器、耗时推任务库、步内计时）、prepare（开跑前备钉版字形库／模型／语料、预建 Step5-b 模板索引）、finished（整册跑完自动存包、提醒没存包）、status（收尾闸、裁放不一致、看图待审、没存包）——原先都夹在 cv `cli_v2` 里。`_cv` 新增 102 个名字（`datastore.workcopy.read_state` 叫 `workcopy_read_state`，避开 `exp.runner.read_state`）。测试 25 个文件搬到 `tests/from_cv/`（与前几批同名的另存 `*_p4.py`）。cv 那一半等本版发出后再合。

@@ -83,7 +83,7 @@ def test_judge_default_and_book_filter(tmp_path):
 # ── 不当人裁用 ───────────────────────────────────────────────────────
 
 def test_model_events_not_in_glyph_store():
-    from open_guji_cv.feedback.consumers import glyphdb_admit
+    from guji_manager.feedback.consumers import glyphdb_admit
     human = _ev("keben:1:1:3", {"v": "confirm", "shape": "曰"}, 1)
     fix = _ev("keben:1:1:4", {"v": "confirm", "shape": "曰"}, 2, actor="model")   # 码位统一类机械更正
     vis = _ev("keben:1:1:5", {"v": "confirm", "shape": "曰", "source": "vision"}, 3, actor="model")
@@ -120,7 +120,7 @@ def test_decided_view_and_bindings_ignore_model_events(tmp_path):
 # ── 金标 ─────────────────────────────────────────────────────────────
 
 def test_gold_label_origin_is_vision(tmp_path):
-    from open_guji_cv.feedback.consumers import label_origin_of
+    from guji_manager.feedback.consumers import label_origin_of
     from open_guji_cv.gold.store import GoldStore
     store = GoldStore(tmp_path / "verdicts")
     src = _jsonl(tmp_path / "x.jsonl", ROWS)

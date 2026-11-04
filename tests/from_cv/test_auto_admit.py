@@ -5,9 +5,9 @@ from __future__ import annotations
 from contextlib import nullcontext
 
 from guji_manager import cli_db
-from open_guji_cv.datastore import workcopy
+from guji_manager.datastore import workcopy
 from guji_manager.feedback.auto_admit import admit_pending, touched
-from open_guji_cv.feedback.consumers import ConsumeResult
+from guji_manager.feedback.consumers import ConsumeResult
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
 
 ROUTES = """\

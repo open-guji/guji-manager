@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from open_guji_cv.gold.atomic import CUTLINE_KEYS
+from guji_manager.gold.atomic import CUTLINE_KEYS
 from guji_manager.review.cutline_default import (attach_default_pick, cutline_default_mode,
                                                  default_pick)
 
@@ -66,7 +66,7 @@ def test_attach_default_pick_in_place():
 
 def test_new_event_fields_reach_touching_cuts_gold():
     """来源字段要进金标（`_expected_of` 只留 CUTLINE_KEYS），且与 y/cand 同组整组替换。"""
-    from open_guji_cv.feedback.consumers import _expected_of
+    from guji_manager.feedback.consumers import _expected_of
     from open_guji_cv.feedback.events import EventTarget, make_event
     assert {"picked_source", "default_pick"} <= set(CUTLINE_KEYS)
     e = make_event("b", 1, "cutline",

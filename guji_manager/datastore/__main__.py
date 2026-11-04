@@ -1,14 +1,14 @@
-"""``python -m open_guji_cv.datastore``：中心库导入 / 核对 / R2 上传计划。
+"""``python -m guji_manager.datastore``：中心库导入 / 核对 / R2 上传计划。
 
 连库：``--dsn`` 或环境变量 ``GUJI_DATA_PG_DSN``（直连 Postgres 的连接串；Neon 的「ci」「main」
 分支各一个）。连接串含口令，只放环境变量，不写进命令历史、仓库或卡片。
 
     # 先灌 ci，再灌 main（同一个提交）
-    python -m open_guji_cv.datastore import  --repo <guji-workspace> --commit <sha>
-    python -m open_guji_cv.datastore verify  --repo <guji-workspace> --commit <sha>
-    python -m open_guji_cv.datastore r2-plan --repo <guji-workspace> --commit <sha> --manifest plan.jsonl
-    python -m open_guji_cv.datastore backup                       # 每日备份（GUJI-611）
-    python -m open_guji_cv.datastore restore-check --endpoint <ci 端点>   # 恢复演练
+    python -m guji_manager.datastore import  --repo <guji-workspace> --commit <sha>
+    python -m guji_manager.datastore verify  --repo <guji-workspace> --commit <sha>
+    python -m guji_manager.datastore r2-plan --repo <guji-workspace> --commit <sha> --manifest plan.jsonl
+    python -m guji_manager.datastore backup                       # 每日备份（GUJI-611）
+    python -m guji_manager.datastore restore-check --endpoint <ci 端点>   # 恢复演练
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _print(obj) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m open_guji_cv.datastore",
+    ap = argparse.ArgumentParser(prog="python -m guji_manager.datastore",
                                  description="中心库：导入 guji-workspace、核对、R2 上传")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

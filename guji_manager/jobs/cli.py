@@ -1,4 +1,4 @@
-"""`guji job`：任务库命令行（也可 `python -m open_guji_cv.jobs …`，云端用 `guji_jobs …`）。
+"""`guji job`：任务库命令行（也可 `python -m guji_manager.jobs …`，云端用 `guji_jobs …`）。
 
     guji job submit <spec.json|->            # 交一条任务（JSON，字段见 jobs/spec.py 模块头）
     guji job submit --book vol10 --cv v0.5.16 --from seed_admit --corpus 16 --change seed-c16 --why "…"

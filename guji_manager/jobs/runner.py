@@ -887,7 +887,7 @@ def _ml_env_gate(say=print) -> str | None:
     # 执行机常拉不到 huggingface.co（2026-11-03），先从 R2（经 guji-data Worker，443 通）取权重镜像解进 HF 缓存；取不到再走 HF
     tok = os.environ.get("GUJI_DATA_TOKEN") or os.environ.get("GUJI_DATA_TOKEN_READ")
     if tok:
-        r2 = "from open_guji_cv.datastore.packs import fetch_hf_model as f;raise SystemExit(0 if f(%r, %r) else 1)" % (name, rev)
+        r2 = "from guji_manager.datastore.packs import fetch_hf_model as f;raise SystemExit(0 if f(%r, %r) else 1)" % (name, rev)
         rc, out = _run_bounded([py, "-c", r2], ML_INSTALL_TIMEOUT_S, {"GUJI_DATA_TOKEN": tok, "PYTHONPATH": str(_cv.cv_repo())})
         if not rc:
             _ml_ok_at, _ml_fail = time.time(), None

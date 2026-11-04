@@ -26,7 +26,7 @@ def _home(tmp_path, monkeypatch):
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
     import_commit(conn, repo, c1)
@@ -45,7 +45,7 @@ def _checkout(files, d: Path) -> Path:
 
 def _fresh(files, d: Path, src, cache, hooks=None) -> Path:
     """新机器：只有 workspace.yaml 和标记，pull 下来。"""
-    from open_guji_cv.datastore.workcopy import pull
+    from guji_manager.datastore.workcopy import pull
     d.mkdir(parents=True)
     (d / "workspace.yaml").write_bytes(files["W/workspace.yaml"])
     (d / ".central.json").write_text('{"ws": "tws", "branch": "main"}')
@@ -60,7 +60,7 @@ def _data_files(data: Path) -> dict[str, bytes]:
 
 def test_migrate_moves_data_out_of_workspace(repo, conn, tmp_path):  # noqa: F811
     from open_guji_cv.core import workspace as W
-    from open_guji_cv.datastore.workcopy import local_changes, migrate
+    from guji_manager.datastore.workcopy import local_changes, migrate
     from guji_manager.ops.central_glyph import glyph_hooks, rebuild_db
     src, files, cache, _ = _setup(repo, conn, tmp_path)
     ws = _checkout(files, tmp_path / "ws")
@@ -90,8 +90,8 @@ def test_migrate_moves_data_out_of_workspace(repo, conn, tmp_path):  # noqa: F81
 
 
 def test_pull_push_between_two_machines(repo, conn, tmp_path, monkeypatch):  # noqa: F811
-    from open_guji_cv.datastore.importer import DeleteRefused
-    from open_guji_cv.datastore.workcopy import (
+    from guji_manager.datastore.importer import DeleteRefused
+    from guji_manager.datastore.workcopy import (
         FileDeleteRefused,
         StaleBase,
         data_dir,
@@ -145,8 +145,8 @@ def test_pull_push_between_two_machines(repo, conn, tmp_path, monkeypatch):  # n
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
-    from open_guji_cv.datastore.workcopy import migrate
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
     import_commit(conn, repo, _commit(repo, files, "c1"))
     src = PgSource(conn)
@@ -177,7 +177,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
     lib = {"L/workspace.yaml": b"id: lib\n", **{f"L/{k}": v for k, v in _lib_store(tmp_path).items()}}
@@ -187,7 +187,7 @@ def _borrowing(repo, conn, tmp_path):  # noqa: F811
 
 
 def _fake_hooks(db: Path, calls: list):
-    from open_guji_cv.datastore.workcopy import GlyphHooks
+    from guji_manager.datastore.workcopy import GlyphHooks
     db.write_text("v1")
     return GlyphHooks(fingerprint=lambda p: Path(p).read_text(), export=lambda p, s: {},
                       rebuild=lambda w, s, p, e=None: calls.append(list(e or [])) or {}, db_path=db)
@@ -215,7 +215,7 @@ def test_corpus_base_published_and_pulled_with_book(repo, conn, tmp_path, monkey
     pull 顺带把底库清单拉成只读副本，verify 两级一起对。"""
     from open_guji_cv.core.corpus_pin import BASE_DIR, BASE_WS
     from open_guji_cv.core.workspace import borrowed_root
-    from open_guji_cv.datastore.workcopy import data_dir, pull, push, uses_corpus_base
+    from guji_manager.datastore.workcopy import data_dir, pull, push, uses_corpus_base
     from guji_manager.ops import corpus_pack as cp
     monkeypatch.setattr(cp, "_repo_dirty", lambda paths, repo=None: [])
     monkeypatch.setattr(cp, "_repo_commit", lambda repo=None: "c0ffee")
@@ -232,7 +232,7 @@ def test_corpus_base_published_and_pulled_with_book(repo, conn, tmp_path, monkey
     pull(src, ws, cache=cache)
     assert not (borrowed_root(BASE_WS) / BASE_DIR).exists()             # 用不到底库就不拉
     # 本机拉一份底库（同 guji corpus init），出两级书库清单，推上去
-    from open_guji_cv.datastore.workcopy import refresh_corpus_base
+    from guji_manager.datastore.workcopy import refresh_corpus_base
     refresh_corpus_base(src, ws, cache=cache, always=True)
     cp.build(ws, base="latest")
     push(conn, ws, actor="t")

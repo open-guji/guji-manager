@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from guji_manager.feedback.border_class_route import is_defect_answer, parse_border_class_key
 from open_guji_cv.feedback.events import EventTarget, make_event
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 
 
 # ── parse_border_class_key：覆盖每种 id 形态 ─────────────────────────────

@@ -22,7 +22,7 @@ def _setup(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(cli_v2, "cli_steps", lambda eng, f, t: list(FULL))
     import guji_manager.cli_products as CP
-    import open_guji_cv.datastore.packs as PK
+    import guji_manager.datastore.packs as PK
     monkeypatch.setattr(CP, "book_versions", lambda book, root: {"cv": "0", "cv_commit": None})
     monkeypatch.setattr(PK, "push_products",
                         lambda book, root, **kw: calls.append((book, kw)) or {"name": f"p/{book}/x", "bytes": 1})
@@ -54,7 +54,7 @@ def test_no_token_or_failure_only_warns(monkeypatch, tmp_path, capsys):
     _auto_pack(SimpleNamespace(pages="all", no_pack=False), _eng(tmp_path), list(FULL))
     assert calls == [] and "没自动存包" in capsys.readouterr().out
     monkeypatch.setenv("GUJI_DATA_TOKEN", "t")
-    import open_guji_cv.datastore.packs as PK
+    import guji_manager.datastore.packs as PK
 
     def boom(*a, **k):
         raise RuntimeError("403")

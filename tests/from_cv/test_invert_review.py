@@ -5,11 +5,11 @@ import cv2
 import numpy as np
 import pytest
 
-from open_guji_cv.feedback.consumers import route_and_consume
+from guji_manager.feedback.consumers import route_and_consume
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
 from open_guji_cv.feedback.lookup import resolved_inverted
 from guji_manager.feedback.questions import INVERTED_BAND_SHARD
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 from open_guji_cv.gold.store import GoldStore
 from open_guji_cv.utils.preclean import effective_raw_path
 
