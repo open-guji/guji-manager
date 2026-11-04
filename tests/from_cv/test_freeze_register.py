@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 
 from open_guji_cv.core.cv_version import frozen_mismatch
-from open_guji_cv.datastore import packs as PK
+from guji_manager.datastore import packs as PK
 from guji_manager.ops import freeze as FZ
 from guji_manager.ops import freeze_register as FR
 

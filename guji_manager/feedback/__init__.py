@@ -11,3 +11,5 @@
 
 from .._cv import Event, EventLog, EventTarget  # noqa: F401
 from .step8 import STEP8, Outlet, Step8Spec  # noqa: F401
+from .consumers import CONSUMERS, route_and_consume  # noqa: F401,E402  消费者登记（拆分 P5 起在本包）
+from .routes import RouteTable  # noqa: F401,E402

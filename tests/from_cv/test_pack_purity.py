@@ -44,7 +44,7 @@ def test_source_check(tmp_path):
 
 
 def test_promote_records_impure_pack(tmp_path, monkeypatch):
-    from open_guji_cv.datastore import packs as PK
+    from guji_manager.datastore import packs as PK
     monkeypatch.setattr(PK, "_ws_name", lambda: "ws-x")
     root = tmp_path / "products"
     (root / "vol07" / "seed_admit").mkdir(parents=True)

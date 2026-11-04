@@ -59,7 +59,7 @@ def world(tmp_path, monkeypatch):
 
 def test_push_rows_and_never_neon(world, monkeypatch):
     """推送只走美国机任务库：没设 JOBSDB_TOKEN 时 push_file 什么也不做、不连库；行的转换对得上。"""
-    from open_guji_cv.jobs import store
+    from guji_manager.jobs import store
     from guji_manager.jobs import perf_push
     book, pl, tmp = world
     monkeypatch.setenv("GUJI_JOB_ID", "77")

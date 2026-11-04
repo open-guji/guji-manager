@@ -245,7 +245,7 @@ def test_upload_and_verify_only_new_items_since_previous(ws):
 
 def test_push_collects_new_pack_text_and_refuses_changed(ws):
     from open_guji_cv.core.glyph_pin import load_manifest
-    from open_guji_cv.datastore.workcopy import glyph_pack_blobs
+    from guji_manager.datastore.workcopy import glyph_pack_blobs
     from guji_manager.ops.glyph_snapshot import snapshot
     snapshot(ws)
     rel = "config/glyph-pack/g1/manifest.json"

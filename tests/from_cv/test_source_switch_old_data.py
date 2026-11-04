@@ -106,7 +106,7 @@ def _vision_ev(key, seq, v="wrong", rev=None):
 # ── 3. gold rebuild ─────────────────────────────────────────────────
 
 def test_rebuild_does_not_revive_pre_switch_verdicts(tmp_path):
-    from open_guji_cv.feedback.routes import RouteTable
+    from guji_manager.feedback.routes import RouteTable
     from open_guji_cv.gold.store import GoldStore
     from guji_manager.gold.transfer import rebuild_verdicts
     _yaml(tmp_path / "books", "vol01", 3)

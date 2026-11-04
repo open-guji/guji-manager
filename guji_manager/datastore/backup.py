@@ -1,7 +1,7 @@
 """中心库备份与恢复演练（GUJI-611，设计第八节）。
 
-    python -m open_guji_cv.datastore backup  [--keep-days 30]           # 每日：导全部表 → R2 backup/<日期>/
-    python -m open_guji_cv.datastore restore-check --endpoint <ci 端点> [--date YYYY-MM-DD]
+    python -m guji_manager.datastore backup  [--keep-days 30]           # 每日：导全部表 → R2 backup/<日期>/
+    python -m guji_manager.datastore restore-check --endpoint <ci 端点> [--date YYYY-MM-DD]
                                                                          # 每周：最新备份恢复到 ci 分支并逐表核对
 
 **导出**：一个 REPEATABLE READ 只读事务里（同一快照）对当前 schema（Neon 上是 public）下每张表 ``COPY … TO STDOUT``（文本格式，
