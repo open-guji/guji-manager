@@ -31,11 +31,21 @@ def _sheet(dir_: Path, name: str, color: int) -> bytes:
 
 
 def test_upload_fails_loudly_when_a_sheet_is_missing(tmp_path, monkeypatch):
+    import importlib
     import guji_manager.datastore.r2 as r2
-    monkeypatch.setattr(r2, "upload_files", lambda imgs, bucket, ext: {"uploaded": 1, "put_403": 1})
+    mods = [r2]
+    try:   # cv 还没删自己那份 r2 时（拆分 P5 cv 一半合之前），脚本用的是 cv 的：两边都换
+        mods.append(importlib.import_module("open_guji_cv.datastore.r2"))
+    except ImportError:
+        pass
+
+    def _set(fn):
+        for m in mods:
+            monkeypatch.setattr(m, "upload_files", fn)
+    _set(lambda imgs, bucket, ext: {"uploaded": 1, "put_403": 1})
     with pytest.raises(RuntimeError, match="没传完"):
         sp.upload([{"name": "a.webp", "sha256": "0" * 64}], tmp_path)
-    monkeypatch.setattr(r2, "upload_files", lambda imgs, bucket, ext: {"uploaded": 1, "exists": 1})
+    _set(lambda imgs, bucket, ext: {"uploaded": 1, "exists": 1})
     assert sp.upload([{"name": "a.webp", "sha256": "0" * 64}], tmp_path)["exists"] == 1
 
 

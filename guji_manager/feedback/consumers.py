@@ -173,7 +173,12 @@ def _expected_of(e: Event) -> dict:
     return p
 
 
-from .._cv import gold_store_verdict_store as verdict_store  # noqa: E402,F401  拆分 P5 挪去 gold.store（pipeline 读人裁也用）
+try:   # 拆分 P5 挪去 cv gold.store（pipeline 读人裁也用）
+    from .._cv import gold_store_verdict_store as verdict_store  # noqa: E402,F401
+except (ImportError, AttributeError):   # cv 还没合 P5（gold.store 里没有）：同一口径
+    def verdict_store():
+        from .._cv import GoldStore, verdicts_root
+        return GoldStore(verdicts_root())
 
 
 # 切线事件写进 touching-cuts 的全部键（正本在 gold/atomic.py，导入/导出也用它整组替换）。
