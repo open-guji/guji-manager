@@ -32,6 +32,10 @@ pip install -e ".[dev]" && pytest
 | `guji source` | `cli_source.py`（原图：R2 源件、页表） | P2 第二批，2026-11-02 |
 | `guji cellvotes` | `cli_cellvotes.py`（网站格级投票落事件） | P2 第二批，2026-11-02 |
 | `guji freeze` | `cli_freeze.py`（冻结登记） | P2 第二批，2026-11-02 |
+| `guji exp` | `cli_exp.py`（A/B 实验） | P2 第三批，2026-11-04 |
+| `guji snap`／`archive`／`release`／`deploy` | `cli_ops.py` | P2 第三批，2026-11-04 |
+| `guji events`／`gold`／`batch`／`label-batch` | `cli_feedback.py` | P2 第三批，2026-11-04 |
+| `guji eval`／`check`／`groups`／`cards`／`progress`／`collate` | `cli_eval.py` | P2 第三批，2026-11-04 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 
