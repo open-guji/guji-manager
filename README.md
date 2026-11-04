@@ -16,13 +16,23 @@
 ## 现状（2026-10-27）
 
 骨架阶段：`guji_manager.pipeline`（调用与兼容检查）、`guji-manager check`。
-cv 仓里 manager 一侧的包（`datastore` `jobs` `ops` `review` `snap` `exp` 等）还没搬过来。2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
+**2026-11-04 拆分 P2 第四批**：cv 里已没有别的模块依赖的 manager 一侧代码整批搬来，按 cv 的原路径放（`guji_manager/review/cards.py` 即原 `open_guji_cv/review/cards.py`）：
+`review`（除 `verdict_view`）、`feedback` 生产侧（harvest、step8、cell_review、web_votes、questions、figures 等）、`eval`（除 rulers、colgeom、round_check）、
+`exp`（除 compare、labels、stats）、`formats`、`render`（除 overlay）、`snap`、`ops` 大部分（freeze、close_check、promote、glyphlib、release_check…）、
+`report.html／run／progress`、`gold.transfer`、`datastore` 的 backup／spreads／verify／source_xform，以及 5 个命令模块。还在 cv 的：`jobs`、`datastore` 主体、
+`feedback.consumers` 等、`gold.store`、`ops.prep` 等 `guji pipeline` 要用的、`console_api`。搬来的代码用 cv 留下的东西一律经 `_cv`；
+原来按 `Path(__file__).parents[2]` 找 cv 仓（脚本、formats/、doc/）的改用 `_cv.cv_repo()`。
+
+2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
 
 ## 开发
 
 ```
-pip install -e ".[dev]" && pytest
+pip install -e <open-guji-cv 检出>[dev] && pip install -e ".[dev]" && pytest -s -n auto
 ```
+
+`tests/from_cv/` 是第四批起从 cv `tests/` 搬来的测试，借 cv 仓的 `tests/conftest.py`（环境隔离、`ws` 等夹具）、`tests/helpers.py`
+和冻结数据，所以 cv 要**可编辑安装**；不是的话这个目录整个跳过（有提示）。CI 把 cv dev 检出在 `_cv/` 再装。
 
 ## 已搬来的子命令
 
@@ -36,6 +46,11 @@ pip install -e ".[dev]" && pytest
 | `guji snap`／`archive`／`release`／`deploy` | `cli_ops.py` | P2 第三批，2026-11-04 |
 | `guji events`／`gold`／`batch`／`label-batch` | `cli_feedback.py` | P2 第三批，2026-11-04 |
 | `guji eval`／`check`／`groups`／`cards`／`progress`／`collate` | `cli_eval.py` | P2 第三批，2026-11-04 |
+| `guji close-check`／`exit-check`／`audit`／`char-diff` | `cli_close.py` | P2 第四批，2026-11-04 |
+| `guji db` | `cli_db.py`（中心库 sync／pull／push…） | P2 第四批，2026-11-04 |
+| `guji store`／`recheck`／`glyphlib`／`rekey-cells`／`promote`／`corpus` | `cli_glyph.py` | P2 第四批，2026-11-04 |
+| `guji glyph-db` | `cli_glyph_db.py` | P2 第四批，2026-11-04 |
+| `guji model`／`font` | `cli_model.py` | P2 第四批，2026-11-04 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 
@@ -46,4 +61,7 @@ pip install -e ".[dev]" && pytest
 踩到的坑（下次别重来）：
 - 数据文件跟着包走（`opinions/rules.json` 要进 `package-data`，路径改成包内相对）。
 - 指向 cv 仓里脚本或数据的 `parents[N]` 要改成 `open_guji_cv.__file__` 推出来的路径。
-- `exp`、`snap` 暂未搬：`exp` 的测试用 cv 的 `tests/helpers.py`、`scripts/`，`snap` 的命令 `cmd_snap` 还在 cv 的 `cli_v2.py` 里。要搬先把测试公共件（helpers、conftest 里的夹具）抽成两边共用，或把用到的搬过来。
+- 测试公共件不用抽：`tests/from_cv/conftest.py` 直接借 cv 的 conftest 与 helpers（cv 可编辑安装）。
+- 包在 cv 还留着一部分（如 `review` 留着 `verdict_view`）时两边各有 `__init__`：cv 那边删掉指向已搬模块的 import，本包这边照抄并经 `_cv` 取留在 cv 的。
+- 已搬来的名字在 `_cv._LOCAL` 里（先查它），老代码 `from ._cv import X` 照样能用。
+- 测试里别让整理脚本的 `ensure_manager` 拉 main 重装本机的包（cv conftest 设 `GUJI_NO_ENSURE_MANAGER=1`）。
