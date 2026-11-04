@@ -57,3 +57,11 @@ def test_lib_few_samples_is_l4_only_with_lib_n():
     same = {"cause": "I", "cause_detail": "予/予", "ref": {"c": "予"}}
     assert classify(same, lib_n=lambda c: n(c, 0)).key == "上下文=整理本"
     assert classify(cell, lib_n=lambda c: 9).sub == "L3"            # 样本够不进 L4
+
+
+def test_new_cause_field_names():
+    """11-04 起单上写 pending_reason_cause／pending_reason_cause_detail，老单 cause／cause_detail 照认。"""
+    assert classify({"pending_reason_cause": "F", "pending_reason_cause_detail": "浙"}).sub == "L1"
+    assert classify({"pending_reason_cause": "E", "pending_reason_cause_detail": "一/二"}).sub == "R1"
+    assert classify({"pending_reason_cause": "D", "occ": {"ref_blank": True}}).sub == "O3"
+    assert classify({"cause": "D", "occ": {"ref_blank": True}}).sub == "O3"

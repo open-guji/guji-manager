@@ -3,7 +3,7 @@
 在 cv `open_guji_cv/review/causes.py` 的主成因码（A1…I）上细分，并把 `eval/review_breakdown.py` 的 G/V/N/O 并进来（对照表见
 ai-team `domain/CV/质检/待审分类规范.md`）。纯函数，只看线上待审单里一格自带的字段，不碰产物包：
 
-    cause（成因码）、cause_detail、why（疑问码）、ref.c（整理本字）、ctx.c（文意字）、lib_top、occ、recheck，
+    pending_reason_cause（成因码，老单叫 cause）、pending_reason_cause_detail（老单 cause_detail）、why（疑问码）、ref.c（整理本字）、ctx.c（文意字）、lib_top、occ、recheck，
     以及发布时补的 `grp`（字组 id）、`refc`（整理本字，单子里没 ref 时用）。
 
 字段缺的格（vol51–99 的瘦单只有 cause／cause_detail）退化成按成因码＋细节判，小类粗一点，不报错。
@@ -78,9 +78,19 @@ class Verdict:
     fix: str
 
 
+def cause_of(cell: dict) -> str | None:
+    """成因码细分：新单 `pending_reason_cause`（用户 11-04 定，pending_reason 下的细项），老单 `cause`。"""
+    return cell.get("pending_reason_cause") or cell.get("cause")
+
+
+def cause_detail(cell: dict) -> str | None:
+    """成因码细节：新单 `pending_reason_cause_detail`，老单 `cause_detail`。"""
+    return cell.get("pending_reason_cause_detail") or cell.get("cause_detail")
+
+
 def _tok(cell: dict) -> set[str]:
     out = set()
-    for x in list(cell.get("why") or []) + str(cell.get("cause_detail") or "").split(","):
+    for x in list(cell.get("why") or []) + str(cause_detail(cell) or "").split(","):
         if isinstance(x, str) and x:
             out.add(re.split(r"[(（:：]", x, maxsplit=1)[0].strip())
     return out
@@ -110,7 +120,7 @@ def group_of_cell(cell: dict, group_of=None) -> str:
 
 def pair_key(cell: dict) -> tuple[str, str] | None:
     """B／E／G／I 的 cause_detail 是「库字/整理本字」。"""
-    a, _, b = str(cell.get("cause_detail") or "").partition("/")
+    a, _, b = str(cause_detail(cell) or "").partition("/")
     return (a, b) if a and b else None
 
 
@@ -121,7 +131,7 @@ LIB_FEW = 2
 def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None, lib_n=None) -> Verdict:
     """`occ_page_n`＝本页遮挡格数；`decided(a, b)`＝码位表里这对是否已定；`group_of(ch)`＝字→字组 id；
     `lib_n(ch)`＝字在字形库的样本数（给了才判 L4；不给＝老行为，成因 I 全进 L3）。"""
-    cause = cell.get("cause")
+    cause = cause_of(cell)
     tok = _tok(cell)
 
     def v(sub: str, key: str = "") -> Verdict:
@@ -149,7 +159,7 @@ def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None, li
         k = "/".join(sorted(p)) if p else ""
         return v("M1" if p and decided and decided(*p) else "M2", k)
     if cause == "F":
-        return v("L1", str(cell.get("cause_detail") or _ref(cell) or ""))
+        return v("L1", str(cause_detail(cell) or _ref(cell) or ""))
     if cause == "H":
         return v("L2", "ctx_guard_ref" if "ctx_guard_ref" in tok else "group_dissent" if tok & _DISSENT else "其他")
     if cause == "I":
@@ -169,7 +179,7 @@ def classify(cell: dict, *, occ_page_n: int = 0, decided=None, group_of=None, li
         return v("P1")
     sub = {"A6": "S1", "A3": "S2", "A5": "S3", "A4": "S4", "A1": "S5", "A9": "S6"}.get(cause)
     if sub:
-        return v(sub, str(cell.get("cause_detail") or "")[:40] if sub in ("S1", "S2") else "")
+        return v(sub, str(cause_detail(cell) or "")[:40] if sub in ("S1", "S2") else "")
     return v("U0", str(cause))
 
 

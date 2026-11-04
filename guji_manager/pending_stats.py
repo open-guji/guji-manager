@@ -26,7 +26,7 @@ from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
-from .taxonomy import BIG, FIX, SUBS, cell_pos, classify, conc_tag
+from .taxonomy import BIG, FIX, SUBS, cause_of, cell_pos, classify, conc_tag
 
 DEFAULT_WS, DEFAULT_TEXT = "siku-zongmu", "96mid1ogzk"
 
@@ -92,15 +92,15 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             if pos:
                 page_n[pos[0]] += 1
                 col_n[pos[1]] += 1
-                if c.get("cause") == "D":
+                if cause_of(c) == "D":
                     occ_page[pos[0]] += 1
         for c in cells:
             pos = cell_pos(c["cell"]) or ("?", "?")
             v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
-                         "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": c.get("cause") or "",
+                         "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
                          "pending_reason": c.get("pending_reason") or "unknown",
-                         "slim": "cls" not in c})
+                         "slim": not any(k in c for k in ("ref", "ctx", "lib", "lib_top"))})   # 瘦单只有成因码（cls 11-04 起不出单，不能再拿它判）
     return rows
 
 
