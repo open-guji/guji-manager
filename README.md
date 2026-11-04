@@ -19,7 +19,7 @@
 **2026-11-04 拆分 P2 第四批**：cv 里已没有别的模块依赖的 manager 一侧代码整批搬来，按 cv 的原路径放（`guji_manager/review/cards.py` 即原 `open_guji_cv/review/cards.py`）：
 `review`（除 `verdict_view`）、`feedback` 生产侧（harvest、step8、cell_review、web_votes、questions、figures 等）、`eval`（除 rulers、colgeom、round_check）、
 `exp`（除 compare、labels、stats）、`formats`、`render`（除 overlay）、`snap`、`ops` 大部分（freeze、close_check、promote、glyphlib、release_check…）、
-`report.html／run／progress`、`gold.transfer`、`datastore` 的 backup／spreads／verify／source_xform，以及 5 个命令模块。还在 cv 的：`jobs`、`datastore` 主体、
+`report.html／run／progress`、`gold.transfer`、`datastore` 的 backup／spreads／verify／source_xform，以及 5 个命令模块。还在 cv 的：`jobs` 的 spec／store／jobsdb（执行方与命令 P3 已搬来）、`datastore` 主体、
 `feedback.consumers` 等、`gold.store`、`ops.prep` 等 `guji pipeline` 要用的、`console_api`。搬来的代码用 cv 留下的东西一律经 `_cv`；
 原来按 `Path(__file__).parents[2]` 找 cv 仓（脚本、formats/、doc/）的改用 `_cv.cv_repo()`。
 
@@ -51,6 +51,7 @@ pip install -e <open-guji-cv 检出>[dev] && pip install -e ".[dev]" && pytest -
 | `guji store`／`recheck`／`glyphlib`／`rekey-cells`／`promote`／`corpus` | `cli_glyph.py` | P2 第四批，2026-11-04 |
 | `guji glyph-db` | `cli_glyph_db.py` | P2 第四批，2026-11-04 |
 | `guji model`／`font` | `cli_model.py` | P2 第四批，2026-11-04 |
+| `guji job`（`python -m guji_manager.jobs`，执行方 `work`） | `jobs/`（runner、cli、board…） | P3，2026-11-04 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`）。
 

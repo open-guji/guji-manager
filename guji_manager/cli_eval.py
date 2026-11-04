@@ -23,9 +23,13 @@ def cmd_eval(args) -> None:
         return
     keys = args.evals or [k for k, s in EVALS.items()
                           if not ({"heavy", "engine", "corpus", "dump", "intermediate"} & set(s.needs))]
+    # 以前 run_eval 只放行 products，点名跑 match_pairs / oov 这类 heavy 的也一律 skipped，
+    # 只能绕到 Python 里调（2026-11-04 修 5a/5b 评测链时撞到）。--allow 显式放行。
+    allow = ("products",) + tuple(x.strip() for x in (getattr(args, "allow", "") or "").split(",")
+                                  if x.strip())
     reports = []
     for k in sorted(keys):
-        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw)
+        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow)
         reports.append(r)
         mark = {"ok": "✓", "regressed": "⚠", "failed": "✗", "skipped": "–"}[r.status]
         print(f"{mark} {r.summary_line()}")
@@ -266,6 +270,9 @@ def add_parser(sub) -> None:
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true", help="有跑不起来的就以 1 退出")
+    p.add_argument("--allow", default="",
+                   help="放行的前提，逗号分隔：heavy,engine,corpus,bench…（缺省只放行 products；"
+                        "要跑 match_pairs / oov 这类重活就给 --allow heavy）")
     p.add_argument("--from-raw", action="store_true",
                    help="缺产物时从原图现跑 Step1-3 补齐（云端 clone 无 products/ 时用，"
                         "同 seg_harness.py 的同名开关）")

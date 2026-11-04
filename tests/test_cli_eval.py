@@ -68,3 +68,34 @@ def test_check_rulers_detail_flag_prints_rows(monkeypatch, capsys):
     assert seen["full"] is True
     assert "p149    2 条  列 3,7" in out
     assert "p149\tc7\ty=88  why=缝上有墨  px=4" in out
+
+
+def test_eval_run_allow_passes_through(monkeypatch, capsys):
+    """`--allow heavy` 要真传进 run_eval；以前写死只放行 products，点名跑 heavy 的也全 skipped。"""
+    from guji_manager import _cv, cli_eval
+
+    seen = {}
+
+    class _R:
+        status = "ok"
+        error = ""
+
+        def summary_line(self):
+            return "x"
+
+        def warnings(self):
+            return []
+
+    def fake_run_eval(k, timeout=900, from_raw=False, allow=("products",)):
+        seen[k] = allow
+        return _R()
+
+    monkeypatch.setattr(_cv, "run_eval", fake_run_eval, raising=False)
+    base = dict(action="run", evals=["match_pairs"], timeout=1, json=False, strict=False, from_raw=False)
+    import pytest
+    with pytest.raises(SystemExit):                        # 跑完总是 sys.exit
+        cli_eval.cmd_eval(argparse.Namespace(**base, allow="heavy, bench"))
+    assert seen["match_pairs"] == ("products", "heavy", "bench")
+    with pytest.raises(SystemExit):                        # 程序化调用没有 allow 键也不炸
+        cli_eval.cmd_eval(argparse.Namespace(**base))
+    assert seen["match_pairs"] == ("products",)
