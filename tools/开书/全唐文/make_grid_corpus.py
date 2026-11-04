@@ -35,7 +35,7 @@ def short_notes(line):
     册07 碑志 14 页实测改回双行后待审 256→82。"""
     def f(m):
         if '|' in m.group(1): return m.group(0)
-        t=re.sub(r'[^\u4e00-\u9fff□〓㐀]','',m.group(1))
+        t=re.sub(r'[^\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0003ffff□〓㐀]','',m.group(1))  # 11-04 补扩展 A／B 区：原先短注里的「㣥」等被丢
         parts=split_note(t)
         # 超长的注只要能按「其N」「闕(N字)」拆成每段都不超长，也拆（07p57「<闕二字其八闕二十四字>」，2026-11-03 看图三条各自双行）
         if len(t)>NOTE_MAX and (len(parts)==1 or max(map(len,parts))>NOTE_MAX): return m.group(0)
@@ -69,6 +69,7 @@ with open(out,"w",encoding="utf-8") as f:
             line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
             f.write(line+"\n"); n+=1
+USED=list(dict.fromkeys(USED))  # 全书换字每章都算一次用上
 print(n,"lines；勘误",len(USED),"/",len(ERRATA),"条")
 if len(USED)!=len(ERRATA): raise SystemExit("有勘误条目没用上："+",".join(sorted({e["id"] for e in ERRATA}-set(USED))))
 # 每卷 01a 首列是「欽定全唐文卷N」卷名栏，Kanripo 没录：补占位列，否则该页整页错 1 位（2026-11-01，册05–15 共 43 页）。
