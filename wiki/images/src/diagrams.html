@@ -92,10 +92,10 @@ table.c td{padding:4px 8px;font-size:15px;white-space:nowrap}
  <div class="box hm"><div class="big">v0.3.0（MINOR）</div>列出 0.2.x 全部 PATCH<br>→ 归纳涉及的功能<br>→ 逐页重改、重截图<br>→ 首页改「对应 v0.3」</div>
 </div></div>
 
-<div class="d" id="pending"><h3>殿本总目 99 册线上待审格分类（2026-11-03，共 17,565 格，占全书 0.67%）</h3>
+<div class="d" id="pending"><h3>殿本总目 99 册线上待审格，按待审原因 pending_reason（2026-11-04，共 18,563 格，占全书 0.71%）</h3>
 <table class="c" id="pt"></table></div>
 <script>
-const rows=[["P","只能人审（复审格、〓生僻字）",10798,"#9a2f5c"],["Z","形近字组",2977,"#a0682a"],["L","字形库／识别",1889,"#2f6b9a"],["S","切分／对位",739,"#2e7d4f"],["O","遮挡（印章等）",577,"#777"],["R","整理本／语料",324,"#6a4fa0"],["M","码位异体",261,"#3a8c8c"]];
-const t=document.getElementById('pt');for(const [k,n,v,c] of rows){t.insertAdjacentHTML('beforeend',`<tr><td><b>${k}</b></td><td>${n}</td><td><span class="bar" style="width:${v/20}px;background:${c}"></span></td><td>${v.toLocaleString()}（${(v/175.65).toFixed(1)}%）</td></tr>`)}
+const rows=[["X","机器改了字、复审（X01–X04）→ 人审",14034,"#9a2f5c"],["Z","形近字组没把握、打架、被推翻（Z01–Z06）→ 大模型",1176,"#a0682a"],["L","字形库：少见、刻例太少、认不出（L01–L05）",969,"#2f6b9a"],["R","参校本缺字、没字、改过、不一致（R01–P02）",612,"#6a4fa0"],["S","切分：整页／整列对不上（S01–S02）→ 算法",522,"#2e7d4f"],["N","形近字护栏、异体字（N01、V01）",468,"#3a8c8c"],["H","极难形近：日曰、己已巳（H01）→ 留后",463,"#555"],["D","印章等遮挡（D01–D02）",319,"#777"]];
+const t=document.getElementById('pt');for(const [k,n,v,c] of rows){t.insertAdjacentHTML('beforeend',`<tr><td><b>${k}</b></td><td>${n}</td><td><span class="bar" style="width:${v/20}px;background:${c}"></span></td><td>${v.toLocaleString()}（${(v/185.63).toFixed(1)}%）</td></tr>`)}
 </script>
 </body></html>
