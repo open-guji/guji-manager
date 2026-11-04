@@ -2,10 +2,14 @@
 
 ## 版本号
 
-- guji-manager 用 `m-vX.Y.Z` tag，**不钉到册、不进产物指纹**，所以发版不会让任何册过期。
-- PATCH（Z）：修 bug、小功能、文档。
-- MINOR（Y）：一批功能搬来或新增、命令有变。MINOR 升版要用户点头。
-- 每版改了什么写在 [CHANGELOG.md](https://github.com/open-guji/guji-manager/blob/main/CHANGELOG.md)。
+规矩全文见仓里 [doc/版本号规矩.md](https://github.com/open-guji/guji-manager/blob/dev/doc/版本号规矩.md)（2026-11-03 起，全部仿照 open-guji-cv）。要点：
+
+- guji-manager 用自己的 `vX.Y.Z` tag（和 cv 同名不同仓，说的时候写「manager v0.2.0」），**不钉到册、不进产物指纹**，所以发版不会让任何册过期。基线 `v0.2.0`。
+- 分支：PR 一律投 **dev**；准备发版时从 dev 切 `rc/vX.Y.Z` 测；测完用 merge commit 合进 **main**，在合并提交上打 tag。main 只接发版，Wiki 也随 main 同步。
+- PATCH（Z）：修 bug、新命令、从 cv 搬来单个命令、文档。不用问用户。
+- MINOR（Y）：用法要跟着变（已有命令不兼容、契约范围变、拆分一个阶段做完）。MINOR 升版要用户点头，还要整体重改 Wiki（下一节）。
+- 合 PR 前跑 `python scripts/check_rc_target.py <目标分支>`，发版后跑 `python scripts/check_release_tags.py`。
+- 推 tag 自动建 GitHub Release，挂 wheel。每版改了什么写在 [CHANGELOG.md](https://github.com/open-guji/guji-manager/blob/dev/CHANGELOG.md)。
 
 ## Wiki 什么时候改
 
@@ -15,12 +19,12 @@
 
 **每升一次 MINOR，必须整体重改一遍：**
 
-1. 列出上一个 MINOR 以来的全部 PATCH：看 CHANGELOG，和 `git log m-vX.(Y-1).0..HEAD --oneline`；
+1. 列出上一个 MINOR 以来的全部 PATCH：看 CHANGELOG，和 `git log vX.(Y-1).0..HEAD --oneline`；
 2. 归纳这些 PATCH 涉及了哪些功能（新命令、搬来的模块、改了的流程）；
 3. 逐页对照：过时的改，新功能补页或补段，截图该重截的重截（截图里有令牌、内部地址的要打码）；
-4. 首页顶上的「本 Wiki 对应 m-vX.Y」改成新版本；
+4. 首页顶上的「本 Wiki 对应 vX.Y」改成新版本；
 5. 在本页下面「改版记录」加一段；
-6. MINOR 发版的 PR 里写一行「Wiki 已按 m-vX.Y 重改」，才算发完。
+6. MINOR 发版的 PR 里写一行「Wiki 已按 vX.Y 重改」，才算发完。
 
 ## 怎么改
 
@@ -32,4 +36,4 @@
 
 | 日期 | 对应版本 | 改了什么 |
 |---|---|---|
-| 2026-11-03 | m-v0.2（0.2.0） | 首版：13 页。基线功能：pipeline 调用与契约检查、opinions、source、cellvotes、freeze、online_lists、review_triage、pending-stats、central-gc；拆分进行到 P2 第二批。 |
+| 2026-11-03 | v0.2（0.2.0） | 首版：13 页。基线功能：pipeline 调用与契约检查、opinions、source、cellvotes、freeze、online_lists、review_triage、pending-stats、central-gc；拆分进行到 P2 第二批。 |

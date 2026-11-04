@@ -6,11 +6,12 @@
 分界线：凡会影响最终识别产物字节的在 pipeline，其余在这里。所以改这个仓**不需要给 pipeline 发版**，也不会让任何一册的产物过期。
 
 - 文档：[doc/](doc/README.md)（整理全流程：开新书、粗校、精校、点校、反馈迭代）
-- Wiki：[看图懂系统](https://github.com/open-guji/guji-manager/wiki)，源文件在 [wiki/](wiki/)，合进 main 自动同步；**每升一次 MINOR 版要整体重改一遍**（见 Wiki「版本与 Wiki 维护」）
+- Wiki：[看图懂系统](https://github.com/open-guji/guji-manager/wiki)，源文件在 [wiki/](wiki/)，发版合进 main 时自动同步；**每升一次 MINOR 版要整体重改一遍**（见 Wiki「版本与 Wiki 维护」）
 - 设计：open-guji-cv 仓 `doc/design/拆分-pipeline与manager.md`
 - 接口契约：open-guji-cv 仓 `doc/契约.md`；本仓 [COMPAT.md](COMPAT.md) 记每个 manager 版本支持哪些契约
 - 调用方式：只通过子进程跑 `guji-cv`（`GUJI_CV_BIN` 指定，缺省 PATH），不 import `open_guji_cv` 内部
-- 版本：`m-vX.Y.Z` tag；**不钉到册、不进产物指纹**
+- 版本：`vX.Y.Z` tag，规矩同 open-guji-cv，见 [doc/版本号规矩.md](doc/版本号规矩.md)；**不钉到册、不进产物指纹**
+- 分支：**PR 一律投 `dev`**；发版从 dev 切 `rc/vX.Y.Z`，测完 merge 进 `main` 打 tag。main 只接发版。合 PR 前跑 `python scripts/check_rc_target.py <目标分支>`
 
 ## 现状（2026-10-27）
 
