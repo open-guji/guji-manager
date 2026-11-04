@@ -25,7 +25,7 @@ from open_guji_cv.clustering.audit import evict_instance
 from open_guji_cv.clustering.glyph_db import GlyphDB
 from open_guji_cv.feedback.consumers import glyphdb_admit
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
-from open_guji_cv.review.verdict_view import review_verdicts
+from guji_manager.review.verdict_view import review_verdicts
 
 BOOK = "abook"
 

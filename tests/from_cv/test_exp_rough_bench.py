@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import yaml
 
 from guji_manager.exp import config as EC
-from open_guji_cv.exp import labels as LB
+from guji_manager.exp import labels as LB
 from guji_manager.exp import rough_bench as RB
 from guji_manager.exp import runner as RN
 

@@ -21,13 +21,13 @@ from open_guji_cv.core.pipeline import Pipeline
 from open_guji_cv.core.spec import ProductKindSpec, StepSpec
 from open_guji_cv.core.step import KINDS, STEPS, Step, register_kind, register_step
 from open_guji_cv.errors import BadRequest
-from open_guji_cv.exp import compare as C
+from guji_manager.exp import compare as C
 from guji_manager.exp import config as EC
 from guji_manager.exp import flips as FL
-from open_guji_cv.exp import labels as LB
+from guji_manager.exp import labels as LB
 from guji_manager.exp import report as RP
 from guji_manager.exp import runner as RN
-from open_guji_cv.exp import stats as S
+from guji_manager.exp import stats as S
 from open_guji_cv.products.cache import ImageCache
 from open_guji_cv.products.store import ProductStore
 

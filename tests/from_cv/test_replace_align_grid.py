@@ -48,7 +48,7 @@ def test_replace_align_sub_pure():
 
 def test_defect_only_cells_latest_wins(tmp_path):
     from open_guji_cv.feedback.events import EventLog
-    from open_guji_cv.review.verdict_view import defect_only_cells
+    from guji_manager.review.verdict_view import defect_only_cells
     log = EventLog(tmp_path)
     log.append([_ev("vol01:4:1:3", {"v": "seg_defect", "quality": "truncated", "shape": ""}, 1),
                 _ev("vol01:4:1:4", {"v": "seg_defect", "quality": "truncated", "shape": "天"}, 2),
@@ -62,7 +62,7 @@ def test_flagged_cells_latest_wins_and_goes_manual(tmp_path):
     """网格里点「要细审」→ 不算已裁（不在 decided_cells），归逐张；后来有了定字裁决就作废。"""
     from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
     from guji_manager.review.cards import replace_align_sub
-    from open_guji_cv.review.verdict_view import decided_cells, flagged_cells
+    from guji_manager.review.verdict_view import decided_cells, flagged_cells
     log = EventLog(tmp_path)
 
     def flag(key, seq):
@@ -176,7 +176,7 @@ def test_downstream_ignores_reason(tmp_path):
     from open_guji_cv.feedback.events import EventLog
     from open_guji_cv.feedback.lookup import human_chars
     from open_guji_cv.feedback.returns import classify_return
-    from open_guji_cv.review.verdict_view import decided_cells, review_verdicts
+    from guji_manager.review.verdict_view import decided_cells, review_verdicts
     got = {}
     for reason in (False, True):
         log = EventLog(tmp_path / str(reason))
