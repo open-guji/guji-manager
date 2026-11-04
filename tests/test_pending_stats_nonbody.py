@@ -13,14 +13,23 @@ def test_nonbody_of_yaml_new_and_old():
 page_kinds:
   roster: ["39-41", 121]
   table: [1]
+  cover: [2]
 params:
   border_detect_gate: {table_pages: "5,7"}
 """
     nb = nonbody_of_yaml(raw)
-    assert nb == {"39": "roster", "40": "roster", "41": "roster", "121": "roster", "1": "table", "5": "table", "7": "table"}
+    assert nb == {"39": "roster", "40": "roster", "41": "roster", "121": "roster", "1": "table", "2": "cover", "5": "table", "7": "table"}
 
 
 def test_summarize_excludes_nonbody():
     s = summarize(_rows(), {"001": {}}, {"001": 100})
     assert s["n"] == 1 and s["n_nonbody"] == 2
     assert s["vols"]["001"]["n"] == 1 and s["vols"]["001"]["rate"] == 0.01 and s["vols"]["001"]["n_nonbody"] == 2
+
+
+def test_analyse_marks_nonbody_by_vol_digits(monkeypatch):
+    import guji_manager.pending_stats as ps
+    monkeypatch.setattr(ps, "_group_of", lambda ch: None)
+    lists = {"01.": {"cells": [{"cell": "39:1:1", "why": []}, {"cell": "10:1:1", "why": []}]}}
+    rows = ps.analyse(lists, {}, nonbody={"001": {"39": "roster"}})
+    assert [r["kind"] for r in rows] == ["roster", "body"]

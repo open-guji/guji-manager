@@ -12,7 +12,7 @@
   guji-manager pending-stats --out /tmp/ps --prev old/summary.json   # 括号里写与上一份的增减
   guji-manager pending-stats --from-dir lists/ --out /tmp/ps        # 离线：目录里放 <册号>.pending.json
 
-非正文页（册配置 `page_kinds` 的 roster 职名页、table 表格页，及老写法 `row_segment.roster_pages`、
+非正文页（册配置 `page_kinds` 的 roster 职名页、table 表格页、cover 书衣，及老写法 `row_segment.roster_pages`、
 `border_detect_gate.table_pages`）的待审格单列「非正文」，不进待审数和人审率（cv 只优化正文，指标正文与非正文分开报；11-04 SJ 史記职名页）。
 全册格数分母仍是 `progress.volume.cells_total`（含非正文页，库里没有分页格数），所以正文人审率略偏低。
 
@@ -47,7 +47,8 @@ def parse_vols(spec: str | None) -> set[int] | None:
 
 
 #: 非正文页型 → 老写法 (Step, 参数)
-NONBODY_KINDS = {"roster": ("row_segment", "roster_pages"), "table": ("border_detect_gate", "table_pages")}
+NONBODY_KINDS = {"roster": ("row_segment", "roster_pages"), "table": ("border_detect_gate", "table_pages"),
+                 "cover": ("border_detect_gate", "cover_pages")}
 
 
 def _expand_pages(spec) -> set[str]:
@@ -65,7 +66,7 @@ def _expand_pages(spec) -> set[str]:
 
 
 def nonbody_of_yaml(raw: str) -> dict[str, str]:
-    """册 yaml 原文 → {页号: 页型}（只收非正文页型 roster／table；新写法 page_kinds 与老写法都认）。"""
+    """册 yaml 原文 → {页号: 页型}（只收非正文页型 roster／table／cover；新写法 page_kinds 与老写法都认）。"""
     import yaml
     d = yaml.safe_load(raw) or {}
     pk, params = d.get("page_kinds") or {}, d.get("params") or {}
@@ -78,11 +79,11 @@ def nonbody_of_yaml(raw: str) -> dict[str, str]:
 
 
 def load_nonbody(ws: str) -> dict[str, dict[str, str]]:
-    """中心库 `files` 表的册 yaml → {册号(三位): {页号: 页型}}。"""
+    """中心库 `books` 表的册 yaml 原文 → {册号(三位): {页号: 页型}}。"""
     from ._cv import connect
     with connect() as con:
         cur = con.cursor()
-        cur.execute("select src_path, raw from files where ws=%s and src_path like 'books/%%.yaml'", (ws,))
+        cur.execute("select src_path, raw from books where ws=%s", (ws,))
         rows = cur.fetchall()
     out = {}
     for path, raw in rows:
@@ -148,7 +149,8 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
                 col_n[pos[1]] += 1
                 if cause_of(c) == "D":
                     occ_page[pos[0]] += 1
-        nb = (nonbody or {}).get(f"{int(vol):03d}" if str(vol).isdigit() else vol) or {}
+        m = re.findall(r"\d+", str(vol))
+        nb = (nonbody or {}).get(f"{int(m[0]):03d}" if m else vol) or {}
         for c in cells:
             pos = cell_pos(c["cell"]) or ("?", "?")
             v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
@@ -288,7 +290,7 @@ def main(argv=None) -> int:
     ap.add_argument("--prev", type=Path, help="上一份 summary.json，报告里写增减")
     ap.add_argument("--glyph-db", type=Path, help="字形库 db（<工作区>/output/glyph-gN.db）：给了就把「整理本字库样本≤2」的成因 I 单列成 L4 库样本过少")
     ap.add_argument("--top", type=int, default=15)
-    ap.add_argument("--nonbody-dir", type=Path, help="离线：册 yaml 所在目录（判非正文页）；连库时缺省读中心库 books/*.yaml")
+    ap.add_argument("--nonbody-dir", type=Path, help="离线：册 yaml 所在目录（判非正文页）；连库时缺省读中心库 books 表")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
     vols = parse_vols(a.vols)
