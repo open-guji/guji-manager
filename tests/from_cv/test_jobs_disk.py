@@ -81,7 +81,7 @@ def _mk_ws(root, name, pins, *, manifests=()):
 
 def _patch_pins(monkeypatch, tmp_path, pins_by_ws):
     """pins_in_use 不开 cv 引擎：按工作区查表；manifest 按文件在不在。"""
-    from open_guji_cv.ops import glyph_snapshot as GS
+    from guji_manager.ops import glyph_snapshot as GS
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(GS, "pins_in_use", lambda ws: {n: ["b"] for n in pins_by_ws[Path(ws)]})
 
@@ -114,7 +114,7 @@ def test_prune_keeps_old_db_without_manifest(tmp_path, monkeypatch):
 def test_prune_keeps_everything_when_pins_unreadable(tmp_path, monkeypatch):
     ws = _mk_ws(tmp_path, "wsrepo", [], manifests=(1,))
     (ws / "output" / "glyph-g1.db").write_bytes(b"x")
-    from open_guji_cv.ops import glyph_snapshot as GS
+    from guji_manager.ops import glyph_snapshot as GS
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     def boom(_):
         raise RuntimeError("bad yaml")

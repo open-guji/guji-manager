@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guji-manager"
-version = "0.3.2"
+version = "0.3.3"
 description = "古籍 pipeline manager：工作区、取图、打包推中心库、任务库等对外交互；调用 open-guji-cv（pipeline）但自己不含识别算法"
 requires-python = ">=3.10"
 dependencies = []
@@ -15,6 +15,9 @@ triage = ["numpy", "opencv-python-headless", "scikit-learn", "rapidocr-onnxrunti
 
 [project.entry-points."guji.commands"]
 manager = "guji_manager.commands"
+
+[project.entry-points."guji.hooks"]
+manager = "guji_manager.hooks:register"
 
 [project.entry-points."guji.post_promote"]
 online_lists = "guji_manager.online_lists:on_promote"

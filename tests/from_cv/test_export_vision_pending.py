@@ -59,7 +59,7 @@ def test_human_decided_cell_is_never_demoted_to_pending(store):
 
 
 def test_vision_pending_ids_is_empty_without_vision_records(ws):
-    from open_guji_cv.feedback.vision import vision_pending_ids
+    from guji_manager.feedback.vision import vision_pending_ids
     assert vision_pending_ids("keben", [1, 2, 3]) == frozenset()
 
 

@@ -16,7 +16,7 @@ import pytest
 
 import open_guji_cv.steps  # noqa: F401  注册产物种类
 from open_guji_cv.feedback.events import EventLog, EventTarget, counts_as_human, make_event
-from open_guji_cv.feedback.vision import (VISION_DOUBT, VISION_SHARD, VisionLog, flag_active, import_vision,
+from guji_manager.feedback.vision import (VISION_DOUBT, VISION_SHARD, VisionLog, flag_active, import_vision,
                                           parse_jsonl, vision_checks, vision_pending)
 
 
