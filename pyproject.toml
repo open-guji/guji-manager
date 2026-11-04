@@ -30,4 +30,4 @@ include = ["guji_manager*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-guji_manager = ["review_triage/review_grid.tpl.html", "opinions/rules.json"]
+guji_manager = ["review_triage/review_grid.tpl.html", "opinions/rules.json", "review/pending_reasons.yaml"]

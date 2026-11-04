@@ -223,7 +223,7 @@ def cmd_gold(args) -> None:
     elif args.action == "drift":
         from ._cv import check_shard, mark_drifted
         import cv2
-        root = Path(__file__).resolve().parent.parent
+        root = _cv.cv_repo()
         items = store.list(args.shard)
 
         def image_of(it):

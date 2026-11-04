@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from . import _cv  # cv_repo()：本文件原在 cv 包里，按 __file__ 找 cv 仓
 import json
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ def cmd_release(args) -> None:
     if args.action != "check":
         print(f"未知 action: {args.action}", file=sys.stderr)
         sys.exit(1)
-    repo = Path(args.repo).resolve() if args.repo else Path(__file__).resolve().parent.parent
+    repo = Path(args.repo).resolve() if args.repo else _cv.cv_repo()
     res = rc.release_check(repo, args.candidate, against=args.against, version=args.version,
                            run_tests=not args.no_tests)
     if args.json:
@@ -46,7 +47,7 @@ def cmd_deploy(args) -> None:
     if args.action != "check":
         print(f"未知 action: {args.action}", file=sys.stderr)
         sys.exit(1)
-    repo = Path(args.repo).resolve() if args.repo else Path(__file__).resolve().parent.parent
+    repo = Path(args.repo).resolve() if args.repo else _cv.cv_repo()
     products_root = Path(args.products).resolve() if args.products else None
     result = dc.deploy_check(repo, branch=args.branch, service=args.service, base_url=args.base_url,
                              products_root=products_root, dry_run=args.dry_run,
@@ -90,7 +91,7 @@ def cmd_snap(args) -> None:
     from ._cv import snap_watch as sw
     state = Path(args.state).expanduser() if args.state else sw.DEFAULT_STATE
     ws_repo = Path(args.ws_repo).expanduser().resolve() if args.ws_repo else None
-    cv_repo = Path(args.cv_repo).expanduser().resolve() if args.cv_repo else Path(__file__).resolve().parent.parent
+    cv_repo = Path(args.cv_repo).expanduser().resolve() if args.cv_repo else _cv.cv_repo()
     ws_roots = [Path(r).expanduser().resolve() for r in (args.ws_root or [])]
     if args.action == "pack":
         from ._cv import snap_pack as sp
