@@ -339,3 +339,13 @@ def test_unsatisfiable_needs_reports_the_reason(tmp_path, monkeypatch):
 
     r = run_eval("fake", dataset_root=ds, timeout=60, allow=())
     assert r.status == "skipped" and r.error
+
+
+def test_merge_json_metrics_reads_per_route_results():
+    """5b 评测器把指标写成 {"result": {"emb": {"top1": …}}}；以前一条都抠不出来，跑通了也判 failed。"""
+    from guji_manager.eval.runner import _merge_json_metrics
+    got = {m.name: m.value for m in _merge_json_metrics(
+        [], {"n": 314, "result": {"emb": {"top1": 74.5, "top10": 91.7}, "cls": {"top1": 0.0}}})}
+    assert got["emb top1"] == 74.5 and got["emb top10"] == 91.7 and got["cls top1"] == 0.0
+    rows = {m.name for m in _merge_json_metrics([], {"rows": {"clean": {"emb_top1": 60.0}}})}
+    assert "clean emb_top1" in rows
