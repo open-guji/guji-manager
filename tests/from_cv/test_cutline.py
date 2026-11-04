@@ -7,9 +7,9 @@ char-segmentation/touching-cuts；expected 只留切点相关字段。
 from __future__ import annotations
 
 from guji_manager.eval.touching import pick_cases
-from open_guji_cv.feedback.consumers import _expected_of
+from guji_manager.feedback.consumers import _expected_of
 from open_guji_cv.feedback.events import EventTarget, make_event
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 
 
 def _evt(payload: dict):

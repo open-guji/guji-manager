@@ -53,7 +53,7 @@ def other():
 
 def test_backup_restore_roundtrip(repo, conn, other, tmp_path):  # noqa: F811
     from guji_manager.datastore import backup as B
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     import_commit(conn, repo, _commit(repo, _workspace(tmp_path), "c1"))
     files, man = B.dump(conn)
     assert man["rev"] > 0 and man["tables"]["events"]["rows"] == 1

@@ -186,8 +186,9 @@ def cmd_corpus(args) -> None:
             from ._cv import core_corpus_files as cf
             cli_v2._out(cf.build_registry())
         elif args.action == "upload":
+            from .ops import model_upload
             try:
-                cli_v2._out(mb.upload_registry(execute=args.execute, kind="corpus"))
+                cli_v2._out(model_upload.upload_registry(execute=args.execute, kind="corpus"))
             except ValueError as e:
                 print(f"✗ {e}", file=sys.stderr)
                 sys.exit(1)

@@ -83,7 +83,7 @@ def _base() -> dict[str, bytes]:
 
 
 def test_import_verify_rerun_increment_and_guard(repo, conn):
-    from open_guji_cv.datastore.importer import DeleteRefused, import_commit
+    from guji_manager.datastore.importer import DeleteRefused, import_commit
     from guji_manager.datastore.verify import verify_commit
 
     c1 = _commit(repo, _base(), "c1")
@@ -124,7 +124,7 @@ def test_import_verify_rerun_increment_and_guard(repo, conn):
 
 
 def test_verify_catches_tampered_rows(repo, conn):
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.verify import verify_commit
 
     c1 = _commit(repo, _base(), "c1")
@@ -138,7 +138,7 @@ def test_verify_catches_tampered_rows(repo, conn):
 
 
 def test_first_import_logs_one_change_per_table(repo, conn, monkeypatch):
-    from open_guji_cv.datastore import importer
+    from guji_manager.datastore import importer
     from guji_manager.datastore.verify import verify_commit
 
     monkeypatch.setattr(importer, "BULK_MIN_ROWS", 2)
@@ -160,8 +160,8 @@ def test_first_import_logs_one_change_per_table(repo, conn, monkeypatch):
 
 def test_import_only_paths_touches_just_those_files(repo, conn):
     """``only_paths``：只差分点名的文件；扫描里没带的文件（如字形库、别的批次）库里原样不动。"""
-    from open_guji_cv.datastore.importer import import_commit, import_scans
-    from open_guji_cv.datastore.scope import scan_files
+    from guji_manager.datastore.importer import import_commit, import_scans
+    from guji_manager.datastore.scope import scan_files
     from guji_manager.datastore.verify import verify_commit
 
     files = _base()

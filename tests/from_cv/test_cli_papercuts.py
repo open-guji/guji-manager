@@ -109,8 +109,8 @@ def test_quality_treats_book_codepoints_pair_as_match(tmp_path, monkeypatch):
     from open_guji_cv.core import book as book_mod
     from open_guji_cv.core.spec import page_key
     from guji_manager.eval import quality as quality_mod
-    from open_guji_cv.gold import v2_align as v2_align_mod
-    from open_guji_cv.gold.v2_align import GoldChar, PageGold
+    from guji_manager.gold import v2_align as v2_align_mod
+    from guji_manager.gold.v2_align import GoldChar, PageGold
     from open_guji_cv.products.kinds.recog import AdmitRec, ColumnAdmit, PageAdmit
     from open_guji_cv.products.store import ProductStore
 

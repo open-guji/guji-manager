@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from open_guji_cv.jobs import spec as SP
+from guji_manager.jobs import spec as SP
 
 C1 = "a" * 40
 C2 = "b" * 40

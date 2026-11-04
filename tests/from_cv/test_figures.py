@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 from test_guji_page_format import BOOK, META, PAGE, W, H, _write
 
-from open_guji_cv.feedback.consumers import crop_exclude
+from guji_manager.feedback.consumers import crop_exclude
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
 from guji_manager.feedback.figures import figure_cells, region_key, resolved_figure_regions
 from open_guji_cv.feedback.lookup import human_chars

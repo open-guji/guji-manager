@@ -17,12 +17,12 @@ import numpy as np
 import pytest
 
 from open_guji_cv.clustering.glyph_db import GlyphDB
-from open_guji_cv.feedback.consumers import crop_exclude, glyphdb_admit, route_and_consume
+from guji_manager.feedback.consumers import crop_exclude, glyphdb_admit, route_and_consume
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
 from guji_manager.feedback.harvest import (from_marks, from_page_html, from_seed_log,
                                            from_seg_log, from_verdicts, harvest_text,
                                            parse_card_id, to_shell_verdicts)
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 from open_guji_cv.gold.store import GoldStore
 from open_guji_cv.products.cache import ImageCache
 from guji_manager.review.batches import Batch, BatchStore, render_registry_markdown

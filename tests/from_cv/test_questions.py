@@ -15,7 +15,7 @@ import pytest
 
 from open_guji_cv.feedback.events import Event, EventTarget
 from guji_manager.feedback.questions import QUESTIONS, BY_ID, validate
-from open_guji_cv.feedback.routes import RouteTable
+from guji_manager.feedback.routes import RouteTable
 
 
 def _event_for(q) -> Event:

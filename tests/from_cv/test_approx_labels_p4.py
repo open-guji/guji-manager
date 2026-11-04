@@ -23,7 +23,7 @@ import pytest
 import open_guji_cv.steps  # noqa: F401
 from open_guji_cv.clustering.audit import evict_instance
 from open_guji_cv.clustering.glyph_db import GlyphDB
-from open_guji_cv.feedback.consumers import glyphdb_admit
+from guji_manager.feedback.consumers import glyphdb_admit
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
 from guji_manager.review.verdict_view import review_verdicts
 

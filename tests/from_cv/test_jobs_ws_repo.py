@@ -1,6 +1,6 @@
 """执行方的工作区仓：单子存的 ws_repo 为空时，按册 ID 现查 WS_REPOS（#1558：提交时没映射上，prep 找不到工作区）。"""
 from guji_manager.jobs import runner as R
-from open_guji_cv.jobs import spec as SP
+from guji_manager.jobs import spec as SP
 
 
 def test_empty_ws_repo_falls_back_to_book_id_table():

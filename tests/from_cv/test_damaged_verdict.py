@@ -7,9 +7,9 @@ bxgb:27:8:6 那种「原刻就残、认不出，但最像塊」无处可落—�
 """
 from __future__ import annotations
 
-from open_guji_cv.feedback.consumers import _expected_of, crop_exclude, gold_add
+from guji_manager.feedback.consumers import _expected_of, crop_exclude, gold_add
 from open_guji_cv.feedback.events import Event, EventTarget, make_event
-from open_guji_cv.feedback.routes import Destination, RouteTable
+from guji_manager.feedback.routes import Destination, RouteTable
 from guji_manager.review.verdict_view import review_verdicts
 
 SHARD = "char-segmentation/instances"

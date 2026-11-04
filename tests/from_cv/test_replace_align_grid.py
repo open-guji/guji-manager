@@ -172,7 +172,7 @@ def _pair(reason: bool):
 
 
 def test_downstream_ignores_reason(tmp_path):
-    from open_guji_cv.feedback.consumers import _expected_of
+    from guji_manager.feedback.consumers import _expected_of
     from open_guji_cv.feedback.events import EventLog
     from open_guji_cv.feedback.lookup import human_chars
     from open_guji_cv.feedback.returns import classify_return

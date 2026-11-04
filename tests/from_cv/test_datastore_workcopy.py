@@ -26,7 +26,7 @@ def _home(tmp_path, monkeypatch):
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
     import_commit(conn, repo, c1)
@@ -45,7 +45,7 @@ def _checkout(files, d: Path) -> Path:
 
 def _fresh(files, d: Path, src, cache, hooks=None) -> Path:
     """新机器：只有 workspace.yaml 和标记，pull 下来。"""
-    from open_guji_cv.datastore.workcopy import pull
+    from guji_manager.datastore.workcopy import pull
     d.mkdir(parents=True)
     (d / "workspace.yaml").write_bytes(files["W/workspace.yaml"])
     (d / ".central.json").write_text('{"ws": "tws", "branch": "main"}')
@@ -60,7 +60,7 @@ def _data_files(data: Path) -> dict[str, bytes]:
 
 def test_migrate_refuses_differences_unless_keep_local(repo, conn, tmp_path):  # noqa: F811
     from guji_manager.cli_db import _pg_conn  # noqa: F401  （入口能导入）
-    from open_guji_cv.datastore.workcopy import local_changes, migrate, push
+    from guji_manager.datastore.workcopy import local_changes, migrate, push
     src, files, cache, _ = _setup(repo, conn, tmp_path)
     ws = _checkout(files, tmp_path / "ws")
     ev = ws / "feedback" / "events" / "b.jsonl"
@@ -80,8 +80,8 @@ def test_migrate_refuses_differences_unless_keep_local(repo, conn, tmp_path):  #
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
-    from open_guji_cv.datastore.workcopy import migrate
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
     import_commit(conn, repo, _commit(repo, files, "c1"))
     src = PgSource(conn)
@@ -112,7 +112,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import import_commit
+    from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
     lib = {"L/workspace.yaml": b"id: lib\n", **{f"L/{k}": v for k, v in _lib_store(tmp_path).items()}}
@@ -122,7 +122,7 @@ def _borrowing(repo, conn, tmp_path):  # noqa: F811
 
 
 def _fake_hooks(db: Path, calls: list):
-    from open_guji_cv.datastore.workcopy import GlyphHooks
+    from guji_manager.datastore.workcopy import GlyphHooks
     db.write_text("v1")
     return GlyphHooks(fingerprint=lambda p: Path(p).read_text(), export=lambda p, s: {},
                       rebuild=lambda w, s, p, e=None: calls.append(list(e or [])) or {}, db_path=db)
@@ -135,7 +135,7 @@ def test_glyphlib_publish_creates_once(repo, conn, tmp_path):  # noqa: F811
     """共享刻例库：升级脚本第一次推新开工作区、图按 png 进 R2；同一版再推拒绝（版本不可改）。"""
     from open_guji_cv.core.workspace import central_data_dir
     from open_guji_cv.datastore.client import PgSource
-    from open_guji_cv.datastore.importer import apply_schema
+    from guji_manager.datastore.importer import apply_schema
     from guji_manager.ops.glyphlib import publish
     apply_schema(conn)                                                  # 空库（真库早有表）
     data = central_data_dir("glyphlib-t-v1")

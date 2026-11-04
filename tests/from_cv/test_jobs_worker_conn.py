@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 
 from guji_manager.jobs import runner as R
-from open_guji_cv.jobs import store as S
+from guji_manager.jobs import store as S
 
 
 class OperationalError(Exception):

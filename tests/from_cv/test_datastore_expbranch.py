@@ -34,7 +34,7 @@ def _ws(tmp_path) -> Path:
 
 def test_write_branch_rules_and_endpoint_lookup(monkeypatch):
     from guji_manager import cli_db
-    from open_guji_cv.datastore import connect, neonapi
+    from guji_manager.datastore import connect, neonapi
     with pytest.raises(SystemExit, match="不能写 ci"):
         cli_db._check_write_branch("ci")
     with pytest.raises(SystemExit, match="不能写"):
