@@ -4,6 +4,8 @@
 old、new（原文片段，⏎＝换行，⟦pb:ID⟧＝半叶头所在行首）、basis（看图依据）。
 make_grid_corpus 生成逐列语料前，把每个章文件连同半叶头标记拼成一段文字，逐条把 old 换成 new（old 必须恰好出现一次，
 否则报错停下，免得 Kanripo 改版后悄悄失效），再拆回行与半叶头。book-text 本身不动。
+kind＝全书换字、file＝* 的条目是整书系统性录错（如「㣥」→「羣」，码位线 11-04）：在逐处勘误之前对每个章文件整文件替换，
+不要求唯一；刻本上确实是 old 的个别格，再用逐处勘误改回来。全书没出现过一次就报错。
 """
 import csv,os,re
 HERE=os.path.dirname(os.path.abspath(__file__))
@@ -14,10 +16,13 @@ def load(path=None):
     return list(csv.DictReader(open(path,encoding='utf-8'),delimiter='\t'))
 def apply(fn,lines,pbs,errata):
     """lines：章文件逐行；pbs：{行号(1起): pb id}。返回 (新 lines, 新 pbs, 用上的条目 id)。"""
+    gs=[e for e in errata if e['file']=='*' and e['kind']=='全书换字']
     es=[e for e in errata if e['file']==fn]
-    if not es: return lines,pbs,[]
     text='\n'.join((f'⟦pb:{pbs[i]}⟧' if i in pbs else '')+l for i,l in enumerate(lines,1))
     used=[]
+    for e in gs:
+        if e['old'] in text: text=text.replace(e['old'],e['new']); used.append(e['id'])
+    if not used and not es: return lines,pbs,[]
     for e in es:
         old,new=e['old'].replace('⏎','\n'),e['new'].replace('⏎','\n')
         n=text.count(old)
