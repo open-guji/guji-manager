@@ -1,4 +1,4 @@
-# Kanripo 转带半叶头的逐列本语料。输入：book-text 里 Work d59f2nqla48x 的 default/ 目录（含 pages.tsv）。输出：qtw_kanripo_grid.txt（#@ <pb> 半叶头＋一行一列，:zi[..]→㐀）。
+# Kanripo 转带半叶头的逐列本语料。输入：book-text 里 Work d59f2nqla48x 的 default/ 目录（含 pages.tsv）。输出：qtw_kanripo_grid.txt（#@ <pb> 半叶头＋一行一列，:zi[..]→〓）。
 # 用法：python3 make_grid_corpus.py <book-text>/Work/4/8/x/d59f2nqla48x/default <out.txt> [补卷名栏的最小卷号，缺省 7，0 不补] [短小注按双行拆注的字数上限，缺省 8，0 不改]
 #
 # Kanripo KR4h0168 (book-text Work d59f2nqla48x) → 逐列本语料（`#@ <pb>` 半叶头 ＋ 一行一列），供 align_ref 页钉位
@@ -62,9 +62,11 @@ with open(out,"w",encoding="utf-8") as f:
                 f.write("#@ "+pb[(fn,i)]+"\n"); started=True
             if not started: continue
             if line.startswith("#") or not line.strip(): continue
-            line=re.sub(r":zi\[[^\]]*\]","㐀",line)
+            # 造字占位用 〓（cv 约定的「逐列本生僻字占位」：对位占一格、不当证人、不放行，可走 pua_rule）。
+            # 11-04 前用 㐀（U+3400 真字），r9b 有 34 格被 coord_fallback／witnesses_coord 当真字放成「㐀」（字形线、码位线报）
+            line=re.sub(r":zi\[[^\]]*\]","〓",line)
             # Kanripo 把「⿺辶X」这类走之底组字编坏成「楃□X」（3 个记号，书上只 1 字；07p23 遳、09p147 薖 看图，2026-11-04），全书 12 处，按 1 个造字计
-            line=ZOU_BROKEN.sub("㐀",line)
+            line=ZOU_BROKEN.sub("〓",line)
             # 卷首作者行「　元宗<十二>」：书上序号是单行小字、一字一格（11p7、13p105 看图，2026-11-03），照正文写，不当双行小注
             line=AUTHOR_ORD.sub(r"\1\2",line)
             if NOTE_MAX: line=short_notes(line)
