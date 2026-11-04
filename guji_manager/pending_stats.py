@@ -26,7 +26,8 @@ from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
-from .taxonomy import BIG, FIX, SUBS, cause_of, cell_pos, classify, conc_tag
+from . import diagnose
+from .taxonomy import BIG, FIX, SUBS, _c, _ref, _tok, cause_of, cell_pos, classify, conc_tag
 
 DEFAULT_WS, DEFAULT_TEXT = "siku-zongmu", "96mid1ogzk"
 
@@ -100,6 +101,8 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
                          "pending_reason": c.get("pending_reason") or "unknown",
+                         "ref": _ref(c) or "", "top": next((_c(x) for x in c.get("lib_top") or []), "") or "",
+                         "tok": ",".join(sorted(_tok(c))),
                          "slim": not any(k in c for k in ("ref", "ctx", "lib", "lib_top"))})   # 瘦单只有成因码（cls 11-04 起不出单，不能再拿它判）
     return rows
 
@@ -158,7 +161,7 @@ def render_reasons(s: dict, prev: dict | None) -> list[str]:
     return out + [""]
 
 
-def render(s: dict, prev: dict | None, top: int) -> str:
+def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) -> str:
     n = s["n"]
     ps = (prev or {}).get("by_sub", {})
     tot_cells = sum(v["cells"] or 0 for v in s["vols"].values())
@@ -168,6 +171,7 @@ def render(s: dict, prev: dict | None, top: int) -> str:
            + "。分类规则 `open_guji_cv/review/taxonomy.py`；跟进方见 ai-team `domain/CV/质检/待审分类规范.md`。"
            + ("括号里是比上一份的增减。" if prev else ""), "",
            *render_reasons(s, prev),
+           *(diag or []),
            "## 一、大类／小类总账（旧分类，过渡期保留）", "",
            "| 小类 | 名 | 格数 | 占比 | 跟进方 | 处理方式 | 集中度（整页／整列／零散） |", "|---|---|---|---|---|---|---|"]
     by_big = Counter()
@@ -246,7 +250,8 @@ def main(argv=None) -> int:
     s = summarize(rows, lists, total)
     prev = json.loads(a.prev.read_text(encoding="utf-8")) if a.prev else None
     a.out.mkdir(parents=True, exist_ok=True)
-    (a.out / "report.md").write_text(render(s, prev, a.top), encoding="utf-8")
+    (a.out / "report.md").write_text(render(s, prev, a.top, diagnose.render(rows, lib_n)), encoding="utf-8")
+    s["signals"] = diagnose.signals(rows, lib_n)
     (a.out / "summary.json").write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
     cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause"]
     (a.out / "cells.tsv").write_text("\n".join(["\t".join(cols)] + ["\t".join(str(r[c]) for c in cols) for r in rows]) + "\n", encoding="utf-8")
