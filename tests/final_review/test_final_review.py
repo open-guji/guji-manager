@@ -136,7 +136,12 @@ def test_gate_refuses_ref_placeholder_and_non_ideograph():
         assert core.gate_ex(x, hi(ph), hi(ph), set())["why"] == "not_ideograph", ph
     ok = {"cands": {"予": ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": "予"}
     assert core.gate_ex(ok, hi("予"), hi("予"), set())["ok"]
-    assert core.is_ideograph("𠀀") and core.is_ideograph("⿰") and not core.is_ideograph("ခ")
+    assert core.is_ideograph("𠀀") and not core.is_ideograph("ခ") and not core.is_ideograph("⿰")
+    # Unicode 17 Ext J（U+323B0–3347F）是真汉字；区段两端与相邻区
+    for cp in (0x32BC1, 0x32773, 0x326E8, 0x323B0, 0x3347F, 0x323AF, 0x3134F, 0x2F800, 0xF900):
+        assert core.is_ideograph(chr(cp)), hex(cp)
+    for cp in (0x33480, 0x4DC0, 0xE000, 0x2E80, 0x2FF0):
+        assert not core.is_ideograph(chr(cp)), hex(cp)
 
 
 def test_gate_allows_own_book_pua_glyph_only_with_library_and_image_witness():
