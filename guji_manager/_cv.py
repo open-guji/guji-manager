@@ -35,7 +35,6 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "default_products_root": ("products.store", "default_products_root"),
     "load_book": ("core.book", "load_book"),
     "BlobCache": ("datastore.client", "BlobCache"),
-    "borrowed_store": ("clustering.glyph_db", "borrowed_store"),
     # exp、snap/archive/release/deploy、events/gold/batch、eval/check/collate 等（P2 第三批搬来，2026-11-04）
     "BadRequest": ("errors", "BadRequest"),
     "workspace_root": ("core.workspace", "workspace_root"),
@@ -86,6 +85,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "export_store": ("clustering.glyph_db", "export_store"),
     "assert_db_not_silently_empty": ("clustering.glyph_db", "assert_db_not_silently_empty"),
     "rebuild_from_store": ("clustering.glyph_db", "rebuild_from_store"),
+    "borrowed_store": ("clustering.glyph_db", "borrowed_store"),
     "REPO_ROOT": ("core.workspace", "REPO_ROOT"),
     "resolve_borrow": ("core.workspace", "resolve_borrow"),
     "import_fonts_from_manifest": ("clustering.font_glyphs", "import_fonts_from_manifest"),
