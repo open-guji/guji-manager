@@ -195,3 +195,30 @@ def test_lib_split_counts_own_vs_borrowed(tmp_path):
     f = lib_split_counts(p)
     assert f("以") == (1, 2) and f("人") == (0, 1) and f("松") == (0, 0)
     assert lib_split_counts(tmp_path / "none.db") is None
+
+
+def test_glyph_pending_only_for_registered_codes():
+    """待收字：只有私用码表登记为「已判定待收」的码位才记 glyph_pending；没登记的仍是 ref_lacuna；detail 只写「来源:码位」。"""
+    from guji_manager.review.reasons import build_context, classify, detail_of
+    reg = {"siku-qiefen-v2:U+F1001"}
+    a = Cell(id="v:1:1:1", char="丁", ref="〓", pua_code="siku-qiefen-v2:U+F1001")
+    b = Cell(id="v:1:1:2", char="丁", ref="〓", pua_code="siku-qiefen-v2:U+F1002")
+    c = Cell(id="v:1:1:3", char="丁", ref="〓", pua_code="daizhige:U+F1001")   # 同码位别的来源不算
+    d = Cell(id="v:1:1:4", char="丁", ref="〓")
+    ctx = build_context([a, b, c, d], glyph_pending=reg)
+    assert [classify(x, ctx) for x in (a, b, c, d)] == [R.GLYPH_PENDING, R.REF_LACUNA, R.REF_LACUNA, R.REF_LACUNA]
+    assert detail_of(R.GLYPH_PENDING, a, ctx) == "siku-qiefen-v2:U+F1001"
+    assert classify(a, build_context([a])) is R.REF_LACUNA            # 没给登记表＝一个都不算
+    s = R.GLYPH_PENDING.spec
+    assert (s.code, s.route.value, s.reviewer.value, s.priority) == ("R03", "deferred", "none", 49)
+
+
+def test_glyph_pending_flows_through_pending_sheet(tmp_path):
+    """单上的 pua_code ＋ 登记表 → reasons_for_pending 记 glyph_pending；不给登记表仍是 ref_lacuna。"""
+    from guji_manager.review.reasons import reasons_for_pending
+    doc = {"cells": [{"cell": "bk:1:1:1:1", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E123"},
+                     {"cell": "bk:1:1:1:2", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E124"}]}
+    r = reasons_for_pending(doc, tmp_path, "bk", glyph_pending={"daizhige:U+E123"})
+    assert r["bk:1:1:1:1"] == (R.GLYPH_PENDING, "daizhige:U+E123")
+    assert r["bk:1:1:1:2"][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, "bk")["bk:1:1:1:1"][0] is R.REF_LACUNA
