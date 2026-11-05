@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.4.7] - 测试中
+## [0.4.7] - 2026-11-05
 
 - 标 main 后先在后台看板「迭代轮次」占上这一轮（PATCH，A31）：包口径统计在标 main 的机器上跑不成（缺 ai-team 检出等）时，也写一条 `verdict=pending`、人审率待统计的记录，不再静默漏轮；统计跑成后 `auto-round` 照旧补全。与 `GUJI_AUTO_ONLINE_LISTS` 无关。
 - `pending-stats` 按单上 `src` 单独计数（PATCH，A31）：`summary.json` 加 `by_src`，报告在原因表后列「同字对照自检（seg_selfcheck）N」（格已含在 seg_defect 里）；另按 `pending_reason_detail` 前缀单列「待收字」（`glyph_pending:<私用码>`，A24 11-05）。
