@@ -145,8 +145,8 @@ def _group_of(ch: str) -> str | None:
     return gs[0].id if gs else None
 
 
-#: 单独计数的标记：单上 `src`，或 pending_reason_detail 前缀（A24 11-05：待收字写 ref_lacuna＋detail `glyph_pending:<私用码>`）
-DETAIL_TAGS = (("glyph_pending:", "glyph_pending"), ("同字对照自检：", "seg_selfcheck"))
+#: 单独计数的标记：单上 `src`，或 pending_reason_detail 前缀。（待收字 11-05 定加取值 glyph_pending，按原因计数，不在这里）
+DETAIL_TAGS = (("同字对照自检：", "seg_selfcheck"),)
 
 
 def _tag_of(c: dict) -> str:
@@ -247,7 +247,7 @@ def render_reasons(s: dict, prev: dict | None) -> list[str]:
 
 
 #: 单上 `src` 的中文名（review/reasons.py）
-SRC_NAMES = {"seg_selfcheck": "同字对照自检（seg_selfcheck）", "glyph_pending": "待收字（glyph_pending）"}
+SRC_NAMES = {"seg_selfcheck": "同字对照自检（seg_selfcheck）"}
 
 
 def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) -> str:
