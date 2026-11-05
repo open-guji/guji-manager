@@ -158,6 +158,8 @@ def book_causes(products_dir, book: str) -> dict[str, dict]:
         seed = json.loads(f.read_text(encoding="utf-8"))["seed_admit"]
         af = root / "align_ref" / f.name
         align = json.loads(af.read_text(encoding="utf-8"))["align_ref"] if af.exists() else None
+        from .reasons import align_for_seed
+        align = align_for_seed(seed, align)
         facts = page_facts(seed, align)
         for cid, (code, detail) in page_causes(seed, align).items():
             out[cid.split(":", 1)[1]] = {"cause": code, "detail": detail, **facts.get(cid, {})}
