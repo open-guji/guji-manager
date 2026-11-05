@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 待审原因新增 `glyph_pending`「待收字」R03（MINOR，A24；sheldon 11-05 定、A20 审）：整理本这位是私用码、且码位在私用码表里登记为「已判定待收」（没收进 Unicode、暂找不到合适异体）；去向 deferred、reviewer none（同 hard_pair，不出单、不进大模型），priority 49（先于 ref_lacuna）。`Cell` 加 `pua_code`、`Context` 加 `glyph_pending`（登记表，缺省空＝都不算）；detail 只写永久编号「来源:码位」（`daizhige:U+E123`、`siku-qiefen-v2:U+F1001`，两套码不一一对应，必须带来源）。占位码（以图代字，U+1001 等）属真图，不进待收字。不动任何 Step 指纹；`--json` 导出后 web、console、book-text 三份副本要同步，现有单用 backfill_pending_reason.py。
+
 ## [0.4.7] - 2026-11-05
 
 - 标 main 后先在后台看板「迭代轮次」占上这一轮（PATCH，A31）：包口径统计在标 main 的机器上跑不成（缺 ai-team 检出等）时，也写一条 `verdict=pending`、人审率待统计的记录，不再静默漏轮；统计跑成后 `auto-round` 照旧补全。与 `GUJI_AUTO_ONLINE_LISTS` 无关。

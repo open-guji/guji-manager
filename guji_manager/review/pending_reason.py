@@ -49,6 +49,7 @@ class PendingReason(str, Enum):
     LIB_SPARSE_AGREE = "lib_sparse_agree"
     LIB_UNRECOGNIZED = "lib_unrecognized"
     GARBLE_GATE = "garble_gate"
+    GLYPH_PENDING = "glyph_pending"
     REF_LACUNA = "ref_lacuna"
     REF_GAP = "ref_gap"
     REF_REPLACED = "ref_replaced"
