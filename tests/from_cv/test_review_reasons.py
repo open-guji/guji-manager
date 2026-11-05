@@ -32,6 +32,16 @@ def test_review_states_first():
     assert _cls([Cell(id="v:1:1:3", char="甲", ref="甲", doubts=["src_code_conflict"])]) == [R.RULING_CONFLICT]
 
 
+def test_weak_page_needs_low_column_agreement():
+    """弱证据格只在本列大多对不上时算整页对不上（史記 02:106 半色调页：列一致率 0.7–1，对位对、只是认不准）。"""
+    halftone = [Cell(id=f"v:5:{i % 8 + 1}:{i}", char="甲", ref="乙", col_agree=0.8) for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(halftone))
+    shifted = [Cell(id=f"v:6:1:{i}", char="甲", ref="乙", col_agree=0.1) for i in range(12)]
+    assert set(_cls(shifted)) == {R.SEG_PAGE_UNALIGNED}
+    unknown = [Cell(id=f"v:7:1:{i}", char="甲", ref="乙") for i in range(12)]   # 没有列一致率（单上补的格）照旧
+    assert set(_cls(unknown)) == {R.SEG_PAGE_UNALIGNED}
+
+
 def test_occluded_split_by_ref():
     a = Cell(id="v:1:1:1", char="甲", ref="甲", doubts=["occluded"])
     b = Cell(id="v:1:1:2", char="甲", ref="〓", doubts=["occluded"])
