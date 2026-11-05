@@ -300,6 +300,15 @@ def test_char_card_cands(tmp_path):
     assert st["tpl_version"] == "1.3.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
 
 
+def test_cli_build_no_rest_ok(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    items = tmp_path / "i.jsonl"
+    items.write_text(json.dumps(dict(id="1:0:1:1", pre="以")) + "\n", encoding="utf-8")
+    out = tmp_path / "p.html"
+    main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(out), "--no-rest-ok"])
+    assert '"rest_ok": false' in out.read_text(encoding="utf-8")
+
+
 def test_results_flatten_and_unconfirmed():
     from guji_manager.review_pages import results
     docs = [{"id": "a", "how": "click", "t": 5, "pick": "X"}, {"id": "a", "how": "page_ok", "t": 3, "pick": "Y"},

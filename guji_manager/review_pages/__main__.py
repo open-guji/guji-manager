@@ -53,6 +53,7 @@ def main(argv=None):
     p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
     p.add_argument("--mode", choices=["check"], help="gold_sample：check＝核对模式（显示机器答案，只点对/错填字/看不清）")
     p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
+    p.add_argument("--no-rest-ok", action="store_true", help="char_card：不要「本页其余都对」，没点的格不算对（难认字页）")
     p.add_argument("--root", help="glyph_quality：items 里图路径的相对根（dataset 分片目录）")
     p.add_argument("--all-crops", action="store_true", help="glyph_quality：信封里已有标签的字块也上页（复核用）")
     p.add_argument("--box", type=int, help="glyph_quality：字块放大框边长（px，缺省 120）")
@@ -104,7 +105,7 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
-                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box),
+                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok),
                          ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
