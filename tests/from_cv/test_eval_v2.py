@@ -52,6 +52,8 @@ NOT_REGISTRY_SHAPED = {
                       # 各开关各跑一份的 seed_admit 产物目录，--labels 由工作区人裁事件现做，
                       # 不是数据集分片；用法见 research/context_guard/README.md
     "fold",  # 己已巳、日曰评测折叠表（A23，cv #1079）：被别的 eval_ 脚本 import 的辅助模块，没有命令行
+    "font_family",  # 字体族实测（A23，cv #1093）：三书人裁分片互为查询与库，--shard/--lib 可重复，库是剥过的本机 glyph.db 副本，
+                    # 不是单一分片位置参数；结果见 ai-team 字形领域「字体族实测」
     "ref_verify",  # 5b 验证整理本字评测（A23，cv #1088）：--shard 可重复、--dataset 指 char-clustering，
                    # 靶子是三书人裁 5b 冻结集（rare.jsonl），不是单一分片位置参数；结果见 ai-team 字形领域
     "seg_health",  # 切分体检（回退监控）：靶子是 --root 指的某批产物（--books 必填）＋中心库

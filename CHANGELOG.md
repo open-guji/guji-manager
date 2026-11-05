@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
+
 - `review-pages build char_card --no-rest-ok`（PATCH，QTW 提 #158）：难认字页没有「本页其余都对」，没点的格不算对，只存点过、改过的格；char_card 升 1.3.1。
 
 ## [0.4.3] - 2026-11-05
