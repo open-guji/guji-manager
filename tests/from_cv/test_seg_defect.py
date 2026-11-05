@@ -60,12 +60,14 @@ def test_same_char_clip():
 
 
 def test_edge_line_ink():
-    """列端边线压墨：列图上格框边线上下各 2 行、格宽以内的墨像素占比。"""
+    """列端边线压墨：列图上字块框靠版框那条边（列首 y0、列尾 y1-1）[边-2, 边+3)、框宽以内的墨占比。"""
     from guji_manager.review.seg_defect import edge_line_ink
     img = np.full((200, 100), 255, np.uint8)
-    img[100:150, 45:55] = 0                             # 一竖从 y=100 起：压在 y=100 那条线上
-    assert abs(edge_line_ink(img, 100, 0, 100) - 30 / 500) < 1e-6
-    assert edge_line_ink(img, 50, 0, 100) == 0.0
+    img[100:150, 45:55] = 0                             # 一竖从 y=100 起：压在列首格上沿
+    box = (0.0, 100.0, 100.0, 150.0)
+    assert abs(edge_line_ink(img, box, False) - 30 / 500) < 1e-6
+    assert abs(edge_line_ink(img, box, True) - 30 / 500) < 1e-6   # 下沿 149：147–149 三行有墨
+    assert edge_line_ink(img, (0.0, 20.0, 100.0, 60.0), False) == 0.0
     img[98:103, 10:90] = 0                              # 截口一片
-    assert edge_line_ink(img, 100, 0, 100) > 0.7
-    assert edge_line_ink(None, 100, 0, 100) == 0.0
+    assert edge_line_ink(img, box, False) > 0.7
+    assert edge_line_ink(None, box, False) == 0.0

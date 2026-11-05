@@ -52,7 +52,7 @@ SAME_ASPECT = 1.30   # 宽比/墨高比 ≥ 它＝只矮不窄（整字压扁的
 SAME_MIN_REF = 5     # 同字参照至少几个
 SAME_FLAT = 0.30     # 参照墨高 < 它×格高的扁字（「一」）不判：墨高只有几像素，比值不稳
 INK_THR = 160        # 墨像素：灰度 < 它
-EDGE_ROWS = 2        # 列端边线压墨：格框边线上下各几行
+EDGE_ROWS = 2        # 列端边线压墨：字块框边线上下各几行（[边-2, 边+3)）
 
 FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键")
 
@@ -89,14 +89,16 @@ def _ink_h(patch: np.ndarray | None) -> int | None:
     return None if rows.size == 0 else int(rows[-1] - rows[0] + 1)
 
 
-def edge_line_ink(col_img: np.ndarray | None, y: float, x0: float, x1: float) -> float:
-    """列端边线压墨（SJ 11-05 量法）：列图上本格靠版框那条格框边线（列首格的上边 y0、列尾格的下边 y1），
-    上下各 `EDGE_ROWS` 行、格宽以内，墨像素占比。字被切掉一截时，截口就压在这条线上。"""
-    if col_img is None or col_img.size == 0:
+def edge_line_ink(col_img: np.ndarray | None, bbox_col, bottom: bool) -> float:
+    """列端边线压墨（SJ 11-05 量法，ai-team 史記-r8-交A22/史記边线压墨量法-SJ.py）：在列图上，取本格
+    cell_shrink 字块框 `bbox_col`（不是 row_segment 格框：格框下沿常压着版框或邻字）靠版框那条边
+    （列首格上沿 y0、列尾格下沿 y1-1），上下 [边-2, 边+3) 共 5 行、框宽以内，灰度 < INK_THR 的像素占比。
+    字被切掉一截时，截口就压在这条边上。"""
+    if col_img is None or col_img.size == 0 or bbox_col is None:
         return 0.0
-    h, w = col_img.shape[:2]
-    yy, xa, xb = round(y), max(0, round(x0)), min(w, round(x1))
-    band = col_img[max(0, yy - EDGE_ROWS): min(h, yy + EDGE_ROWS + 1), xa:xb]
+    x0, y0, x1, y1 = (int(v) for v in bbox_col)
+    edge = y1 - 1 if bottom else y0
+    band = col_img[max(0, edge - EDGE_ROWS): edge + EDGE_ROWS + 1, max(0, x0): x1]
     return 0.0 if band.size == 0 else float((band < INK_THR).mean())
 
 
@@ -256,17 +258,13 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
         except Exception:                      # noqa: BLE001 —— 缺列图就不判这一类
             lines = {}
     by_col = {cc.col: cc for cc in (cells.columns if cells else [])}
-    cell_of = {(cc.col, c.slot, c.sub or None): c for cc in (cells.columns if cells else []) for c in cc.cells}
     col_imgs: dict[int, np.ndarray | None] = {}
 
     def _edge_of(col: int, r, end: str) -> float:
-        c = cell_of.get((col, r.slot, r.sub or None))
-        if c is None:
-            return 0.0
         if col not in col_imgs:
             from .._cv import column_key
             col_imgs[col] = _LineCtx(cache, book, frame_line_max_off).image("column_image", column_key(page, col))
-        return edge_line_ink(col_imgs[col], c.y1 if end == "bottom" else c.y0, c.x0, c.x1)
+        return edge_line_ink(col_imgs[col], r.bbox_col, end == "bottom")
     out: list[dict] = []
     for cc in chars.columns:
         jz = [r.height for r in cc.chars if r.sub and r.patch_key and r.height]
