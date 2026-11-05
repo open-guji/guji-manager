@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 连中心库（Neon）时带 `application_name=guji/<谁>/<命令>`（PATCH，11-05 查「Neon 一直不休眠」用）：`pg_stat_activity` 里直接看出是哪个执行方／会话在连，不改任何行为。
+
 ## [0.4.5] - 2026-11-05
 
 - 借库 `scope: human+auto`（PATCH，缺省关的新选项，A23；全唐文线提议）：人裁加看图确认过的自动刻例。依赖 cv 同名 PR（`BORROW_SCOPES`）。实测见 `doc/01-开新书/借库写法.md`。
