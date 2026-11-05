@@ -186,3 +186,24 @@ def auto_main(argv=None) -> int:
     r = auto_round(a.book, a.label, write_db=not a.dry_run)
     print(json.dumps(r, ensure_ascii=False) if r else f"{a.book} 还没有 main＝{a.label} 且包口径已统计的册")
     return 0
+
+
+def note_main_round(book: str, label: str) -> bool:
+    """标 main 后统计人审率的环境不全时（没 ai-team 检出等），也在看板「迭代轮次」占一条：这一轮已标 main、人审率待统计。
+    已有这一轮的记录就不动（统计出来后 auto-round 会补全）。写库失败只返回 False，不抛。"""
+    key = round_key(label)
+    if not (round_of(label) or re.fullmatch(r"r?\d+[a-z]?", str(label))):
+        return False
+    try:
+        from .._cv import connect
+        with connect() as conn:
+            if conn.execute("SELECT 1 FROM progress.metric WHERE book_id = %s AND vol = '' AND section = %s AND key = %s",
+                            (book, SECTION, key)).fetchone():
+                return True
+        write(rows(book, [{"key": key, "label": label_of(key), "rate": None, "verdict": "pending", "auto": True,
+                           "date": time.strftime("%Y-%m-%d", time.localtime()),
+                           "note": "已标 main，人审率待统计（标 main 的机器上没跑成包口径统计）"}]))
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"（看板没占上这一轮：{e}）")
+        return False
