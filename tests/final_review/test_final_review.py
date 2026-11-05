@@ -137,3 +137,20 @@ def test_gate_refuses_ref_placeholder_and_non_ideograph():
     ok = {"cands": {"予": ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": "予"}
     assert core.gate_ex(ok, hi("予"), hi("予"), set())["ok"]
     assert core.is_ideograph("𠀀") and core.is_ideograph("⿰") and not core.is_ideograph("ခ")
+
+
+def test_gate_allows_own_book_pua_glyph_only_with_library_and_image_witness():
+    """本书造字（史記 U+EF6E）：库里已有 >2 样本且图一致证人成立才放行；占位 ခ 库里没有，永远不放。"""
+    hi = lambda c: {"char": c, "conf": "high"}   # noqa: E731
+    pua = "\uef6e"
+    def cell(ch, gc):
+        return {"cands": {ch: ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": ch, "glyph_cands": gc}
+    good = cell(pua, [(pua, 0.99), ("三", 0.90)])
+    lib = lambda c: 6 if c == pua else 0   # noqa: E731
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lib)["ok"]
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02))["why"] == "not_ideograph"          # 没给库
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lambda c: 2)["why"] == "not_ideograph"   # 样本太少
+    weak = cell(pua, [(pua, 0.90), ("三", 0.89)])
+    assert core.gate_ex(weak, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lib)["why"] == "not_ideograph"   # 图不一致，两个来源不够
+    bur = cell("ခ", [("三", 0.99)])
+    assert core.gate_ex(bur, hi("ခ"), hi("ခ"), set(), glyph=(0.95, 0.02), lib_n=lambda c: 9)["why"] == "not_ideograph"
