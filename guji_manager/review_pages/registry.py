@@ -20,7 +20,7 @@ class PageType:
 
 
 PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
-    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.3.0",
+    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.4.0",
              "L01、L03 冷启动；同字头一张卡，看 3–5 个样例，其余跟随；逐格点选（切分/改字/看不清/对），每点即存"),
     PageType("char_grid", "字形快审表（全对点错）", "char_grid.tpl.html", "1.2.0",
              "参校字＝库首位的格；默认全对只点不对（史记冷启动 GUJI-750）"),

@@ -16,6 +16,11 @@
 .tile .cand{font:600 18px/1 var(--font-glyph);padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:2.2em}
 .tile .cand small{font:10px/1.2 var(--font-ui);color:var(--muted)}.tile .cand.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.tile .cand.sel small{color:var(--accent-fg)}
 .tiles.wide{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.tile .acts{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}.tile .acts button{font-size:12px;padding:3px 6px}
+.tile .acts button.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}
+.tile .ids{width:8em;font:16px/1 var(--font-glyph);text-align:center}
+.tile .flag{font-size:11px;color:var(--bad);border:1px solid var(--bad);border-radius:4px;padding:1px 4px}
+.tile.v-notchar{border-color:#b7791f;border-style:dashed}.tile.v-unknown{border-color:var(--muted)}
 </style>
 /*SHELL*/
 <script>
@@ -25,15 +30,19 @@ const D=/*DATA*/null;
 // 每点一下只把这一格写进 db（集合 D.coll，文档 c_<格号>），不整页重发布；「本页其余都对」时没点的样例记对。
 // 已录入的格出页前由 build --exclude 撤掉，页面上不再出现。
 const KEY="char-card-"+D.book+"-"+D.tpl_version.split(".").slice(0,2).join("."), P=D.per_page, NP=Math.max(1,Math.ceil(D.cards.length/P));
-const CYC=["seg","other","unclear","ok"], VN={seg:"切分有问题",other:"改字",unclear:"看不清",ok:"对"};
+const CYC=["seg","other","unclear","ok"], VN={seg:"切分有问题",other:"改字",unclear:"看不清",ok:"对",notchar:"不是字",unknown:"认不出"};
+// 难认字页（rest_ok=false，1.4 起）：一格一卡、不合卡、没有卡头改字；格上直接给「页上字对／切分有问题／不是字／看不清／认不出」按钮，
+// 认不出可填部件（如 亻火又），存成 unknown:<部件>；格带 seg_hint（字形线判切分）、recut（按新切分重裁过）时标出。
+const HARD=D.rest_ok===false;
 function lsRaw(k){try{const x=localStorage.getItem(k);return x?JSON.parse(x):null}catch(e){return null}}
-let st=lsRaw(KEY)||lsRaw("char-card-"+D.book+"-1.2")||lsRaw("char-card-"+D.book+"-1.1.0")||{};
+let st=lsRaw(KEY)||lsRaw("char-card-"+D.book+"-1.3")||lsRaw("char-card-"+D.book+"-1.2")||lsRaw("char-card-"+D.book+"-1.1.0")||{};
 st=Object.assign({v:{},pick:{},pickT:{},seen:0,page:0},st);st.pickT=st.pickT||{};for(const k in st.pick)if(!st.pickT[k])st.pickT[k]=Date.now();
 const savedT={}, savedK={};
-const cellVal=(c,id)=>{const x=st.v[id];if(!x)return null;return x.v==="other"?(x.pk?"pick:"+x.pk:"other"):x.v==="ok"?"pick:"+(st.pick[c.char]||c.char):x.v};
+const cellVal=(c,id)=>{const x=st.v[id];if(!x)return null;if(x.v==="unknown")return "unknown"+(x.pk?":"+x.pk:"");return x.v==="other"?(x.pk?"pick:"+x.pk:"other"):x.v==="ok"?"pick:"+(st.pick[c.char]||c.char):x.v};
 function setCell(c,id,v,pk){
   if(v)st.v[id]={v,pk:pk||"",t:Date.now()};else delete st.v[id];
   lsSet(KEY,st);queueSave();
+  if(HARD){const done=D.cards.reduce((a,c)=>a+c.samples.filter(s=>st.v[s.id]).length,0);$("stat").textContent=`已标 ${done}/${D.n_cells} 格`;$("bar").style.width=(done/Math.max(1,D.n_cells)*100)+"%"}
 }
 let timer=null,inflight=false;
 function queueSave(){if(!DB){setSync("未联网存档（只存在本浏览器）");return}clearTimeout(timer);timer=setTimeout(flush,1200)}
@@ -67,10 +76,13 @@ function pageDoc(pi){
 }
 function paint(b,c,s){
   const x=st.v[s.id];b.className="tile"+(x?" v-"+x.v:"");
-  b.querySelector(".m").textContent=x?(x.v==="other"?"改字"+(x.pk?"："+x.pk:""):VN[x.v]):((s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):""));
+  for(const e of b.querySelectorAll(".acts button"))e.classList.toggle("sel",!!(x&&x.v===e.dataset.v));
+  const ids=b.querySelector(".ids");if(ids){ids.hidden=!(x&&x.v==="unknown");if(!ids.hidden&&document.activeElement!==ids)ids.value=x.pk||""}
+  b.querySelector(".m").textContent=x?(x.v==="other"?"改字"+(x.pk?"："+x.pk:""):x.v==="unknown"?"认不出"+(x.pk?"："+x.pk:""):VN[x.v]):((s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):""));
   for(const e of b.querySelectorAll(".cand"))e.classList.toggle("sel",!!(x&&x.v==="other"&&x.pk===e.dataset.ch));
   const inp=b.querySelector(".pk");inp.hidden=!(x&&x.v==="other");if(!inp.hidden&&document.activeElement!==inp)inp.value=x.pk||"";
 }
+const s0=c=>c.samples[0]||{id:""};
 function render(){
   st.page=Math.min(Math.max(0,st.page),NP-1);
   const L=$("list");L.textContent="";
@@ -82,7 +94,7 @@ function render(){
     inp.oninput=()=>{const v=inp.value.trim();if(v)st.pick[c.char]=v;else delete st.pick[c.char];st.pickT[c.char]=Date.now();lsSet(KEY,st);queueSave()};
     const meta=document.createElement("div");meta.className="stat";meta.textContent=`共 ${c.n} 格，看 ${c.samples.length} 格，其余 ${c.followers.length} 格跟随`;
     const tg=document.createElement("div");tg.className="tags";for(const k of c.kinds){const t=document.createElement("span");t.className="tag";t.textContent=D.kind_names[k]||k;tg.appendChild(t)}
-    hd.append(big,inp,meta,tg);
+    if(HARD){meta.textContent=s0(c).id;hd.append(big,meta,tg)}else hd.append(big,inp,meta,tg);
     const g=document.createElement("div");g.className="tiles"+(c.samples.some(s=>s.ctx||s.note||(s.cands&&s.cands.length))?" wide":"");
     for(const s of c.samples){
       const b=document.createElement("div");b.setAttribute("role","button");b.tabIndex=0;b.title=s.id;
@@ -99,13 +111,30 @@ function render(){
       for(const cd of s.cands||[]){
         const [ch,src]=Array.isArray(cd)?cd:[cd.ch,cd.src];if(!ch)continue;
         const bt=document.createElement("button");bt.type="button";bt.className="cand";bt.dataset.ch=ch;bt.title=src?"来源："+src:"";
-        bt.append(document.createTextNode(ch));if(src){const sm=document.createElement("small");sm.textContent=Array.isArray(src)?src.join("、"):src;bt.appendChild(sm)}
+        bt.append(document.createTextNode(ch));if(src){const sm=document.createElement("small");const st_=Array.isArray(src)?src.join("、"):src;
+          // 难认字页：来源串太长，只显示命中几路（＋末尾分数），全串在悬停提示里
+          if(HARD){const n=st_.split(/[·、；]/).filter(x=>x.trim()&&!/^[0-9. ]+$/.test(x)).length,sc=(st_.match(/ ([0-9.]+)$/)||[])[1];sm.textContent=n+" 路"+(sc?" "+sc:"")}else sm.textContent=st_;bt.appendChild(sm)}
         bt.onclick=e=>{e.stopPropagation();const x=st.v[s.id];if(x&&x.v==="other"&&x.pk===ch)setCell(c,s.id,null);else setCell(c,s.id,"other",ch);paint(b,c,s)};
         bt.onkeydown=e=>e.stopPropagation();cs.appendChild(bt);
       }
-      b.append(sg,w,m,pk);if(s.ctx)b.append(cx);if(cs.childNodes.length)b.append(cs);if(s.note)b.append(nt);
+      b.append(sg,w,m,pk);
+      if(s.seg_hint||s.recut){const fl=document.createElement("div");fl.className="cs";
+        for(const t of [s.seg_hint&&("疑似切分："+s.seg_hint),s.recut&&("已按新切分重裁"+(s.recut===true?"":"："+s.recut))].filter(Boolean)){const e=document.createElement("span");e.className="flag";e.textContent=t;fl.appendChild(e)}
+        b.append(fl)}
+      if(s.ctx)b.append(cx);if(cs.childNodes.length)b.append(cs);
+      if(HARD){
+        const ac=document.createElement("div");ac.className="acts";
+        for(const [v,t] of [["ok","页上字对"],["seg","切分有问题"],["notchar","不是字"],["unclear","看不清"],["unknown","认不出"]]){
+          const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=t;bt.onkeydown=e=>e.stopPropagation();
+          bt.onclick=e=>{e.stopPropagation();const x=st.v[s.id];if(x&&x.v===v)setCell(c,s.id,null);else setCell(c,s.id,v,"");paint(b,c,s);if(v==="unknown")ids.focus()};
+          ac.appendChild(bt)}
+        const ids=document.createElement("input");ids.type="text";ids.className="ids";ids.placeholder="能看出的部件";ids.hidden=true;ids.setAttribute("aria-label","认不出：能看出的部件");
+        ids.onclick=e=>e.stopPropagation();ids.onkeydown=e=>e.stopPropagation();
+        ids.oninput=()=>{setCell(c,s.id,"unknown",ids.value.trim());paint(b,c,s)};
+        b.append(ac,ids)}
+      if(s.note)b.append(nt);
       const cyc=()=>{const x=st.v[s.id],i=x?CYC.indexOf(x.v):-1,nv=CYC[i+1]||null;setCell(c,s.id,nv,nv==="other"?(x&&x.pk)||"":"");paint(b,c,s);if(nv==="other")pk.focus()};
-      b.onclick=cyc;b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();cyc()}};
+      if(HARD)b.onclick=null;else b.onclick=cyc;if(!HARD)b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();cyc()}};
       paint(b,c,s);g.appendChild(b);
     }
     box.append(hd,g);L.appendChild(box);
@@ -115,10 +144,14 @@ function render(){
   $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
   $("hint").textContent="每张卡是同一个建议字的几个样例。点格子循环：1 切分有问题 → 2 改字（在格下填这格是什么字）→ 3 看不清 → 4 对 → 再点取消。每点一下就存后台。点「本页其余都对」时没点的样例记对；整卡都不是这个字就在卡头框里改字。样例有不对的卡，其余跟随格不放，退回逐格审。";
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
-  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页其余都对，完成":"本页其余都对，下一页";
+  if(D.rest_ok===false){
+    for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"保存已改的格":"保存已改，下一页";
+    $("hint").textContent="难认字页：一格一张卡，没点的格不算对。点候选＝改成该字，或在格下框里填字；也可点「页上字对／切分有问题／不是字／看不清／认不出」，认不出可填能看出的部件（如 亻火又）。每点一下就存后台，页顶显示「已存后台」即可；按钮只是再存一遍、翻页。";
+    const done=D.cards.reduce((a,c)=>a+c.samples.filter(s=>st.v[s.id]).length,0);$("stat").textContent=`已标 ${done}/${D.n_cells} 格`;$("bar").style.width=(done/Math.max(1,D.n_cells)*100)+"%";
+  }else for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页其余都对，完成":"本页其余都对，下一页";
   lsSet(KEY,st);
 }
-function next(){saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});render();scrollTo(0,0)}
+function next(){if(D.rest_ok===false){clearTimeout(timer);flush();st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;render();scrollTo(0,0);return}saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});render();scrollTo(0,0)}
 for(const id of ["next","next2"])$(id).onclick=next;
 for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
 $("export").onclick=()=>showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});
@@ -132,6 +165,7 @@ initDB(async()=>{
     if(!x||!d.id.startsWith("c_")||!x.id||!x.v)continue;
     savedT[x.id]=x.t||0;
     if(st.v[x.id]&&(st.v[x.id].t||0)>=(x.t||0))continue;
+    if(x.v.startsWith("unknown")){st.v[x.id]={v:"unknown",pk:x.v.slice(8),t:x.t||0};ch=true;continue}
     const v=x.v.startsWith("pick:")?(x.v.slice(5)===x.card?"ok":"other"):x.v;
     st.v[x.id]={v,pk:v==="other"&&x.v.startsWith("pick:")?x.v.slice(5):"",t:x.t||0};ch=true;
   }

@@ -4,6 +4,17 @@
 
 ## [未发版]
 
+## [0.4.4] - 2026-11-05
+
+- 借库新写法 `glyph_lib.borrow: [{from, scope: human, pin: N}]`（PATCH，缺省关的新功能，A23；借库参照方案缺口 1、2）：`scope: human` 只借被借库人裁；`pin` 钉被借库字形库快照 g<N>（`pinned_lender_copy`，一次拼好不再连网），`borrow_fingerprint` 带记号，快照清单记 `borrow_how`。旧写法与缺省借法逐位不变。依赖 cv #1095（`borrowed_store`）。说明见 `doc/01-开新书/借库写法.md`。
+- 局部改号表第二版（cv #1081）：认「新sub」列（夹注 a/b 可改）；多个旧格对上同一新格（多对一）表里放行，库里真有两个实例落到同一新 id 才拒（PATCH）。
+
+- 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
+
+- 人审页 `char_card` 1.4.0 难认字页（PATCH，QTW，sheldon 11-05 反馈、A31 同意）：`--no-rest-ok` 时一格一卡、不合卡、去掉卡头改字（免得一改改整卡）；格上直接给「页上字对／切分有问题／不是字／看不清／认不出」按钮，认不出可填能看出的部件，存 `unknown:<部件>`，`expand` 出 status=unknown＋parts、notchar；items 可带 `seg_hint`（疑似切分）、`recut`（按新切分重裁）标在格上；页顶显示已标格数。本机暂存键兼容 1.3。
+
+- `review-pages build char_card --no-rest-ok`（PATCH，QTW 提 #158）：难认字页没有「本页其余都对」，没点的格不算对，只存点过、改过的格；char_card 升 1.3.1。
+
 ## [0.4.3] - 2026-11-05
 
 - 人审页 `near_pair` 1.0.1、`lib_audit` 1.0.1：字块图改用共用定框放大件 `glyphBox`（PATCH，A23；A22 #163 共用件）。
