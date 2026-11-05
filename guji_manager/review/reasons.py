@@ -26,6 +26,9 @@ HARD_CHARS = frozenset("日曰己已巳")
 LIB_SPARSE = 2
 #: 同页无对位（或弱证据）格 ≥ PAGE_MIN 算整页对不上；同列无对位 ≥ COL_MIN 算整列对不上
 PAGE_MIN, COL_MIN = 10, 5
+#: 弱证据格（有参校字、机器字不同）只在「本列大多对不上」时才算进整页对不上：本列有参校字的格里机器字＝参校字的比例
+#: 低于这个数。真错位的列几乎全不一致；半色调／褪色页对位是对的、只是认不准，列一致率多在 0.6 以上，不归 S01（A22 11-05）
+COL_AGREE_MAX = 0.5
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
 
@@ -57,6 +60,7 @@ class Cell:
     ref_right: str = ""
     pua_code: str | None = None                        # 整理本这位的私用码永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001），没有就空；glyph_pending 凭它判
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
+    col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
 
     @property
     def codes(self) -> set[str]:
@@ -106,7 +110,8 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
             ctx.page_noref[_page(c.id)] += 1
             if c.ref is None or not ref_missing(c.ref):
                 ctx.col_noref[_col(c.id)] += 1
-        elif c.char != c.ref and not c.group and "occluded" not in c.codes:
+        elif c.char != c.ref and not c.group and "occluded" not in c.codes \
+                and (c.col_agree is None or c.col_agree < COL_AGREE_MAX):
             ctx.page_weak[_page(c.id)] += 1
     return ctx
 
@@ -153,7 +158,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
     R.SEG_PAGE_UNALIGNED: lambda c, x: (not c.has_ref and x.page_noref[_page(c.id)] >= PAGE_MIN)
-        or (c.has_ref and c.char != c.ref and not c.group and x.page_weak[_page(c.id)] >= PAGE_MIN),
+        or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
+            and x.page_weak[_page(c.id)] >= PAGE_MIN),
     R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
     R.HARD_PAIR: lambda c, x: (lambda s: len(s) >= 2 and s <= HARD_CHARS)({v for v in (c.ref, c.char, c.top) if v}),
     R.GROUP_ABSTAIN: lambda c, x: _group_kind(c) is R.GROUP_ABSTAIN,
@@ -282,6 +288,10 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
         for col in seed.get("columns", []):
+            hit = [ch.get("char") == ref[ch["id"]][0] for ch in col.get("chars", [])
+                   if "excluded" not in (ch.get("doubts") or []) and ref.get(ch["id"], (None,))[0]
+                   and not ref_missing(ref[ch["id"]][0])]
+            agree = sum(hit) / len(hit) if hit else None
             for ch in col.get("chars", []):
                 if ch.get("admit") or "excluded" in (ch.get("doubts") or []):
                     continue
@@ -289,7 +299,8 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                 r, op = ref.get(cid, (None, None))
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
-                                                 pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"))
+                                                 pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
+                                                 col_agree=agree)
                 if ref_missing(r) and cid in at:
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
