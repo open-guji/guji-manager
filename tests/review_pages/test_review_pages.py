@@ -92,6 +92,9 @@ def test_every_template_builds(t, tmp_path):
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
         "closeout": [dict(id="S02", label="切分", n=12, pre="再处理", examples=["vol1:1:1:1"])],
+        "near_pair": [dict(key="畫書", a="畫", b="書", ex_a=[["i1", str(img)]], ex_b=[["i2", str(img)]],
+                           cells=[dict(id="1:1:1:1", img=str(img), inst=True, cur="畫")])],
+        "lib_audit": [dict(char="官", tiles=[dict(id="1:1:1:1", img=str(img))])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
     }[t]
     out = tmp_path / "p.html"
@@ -361,3 +364,99 @@ def test_gold_strip_and_check_mode(tmp_path):
     B.build("gold_sample", [it], "b", tmp_path / "g.html", mode="check")
     h = (tmp_path / "g.html").read_text(encoding="utf-8")
     assert '"mode": "check"' in h and h.count("data:image/png;base64,") >= 3
+
+
+# ── near_pair / lib_audit（A23 11-05）────────────────────────────────────────
+def _np_items():
+    return [dict(key="畫書", a="畫", b="書", ex_a=[["i1", PNG_PATH_PLACEHOLDER]], ex_b=[["i2", PNG_PATH_PLACEHOLDER]],
+                 cells=[dict(id="v2:vol01:1:1:1", img=PNG_PATH_PLACEHOLDER, inst=True, cur="畫"),
+                        dict(id="v2:vol01:1:1:2", img=PNG_PATH_PLACEHOLDER, inst=False),
+                        dict(id="v2:vol01:1:1:3", img=PNG_PATH_PLACEHOLDER, inst=False),
+                        dict(id="v2:vol01:1:1:4", img=PNG_PATH_PLACEHOLDER, inst=False)])]
+
+
+PNG_PATH_PLACEHOLDER = ""
+
+
+def test_near_pair_build_and_events(tmp_path):
+    from guji_manager.review_pages import pair_audit as PA
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = _np_items()
+    for g in items:
+        g["ex_a"] = [[t[0], str(img)] for t in g["ex_a"]]; g["ex_b"] = [[t[0], str(img)] for t in g["ex_b"]]
+        for c in g["cells"]:
+            c["img"] = str(img)
+    out = tmp_path / "np.html"
+    st = B.build("near_pair", items, "b1", out)
+    assert st["pairs"] == 1 and st["cells"] == 4 and st["page_type"] == "near_pair"
+    side = json.loads(out.with_suffix(".items.json").read_text(encoding="utf-8"))
+    assert "img" not in side[0]["cells"][0] and "ex_a" not in side[0]
+    docs = [dict(id="v2:vol01:1:1:1", pair="畫書", how="click", v="b", t=1),        # 库里标畫，人定書 → relabel
+            dict(id="v2:vol01:1:1:1", pair="畫書", how="click", v="a", t=2),        # 后写覆盖：改回畫＝认同，不出事件
+            dict(id="v2:vol01:1:1:2", pair="畫書", how="click", v="b", t=1),        # 待审格 → confirm
+            dict(id="v2:vol01:1:1:3", pair="畫書", how="click", v="neither", pick="盡", t=1),
+            dict(id="v2:vol01:1:1:4", pair="畫書", how="click", v="unclear", t=1)]
+    decs = PA.near_pair_decisions(side, docs)
+    assert {d["id"]: d["status"] for d in decs} == {"v2:vol01:1:1:1": "pick", "v2:vol01:1:1:2": "pick",
+                                                    "v2:vol01:1:1:3": "pick", "v2:vol01:1:1:4": "unclear"}
+    sp = PA.to_specs(decs, "b1", "t")
+    got = {s["key"]: (s["kind"], s["payload"].get("v"), s["payload"].get("char") or s["payload"].get("shape")) for s in sp}
+    assert got == {"v2:vol01:1:1:2": ("confirm", "confirm", "書"), "v2:vol01:1:1:3": ("confirm", "confirm", "盡")}
+
+
+def test_near_pair_exclude(tmp_path):
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = _np_items()
+    for g in items:
+        g["ex_a"] = []; g["ex_b"] = []
+        for c in g["cells"]:
+            c["img"] = str(img)
+    st = B.build("near_pair", items, "b1", tmp_path / "x.html", exclude={"v2:vol01:1:1:1", "v2:vol01:1:1:2"})
+    assert st["cells"] == 2 and st["excluded"] == 2
+    st = B.build("near_pair", items, "b1", tmp_path / "y.html", exclude={c["id"] for c in items[0]["cells"]})
+    assert st["pairs"] == 0
+
+
+def test_lib_audit_build_and_events(tmp_path):
+    from guji_manager.review_pages import pair_audit as PA
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = [dict(char="官", tiles=[dict(id="v2:vol01:1:1:1", img=str(img)), dict(id="v2:vol01:1:1:2", img=str(img)),
+                                    dict(id="v2:vol01:1:1:3", img=str(img)), dict(id="v2:vol01:1:1:4", img=str(img))])]
+    out = tmp_path / "la.html"
+    st = B.build("lib_audit", items, "b1", out)
+    assert st["groups"] == 1 and st["tiles"] == 4
+    side = json.loads(out.with_suffix(".items.json").read_text(encoding="utf-8"))
+    docs = [dict(id="v2:vol01:1:1:1", char="官", how="click", v="relabel", to="宫", t=1),
+            dict(id="v2:vol01:1:1:2", char="官", how="click", v="relabel", to="官", t=1),      # 改成自己＝无效
+            dict(id="v2:vol01:1:1:3", char="官", how="click", v="evict", t=1),
+            dict(id="v2:vol01:1:1:4", char="官", how="click", v="near_form", to="宮", t=1),
+            dict(id="nope", char="官", how="click", v="evict", t=1)]
+    decs = PA.lib_audit_decisions(side, docs)
+    assert [d["status"] for d in decs] == ["relabel", "evict", "near_form"]
+    sp = PA.to_specs(decs, "b1", "t")
+    assert [s["payload"]["v"] for s in sp] == ["relabel", "evict", "near_form"]
+    assert sp[0]["payload"]["char"] == "宫" and sp[2]["payload"]["peer_char"] == "宮"
+    assert all(s["kind"] == "glyph_audit" and s["payload"]["instance_id"] == s["key"] for s in sp)
+
+
+def test_cli_pair_events(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = [dict(char="官", tiles=[dict(id="v2:vol01:1:1:1", img=str(img))])]
+    out = tmp_path / "la.html"
+    B.build("lib_audit", items, "b1", out)
+    res = tmp_path / "res"; res.mkdir()
+    (res / "x.json").write_text(json.dumps(dict(id="v2:vol01:1:1:1", char="官", how="click", v="evict", t=1)), encoding="utf-8")
+    ev = tmp_path / "ev.jsonl"
+    main(["pair-events", "lib_audit", "--items", str(out.with_suffix(".items.json")), "--results", str(res),
+          "--book", "b1", "--out", str(ev)])
+    rows = [json.loads(l) for l in ev.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["kind"] == "glyph_audit" and rows[0]["payload"]["v"] == "evict"
+    assert "dry-run" in capsys.readouterr().out
+
+
+def test_pair_audit_ignores_unconfirmed_docs():
+    from guji_manager.review_pages import pair_audit as PA
+    items = [dict(key="畫書", a="畫", b="書", cells=[dict(id="c1", inst=False)])]
+    assert PA.near_pair_decisions(items, [dict(id="c1", pair="畫書", v="a", t=1)]) == []      # 没有 how＝没确认
+    assert PA.near_pair_decisions(items, [dict(id="c1", pair="另一对", how="click", v="a", t=1)]) == []

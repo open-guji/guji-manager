@@ -12,6 +12,9 @@
   cp-items   --groups groups.json --cache DIR --out items.jsonl   按组看图的 groups.json → 码位定夺页 items
   unconfirmed --items items.jsonl --results DIR   列出还没确认的项（逐项文档里没有、也没翻过去的）
   closeout-sum --results DIR                  收口单：各去向的格数合计
+  pair-events TYPE --items X.items.json --results DIR --book B --out events.jsonl [--apply --batch 批名 --reviewer 名]
+                                            形近字对比卡（near_pair）/库内刻例审阅卡（lib_audit）结果 → relabel/evict/near_form/confirm 事件；
+                                            缺省只写说明文件复核，--apply 才追加本机事件日志（推库、出 g 另要用户点头）
   cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
 """
 from __future__ import annotations
@@ -63,6 +66,11 @@ def main(argv=None):
     p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
     p = sub.add_parser("closeout-sum"); p.add_argument("--results", required=True)
+    p = sub.add_parser("pair-events"); p.add_argument("type", choices=["near_pair", "lib_audit"])
+    p.add_argument("--items", required=True); p.add_argument("--results", required=True)
+    p.add_argument("--book", required=True); p.add_argument("--out", required=True)
+    p.add_argument("--source", default="review_pages"); p.add_argument("--apply", action="store_true")
+    p.add_argument("--batch"); p.add_argument("--reviewer")
     a = ap.parse_args(argv)
 
     from . import build as build_mod, cards, ledger, preselect
@@ -144,6 +152,28 @@ def main(argv=None):
         for d in results.flatten(_docs(a.results)).values():
             tot[d.get("pick")] = tot.get(d.get("pick"), 0) + (d.get("n") or 0)
         print(json.dumps(tot, ensure_ascii=False))
+    elif a.cmd == "pair-events":
+        from . import pair_audit
+        items = json.loads(Path(a.items).read_text(encoding="utf-8"))
+        docs = pair_audit.read_docs(a.results)
+        fn = pair_audit.near_pair_decisions if a.type == "near_pair" else pair_audit.lib_audit_decisions
+        decs = fn(items, docs)
+        specs = pair_audit.to_specs(decs, a.book, f"{a.source}:{a.type}")
+        _write_jsonl(a.out, specs)
+        from collections import Counter
+        print({"decisions": dict(Counter(r["status"] for r in decs)),
+               "events": {f"{k[0]}/{k[1]}": n for k, n in Counter((s_["kind"], s_["payload"].get("v")) for s_ in specs).items()}})
+        if a.apply:
+            if not a.batch:
+                sys.exit("--apply 需要 --batch 批名")
+            from .._cv import EventLog, EventTarget, make_event
+            log = EventLog()
+            base = log.latest_seq(a.batch) + 1
+            evs = [make_event(a.batch, base + k, s_["kind"], EventTarget(step=s_["step"], unit="cell", key=s_["key"], book=s_["book"]),
+                              s_["payload"], actor="user", reviewer=a.reviewer) for k, s_ in enumerate(specs)]
+            print(f"追加 {log.append(evs)} 条到批 {a.batch}（还没消费；消费 route_and_consume，推库要用户点头）")
+        else:
+            print(f"dry-run：说明文件 → {a.out}；--apply --batch 批名 才追加事件日志")
     elif a.cmd == "ledger":
         path = Path(a.ledger) if a.ledger else ledger.default_path()
         if a.action == "add":
