@@ -187,11 +187,28 @@ def _line(j: dict) -> str:
     return head if why is None else f"{head}\n      ↳ {_TAG[j['status']]}：{why}"
 
 
+def _central_rev() -> int | None:
+    """中心库当前 rev（进指纹，册配置改了的单不被判重复）；连不上返回 None 并提示（退回旧指纹，要重跑就加 --again）。"""
+    try:
+        from ..datastore.connect import connect
+        from ..datastore.importer import current_rev
+        with connect() as conn, conn.cursor() as cur:
+            return int(current_rev(cur))
+    except BaseException as e:  # noqa: BLE001 —— SystemExit（没配连库）也接住
+        print(f"⚠ 取不到中心库 rev（{type(e).__name__}），指纹不含册配置版本；只改了册配置的单请加 --again", file=sys.stderr)
+        return None
+
+
 def cmd_job(a) -> None:
     act = a.job_action
     if act == "submit":
         try:
-            spec = SP.normalize(_spec_from_args(a))
+            raw = _spec_from_args(a)
+            if raw.get("db_rev") is None:
+                rev = _central_rev()
+                if rev is not None:
+                    raw["db_rev"] = rev
+            spec = SP.normalize(raw)
         except SP.SpecError as e:
             sys.exit(f"✗ {e}")
         h = SP.spec_hash(spec)

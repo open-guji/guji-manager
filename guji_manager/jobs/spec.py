@@ -25,6 +25,9 @@
                     铺底包后先 `guji recheck <册> --glyph-diff N` 点名，再从 glyph_match 起增量跑；
                     缺省 steps.from=glyph_match、force=false（定字层增量跟进，A32 精校前移 A4，2026-10-30）
 
+    db_rev          提交时中心库的 rev（整数）；`guji job submit` 自动填（连不上库就不填）。进指纹：册 yaml 等改了、spec 没变的单
+                    不再被判成重复（11-05 史記 #831/#833）。不给就不出这个键：老任务的指纹不变
+
 不进指纹：why、priority、output（换个包名也是同一次计算）、cv_ref（已解析成提交）。
 """
 from __future__ import annotations
@@ -76,7 +79,7 @@ def _override_keys() -> set[str]:
     return {f.name for f in dataclasses.fields(BookSpec)} - FORBIDDEN_IN_OVERRIDE
 _KEYS = {"kind", "book", "cv", "cv_ref", "pipeline", "steps", "pages", "force", "no_reuse", "book_overrides",
          "pin_args", "base", "checks", "env", "params", "compare_to", "output", "run", "ws_glob", "ws_repo", "why",
-         "glyph_diff"}
+         "glyph_diff", "db_rev"}
 _NOT_HASHED = ("why", "output", "cv_ref", "ws_repo")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
 
 
@@ -126,6 +129,12 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         s["glyph_diff"] = gd
     else:
         s.pop("glyph_diff", None)      # 不给就不出这个键：老任务的指纹不变
+    dr = s.get("db_rev")
+    if dr is not None:
+        if isinstance(dr, bool) or not isinstance(dr, int) or dr < 0:
+            raise SpecError("db_rev 是中心库 rev（非负整数）")
+    else:
+        s.pop("db_rev", None)
     st = s.get("steps") or {}
     if not isinstance(st, dict) or set(st) - {"from", "to"}:
         raise SpecError('steps 写成 {"from": 起步, "to": 止步}')

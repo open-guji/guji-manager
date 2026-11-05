@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 任务库去重认中心库 rev（PATCH，A31；11-05 史記 #831/#833 撞上，A30 查明）：spec 新字段 `db_rev`（进指纹），`guji job submit` 提交时自动填中心库当前 rev（连不上就不填并提示加 --again）。册 yaml 改了、spec 没变的单不再被判成重复。不给 db_rev 的老任务指纹不变。
 - 待收字出单接线（PATCH，A24；承接 #192，A31 同意「窗口回查」方案）：`book_cells` 给整理本缺字格算前后各 20 字的整理本窗口；`reasons_for_pending` 加 `glyph_pending`（登记表，缺省读数据目录 `config/pua/glyph_pending_codes.json`（A31 定，不放语料版本以免动 corpus 指纹；读不到＝空表＝全走 `ref_lacuna`，和改前一样））与 `pua_resolve`（缺省用 cv `utils.pua_lookup.resolve_pua_code` 按窗口回查殆知阁源文件里的原码位 `daizhige:U+XXXX`；旧 cv 没有这个模块或源文件读不到则不回查），回查到的码在登记表里才记 `glyph_pending`，回查不到／没登记仍 `ref_lacuna`。不动 Step、不改指纹；登记表文件由 A31 推中心库。控制台待审卡（`stamp_cards`）暂不接。回查索引按语料目录缓存（同一目录只读一遍源文件）。**眼下只有殆知阁码（`daizhige:U+Exxx`）能经窗口回查落到格上，登记表里 114 个 `siku-qiefen-v2:U+F1xxx` 的图源码暂不起作用**（没有对应的回查途径）。风险：判成 `glyph_pending` 的格不派人审，回查错了会把格悄悄藏起来；`reasons_for_pending(stats=Counter())` 记 `glyph_pending_by_window`（按窗口回查判成待收字的格数），出单报告要单列，第一次上线抽 20 格看图。
 
 ## [0.4.8] - 2026-11-05
