@@ -22,6 +22,7 @@ from guji_manager.datastore.workcopy import (BorrowSpec, borrow_dir, borrow_entr
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
     monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GUJI_CACHE_DIR", str(tmp_path / "cache-root"))      # 建库的派生缓存别写进 cv 仓
     for k in ("GUJI_WORKSPACE", "GUJI_GLYPH_DB", "GUJI_GLYPH_STORE", "GUJI_FEEDBACK_DIR"):
         monkeypatch.delenv(k, raising=False)
 
