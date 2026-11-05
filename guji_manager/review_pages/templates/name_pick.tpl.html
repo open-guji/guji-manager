@@ -1,0 +1,36 @@
+<title>专名待确认</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.ctx{font:16px/1.8 var(--font-glyph)}.row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;align-items:flex-start}
+.cand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;max-width:240px}.cand b{font:600 18px/1.2 var(--font-glyph)}
+.cand small{color:var(--muted);font-size:11px}.cand.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.cand.sel small{color:var(--accent-fg)}
+.cand.pre::after{content:"预选";font-size:10px;opacity:.8}
+select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*//*PAGER_JS*/
+// 每项一处待定专名：候选带实体 id＋简介；结果分三种：entity（选实体 id）、new_candidate（填新候选名）、remove（去掉标记）
+const OTHER=[["new_candidate","新候选名（库里没有）"],["remove","不是专名，去掉标记"]];
+makePager({key:"namepick",prefix:"n",all:D.items,per:D.per_page,filterKey:"type",filters:[...new Set(D.items.map(x=>x.type).filter(Boolean))],
+  hintText:D.hint||"点选正确的实体（已按预选选好，候选下面是简介）；都不对就选下面两项之一。拿不准勾存疑。",
+  draw(it,box,v,save){
+    const pick=()=>v.kind?(v.kind==="entity"?v.val:"__"+v.kind+"__"):it.pre;
+    const hd=document.createElement("div");hd.className="stat";hd.textContent=`${it.id} · ${it.type||""} · ${it.span||""}`;
+    const cx=document.createElement("div");cx.className="ctx";hl(cx,(it.left||"")+(it.span||"〔？〕")+(it.right||""),it.span,it.span?[(it.left||"").length,(it.left||"").length+it.span.length]:null);
+    const rw=document.createElement("div");rw.className="row";
+    const sync=()=>{for(const x of rw.querySelectorAll(".cand"))x.classList.toggle("sel",x.dataset.id===(v.kind?(v.kind==="entity"?v.val:"__"+v.kind+"__"):it.pre))};
+    for(const c of it.cands||[]){const bt=document.createElement("button");bt.className="cand"+(it.pre===c.id?" pre":"");bt.dataset.id=c.id;
+      const n=document.createElement("b");n.textContent=c.name||c.id;const s=document.createElement("small");s.textContent=c.id+(c.brief?"　"+c.brief:"")+((c.src||[]).length?"　来源："+c.src.join("、"):"");
+      bt.append(n,s);bt.onclick=()=>{v.kind="entity";v.val=c.id;save();sync()};rw.appendChild(bt)}
+    for(const [k,t] of OTHER){const bt=document.createElement("button");bt.className="cand";bt.dataset.id="__"+k+"__";const n=document.createElement("b");n.textContent=t;bt.append(n);
+      bt.onclick=()=>{v.kind=k;save();sync()};rw.appendChild(bt)}
+    const oi=document.createElement("input");oi.type="text";oi.placeholder="填实体 id 或新候选名";oi.size=18;oi.value=v.val&&v.kind!=="entity"?v.val:"";
+    oi.oninput=()=>{if(v.kind==="entity"||!v.kind)v.kind=/^[A-Za-z0-9_:.-]+$/.test(oi.value)?"entity":"new_candidate";v.val=oi.value;save();sync()};rw.appendChild(oi);
+    const rv=document.createElement("label");const ck=document.createElement("input");ck.type="checkbox";ck.checked=!!v.review;ck.onchange=()=>{v.review=ck.checked;save()};rv.append(ck," 存疑");rw.appendChild(rv);
+    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.size=20;nt.value=v.note||"";nt.oninput=()=>{v.note=nt.value;save()};rw.appendChild(nt);
+    box.append(hd,cx,rw);sync();
+  },
+  doc(it,v){const k=v.kind||"entity",val=v.kind?v.val:it.pre;return {id:it.id,pre:it.pre,pick:k==="entity"?val:"__"+k+"__",pick_kind:k,value:val||"",type:it.type||null,span:it.span||null,review:!!v.review,note:v.note||""}}});
+</script>
