@@ -3,9 +3,11 @@
 输入统一用 items（jsonl 或 json 列表），每项字段按页型：
   char_card / char_grid：{id, pre(预选字), pre_conf?, kind?, img(图文件路径或 data URI), cov?}
     img 用 crop.py 按 cell_shrink 字框裁（不要按 row_segment 的 quad 裁，会带进边框线）
-  pair_whitelist：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
+  pair_whitelist：{key, label?, pre?(选项之一), n?(全组格数), hint?, tiles:[[格号, 图, 说明?, {left,right,ref_char}?]]}
+    tile 带上下文时逐格点同字/不同字/看不清，每组页尾显示同字率（pair.py 的 sample_groups 按组各抽 30 格出这个格式）
   codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
-             rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
+             glyphs?:{字:图}（字体缺字时候选的字形图，如私用码）,
+             rows:{字:{adm?, kr?, img?(同 glyphs), tiles:[[格号, 图]…]}}}（见 codepoint.py）
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
   near_pair：{key, a, b, ex_a:[[实例号, 图]…], ex_b:[…], diff?(差异区高亮图), cells:[{id, img, ctx?, sa?, sb?, inst?(是库里的刻例), cur?(现标的字)}]}
   lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?}]}（id 是库里的实例号）
@@ -134,7 +136,9 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
                 cp_mod.parse_pick(g["pre"])
             rows = {c: dict(r, tiles=[[t[0], embed(t[1])] for t in r.get("tiles", [])])
                     for c, r in (g.get("rows") or {}).items()}
-            gs.append(dict(g, rows=rows))
+            gl = {c: embed(u) for c, u in (g.get("glyphs") or {}).items()}
+            rows = {c: (dict(r, img=embed(r["img"])) if r.get("img") else r) for c, r in rows.items()}
+            gs.append(dict(g, rows=rows, **({"glyphs": gl} if gl else {})))
         data = {"book": book, "per_page": pp, "groups": gs, "hint": hint}
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp),
                 "tiles": sum(len(r["tiles"]) for g in gs for r in g["rows"].values())}

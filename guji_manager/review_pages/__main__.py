@@ -15,6 +15,8 @@
   pair-events TYPE --items X.items.json --results DIR --book B --out events.jsonl [--apply --batch 批名 --reviewer 名]
                                             形近字对比卡（near_pair）/库内刻例审阅卡（lib_audit）结果 → relabel/evict/near_form/confirm 事件；
                                             缺省只写说明文件复核，--apply 才追加本机事件日志（推库、出 g 另要用户点头）
+  pair-items --cells cells.jsonl --out items.jsonl [-n 30] [--seed S]   字对白名单抽样：每组稳定抽 n 格带前后文 → pair_whitelist items
+  pair-apply --results DIR [--min-rate 1.0] [--min-judged 30]            白名单页结果 → 每组同字率＋可入白名单的组
   cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
   build glyph_quality --items <分片>/items.jsonl --root <分片> ...   字块质量页；可直接吃 dataset 金标信封（--all-crops 连已标的也上）
   gq-apply   --results DIR --out F [--shard items.jsonl --why …]   字块质量结果 → 标签 jsonl；给 --shard 则按（格号, sha）回写信封
@@ -70,6 +72,11 @@ def main(argv=None):
     p = sub.add_parser("gq-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p.add_argument("--shard", help="dataset 金标信封 items.jsonl；给了就回写成同样格式")
     p.add_argument("--why", default="字块质量页（glyph_quality）人点")
+    p = sub.add_parser("pair-items"); p.add_argument("--cells", required=True); p.add_argument("--out", required=True)
+    p.add_argument("-n", type=int, default=30); p.add_argument("--seed", default="pair-whitelist")
+    p.add_argument("--min-cells", type=int, default=1); p.add_argument("--pre", help="预选 json {组: 同字|不同字|不确定}")
+    p = sub.add_parser("pair-apply"); p.add_argument("--results", required=True)
+    p.add_argument("--min-rate", type=float, default=1.0); p.add_argument("--min-judged", type=int, default=30)
     p = sub.add_parser("cp-apply"); p.add_argument("--results", required=True); p.add_argument("--who", default="用户")
     p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
@@ -155,6 +162,22 @@ def main(argv=None):
             _write_jsonl(a.out, rs)
             from collections import Counter
             print(len(rs), dict(Counter(r["label"] for r in rs)))
+    elif a.cmd == "pair-items":
+        from . import pair
+        pre = json.loads(Path(a.pre).read_text(encoding="utf-8")) if a.pre else None
+        its = pair.sample_groups(build_mod.read_items(a.cells), a.n, a.seed, pre, a.min_cells)
+        _write_jsonl(a.out, its)
+        print(f"{len(its)} 组，{sum(len(g['tiles']) for g in its)} 格 → {a.out}")
+    elif a.cmd == "pair-apply":
+        from . import pair
+        rows = pair.rates(_docs(a.results))
+        for r in rows:
+            rt = "—" if r["rate"] is None else f"{r['rate']:.0%}"
+            print(f"{r['key']}\t{r['pick']}\t同字率 {rt}\t同{r['same']} 异{r['diff']} 不清{r['unclear']}\t{r['note']}")
+        wl = pair.whitelist(rows, a.min_rate, a.min_judged)
+        print("# 可入白名单：" + "、".join(wl["ok"]))
+        for k, why in wl["hold"]:
+            print(f"# 不放：{k}（{why}）")
     elif a.cmd == "cp-apply":
         import datetime
         from . import codepoint as cp
