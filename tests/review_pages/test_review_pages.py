@@ -153,3 +153,14 @@ def test_seg_cause_cards(tmp_path):
     pc.write_text("册\t格号\t页\t列\tpending_reason\nvol44\tvol44:236:1:3\t236\t1\tS02\nvol44\tvol44:236:1:4a\t236\t1\tS02\n", encoding="utf-8")
     c = sc.build_cards(pp, pc, crop=lambda i: "")[0]
     assert c["key"] == "vol44:236" and c["pre"] == "切分错" and len(c["cells"]) == 2
+
+
+def test_seg_cause_uses_real_causes(tmp_path):
+    from guji_manager.review.seg_causes import CAUSES
+    from guji_manager.review_pages import seg_causes as sc
+    assert set(CAUSES) <= set(sc._PRE), "新增成因码要补预选"
+    pp, pc = tmp_path / "页.tsv", tmp_path / "格.tsv"
+    pp.write_text("册\t页\t格数\tpending_reason\t主成因\t全部旗\t细节\nvol44\t236\t2\tS02=2\tcol_gate=2\tcol_gate\t列异常\n", encoding="utf-8")
+    pc.write_text("册\t格号\t页\t列\tpending_reason\nvol44\tvol44:236:1:3\t236\t1\tS02\n", encoding="utf-8")
+    c = sc.build_cards(pp, pc)[0]
+    assert c["cause_name"] == CAUSES["col_gate"][0] and c["advice"] == CAUSES["col_gate"][1]

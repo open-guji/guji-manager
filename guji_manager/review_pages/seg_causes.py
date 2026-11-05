@@ -1,7 +1,7 @@
 """读 A22 的 seg_causes 输出（逐页.tsv / 逐格.tsv，中文表头）→ 切分归因看图页（seg_cause）的卡片。
 
 一行逐页.tsv ＝ 一张卡；卡里列该页的待审格（取自逐格.tsv）。显示名和「先怎么办」从
-`guji_manager.review.seg_causes.CAUSES` 取（没有就退回成因码），不在这里另抄。
+`guji_manager.review.seg_causes.CAUSES` 取（真源，不另抄）。
 裁图：seg_causes 不出图；调用者按 cell_shrink 字框裁好，给 `crop(格号) -> 图路径或 data URI` 即可。
 预选是启发式（页型→特殊页型；列/行/槽/切分缺陷→切分错；其余→切对了不是切分），按台账再调。
 """
@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Callable
 
 OPTIONS = ("切分错", "切对了不是切分", "特殊页型", "看不出")
-_PRE = {"page_kind": "特殊页型", "pinned": "特殊页型", "known": "特殊页型",
+# 预选启发式覆盖全部 18 个成因码（测试核对与 CAUSES 同步）
+_PRE = {"coord_other": "切对了不是切分", "none": "看不出", "page_kind": "特殊页型", "pinned": "特殊页型", "known": "特殊页型",
         "page_gate": "切分错", "col_grid": "切分错", "col_gate": "切分错", "slot_short": "切分错",
         "slot_shift": "切分错", "slot_count": "切分错", "row_height": "切分错", "seg_defect": "切分错",
         "ref_none": "切对了不是切分", "grid_ok": "切对了不是切分", "seal_stain": "切对了不是切分",
@@ -24,23 +25,15 @@ def _tsv(p) -> list[dict]:
         return list(csv.DictReader(f, delimiter="\t"))
 
 
-def _causes():
-    try:
-        from guji_manager.review.seg_causes import CAUSES
-        return CAUSES
-    except Exception:
-        return {}
+def _causes() -> dict[str, tuple[str, str]]:
+    """真源：guji_manager.review.seg_causes.CAUSES = {成因码: (显示名, 先怎么办)}。"""
+    from guji_manager.review.seg_causes import CAUSES
+    return CAUSES
 
 
 def _name_advice(code: str, causes) -> tuple[str, str]:
-    c = causes.get(code) if hasattr(causes, "get") else None
-    if c is None:
-        return code, ""
-    if isinstance(c, dict):
-        return c.get("name", code), c.get("advice") or c.get("todo") or ""
-    if isinstance(c, (tuple, list)):
-        return (c[0] if c else code), (c[1] if len(c) > 1 else "")
-    return getattr(c, "name", code), getattr(c, "advice", "") or getattr(c, "todo", "")
+    name, advice = causes.get(code, (code, ""))
+    return name, advice
 
 
 def build_cards(per_page_tsv, per_cell_tsv, crop: Callable[[str], str] | None = None) -> list[dict]:
