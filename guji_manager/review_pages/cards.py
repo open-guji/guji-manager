@@ -38,7 +38,8 @@ def build_cards(rows: list[dict], k: int = 5) -> list[dict]:
         sid = {s["id"] for s in samples}
         cards.append({"char": ch, "n": len(items), "samples": samples,
                       "followers": sorted(r["id"] for r in items if r["id"] not in sid),
-                      "kinds": sorted({r.get("kind") for r in items if r.get("kind")})})
+                      "kinds": sorted({r.get("kind") for r in items if r.get("kind")}),
+                      "kind_of": {r["id"]: r["kind"] for r in items if r.get("kind")}})
     cards.sort(key=lambda c: (-c["n"], c["char"]))
     return cards
 
@@ -71,8 +72,9 @@ def expand_card_result(card: dict, doc: dict | None, cells: dict[str, str] | Non
         if doc is None and s["id"] not in per:
             continue
         st_, c = _cell_status(per.get(s["id"]), ch)
-        out.append({"id": s["id"], "char": c, "status": st_})
+        out.append({"id": s["id"], "char": c, "status": st_, "kind": s.get("kind")})
     if doc is not None:
         status = "follow" if all(r["status"] == "ok" for r in out) else "audit"
-        out += [{"id": i, "char": ch, "status": status} for i in card["followers"]]
+        ko = card.get("kind_of") or {}
+        out += [{"id": i, "char": ch, "status": status, "kind": ko.get(i)} for i in card["followers"]]
     return out

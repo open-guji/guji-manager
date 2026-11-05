@@ -91,6 +91,7 @@ def test_every_template_builds(t, tmp_path):
         "codepoint": [dict(key="g1", chars=["為", "爲"], pre="unify:爲",
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
+        "closeout": [dict(id="S02", label="切分", n=12, pre="再处理", examples=["vol1:1:1:1"])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
     }[t]
     out = tmp_path / "p.html"
@@ -98,7 +99,7 @@ def test_every_template_builds(t, tmp_path):
     html = out.read_text(encoding="utf-8")
     assert st["page_type"] == t and "/*DATA*/" not in html and "/*COMMON" not in html and "/*SHELL*/" not in html
     assert PAGE_TYPES[t].version in html
-    assert "data:image/png;base64," in html
+    assert t == "closeout" or "data:image/png;base64," in html
 
 
 def test_ledger_and_hints(tmp_path):
@@ -292,3 +293,71 @@ def test_char_card_cands(tmp_path):
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
     assert st["tpl_version"] == "1.3.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+
+
+def test_results_flatten_and_unconfirmed():
+    from guji_manager.review_pages import results
+    docs = [{"id": "a", "how": "click", "t": 5, "pick": "X"}, {"id": "a", "how": "page_ok", "t": 3, "pick": "Y"},
+            {"id": "b", "how": "page_ok", "t": 1}, {"kind": "secs", "page": 0, "secs": 9, "ids": ["a"]},
+            {"items": [{"id": "c", "pick": "Z"}]}]
+    f = results.flatten(docs)
+    assert f["a"]["pick"] == "X" and f["b"]["how"] == "page_ok" and f["c"]["how"] == "page_ok"
+    assert results.unconfirmed(["a", "b", "c", "d"], docs) == ["d"]
+    assert results.secs_by_page(docs) == {0: 9}
+
+
+def test_ledger_from_item_docs():
+    docs = [{"id": str(i), "how": "click" if i < 2 else "page_ok", "page": 0, "pre": "王", "pick": "玉" if i == 0 else "王",
+             "kind": "K", "t": i, "tpl_version": "1.1.0"} for i in range(4)]
+    docs.append({"kind": "secs", "page": 0, "secs": 40, "ids": ["0", "1", "2", "3"]})
+    r = ledger.from_result_docs(docs, "gold_sample", "1.1.0")
+    assert len(r) == 1 and r[0]["cells"] == 4 and r[0]["overturn"] == 1 and r[0]["secs"] == 40
+
+
+def test_cp_decisions_only_confirmed(tmp_path):
+    from guji_manager.review_pages import codepoint as cp
+    docs = [{"id": "g1", "how": "click", "chars": ["為", "爲"], "pre": "unify:爲", "pick": "split_follow", "t": 1},
+            {"kind": "secs", "page": 0, "secs": 3, "ids": ["g1"]}]
+    d = cp.decisions_from_docs(docs)
+    assert [x["id"] for x in d] == ["g1"]
+
+
+def test_cli_unconfirmed_and_closeout_sum(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    items = tmp_path / "i.jsonl"
+    items.write_text(json.dumps({"key": "g1"}) + "\n" + json.dumps({"key": "g2"}) + "\n", encoding="utf-8")
+    res = tmp_path / "res"; res.mkdir()
+    (res / "a.json").write_text(json.dumps({"id": "g1", "how": "click", "pick": "人审底", "n": 5}), encoding="utf-8")
+    (res / "b.json").write_text(json.dumps({"id": "g3", "how": "page_ok", "pick": "留后", "n": 2}), encoding="utf-8")
+    main(["unconfirmed", "--items", str(items), "--results", str(res)])
+    assert "1/2 项未确认" in capsys.readouterr().out
+    main(["closeout-sum", "--results", str(res)])
+    assert json.loads(capsys.readouterr().out) == {"人审底": 5, "留后": 2}
+
+
+def test_char_review_pull_item_docs(tmp_path):
+    from guji_manager.review_pages import char_review as cr
+    rows = [{"book": "b", "page": 0, "ok": [["1:1:1:1", "王"]], "bad": []},
+            {"book": "b", "id": "1:1:1:2", "how": "click", "bad": True, "pre": "天", "page": 0, "t": 1},
+            {"book": "b", "id": "1:1:1:3", "how": "page_ok", "bad": False, "pre": "地", "page": 0, "t": 1}]
+    src, out = tmp_path / "r.json", tmp_path / "o.json"
+    src.write_text(json.dumps(rows), encoding="utf-8")
+    cr.main(["pull", str(src), str(out)])
+    d = json.loads(out.read_text(encoding="utf-8"))
+    assert sorted(x[0] for x in d["ok"]) == ["1:1:1:1", "1:1:1:3"] and d["bad"] == ["1:1:1:2"]
+
+
+def test_expand_kind(tmp_path):
+    rs = [dict(id=f"1:{i}:1:1", pre="以", pre_conf="high", kind="Z01") for i in range(10)]
+    c = cards.build_cards(rs, k=3)[0]
+    out = cards.expand_card_result(c, {"char": "以", "pick": "以", "bad": []})
+    assert all(r["kind"] == "Z01" for r in out)
+
+
+def test_gold_strip_and_check_mode(tmp_path):
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    it = dict(id="1:1:1:1", pre="百", left="白石" * 10, right="山房" * 10, cands={"百": ["整理本"]}, ref_char="百",
+              strip=[str(img)] * 3, strip_at=1, kind="Z01")
+    B.build("gold_sample", [it], "b", tmp_path / "g.html", mode="check")
+    h = (tmp_path / "g.html").read_text(encoding="utf-8")
+    assert '"mode": "check"' in h and h.count("data:image/png;base64,") >= 3

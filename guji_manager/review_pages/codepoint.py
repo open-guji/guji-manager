@@ -84,12 +84,10 @@ def apply(decisions: list[dict]) -> dict:
 
 
 def decisions_from_docs(docs: list[dict]) -> list[dict]:
-    """页结果文档（每页一份，items:[{id, chars, pick, …}]）→ 逐组决定；同一组多份时以后读到的为准。"""
-    by = {}
-    for d in docs:
-        for it in d.get("items", []):
-            by[it["id"]] = it
-    return list(by.values())
+    """结果文档 → 逐组决定。只认已确认的（逐项文档 how=click/page_ok，或旧按页文档）；同一组多份以 t 新的为准。
+    没确认的组不出现（用 results.unconfirmed 列出）。"""
+    from . import results
+    return list(results.flatten(docs).values())
 
 
 def to_yaml(res: dict, who: str = "用户", date: str = "") -> str:
