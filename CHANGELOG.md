@@ -5,6 +5,7 @@
 ## [未发版]
 
 - 人审页补齐必备功能（MINOR，A31，sheldon 11-05）：逐项存档通用件 `_store.js`（点一下就存、读回、how=click/page_ok、未确认项标出），`gold_sample` 1.1.0（切分错/看不清/库里无此字、整理本字入上下文、邻格条、按 kind 筛选、核对模式）、`codepoint` 2.1.0、`pair_whitelist` 1.1.0、`seg_cause` 1.1.0、`char_grid` 1.2.0 改点即存；新增 `closeout` 1.0.0 收口单；`expand` 带 kind；新增 `unconfirmed`、`closeout-sum`，`cp-apply --items`；下游（cp-apply、ledger、char pull）只认已确认。
+- 人审页模板库新页型 `glyph_quality` 1.0.0（PATCH，新增页型与命令，A22，A31 11-05 转）：字块质量看图，单块或同格新旧两版同倍放大并排，点干净/带框/切笔/看不清，存档用 `_store.js`（项 id＝格号|sha，点即存、读回、how=click/page_ok）；`build glyph_quality` 直接吃 dataset 金标信封（`--root`、`--all-crops`、`--box`），新命令 `gq-apply` 出标签 jsonl 或回写信封；`--exclude` 认带 sha 的行（按块撤）。`_common` 加共用放大组件 `glyphBox`/`glyphPair`（固定框放大、多块同倍并排）。
 
 - 后台「迭代轮次」（PATCH，A31，sheldon 11-05）：`iterate push-rounds`（回填）、`round-report --push-progress`（验收后写一轮）、`iterate auto-round`（从各册★main 包口径汇总一轮）；标 main 的钩子在包口径写完后自动接 `auto-round`，每标一册更新一次该轮（包标签无 `-rN` 段的不自动收）。人审页 `char_card` 1.3.0：每格多路候选＋来源；`_common.js` saveDoc 把文档 id 编成 ASCII。
 
