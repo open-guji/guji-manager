@@ -89,15 +89,29 @@ def cmd_sheet(a) -> None:
 
 
 def cmd_pull(a) -> None:
+    """合并后台 review 集合文档。逐项文档（模板 1.2+，how=click/page_ok，bad 标不对）与旧按页文档（ok/bad）都认；
+    没有文档的格＝未确认，写进 unconfirmed 不放。"""
+    from . import results
     rows = json.load(open(a.rows, encoding="utf-8"))
     rows = rows.get("docs", rows.get("items", rows)) if isinstance(rows, dict) else rows
     rows = [r.get("data", r) for r in rows]
     book = rows[0]["book"]
-    ok, bad, pages = [], [], set()
-    for r in sorted(rows, key=lambda r: r["page"]):
-        pages.add(r["page"]); ok += r["ok"]; bad += r["bad"]
-    json.dump({"book": book, "pages_seen": len(pages), "ok": ok, "bad": bad},
-              open(a.out, "w", encoding="utf-8"), ensure_ascii=False)
+    ok, bad, pages = {}, set(), set()
+    for r in sorted((r for r in rows if "how" not in r and ("ok" in r or "bad" in r)), key=lambda r: r["page"]):   # 旧按页文档
+        pages.add(r["page"])
+        for cid, ch in r["ok"]:
+            ok[cid] = ch
+        bad |= set(r["bad"])
+    for cid, d in results.flatten([r for r in rows if "how" in r]).items():                   # 逐项文档
+        pages.add(d.get("page"))
+        if d.get("bad"):
+            bad.add(cid)
+            ok.pop(cid, None)
+        else:
+            ok[cid] = d.get("pre") or d.get("pick")
+            bad.discard(cid)
+    out = {"book": book, "pages_seen": len(pages), "ok": [[k, v] for k, v in ok.items()], "bad": sorted(bad)}
+    json.dump(out, open(a.out, "w", encoding="utf-8"), ensure_ascii=False)
     print(f"册{book}: {len(pages)} 页, ok {len(ok)}, bad {len(bad)}")
 
 

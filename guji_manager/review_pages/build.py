@@ -7,7 +7,9 @@
   codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
              rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
-  gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?, fact?, pilot?}
+  gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
+               ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
+  closeout：{id, label, n, rate?, examples?[…], pre?(人审底|留后|精校待办|再处理)}
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
 """
 from __future__ import annotations
@@ -55,7 +57,7 @@ def render(pt: PageType, data: dict) -> str:
             "kind_names": KIND_NAMES, **data}
     html = _read(pt.template)
     html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", pt.title)) if "/*SHELL*/" in html else html
-    html = html.replace("/*PAGER_JS*/", _read("_pager.js"))
+    html = html.replace("/*PAGER_JS*/", _read("_pager.js")).replace("/*STORE_JS*/", _read("_store.js"))
     html = html.replace("/*COMMON_CSS*/", _read("_common.css")).replace("/*COMMON_JS*/", _read("_common.js"))
     return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
 
@@ -78,7 +80,7 @@ def read_ids(paths) -> set[str]:
 
 
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
-          hint: str | None = None, exclude: set[str] | None = None) -> dict:
+          hint: str | None = None, exclude: set[str] | None = None, mode: str | None = None) -> dict:
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。"""
     pt = get(page_type)
     n0 = len(items)
@@ -120,9 +122,14 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp)}
     elif page_type == "gold_sample":
         pp = per_page or 10
-        its = [dict(r, img=embed(r.get("img"))) for r in items]
-        data = {"book": book, "per_page": pp, "items": its, "hint": hint}
+        its = [dict(r, img=embed(r.get("img")), **({"strip": [embed(x) for x in r["strip"]]} if r.get("strip") else {}))
+               for r in items]
+        data = {"book": book, "per_page": pp, "items": its, "hint": hint, "mode": mode}
         stat = {"items": len(its), "pages": -(-len(its) // pp)}
+    elif page_type == "closeout":
+        pp = per_page or 12
+        data = {"book": book, "per_page": pp, "items": list(items), "options": list(pt.options), "hint": hint}
+        stat = {"items": len(items), "pages": -(-len(items) // pp)}
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
     Path(out).write_text(render(pt, data), encoding="utf-8")
