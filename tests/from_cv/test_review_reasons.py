@@ -278,3 +278,15 @@ def test_load_glyph_pending_reads_config_pua(tmp_path):
     assert load_glyph_pending(tmp_path) == frozenset({"daizhige:U+EA96"})
     (d / "glyph_pending_codes.json").write_text("{坏", encoding="utf-8")
     assert load_glyph_pending(tmp_path) == frozenset()
+
+
+def test_registry_missing_is_reported_in_stats(monkeypatch):
+    from collections import Counter
+    import guji_manager.review.reasons as rs
+    monkeypatch.setattr(rs, "load_glyph_pending", lambda *a, **k: frozenset())
+    st = Counter()
+    try:
+        rs.reasons_for_pending({"cells": []}, "/nonexistent", "b", stats=st)
+    except Exception:  # noqa: BLE001  空单子/路径不在都行，只看登记表缺失是否记了
+        pass
+    assert st["glyph_pending_registry_missing"] == 1

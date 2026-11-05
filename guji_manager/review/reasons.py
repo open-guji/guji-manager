@@ -358,8 +358,8 @@ def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
     """读待收字登记表；数据目录取不到、文件不在、读不了都返回空集（不猜）。"""
     try:
         if data_root is None:
-            from .._cv import corpus_dir
-            data_root = Path(corpus_dir()).parent       # 语料目录 `<数据目录>/corpus` 的上一层
+            from .._cv import data_root as _data_root     # cv 的数据目录（中心库工作区＝数据目录），不靠 corpus 路径推
+            data_root = _data_root()
         f = Path(data_root).joinpath(*GLYPH_PENDING_REL)
         return frozenset(json.loads(f.read_text(encoding="utf-8")).get("codes") or [])
     except Exception:  # noqa: BLE001
@@ -420,6 +420,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         cells.append(c)
     if glyph_pending is None:
         glyph_pending = load_glyph_pending()
+        if not glyph_pending and stats is not None:
+            stats["glyph_pending_registry_missing"] = 1   # 登记表没读到：全走 ref_lacuna，出单报告要提示
     if glyph_pending:           # 登记表是空的就不必回查（和改前一样，没有任何变化）
         if pua_resolve is None:
             pua_resolve = pua_resolver()
