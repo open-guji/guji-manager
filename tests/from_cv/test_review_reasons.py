@@ -222,3 +222,31 @@ def test_glyph_pending_flows_through_pending_sheet(tmp_path):
     assert r["bk:1:1:1:1"] == (R.GLYPH_PENDING, "daizhige:U+E123")
     assert r["bk:1:1:1:2"][0] is R.REF_LACUNA
     assert reasons_for_pending(doc, tmp_path, "bk")["bk:1:1:1:1"][0] is R.REF_LACUNA
+
+
+def test_glyph_pending_resolved_from_ref_window(tmp_path):
+    """出单时：整理本缺字格按前后文窗口回查私用码，码在登记表里记 glyph_pending；回查不到／没登记仍 ref_lacuna。"""
+    import json as _j
+    from guji_manager.review.reasons import reasons_for_pending
+    book, pg = "bk", tmp_path / "bk"
+    for d in ("seed_admit", "align_ref"):
+        (pg / d).mkdir(parents=True)
+    ids = [f"bk:1:1:{i}:{i}" for i in range(1, 9)]
+    ids = [f"bk:1:1:{i}" for i in range(1, 9)]
+    refs = list("天地玄〓黄宇宙洪")
+    seed = {"seed_admit": {"columns": [{"chars": [{"id": i, "char": "丁", "admit": False, "doubts": []} for i in ids]}]}}
+    align = {"align_ref": {"chars": [{"id": i, "align_char": c, "align_op": "equal"} for i, c in zip(ids, refs)]}}
+    (pg / "seed_admit" / "p0001.json").write_text(_j.dumps(seed), encoding="utf-8")
+    (pg / "align_ref" / "p0001.json").write_text(_j.dumps(align), encoding="utf-8")
+    doc = {"cells": [{"cell": ids[3]}]}
+    seen = []
+
+    def resolve(left, right):
+        seen.append((left, right))
+        return "daizhige:U+EA96"
+    r = reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=resolve)
+    assert seen == [("天地玄", "黄宇宙洪")]
+    assert r[ids[3]] == (R.GLYPH_PENDING, "daizhige:U+EA96")
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EB10"}, pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=lambda a, b: None)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending=frozenset(), pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
