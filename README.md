@@ -13,9 +13,10 @@
 - 版本：`vX.Y.Z` tag，规矩同 open-guji-cv，见 [doc/版本号规矩.md](doc/版本号规矩.md)；**不钉到册、不进产物指纹**
 - 分支：**PR 一律投 `dev`**；发版从 dev 切 `rc/vX.Y.Z`，测完 merge 进 `main` 打 tag。main 只接发版。合 PR 前跑 `python scripts/check_rc_target.py <目标分支>`
 
-## 现状（2026-10-27）
+## 现状（2026-11-05，v0.4.0：拆分完成）
 
-骨架阶段：`guji_manager.pipeline`（调用与兼容检查）、`guji-manager check`。
+cv 里 manager 一侧的代码已全部搬来（P0–P6，2026-10-27 至 11-04）。cv 只剩 pipeline：Step、引擎、产物契约、Step 读人裁、取钉版输入、Step9 汇总、`guji pipeline／step／status` 等识别命令。本包用 cv 的名字一律经 cv `manager_api`（本包 `_cv.py`），控制台经本包 `console_api`。下面是各批记录。
+
 **2026-11-04 拆分 P2 第四批**：cv 里已没有别的模块依赖的 manager 一侧代码整批搬来，按 cv 的原路径放（`guji_manager/review/cards.py` 即原 `open_guji_cv/review/cards.py`）：
 `review`（除 `verdict_view`）、`feedback` 生产侧（harvest、step8、cell_review、web_votes、questions、figures 等）、`eval`（除 rulers、colgeom、round_check）、
 `exp`（除 compare、labels、stats）、`formats`、`render`（除 overlay）、`snap`、`ops` 大部分（freeze、close_check、promote、glyphlib、release_check…）、
@@ -24,6 +25,10 @@
 原来按 `Path(__file__).parents[2]` 找 cv 仓（脚本、formats/、doc/）的改用 `_cv.cv_repo()`。
 
 **2026-11-04 拆分 P4**：`ops` 剩下的（prep、glyph_snapshot、corpus_pack、cache_*、rerun_stale…，只留 model_blobs 在 cv，cv 测试开跑要用它取模型）、`render.overlay`、`review.verdict_view`、`feedback.vision`、`exp` 剩下的、`jobs.perf_push` 与 `cli_products`、`cli_perf` 搬来；`guji rerun／pagekinds／cache／product` 从 cv `cli_v2` 拆出搬来。`guji pipeline`／`status`／启动时原先夹在 cv 里的 manager 行为（开跑前取钉版的字形库、模型、语料，整册跑完自动存包，status 的收尾闸等报告）改成 cv 调钩子、本包经入口点 `guji.hooks` 登记（`hooks.py`）；没装本包时 cv 照跑，只有册钉了字形库／模型／语料时 `guji pipeline` 拒跑并提示装法（`--no-prep` 放行）。
+
+**2026-11-04 拆分 P5**：`datastore` 除取件 `client`、`feedback` 的消费者一组（consumers、routes、collate_consumers、glyph_audit）、`gold.atomic`／`v2_align`、`eval.round_check`、任务库存储（`jobs.spec`／`store`／`jobsdb`）搬来；Step 读人裁用的 `verdict_store`、同字判定留 cv（是识别的输入）。模型、字体、语料往 R2 上传拆进 `ops/model_upload.py`（取件留 cv）。
+
+**2026-11-04 拆分 P6**：控制台门面 `console_api` 搬来（cv 那份只留转发，控制台换完 import 后删）；cv 的 `cli_v2`、`manager_api` 归 pipeline，守卫的 pipeline→manager 存量清零。
 
 2026-11-02 定的分拆计划：P0 安全网 → P1 拆 cli_v2 → P2 冷的顶层 → P3 opinions、jobs → P4 review／ops／eval → P5 consumers／gold／datastore → P6 收尾；**每批 manager 新增与 cv 删除同一天合，不先复制并存**（10-27／10-31 复制来的 opinions、jobs 几天内就过期了，已删）。
 
@@ -57,6 +62,8 @@ pip install -e <open-guji-cv 检出>[dev] && pip install -e ".[dev]" && pytest -
 | `guji rerun`／`pagekinds`／`cache`／`product` | `cli_runs.py` | P4，2026-11-04 |
 | `guji products`／`perf` | `cli_products.py`／`cli_perf.py` | P4，2026-11-04 |
 | `guji pipeline`／`status` 的开跑准备、自动存包、收尾闸报告 | `hooks.py`（入口点 `guji.hooks`） | P4，2026-11-04 |
+| （模块）datastore、消费者、任务库存储、模型上传 | `datastore/`、`feedback/consumers…`、`jobs/spec…`、`ops/model_upload.py` | P5，2026-11-04 |
+| 控制台门面 | `console_api.py` | P6，2026-11-04 |
 
 装法：先装 open-guji-cv，再 `pip install -e .`（本仓经入口点组 `guji.commands` 把子命令并进 `guji`，经 `guji.hooks` 登记 `guji pipeline` 的钩子）。
 
