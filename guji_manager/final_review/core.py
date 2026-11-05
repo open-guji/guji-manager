@@ -88,13 +88,14 @@ def nsrc(x: dict, ch: str) -> int:
 
 
 def is_ideograph(ch: str) -> bool:
-    """放行字必须是一个汉字（基本区、扩展 A–G、兼容区、部首区、表意描述符）。整理本缺字的占位（ခ、〓、□、○）、
-    私用区码、换行都不是——它们当「整理本字」时会被两路和参校本一起「认同」而放行（2026-11-05 史記 3 格）。"""
+    """放行字必须是一个汉字，口径同 cv `seed_admit` 的 vis_ruling（cv #1135）：统一表意文字各区（含 Unicode 17 Ext J
+    U+323B0–3347F）加兼容表意；不含部首区与表意描述符。整理本缺字的占位（ခ、〓、□、○）、私用区码、换行都不是
+    ——它们当「整理本字」时会被两路和参校本一起「认同」而放行（2026-11-05 史記 3 格）。"""
     if len(ch) != 1:
         return False
     o = ord(ch)
-    return (0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF or 0x20000 <= o <= 0x323AF or 0xF900 <= o <= 0xFAFF
-            or 0x2F800 <= o <= 0x2FA1F or 0x2E80 <= o <= 0x2FDF or 0x2FF0 <= o <= 0x2FFF)
+    return (0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF or 0x20000 <= o <= 0x323AF
+            or 0x323B0 <= o <= 0x3347F or 0x2F800 <= o <= 0x2FA1F)
 
 
 FOLD_GROUPS = ("己已巳", "日曰")   # 用户 11-05：折叠组内任一字算对，领先量不把组内字当竞争者
