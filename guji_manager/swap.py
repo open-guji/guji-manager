@@ -147,6 +147,23 @@ def publish_batch(books: list[str], text_id: str) -> str:
         time.sleep(45)
 
 
+def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path) -> None:
+    """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
+
+    全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
+    from .cli_db import sync_workspace
+    sync_workspace(ws, admit=False, no_glyph=True)
+    concl = publish_batch(done, text_id)
+    for b in done:
+        want, got = expected_rev(ws, b, text_id), live_rev(text_id, int(b[3:]))
+        ok = want is not None and want == got
+        state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got, publish=concl)
+        if ok:
+            for p in (ws / "_packs").glob(f"*/{b}"):
+                shutil.rmtree(p, ignore_errors=True)
+    save_state(sp, state)
+
+
 def cmd_run(a) -> int:
     ws = Path(a.workspace).resolve()
     sp = Path(a.state) if a.state else ws / "reports" / "_swap" / "state.json"
@@ -156,11 +173,17 @@ def cmd_run(a) -> int:
     text_id = a.text_id
     cv = Path(a.cv)
     env = {**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}
-    todo = [b for b in parse_books(a.books) if state["books"].get(b, {}).get("status") != "verified"]
+    books = parse_books(a.books)
+    # 上次换好单但没发布成/没核过的册：只补「发布＋核对」，不能再跑 auto_cycle（会再出一张新单）
+    pub_only = [b for b in books if state["books"].get(b, {}).get("status") in ("done", "publish-mismatch")]
+    todo = [b for b in books if state["books"].get(b, {}).get("status") not in ("verified", "done", "publish-mismatch")]
     print(f"待处理 {len(todo)} 册", file=sys.stderr)
     if a.dry_run:
-        print(json.dumps({"todo": todo, "state_file": str(sp)}, ensure_ascii=False))
+        print(json.dumps({"todo": todo, "publish_only": pub_only, "state_file": str(sp)}, ensure_ascii=False))
         return 0
+    for chunk in chunks(pub_only, a.batch_size):
+        precheck(ws, state)
+        publish_and_verify(ws, chunk, text_id, state, sp)
     for chunk in chunks(todo, a.batch_size):
         precheck(ws, state)                                  # 每批之间再核一次账本与磁盘
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
@@ -177,18 +200,7 @@ def cmd_run(a) -> int:
         done = [b for b in chunk if state["books"][b]["status"] == "done"]
         if not done:
             continue
-        from .cli_db import sync_workspace
-        sync_workspace(ws, admit=False, no_glyph=True)       # 新单进中心库；字形库账本不碰
-        concl = publish_batch(done, text_id)
-        for b in done:                                       # 全站冒烟必然「失败」，以逐册线上版本为准
-            want, got = expected_rev(ws, b, text_id), live_rev(text_id, int(b[3:]))
-            ok = want is not None and want == got
-            state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got,
-                                     publish=concl)
-            if ok:
-                for p in (ws / "_packs").glob(f"*/{b}"):
-                    shutil.rmtree(p, ignore_errors=True)
-        save_state(sp, state)
+        publish_and_verify(ws, done, text_id, state, sp)
     left = {k: v for k, v in state["books"].items() if v["status"] != "verified"}
     print(json.dumps({"verified": sorted(k for k, v in state["books"].items() if v["status"] == "verified"),
                       "left": {k: v["status"] for k, v in left.items()}}, ensure_ascii=False))

@@ -53,3 +53,22 @@ def test_expected_rev(tmp_path):
         (tmp_path / "reports" / "vol20" / "_cycle" / r).mkdir(parents=True)
     assert swap.expected_rev(tmp_path, "vol20", "x") == "020-r11"
     assert swap.expected_rev(tmp_path, "vol99", "x") is None
+
+
+def test_resume_skips_issued_books(tmp_path, monkeypatch):
+    """上次已换好单（done／publish-mismatch）的册，续跑时只补发布，不再进 auto_cycle。"""
+    import argparse
+    ws = tmp_path
+    sp = ws / "state.json"
+    swap.save_state(sp, {"books": {"vol20": {"status": "done"}, "vol21": {"status": "publish-mismatch"},
+                                   "vol22": {"status": "verified"}, "vol23": {"status": "need-A33"}}})
+    monkeypatch.setattr(swap, "precheck", lambda ws, state: None)
+    a = argparse.Namespace(workspace=str(ws), state=str(sp), text_id="x", cv=str(ws), book_text=str(ws),
+                           books="vol20-vol24", batch_size=6, dry_run=True)
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        swap.cmd_run(a)
+    out = json.loads(buf.getvalue().strip().splitlines()[-1])
+    assert out["publish_only"] == ["vol20", "vol21"]
+    assert out["todo"] == ["vol23", "vol24"]
