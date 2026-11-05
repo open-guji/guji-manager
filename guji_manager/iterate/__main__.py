@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-SUB = {"round-report": "round_report", "gold": "gold", "audit": "audit", "leverage": "leverage", "freeze": "freeze"}
+SUB = {"round-report": "round_report", "gold": "gold", "audit": "audit", "leverage": "leverage", "freeze": "freeze", "push-rounds": "progress_rounds"}
 
 
 def main(argv=None) -> int:

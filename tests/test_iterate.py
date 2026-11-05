@@ -122,3 +122,21 @@ def test_freeze(tmp_path):
     assert not freeze.conflicts(fr, ["dianben"], ["row_segment"], freeze.parse_t("2026-11-06 09:00"))
     assert freeze.main(["check", "--file", str(f), "--books", "dianben", "--steps", "border_detect", "--at", "2026-11-05 12:00"]) == 3
     assert freeze.main(["check", "--file", str(f), "--books", "dianben", "--at", "2026-11-05 12:00"]) == 3   # 不写 steps＝按结构步查
+
+
+def test_progress_rounds_rows_and_report(tmp_path, capsys):
+    from guji_manager.iterate import progress_rounds as pr
+    assert [pr.round_key(x) for x in ("r5", "第5轮", "5", "r10b")] == ["r5", "r5", "r5", "r10b"]
+    res = {"n": 90, "prev_n": 100, "cells_total": 45000, "net": 80, "regress": [{}] * 3, "by_vol": [{}, {}],
+           "reasons": [{"reason": "a", "cur": 10, "delta": -8}, {"reason": "b", "cur": 5, "delta": 0}, {"reason": "c", "cur": 9, "delta": 2}]}
+    rec = pr.from_report(res, "r5", kind="D", cv=None, verdict="main")
+    assert rec["key"] == "r5" and rec["gain"] == 10 and rec["regress"] == 3 and rec["rate"] == 0.002
+    assert [t["reason"] for t in rec["top"]] == ["a", "c"] and "cv" not in rec
+    rs = pr.rows("bk", [rec, {"key": "r10b", "label": "第10b轮", "rate": None}], target=0.0015)
+    assert rs[0][1] == "target" and rs[0][3] == 0.0015
+    assert rs[1][4]["kind"] == "D" and "key" not in rs[1][4] and rs[1][5] < rs[2][5]
+    f = tmp_path / "h.json"
+    f.write_text(json.dumps({"books": {"bk": {"target": 0.002, "rounds": [rec]}, "other": {"rounds": [rec]}}}), encoding="utf-8")
+    assert pr.main(["--json", str(f), "--book", "bk"]) == 0
+    out = capsys.readouterr().out
+    assert "bk\tr5" in out and "other" not in out
