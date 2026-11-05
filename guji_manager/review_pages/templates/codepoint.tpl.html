@@ -10,10 +10,13 @@
 .lab .n{font-size:11px;line-height:1.4;color:var(--muted);font-variant-numeric:tabular-nums}
 .thumbs{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
 .thumbs img{height:60px;width:auto;border-radius:3px;border:1px solid var(--line);background:#fff}
+.gi{height:1.15em;width:auto;vertical-align:-.2em;background:#fff;border-radius:2px;border:1px solid var(--line)}
+.lab .g .gi{height:36px}
 .empty{color:var(--muted);font-size:13px}
 .opts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .opt{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:6px;padding:5px 10px}
-.opt .s{font:600 17px var(--font-glyph)}
+.opt .s{font:600 17px var(--font-glyph)}.opt .s .gi{height:22px}
+.opt.suggested{border-style:dashed;border-color:var(--accent)}
 .opt.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .other{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;padding:3px 8px}
 .other input{width:3em;font:18px var(--font-glyph);text-align:center}
@@ -24,41 +27,40 @@
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
-/*COMMON_JS*/
-const KEY="cp-"+D.book+"-"+D.tpl_version, P=D.per_page, NP=Math.max(1,Math.ceil(D.groups.length/P));
-let st=lsGet(KEY,{pick:{},note:{},seen:0,page:0});
-const picked=g=>st.pick[g.key]??g.pre??null;
+/*COMMON_JS*//*STORE_JS*//*PAGER_JS*/
 const cpHex=c=>"U+"+c.codePointAt(0).toString(16).toUpperCase();
 const nf=n=>(n||0).toLocaleString("en-US");
-function pageGroups(pi){return D.groups.slice(pi*P,(pi+1)*P)}
-function pageDoc(pi){
-  const items=pageGroups(pi).map(g=>({id:g.key,chars:g.chars,pre:g.pre??null,pick:picked(g),note:st.note[g.key]||""}));
-  return {page:pi,items,secs:takeSecs()};
-}
-function setPick(g,v){st.pick[g.key]=v;lsSet(KEY,st);render()}
-function opt(g,v,label,glyph){
-  const b=document.createElement("button");b.className="opt"+(picked(g)===v?" on":"");b.type="button";
-  b.append(label);if(glyph){const s=document.createElement("span");s.className="s";s.textContent=glyph;b.append(s)}
-  b.onclick=()=>setPick(g,v);return b;
-}
-function render(){
-  st.page=Math.min(Math.max(0,st.page),NP-1);
-  const L=$("list");L.textContent="";
-  pageGroups(st.page).forEach((g,j)=>{
-    const n=st.page*P+j, v=picked(g);
-    const box=document.createElement("section");box.className="card"+(v?"":" todo");
+// 候选字形图：字体缺字（私用码等）时，items 给 g.glyphs[字] 或 rows[字].img，就画图代替文字
+function glyphOf(g,ch){return (g.glyphs||{})[ch]||((g.rows||{})[ch]||{}).img||""}
+function gly(g,ch,cls){const u=glyphOf(g,ch);if(!u)return document.createTextNode(ch);
+  const i=new Image();i.src=u;i.alt=cpHex(ch);i.title=cpHex(ch);i.className="gi"+(cls?" "+cls:"");return i}
+function label(v){if(!v)return"";if(v.startsWith("unify:"))return"统一作 "+v.slice(6);if(v.startsWith("other:"))return"合并到 "+v.slice(6);
+  return v==="split_follow"?"分开·互认":v==="split_distinct"?"分开·不同字":v}
+// 2.1：点一下就存、重开读回；预选的选项带虚线标，手填框不预填；没翻页的组不算确认。
+makePager({key:"cp",prefix:"cp",all:D.groups.map(g=>Object.assign({id:g.key},g)),per:D.per_page,
+  hintText:D.hint||"每组看各字的原书字块，选一项：统一作某字（刻法一样）／分开·互认（两种刻法都记，整理本作另一形也照刻形放）／分开·不同字（不是一个字，照刻形，不互认）／合并到别的字（填组外字）。有预选的已选好，不同意就改；红框是还没选的。每点一下就存。",
+  legacy:[["cp-"+D.book+"-2.0.0",o=>({v:Object.fromEntries(Object.keys(Object.assign({},o.pick,o.note)).map(id=>[id,{raw:{pick:o.pick&&o.pick[id],note:o.note&&o.note[id]},how:"click",t:Date.now()}])),seen:o.seen||0,page:o.page||0})]],
+  stats:(done,V)=>`改判 ${done.filter(g=>(V(g.id).pick??g.pre)!==(g.pre??null)).length}`,
+  gate:(its,V)=>{const n=its.filter(g=>!(V(g.id).pick??g.pre)).length;return n?`还有 ${n} 组没选`:null},
+  draw(g,box,v,save,refresh){
+    const cur=()=>v.pick??g.pre??null, vv=cur();
+    const setPick=x=>{v.pick=x;save();refresh()};
+    function opt(val,lab,glyph,ch){
+      const b=document.createElement("button");b.className="opt"+(cur()===val?" on":"")+(g.pre===val&&cur()!==val?" suggested":"");b.type="button";
+      b.append(lab);if(glyph){const s=document.createElement("span");s.className="s";s.append(ch?gly(g,ch):glyph);b.append(s)}
+      b.onclick=()=>setPick(val);return b}
+    box.className="card"+(vv?"":" todo");
     const ph=document.createElement("div");ph.className="ph";
-    const no=document.createElement("span");no.className="no";no.textContent=`${n+1} / ${D.groups.length}`;
     const pt=document.createElement("span");pt.className="pt";
-    g.chars.forEach((c,i)=>{if(i){const s=document.createElement("span");s.textContent="／";pt.append(s)}pt.append(c)});
-    ph.append(no,pt);
+    g.chars.forEach((c,i)=>{if(i){const s=document.createElement("span");s.textContent="／";pt.append(s)}pt.append(gly(g,c))});
+    ph.append(pt);
     if(g.pre||g.hint){const s=document.createElement("span");s.className="sug";s.textContent=(g.pre?"预选："+label(g.pre):"")+(g.hint?(g.pre?"　":"")+g.hint:"");ph.append(s)}
     box.append(ph);
     for(const ch of g.chars){
       const r=(g.rows||{})[ch]||{};
       const row=document.createElement("div");row.className="row";
       const lab=document.createElement("div");lab.className="lab";
-      const gg=document.createElement("span");gg.className="g";gg.textContent=ch;
+      const gg=document.createElement("span");gg.className="g";gg.append(gly(g,ch));
       const nn=document.createElement("span");nn.className="n";
       nn.append(cpHex(ch));
       if(r.adm!=null){nn.append(document.createElement("br"),"已认 "+nf(r.adm))}
@@ -71,32 +73,16 @@ function render(){
       row.append(lab,t);box.append(row);
     }
     const op=document.createElement("div");op.className="opts";
-    for(const ch of g.chars)op.append(opt(g,"unify:"+ch,"统一作 ",ch));
-    op.append(opt(g,"split_follow","分开·互认"),opt(g,"split_distinct","分开·不同字"));
-    const w=document.createElement("label");const isOther=v&&v.startsWith("other:");w.className="other"+(isOther?" on":"");
+    for(const ch of g.chars)op.append(opt("unify:"+ch,"统一作 ",ch,ch));
+    op.append(opt("split_follow","分开·互认"),opt("split_distinct","分开·不同字"));
+    const w=document.createElement("label");const isOther=vv&&vv.startsWith("other:");w.className="other"+(isOther?" on":"");
     w.append("合并到别的字");const inp=document.createElement("input");inp.type="text";inp.maxLength=2;inp.setAttribute("aria-label","合并到的字");
-    if(isOther)inp.value=v.slice(6);
-    inp.onchange=()=>{const c=[...inp.value.trim()][0];if(c)setPick(g,(g.chars.includes(c)?"unify:":"other:")+c)};
+    if(isOther)inp.value=vv.slice(6);
+    inp.onchange=()=>{const c=[...inp.value.trim()][0];if(c)setPick((g.chars.includes(c)?"unify:":"other:")+c)};
     w.append(inp);op.append(w);
-    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=st.note[g.key]||"";
-    nt.oninput=()=>{st.note[g.key]=nt.value;lsSet(KEY,st)};op.append(nt);
-    box.append(op);L.appendChild(box);
-  });
-  const todo=pageGroups(st.page).filter(g=>!picked(g)).length;
-  $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
-  $("sub").textContent=`${D.book} · ${D.groups.length} 组 · 模板 ${D.tpl_version}`;
-  $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
-  $("hint").textContent=D.hint||"每组看各字的原书字块，选一项：统一作某字（刻法一样）／分开·互认（两种刻法都记，整理本作另一形也照刻形放）／分开·不同字（不是一个字，照刻形，不互认）／合并到别的字（填组外字）。有预选的已选好，不同意就改；红框是还没选的。";
-  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
-  for(const id of ["next","next2"]){$(id).disabled=todo>0;$(id).textContent=todo?`还有 ${todo} 组没选`:(st.page===NP-1?"本页没问题，完成":"本页没问题，下一页")}
-  lsSet(KEY,st);
-}
-function label(v){if(!v)return"";if(v.startsWith("unify:"))return"统一作 "+v.slice(6);if(v.startsWith("other:"))return"合并到 "+v.slice(6);
-  return v==="split_follow"?"分开·互认":v==="split_distinct"?"分开·不同字":v}
-function exportAll(){return {book:D.book,pages_seen:st.seen,items:D.groups.slice(0,st.seen*P).map(g=>({id:g.key,chars:g.chars,pre:g.pre??null,pick:picked(g),note:st.note[g.key]||""}))}}
-function next(){saveDoc("cp_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut(exportAll());render();scrollTo(0,0)}
-for(const id of ["next","next2"])$(id).onclick=next;
-for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
-$("export").onclick=()=>showOut(exportAll());
-wireDlg();render();initDB();
+    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=v.note||"";
+    nt.oninput=()=>{v.note=nt.value;save()};op.append(nt);
+    box.append(op);
+  },
+  doc(g,v){return {key:g.key,chars:g.chars,pre:g.pre??null,pick:v.pick??g.pre??null,note:v.note||""}}});
 </script>

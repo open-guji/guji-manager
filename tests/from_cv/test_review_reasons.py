@@ -129,6 +129,16 @@ def test_seg_kind_from_pending_list(tmp_path):
     assert res["1:1:1"] == (R.SEG_DEFECT, "clipped")
 
 
+def test_seg_selfcheck_src(tmp_path):
+    """出单同字对照自检放上单的已放行格（单上 src=seg_selfcheck，B1③）：原因 seg_defect，detail 带固定前缀；
+    产物里这格的 doubts 没有 seg_defect 也照样归它。没有 src 的格（只带 seg_kind 当证据）不改原因。"""
+    doc = {"cells": [{"cell": "1:1:1", "seg_kind": "clipped", "src": "seg_selfcheck"},
+                     {"cell": "1:1:2", "seg_kind": "frame_residue", "ref": {"c": "甲"}}]}
+    res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False)
+    assert res["1:1:1"] == (R.SEG_DEFECT, "同字对照自检：clipped")
+    assert res["1:1:2"][0] is not R.SEG_DEFECT
+
+
 def test_jiazhu_uneven_is_seg_defect():
     """史記夹注两行分法不均（doubt 码 jiazhu_uneven，cv#1011）归 seg_defect，细分 jiazhu_uneven。"""
     from guji_manager.review.reasons import detail_of

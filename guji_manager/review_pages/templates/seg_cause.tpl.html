@@ -10,10 +10,10 @@ select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
-/*COMMON_JS*//*PAGER_JS*/
+/*COMMON_JS*//*STORE_JS*//*PAGER_JS*/
 // 按页成卡：该页全部待审格的缩略图（取自 cell_shrink 字框），选一个结论
-makePager({key:"segcause",prefix:"s",all:D.groups.map(g=>Object.assign({id:g.key},g)),per:D.per_page,filterKey:"cause_name",filters:[...new Set(D.groups.map(x=>x.cause_name).filter(Boolean))],
-  hintText:D.hint||"每张卡是一页，格子是该页待审格。看图判断：切分真的错了、切对了只是别的原因（不是切分问题）、特殊页型（表/书衣/职名/名单）、还是看不出。已按成因预选。",
+makePager({key:"segcause",prefix:"s",legacy:[["segcause-"+D.book+"-1.0.0",o=>({v:Object.fromEntries(Object.entries(o.vals||{}).filter(([id,x])=>x.pick||x.note).map(([id,x])=>[id,{raw:{pick:x.pick,note:x.note},how:"click",t:Date.now()}])),seen:o.seen||0,page:o.page||0})]],all:D.groups.map(g=>Object.assign({id:g.key},g)),per:D.per_page,filterKey:"cause_name",filters:[...new Set(D.groups.map(x=>x.cause_name).filter(Boolean))],
+  hintText:D.hint||"每张卡是一页，格子是该页待审格。看图判断：切分真的错了、切对了只是别的原因（不是切分问题）、特殊页型（表/书衣/职名/名单）、还是看不出。已按成因预选。每点一下就存。",
   draw(g,box,v,save){
     const pick=()=>v.pick||g.pre;
     const hd=document.createElement("div");hd.className="gk";hd.textContent=`册 ${g.vol} 第 ${g.page} 页 · ${g.cause_name||g.cause||""} · ${g.cells.length} 格`;
