@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-- 借库新写法 `glyph_lib.borrow: [{from, scope: human, pin: N}]`（MINOR，A23；借库参照方案缺口 1、2）：`scope: human` 只借被借库人裁；`pin` 钉被借库字形库快照 g<N>（`pinned_lender_copy`，一次拼好不再连网），`borrow_fingerprint` 带记号，快照清单记 `borrow_how`。旧写法与缺省借法逐位不变。依赖 cv #1095（`borrowed_store`）。说明见 `doc/01-开新书/借库写法.md`。
+- 借库新写法 `glyph_lib.borrow: [{from, scope: human, pin: N}]`（PATCH，缺省关的新功能，A23；借库参照方案缺口 1、2）：`scope: human` 只借被借库人裁；`pin` 钉被借库字形库快照 g<N>（`pinned_lender_copy`，一次拼好不再连网），`borrow_fingerprint` 带记号，快照清单记 `borrow_how`。旧写法与缺省借法逐位不变。依赖 cv #1095（`borrowed_store`）。说明见 `doc/01-开新书/借库写法.md`。
 
 - 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
 
