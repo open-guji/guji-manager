@@ -378,6 +378,9 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "_corpus_text": ("steps.align_ref", "_corpus_text"),
     "BookSpec": ("core.book", "BookSpec"),
     "FORBIDDEN_IN_OVERRIDE": ("core.book_config", "FORBIDDEN_IN_OVERRIDE"),
+    # 待收字窗口回查（#197，2026-11-05）
+    "PuaIndex": ("utils.pua_lookup", "PuaIndex"),
+    "resolve_pua_code": ("utils.pua_lookup", "resolve_pua_code"),
     # 大模型文意终审裁定（final_review，2026-11-05）；cv 门面登记后改走 manager_api
     "RulingLog": ("feedback.rulings", "RulingLog"),
     "ruling_ctx_hash": ("feedback.rulings", "ctx_hash"),
