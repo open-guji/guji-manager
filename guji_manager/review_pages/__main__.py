@@ -4,6 +4,7 @@
   preselect  --cells cells.jsonl --out DIR  预选：三方一致的格归 auto（不上页），其余出 page.jsonl 与统计
   build      TYPE --items items.jsonl --book B --out page.html   出页（一字一卡同时写 page.cards.json）
   expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/bad/follow/audit）
+  char sheet|pull|ingest ...                冷启动快审页的生成与落库（char_grid；原 ai-team 冷启动快审流程模板）
   ledger     add|summary                    用时与改判台账（--from-results DIR 从结果文档入账）
 """
 from __future__ import annotations
@@ -23,6 +24,10 @@ def _docs(d):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["char"]:
+        from .char_review import main as char_main
+        return char_main(argv[1:])
     ap = argparse.ArgumentParser(prog="guji-manager review-pages", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
