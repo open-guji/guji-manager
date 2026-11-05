@@ -103,16 +103,32 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
         add("遮挡多", len(occ), f"{len(pages)} 页；最多的页：{_top(pages, 6)}",
             "先看是不是真印章：纸面噪点当成大印的书，配 seal_detect.stain_pages（真印页才列），从 seal_detect 重跑", "A", "书项目＋A32")
 
+    # 11-05 用户定：己已巳、日曰折叠（图上匹配组内任一字都算对），不再单列「留到标点阶段」；其他极难形近照旧要分开
+    hp = [r for r in rows if r.get("pending_reason") == "hard_pair"]
+    fold = [r for r in hp if _folded(r.get("ref"), r.get("top"))]
+    if fold:
+        add("折叠组（己已巳、日曰）", len(fold), "`hard_pair`，整理本字与机器首选同在折叠组",
+            "按 11-05 折叠口径，整理本字在组内就放行（管线侧待 A24 实现）", "A", "A24")
+    if len(hp) > len(fold):
+        add("其他极难形近", len(hp) - len(fold), "`hard_pair`", "近形决胜 near_shape 等（A24 定开不开）", "B", "A24")
+
     for reason, sig, todo, tier, who in (
         ("group_form_open", "同义写法待定", "出码位看图页请 sheldon 定码位结局（暂归一／照录／按参校本取字）", "A", "书项目"),
         ("ref_lacuna", "整理本缺字（〓／私用码）", "新图源文本层取字、私用码统一码表；剩下的人审", "A–B", "A24"),
-        ("hard_pair", "极难形近（日曰、己已巳）", "留到标点、专名阶段一起做，本阶段不投入", "C", "—"),
         ("lib_sparse_agree", "刻例太少但与整理本一致", "第一次进库原则上人裁：走成批审页", "C", "人审"),
     ):
         if by.get(reason):
             add(sig, by[reason], f"`{reason}`", todo, tier, who)
 
     return sorted(out, key=lambda d: -d["n"])
+
+
+FOLD_GROUPS = ("己已巳", "日曰")
+
+
+def _folded(a, b) -> bool:
+    """两字同在一个折叠组（11-05 用户定：己已巳、日曰图上分不开，算同一个）。"""
+    return bool(a and b) and any(a in g and b in g for g in FOLD_GROUPS)
 
 
 def render(rows: list[dict], lib_n=None) -> list[str]:
