@@ -95,6 +95,15 @@ def main(argv=None):
         for d in docs:
             if "id" in d and "v" in d and d.get("card") in cs:
                 cells.setdefault(d["card"], {})[d["id"]] = d["v"]
+        for d in docs:                               # 卡头改字文档 k_<卡字>（1.2 起每改即存）
+            if "id" not in d and "pick" in d and d.get("card") in cs:
+                pg = pages.setdefault(d["card"], None)
+                if pg is None:
+                    cells.setdefault(d["card"], {})
+                    for s in cs[d["card"]]["samples"]:
+                        cells[d["card"]].setdefault(s["id"], "pick:" + d["pick"])
+                else:
+                    pg["pick"] = d["pick"]
         rows = []
         for ch in pages.keys() | cells.keys():
             if ch in cs:

@@ -267,3 +267,20 @@ def test_common_js_safe_id():
                          capture_output=True, text=True, check=True).stdout.split()
     assert out[1] == "c_b988g3f0wsu_p1" and out[2] == "a-2db"
     assert out[0].isascii() and out[0].startswith("c_b-e5-8f-b2") and out[0].endswith("_p0")
+
+
+def test_cli_expand_card_pick_doc(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    items = tmp_path / "i.jsonl"
+    items.write_text("".join(json.dumps(dict(id=f"1:{i}:1:1", pre="以", ctx="上下【以】文", note="判语")) + "\n" for i in range(2)), encoding="utf-8")
+    out = tmp_path / "p.html"
+    main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(out)])
+    assert "上下【以】文" in out.read_text(encoding="utf-8")
+    res = tmp_path / "res"; res.mkdir()
+    (res / "k.json").write_text(json.dumps({"card": "以", "pick": "已", "t": 1}), encoding="utf-8")
+    (res / "c.json").write_text(json.dumps({"id": "1:0:1:1", "card": "以", "v": "seg", "t": 2}), encoding="utf-8")
+    dec = tmp_path / "d.jsonl"
+    main(["expand", "--cards", str(out.with_suffix(".cards.json")), "--results", str(res), "--out", str(dec)])
+    rows = {r["id"]: r for r in map(json.loads, dec.read_text(encoding="utf-8").splitlines())}
+    assert rows["1:0:1:1"]["status"] == "seg"
+    assert rows["1:1:1:1"]["status"] == "pick" and rows["1:1:1:1"]["char"] == "已"
