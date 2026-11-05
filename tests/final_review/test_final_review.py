@@ -79,3 +79,12 @@ def test_end_to_end_with_fake_pkg(tmp_path):
     gold.write_text("id\tchar\nvol20:1:1:2\t子\n", encoding="utf-8")
     fr.cmd_finalize(f)
     assert fr.main(["write", "--out", str(out), "--ruling-dir", str(tmp_path / "r"), "--batch", "b"]) == 2
+
+
+def test_ref_falls_back_to_cells_ref(tmp_path):
+    pkg = tmp_path / "pkg"
+    _fake_pkg(pkg)
+    _write(pkg / "vol20/align_ref/p0001.json", {"align_ref": {"anchored": True, "chars": []}})   # 无 align_char
+    sel = [{"id": "vol20:1:1:2", "cls": "N", "reason": "near_form_guard", "group": "", "ref": "予"}]
+    c = pack.build_cells(pkg, sel, lambda recs: sorted(recs, key=lambda r: r.slot), {}, 2)
+    assert c[0]["ref_char"] == "予" and "参校本" in c[0]["cands"]["予"][0]
