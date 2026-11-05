@@ -179,3 +179,27 @@ def test_progress_rounds_auto_round_merges(monkeypatch):
     put = [c for c in calls if "put_metric" in c[0]]
     assert put and put[0][1][2] == "r5" and put[0][1][3] == "第5轮" and out["cv"] == "0.6.3"
     assert pr.auto_round("bk", "cv0.6.2-c1-g4-job207") is None
+
+
+def test_note_main_round_placeholder(monkeypatch):
+    from guji_manager.iterate import progress_rounds as pr
+    written = []
+
+    class Conn:
+        def __init__(self, exists): self.exists = exists
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, *a):
+            class R:
+                def fetchone(s): return (1,) if self.exists else None
+            return R()
+
+    import guji_manager._cv as cv
+    monkeypatch.setattr(cv, "connect", lambda: Conn(False), raising=False)
+    monkeypatch.setattr(pr, "write", lambda rs: written.extend(rs) or len(rs))
+    assert pr.note_main_round("b1", "cv0.6.4-c30-g19-r5-a2")
+    assert written[0][1] == "r5" and written[0][3] is None and written[0][4]["verdict"] == "pending"
+    written.clear()
+    monkeypatch.setattr(cv, "connect", lambda: Conn(True), raising=False)
+    assert pr.note_main_round("b1", "r5") and not written          # 已有就不动
+    assert not pr.note_main_round("b1", "job207")                  # 没有轮次的标签不占

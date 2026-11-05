@@ -75,6 +75,14 @@ def record_main(book: str, label: str, ws: str | None = None) -> None:
         print(f"（后台看板没记上 main 标签：{e}）")
 
 
+def _note_round(bid: str, label: str) -> None:
+    try:
+        from .iterate.progress_rounds import note_main_round
+        note_main_round(bid, label)
+    except Exception as e:  # noqa: BLE001
+        print(f"（看板没占上这一轮：{e}）")
+
+
 def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
     """标 main 后在后台统计这册 ★main 包的人审率，写进后台看板（progress.volume.extra['cv.pack']）。
     要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、NEON_DATABASE_URL；缺了就静默跳过。永远不抛。"""
@@ -84,10 +92,12 @@ def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
             return
         if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
             return
+        if label:
+            _note_round(bid, label)   # 先占位：后面的统计跑不成，看板也看得到这一轮
         repo = os.environ.get("GUJI_AITEAM_REPO", os.path.expanduser("~/ai-team"))
         run_py = os.path.join(repo, "domain", "CV", "质检", "按包统计人审率", "run.py")
         if not os.path.isfile(run_py):
-            print(f"（包口径人审率没自动更新：没找到 {run_py}；设 GUJI_AITEAM_REPO）")
+            print(f"（包口径人审率没自动更新：没找到 {run_py}；设 GUJI_AITEAM_REPO；看板「迭代轮次」已先占位，待统计）")
             return
         out = os.path.join(ws, "reports", book, "_pack_rate")
         os.makedirs(out, exist_ok=True)
