@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- `guji db push`／`guji db sync` 加 `--no-glyph`（或环境变量 `GUJI_DB_NO_GLYPH=1`）（PATCH，A32，用户 11-05 同意）：这次不碰字形库——不导出 glyph.db、`output/glyph_store/` 下的文件不推、基准里的记录原样留、sync 也不落库。换单、批量发布这类只改待审单的流程用它，字形库账本就绝不会被它写到（11-04 字形账本被清空事故的根治，配合导入侧「账本被清空」拒推）。`workcopy.push`／`sync` 新增 `skip_prefixes`。
+
 ## [0.4.0] - 2026-11-05
 
 - 拆分 P6 收尾（MINOR，A31，用户 11-04「继续 都做完」，计划里 P6 即发 0.4.0）：控制台门面搬来 `guji_manager/console_api.py`（179 个名字，cv 的与本包的照旧惰性取；cv `open_guji_cv.console_api` 改成转发到这里，guji-console 换 import 后删）。cv 那边 `cli_v2`、`manager_api` 归 pipeline、去掉 `MANAGER_CLI_MODULES` 过渡件，守卫的 pipeline→manager 存量清零——**cv 里已没有 manager 一侧的代码**。Wiki 已按 v0.4 重改（重画分工图；全景、安装、任务库、产物包、待审原因页按 0.3.1–0.4.0 改）；README 现状改写。
