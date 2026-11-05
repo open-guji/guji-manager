@@ -122,6 +122,14 @@ def cmd_finalize(a) -> dict:
     cells = {x["id"]: x for x in _jload(a.out / "cells.json") if "error" not in x}
     got = _outputs(a.out)
     over = {g for g in (a.whitelist or "").split(",") if g}
+    if getattr(a, "book_yaml", None):
+        ya = core.override_groups_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"))
+        if ya is None and not a.whitelist:
+            print("⚠ 册 yaml 没写 params.seed_admit.ruling_override_groups：按空名单（一律不许越过参校本）判；管线侧缺省也不核，建议写上", file=sys.stderr)
+        elif ya is not None and a.whitelist and ya != over:
+            print(f"✗ --whitelist {sorted(over)} 与册 yaml 的 ruling_override_groups {sorted(ya)} 不一致；以册 yaml 为准或先改 yaml", file=sys.stderr)
+            raise SystemExit(2)
+        over = over or (ya or set())
     lib_n = None
     if a.glyph_db:
         import sqlite3
@@ -224,6 +232,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("batches"); common(p, build=True)
     p = sub.add_parser("status"); common(p)
     p = sub.add_parser("finalize"); common(p, pkg=True)
+    p.add_argument("--book-yaml", type=Path, help="册/书 yaml：读 params.seed_admit.ruling_override_groups 作白名单（与管线放行同一份）")
     p.add_argument("--whitelist", help="本书可越过参校本的字组，逗号分隔（按书按组抽 30 格金标定，不继承别的书）")
     p.add_argument("--gold", type=Path, help="金标 tsv（列 id、char）")
     p.add_argument("--glyph-db", type=Path, help="L 类用：选中字库样本须 >2")
