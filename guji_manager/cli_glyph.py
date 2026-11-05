@@ -44,7 +44,7 @@ def cmd_recheck(args) -> None:
     只标不跑——跑还是 `guji pipeline <p> <book> --from glyph_match`，只重算点名格。"""
     from ._cv import page_key
     from ._cv import live_exemplars, recheck_reasons
-    eng = cli_v2._engine(args.book, args.pipeline, params=getattr(args, "params", None), quiet=True)
+    eng = cli_v2._engine(args.shift_book, args.pipeline, params=getattr(args, "params", None), quiet=True)
     step = eng.pipeline.producer_of("glyph_match")
     sid = step.spec.id
     p = eng.ctx.params_for(step)
@@ -210,7 +210,7 @@ def cmd_corpus(args) -> None:
         if not args.vol:
             print("✗ pin 要给 --vol <册 id>", file=sys.stderr)
             sys.exit(2)
-        kw = {k: v for k, v in (("global_ver", args.global_ver), ("book_ver", args.book_ver),
+        kw = {k: v for k, v in (("global_ver", args.global_ver), ("book_ver", args.shift_book_ver),
                                 ("vol_ver", args.vol_ver)) if v is not None}
         try:
             row = append_pin(ws, args.vol, from_n=args.from_n, note=args.note, dev=args.dev, **kw)
@@ -320,7 +320,13 @@ def cmd_rekey_cells(args) -> None:
     import os
 
     from .ops import cell_rekey as ck
-    cm = ck.load_cell_map(args.map)
+    if ck.is_shift_table(args.map):         # A22 局部改号表（只列动了的格，没列的不动）
+        if not args.shift_book:
+            print("✗ 局部改号表含多册，要给 --shift-book <册>（如 vol01）", file=sys.stderr)
+            sys.exit(2)
+        cm = ck.load_shift_table(args.map, args.shift_book)
+    else:
+        cm = ck.load_cell_map(args.map)
     if args.action in ("glyph-db", "verify"):
         if args.workspace:
             os.environ["GUJI_WORKSPACE"] = str(Path(args.workspace).expanduser().resolve())
@@ -336,7 +342,8 @@ def cmd_rekey_cells(args) -> None:
         if args.rev is None:
             print("✗ 要给 --rev 旧页表 rev（停放 id 用）", file=sys.stderr)
             sys.exit(2)
-        res = ck.rekey_glyph_db(db, cm, args.rev, dry_run=args.dry_run)
+        res = ck.rekey_glyph_db(db, cm, args.rev, dry_run=args.dry_run,
+                                  note=args.rekey_note or ("raise-box-1076" if cm.partial else "siku-qiefen-v2"))
         if args.table:
             ck.write_glyph_table(res["rows"], args.table)
         cli_v2._out({"db": str(db), "map": cm.source, "dry_run": args.dry_run, **cm.counts(), **res["summary"]})
@@ -431,6 +438,8 @@ def add_parser(sub) -> None:
                    help="glyph-db 改 glyph.db 实例 id；verify 核对改键后的库；json L2 表等按格当键的 JSON；"
                         "jsonl 金标/回放集；ids-bank IDS 模板库出处")
     p.add_argument("--map", required=True, help="格级对照表 old_new_cells/<册>.tsv[.gz]")
+    p.add_argument("--rekey-note", default=None, help="glyph-db：改键批次名，写进 evictions 与幂等判断（缺省 siku-qiefen-v2；局部改号表缺省 raise-box-1076，与换图源那次分开判「改过没」）")
+    p.add_argument("--shift-book", default=None, help="--map 是 A22 局部改号表（册 页 列 旧格 sub 新格）时：只改这一册（一册一次，表里没列的格不动）")
     p.add_argument("files", nargs="*", help="json／jsonl／ids-bank：要改的文件（原地改）")
     p.add_argument("-w", "--workspace", default=None, help="glyph-db／verify：工作区（取它的 glyph.db）")
     p.add_argument("--db", default=None, help="glyph-db／verify：直接给 glyph.db 路径")
