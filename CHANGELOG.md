@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- `review-pages build char_card --no-rest-ok`（PATCH，QTW 提 #158）：难认字页没有「本页其余都对」，没点的格不算对，只存点过、改过的格；char_card 升 1.3.1。
+
 ## [0.4.3] - 2026-11-05
 
 - 人审页 `near_pair` 1.0.1、`lib_audit` 1.0.1：字块图改用共用定框放大件 `glyphBox`（PATCH，A23；A22 #163 共用件）。
