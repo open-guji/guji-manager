@@ -142,7 +142,7 @@ def load_cell_map(path: str | Path) -> CellMap:
 def load_shift_table(path: str | Path, book: str) -> CellMap:
     """读 A22 出的局部改号表（如殿本抬头漏认 `格号旧到新.tsv`，列 `册 页 列 旧格 sub 新格`，只列动了的格）。
 
-    只取 `book` 这一册；新格是 `?` 或 `删` 的（顺移后挤出列尾、没有对应格）记为 `删`。
+    只取 `book` 这一册；新格是 `?` 或 `删` 的（顺移后挤出列尾、没有对应格）记为 `删`；旧格是 `新增` 的只记新格。
     `partial=True`：表里没列的格不动，不会停放。旧格、新格都必须一对一。"""
     p = Path(path)
     cm = CellMap(book=book, source=p.name, partial=True)
@@ -153,6 +153,12 @@ def load_shift_table(path: str | Path, book: str) -> CellMap:
         if (r.get("册") or "").strip() != book:
             continue
         pre, sub = f"{book}:{r['页'].strip()}:{r['列'].strip()}:", (r.get("sub") or "").strip()
+        if r["旧格"].strip() == "新增":      # 新切分才有的格（多是 -1 号抬头字）：没有旧格，库里也没有旧实例，只记新格
+            nk = pre + (r.get("新格") or "").strip() + sub
+            if parse_cell(nk) is None:
+                raise ValueError(f"{p.name}:{i}: 新格 {nk!r} 解析不了")
+            cm.new_cells.add(nk)
+            continue
         old, new = pre + r["旧格"].strip() + sub, (r.get("新格") or "").strip()
         if parse_cell(old) is None:
             raise ValueError(f"{p.name}:{i}: 格键 {old!r} 解析不了")
