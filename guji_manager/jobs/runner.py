@@ -446,7 +446,18 @@ class Job:
         return outcome
 
 
-_RUNNER_PATHS = ("open_guji_cv/jobs", "scripts/rerun_prep.sh", "scripts/guji_jobs.sh")
+# 执行方相关的 cv 路径。注意：jobs 模块拆分 P5（cv #1055）后已搬去本包，cv dev 上不再有 open_guji_cv/jobs；
+# 这里列了不存在的路径，git rev-parse 整体失败，_runner_outdated 就永远判不出 cv 侧的更新。
+_RUNNER_PATHS = ("scripts/rerun_prep.sh", "scripts/guji_jobs.sh")
+
+
+def _reexec_argv() -> list[str]:
+    """自更新后用原参数 exec 自己。老执行方是 `python -m open_guji_cv.jobs …` 起的，那个入口已没有，换成 guji_manager.jobs。"""
+    argv = list(sys.orig_argv)
+    for i in range(1, len(argv) - 1):
+        if argv[i] == "-m" and argv[i + 1] == "open_guji_cv.jobs":
+            argv[i + 1] = "guji_manager.jobs"
+    return argv
 _outdated_checked_at = 0.0
 
 
@@ -583,7 +594,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                         db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
                         lock.close()                                    # 释放本机锁，新进程自己拿
                         sys.stdout.flush()
-                        os.execv(sys.executable, sys.orig_argv)
+                        os.execv(sys.executable, _reexec_argv())
                     say("执行方代码在 dev 上有更新，但拉不动（本地有改动或分叉），退出让执行方线程重新 start")
                     return done
                 bad = _preflight() or _ml_env_gate(say) or _disk_gate(say)
