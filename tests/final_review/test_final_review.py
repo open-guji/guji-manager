@@ -127,3 +127,13 @@ def test_seed_admit_params_from_yaml():
     p = core.seed_admit_params_from_yaml(y)
     assert p["ruling_glyph_min_score"] == 0.98 and p["ruling_ref_lead_min_unseen"] == 0.01 and p["ruling_ref_lead_min_oov"] is None
     assert core.seed_admit_params_from_yaml("a: 1")["ruling_glyph_min_score"] is None
+
+
+def test_gate_refuses_ref_placeholder_and_non_ideograph():
+    hi = lambda c: {"char": c, "conf": "high"}   # noqa: E731
+    for ph in ("ခ", "〓", "○", "\ue000", "\n", "ab"):
+        x = {"cands": {ph: ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": ph}
+        assert core.gate_ex(x, hi(ph), hi(ph), set())["why"] == "not_ideograph", ph
+    ok = {"cands": {"予": ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": "予"}
+    assert core.gate_ex(ok, hi("予"), hi("予"), set())["ok"]
+    assert core.is_ideograph("𠀀") and core.is_ideograph("⿰") and not core.is_ideograph("ခ")
