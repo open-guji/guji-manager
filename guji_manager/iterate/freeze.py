@@ -3,9 +3,9 @@
 日历文件（放 ai-team `domain/CV/质检/迭代降人审框架/冻结日历.yaml`，A31 维护，各线只读；时间洛杉矶）：
 
   freezes:
-    - {book: dianben, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "S 轮 r5", notify: [A22, A23, A30, A20, A33]}
+    - {book: dianben, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "S 轮 r5", notify: [A22, A23, A30, A20]}
   冻结期内**不合会改切分指纹的 PR**（border_detect、cell_shrink、row_segment、页型、图源、语料、库快照等）；`steps` 缺省＝这些结构步，
-  也可列具体 Step 名。格号变化通知名单缺省 A22 A23 A30 A20 A33（A22 11-05 要求加 A33）。
+  也可列具体 Step 名。格号变化通知名单缺省 A22 A23 A30 A20（用户 11-05：A33 不在粗校流程里）。
 
   guji-manager iterate freeze list  --file 冻结日历.yaml [--at "2026-11-05 12:00"]
   guji-manager iterate freeze add   --file … --book sj --from … --to … [--steps border_detect,row_segment] [--note …]
@@ -25,7 +25,7 @@ import yaml
 FMT = "%Y-%m-%d %H:%M"
 #: 结构层 Step（改它们会改切分指纹/格号）；S 轮冻结的缺省范围
 STRUCT_STEPS = ("border_detect", "border_detect_gate", "cell_shrink", "row_segment", "page_kinds", "source", "corpus", "glyph_snapshot")
-NOTIFY = ["A22", "A23", "A30", "A20", "A33"]
+NOTIFY = ["A22", "A23", "A30", "A20"]
 
 
 def now_la() -> datetime.datetime:
