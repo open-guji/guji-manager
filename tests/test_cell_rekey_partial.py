@@ -12,6 +12,7 @@ TSV = ("册\t页\t列\t旧格\tsub\t新格\n"
        "vol01\t3\t4\t21\t\t删\n"
        "vol01\t3\t5\t8\ta\t7\n"
        "vol01\t3\t5\t8\tb\t7\n"
+       "vol01\t3\t4\t新增\t\t-2\n"
        "vol02\t9\t1\t1\t\t-1\n")
 
 
@@ -52,6 +53,7 @@ def test_load_shift_table(table):
     assert cm.partial and cm.move["vol01:3:4:2"] == "vol01:3:4:1"
     assert cm.move["vol01:3:5:8a"] == "vol01:3:5:7a" and cm.move["vol01:3:5:8b"] == "vol01:3:5:7b"
     assert "vol01:3:4:21" in cm.deleted
+    assert "vol01:3:4:-2" in cm.new_cells and "新增" not in " ".join(cm.move)
     assert cm.lookup("vol01:3:4:4") == ("keep", None)
     with pytest.raises(ValueError):
         ck.load_shift_table(table, "vol99")
