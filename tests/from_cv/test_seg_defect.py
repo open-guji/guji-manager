@@ -40,3 +40,20 @@ def test_frame_residue_on_head_cell():
     clean = patch.copy()
     clean[:20] = 255
     assert _frame_residue(clean, r, cc, lines) is None
+
+
+def test_same_char_clip():
+    """同字对照：列端字比同字矮一截（宽不缩）才算 clipped；整字压扁、扁字、参照太少都不算。"""
+    from guji_manager.review.seg_defect import _ink_h, same_char_clip
+    ref = (75.0, 70.0, 30)
+    assert same_char_clip(54, 70, ref, 80.0)            # 墨高比 0.72
+    assert same_char_clip(62, 72, ref, 80.0) is None    # 0.83，宽比/高比 1.24 不到 1.30
+    assert same_char_clip(62, 76, ref, 80.0)            # 0.83，宽比/高比 1.31 → 缺一截
+    assert same_char_clip(62, 58, ref, 80.0) is None    # 0.83，宽也缩：整字压扁
+    assert same_char_clip(70, 70, ref, 80.0) is None    # 0.93
+    assert same_char_clip(8, 70, (13.0, 70.0, 300), 80.0) is None   # 扁字「一」
+    assert same_char_clip(54, 70, (75.0, 70.0, 4), 80.0) is None    # 参照不到 5 个
+    img = np.full((60, 40), 255, np.uint8)
+    img[10:50, 5:30] = 0
+    img[55, 3] = 0                                      # 一行只一个墨点不算
+    assert _ink_h(img) == 40
