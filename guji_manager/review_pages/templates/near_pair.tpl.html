@@ -1,0 +1,95 @@
+<title>形近字对比卡</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.ph{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.pair{font:600 38px/1 var(--font-glyph);display:flex;gap:10px;align-items:center}
+.pair i{font:14px var(--font-ui);color:var(--muted);font-style:normal}
+.exrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0}
+.exrow b{font:600 22px/1 var(--font-glyph);min-width:1.4em;text-align:center}
+.exrow .lab{font-size:11px;color:var(--muted);min-width:5.5em}
+.cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;background:var(--tile);border:2px solid var(--line);border-radius:8px}
+.cell .m{font-size:10px;color:var(--muted);text-align:center}
+.cell .ctx{font:13px/1.4 var(--font-glyph);text-align:center;word-break:break-all}
+.cell .opts{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.cell .opts button{padding:3px 8px;min-width:2.6em}
+.cell .opts .ch{font:600 20px/1.1 var(--font-glyph)}
+.cell .opts button.sel{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.cell .pk{width:3em;font:600 18px/1 var(--font-glyph);text-align:center}
+.cell.v-a,.cell.v-b{border-color:var(--ok)}.cell.v-neither{border-color:var(--bad);background:var(--bad-bg)}
+.cell.v-unclear{border-style:dashed}.cell.v-seg{border-color:#b7791f}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*//*STORE_JS*/
+// 每页 per_page 对形近字。每对：A、B 两字各摆库里的人裁刻例，待审格居中。
+// 每格五个按钮：A 字 / B 字 / 都不是（格下出输入框，可填它其实是什么字）/ 看不清 / 切分有问题；再点同一个取消。
+// 每点一下就写一份逐项文档 i_<格号>（_store 通用件，db 不通先存本机，重开读回）；没点的格不记任何结果，翻页也不记。
+const P=D.per_page, NP=Math.max(1,Math.ceil(D.pairs.length/P));
+const pairOf={};D.pairs.forEach((pr,i)=>pr.cells.forEach(c=>pairOf[c.id]={pr,i}));
+const S=makeStore({key:"near-pair-"+D.book+"-"+D.tpl_version.split(".")[0],
+  pageOf:id=>Math.floor(((pairOf[id]||{i:0}).i)/P),
+  docOf:(id,raw)=>({pair:(pairOf[id]||{pr:{key:""}}).pr.key,v:raw.v,pick:raw.pick||""})});
+const st=S.st;
+function updStat(){const n=Object.keys(st.v).length;$("stat").textContent=`已点 ${n}/${D.n_cells} 格`;$("bar").style.width=(n/Math.max(D.n_cells,1)*100)+"%"}
+function setV(id,v,pick){if(v)S.set(id,{v,pick:pick||""},"click");else S.clear(id);updStat()}
+function strip(label,ch,ex){
+  const r=document.createElement("div");r.className="exrow";
+  const l=document.createElement("span");l.className="lab";l.textContent=label+"（库里 "+ex.length+" 例）";
+  const b=document.createElement("b");b.textContent=ch;r.append(b,l);
+  for(const e of ex){const g=glyphBox(e[1],{size:64,dims:false,alt:ch});g.title=e[0];r.appendChild(g)}
+  return r;
+}
+function paint(box,c){
+  const x=S.raw(c.id);box.className="cell"+(x?" v-"+x.v:"");
+  for(const b of box.querySelectorAll("button"))b.classList.toggle("sel",!!x&&b.dataset.v===x.v);
+  const k=box.querySelector(".pk");k.hidden=!(x&&x.v==="neither");if(!k.hidden&&document.activeElement!==k)k.value=x.pick||"";
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP-1);
+  const L=$("list");L.textContent="";
+  for(const pr of D.pairs.slice(st.page*P,(st.page+1)*P)){
+    const box=document.createElement("div");box.className="card";
+    const hd=document.createElement("div");hd.className="ph";
+    const pa=document.createElement("div");pa.className="pair";pa.append(document.createTextNode(pr.a),(()=>{const i=document.createElement("i");i.textContent="对";return i})(),document.createTextNode(pr.b));
+    const mt=document.createElement("div");mt.className="stat";mt.textContent=`待审 ${pr.cells.length} 格`+(pr.note?" · "+pr.note:"");
+    hd.append(pa,mt);
+    if(pr.diff){const d=glyphBox(pr.diff,{size:64,label:"差异区",dims:false});d.title="两字刻例差异最大的区域";hd.appendChild(d)}
+    box.append(hd,strip("A",pr.a,pr.ex_a||[]),strip("B",pr.b,pr.ex_b||[]));
+    const g=document.createElement("div");g.className="cells";
+    for(const c of pr.cells){
+      const b=document.createElement("div");b.title=c.id;
+      const w=glyphBox(c.img||"",{size:112,alt:"待审格"});
+      const m=document.createElement("div");m.className="m";
+      m.textContent=[c.cur?"库里标："+c.cur:"",(c.sa!=null?pr.a+" "+c.sa.toFixed(3):""),(c.sb!=null?pr.b+" "+c.sb.toFixed(3):"")].filter(Boolean).join(" · ");
+      const o=document.createElement("div");o.className="opts";
+      const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.placeholder="其实是";pk.setAttribute("aria-label","这格其实是什么字（可空）");
+      const mk=(v,t,cls)=>{const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=t;if(cls)bt.className=cls;
+        bt.onclick=()=>{const x=S.raw(c.id);if(x&&x.v===v)setV(c.id,null);else setV(c.id,v,"");paint(b,c);if(v==="neither"&&S.raw(c.id))pk.focus()};return bt};
+      pk.oninput=()=>{setV(c.id,"neither",pk.value.trim());paint(b,c)};
+      o.append(mk("a",pr.a,"ch"),mk("b",pr.b,"ch"),mk("neither","都不是"),mk("unclear","看不清"),mk("seg","切分有问题"));
+      b.append(w);if(c.ctx){const cx=document.createElement("div");cx.className="ctx";cx.textContent=c.ctx;b.append(cx)}
+      b.append(m,o,pk);paint(b,c);g.appendChild(b);
+    }
+    box.appendChild(g);L.appendChild(box);
+  }
+  updStat();
+  $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
+  $("sub").textContent=`册 ${D.book} · ${D.pairs.length} 对 · ${D.n_cells} 格 · 模板 ${D.tpl_version}`;
+  $("hint").textContent=D.hint||"每对形近字上面是库里这两个字的人裁刻例，下面是待审格。按刻例的笔画特征选：A 字、B 字，都不是就点「都不是」并可填它其实是什么字，看不清或切分有问题各有按钮。每点一下就存后台；没点的格不记结果。再点同一个按钮取消。";
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"完成":"下一页";
+  S.save();
+}
+const exportNow=()=>showOut({book:D.book,cells:Object.fromEntries(Object.entries(st.v).map(([k,x])=>[k,x.raw]))});
+function next(){
+  const ids=D.pairs.slice(st.page*P,(st.page+1)*P).flatMap(pr=>pr.cells.map(c=>c.id));
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids});
+  st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else exportNow();render();scrollTo(0,0)}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=exportNow;
+wireDlg();render();
+initDB(async()=>{if(await S.restore())render()});
+</script>

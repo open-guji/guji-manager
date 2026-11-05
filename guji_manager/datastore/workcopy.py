@@ -500,10 +500,14 @@ def glyph_pack_blobs(ws_dir: Path, data: Path, base: dict[str, str], rows) -> di
 
 
 def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_delete: bool = False,
-         uploader=None, glyph: GlyphHooks | None = None, shared_writer: bool = False) -> dict:
+         uploader=None, glyph: GlyphHooks | None = None, shared_writer: bool = False,
+         skip_prefixes: tuple[str, ...] = ()) -> dict:
     """数据目录 → 中心库（直连 Postgres；云会话经 wsbridge）。``uploader(images[, ext=])`` 传新图与整理本。
 
-    共享层的只读工作区（``is_shared_ws``）只有升级脚本能写（``shared_writer=True``），``glyphlib-*`` 还只能写一次。"""
+    共享层的只读工作区（``is_shared_ws``）只有升级脚本能写（``shared_writer=True``），``glyphlib-*`` 还只能写一次。
+
+    ``skip_prefixes``：这些前缀下的文件这次一概不推（库里的不动、基准里的记录也原样留着）。换单这类只改待审单的
+    流程给 ``(GS,)``，字形库账本就绝不会被它写到（2026-11-04 字形账本被清空事故）。"""
     from .importer import import_scans
     ws_dir = Path(ws_dir)
     data = data_dir(ws_dir)
@@ -611,14 +615,24 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
         res = {ext: (uploader(g) if ext == "png" else uploader(g, ext=ext))   # 只收图的 uploader 照旧能用
                for ext, g in sorted(images.items())}
         up = res["png"] if list(res) == ["png"] else res
+    only = {r.src_path for r in sc.rows if not r.src_path.startswith(skip_prefixes)} if skip_prefixes else None
     rep = import_scans(conn, [sc], label=f"push:{sc.ws}@{base}", actor=actor, dry_run=dry_run,
-                       source="push", guard=guard, allow_delete=allow_delete)
+                       source="push", guard=guard, allow_delete=allow_delete, only_paths=only)
     out = rep.as_dict()
     out.update(base_rev=base, images=up, glyph_exported=exported, data_dir=str(data))
     if not dry_run:
         fp = glyph.fingerprint(glyph.db_path) if glyph is not None and Path(glyph.db_path).exists() else st.get("glyph_db_fp")
+        new_base = manifest(ws_dir, data)
+        if skip_prefixes:                                  # 没推的文件，基准里仍记原来的（下次 sync 才还看得出它们是本地改动）
+            old = st.get("base", {})
+            for rel in set(new_base) | set(old):
+                if rel.startswith(skip_prefixes):
+                    if rel in old:
+                        new_base[rel] = old[rel]
+                    else:
+                        new_base.pop(rel, None)
         write_state(data, ws=sc.ws, branch=st.get("branch", "main"), rev=rep.rev_to,
-                    base=manifest(ws_dir, data), glyph_db_fp=fp, borrow=st.get("borrow", []))
+                    base=new_base, glyph_db_fp=fp, borrow=st.get("borrow", []))
     return out
 
 
@@ -935,7 +949,7 @@ def _drop_glyph_consumed(data: Path, ids: set[str]) -> int:
 
 def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str = "main",
          uploader=None, glyph: GlyphHooks | None = None, dry_run: bool = False,
-         replay: Callable[[set[str]], dict] | None = None) -> dict:
+         replay: Callable[[set[str]], dict] | None = None, skip_prefixes: tuple[str, ...] = ()) -> dict:
     """拉 → 合并 → 推，一步做完（控制台写完、定时任务都用它）。
 
     库里在基准 rev 之后没人写过：直接推。有人写过：库里改了、本地没改的文件取库里的；本地改了、库里没改的
@@ -957,6 +971,8 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
     base = st["base"]
     local = manifest(ws_dir, data)
     mine = set(_diff(base, local))
+    if skip_prefixes:                                  # 不推的前缀（字形库）：本地怎么改都不算待推改动
+        mine = {m for m in mine if not m.startswith(skip_prefixes)}
     out: dict = {"ws": ws, "local_changes": sorted(mine), "glyph_exported": exported}
     if glyph is not None and borrow_entries(ws_dir):    # 借来的库有新版：只重建 glyph.db，不算本地改动
         extras, bsig = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)
@@ -973,7 +989,8 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         if not mine:
             return {**out, "action": "nothing"}
         return {**out, "action": "push", "push": push(conn, ws_dir, actor=actor, dry_run=dry_run,
-                                                       uploader=uploader, glyph=glyph)}
+                                                       uploader=uploader, glyph=glyph,
+                                                       skip_prefixes=skip_prefixes)}
     # 库里有新改动：拉到旁边，逐文件合
     tmp = data.parent / f".{data.name}.sync.tmp"
     if tmp.exists():
@@ -1072,4 +1089,5 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         if _snapshots_on(src):
             out["snapshot_bytes"] = _publish_snapshot(src, ws, rev, ws_dir, data, remote)
         return {**out, "action": "pulled"}
-    return {**out, "action": "merged+push", "push": push(conn, ws_dir, actor=actor, uploader=uploader, glyph=glyph)}
+    return {**out, "action": "merged+push", "push": push(conn, ws_dir, actor=actor, uploader=uploader, glyph=glyph,
+                                                 skip_prefixes=skip_prefixes)}

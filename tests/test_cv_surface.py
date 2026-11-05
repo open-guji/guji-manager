@@ -44,3 +44,11 @@ def test_fallback_matches_cv_facade():
         got = getattr(_cv, name)
         if name in api.__all__:
             assert got is getattr(api, name), name
+
+
+def test_local_names_point_to_local_modules():
+    """_LOCAL 里的名字必须是本包已有的模块（登记错表＝运行时才报「没有 guji_manager.xxx」，如 11-05 的 feedback.rulings）。"""
+    from guji_manager import _cv
+    bad = [f"{n} → guji_manager.{m}" for n, (m, _a) in _cv._LOCAL.items()
+           if not ((PKG / m.replace(".", "/")).with_suffix(".py").exists() or (PKG / m.replace(".", "/") / "__init__.py").exists())]
+    assert not bad, "登记进了 _LOCAL 却没有对应本包模块（该进 _FALLBACK？）：\n  " + "\n  ".join(bad)

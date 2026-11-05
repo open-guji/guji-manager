@@ -1,0 +1,134 @@
+<title>字块质量</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+#list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px}
+#list .card{margin:0;display:flex;flex-direction:column;gap:8px;outline:none}
+#list .card.cur{box-shadow:0 0 0 2px var(--accent)}
+.meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
+.meta .ch{font:600 20px/1 var(--font-glyph);color:var(--fg)}
+.row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.ctx img{height:180px;width:auto;background:#fff;border:1px solid var(--line);border-radius:4px;image-rendering:pixelated}
+.ref .gbox{--gbox:72px;opacity:.85}
+.gpair .gcell{gap:4px}
+.qb{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:var(--gbox,120px);min-width:120px}
+.qb button{padding:6px 2px;min-height:36px;font-size:13px}
+.qb button[aria-pressed="true"]{color:#fff}
+.qb button[data-v=clean][aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.qb button[data-v=frame][aria-pressed="true"]{background:#b7791f;border-color:#b7791f}
+.qb button[data-v=cut][aria-pressed="true"]{background:var(--bad);border-color:var(--bad)}
+.qb button[data-v=unsure][aria-pressed="true"]{background:#5b5f8a;border-color:#5b5f8a}
+.gcell.need .gbox{border-color:var(--accent);border-width:2px}
+.pg-def{font-size:11px;color:var(--muted)}
+select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*/
+/*STORE_JS*/
+// 每格一张卡：一块或新旧两块字块（同一倍数放大并排），每块点「干净／带框／切笔／看不清」，再点取消。
+// 存档用通用件 makeStore：每块一项，项 id＝格号|sha（结果按字块 sha 锚定），文档 i_<safeId>，how=click／page_ok。
+// 「本页其余都干净」：本页没点的字块记干净（how=page_ok）。
+const MAJOR=D.tpl_version.split(".")[0], P=D.per_page;
+const KEYS={"1":"clean","2":"frame","3":"cut","4":"unsure"};
+const K=(it,c)=>it.id+"|"+c.sha;
+const byK={};D.items.forEach((it,i)=>it.crops.forEach(c=>byK[K(it,c)]={it,c,i}));
+const S=makeStore({key:"glyph-quality-"+D.book+"-v"+MAJOR,pageOf:k=>Math.floor(((byK[k]||{i:0}).i)/P),
+  docOf:(k,raw)=>{const x=byK[k];if(!x)return {};const {it,c}=x;return {cell:it.id,vol:it.book||D.book,sha:c.sha,key:c.key,keys:[c.key].concat(c.also||[]),label:raw.v||null}}});
+const st=S.st;
+const labOf=(it,c)=>{const r=S.raw(K(it,c));return r&&r.v?{v:r.v,how:S.how(K(it,c))}:null};
+const done=it=>it.crops.every(c=>labOf(it,c));
+const FILTERS=[["","全部"],["todo","没点完"],["frame","有带框"],["cut","有切笔"],["unsure","有看不清"]];
+function list(){
+  if(!st.f)return D.items;
+  if(st.f==="todo")return D.items.filter(it=>!done(it));
+  return D.items.filter(it=>it.crops.some(c=>(labOf(it,c)||{}).v===st.f));
+}
+const NP=()=>Math.max(1,Math.ceil(list().length/P));
+function setLab(it,c,v,how){if(v)S.set(K(it,c),{v},how||"click");else S.clear(K(it,c))}
+let cur=0;
+function setCur(i,scroll){
+  const cs=[...document.querySelectorAll("#list .card")];if(!cs.length)return;
+  cur=Math.max(0,Math.min(cs.length-1,i));cs.forEach((e,j)=>e.classList.toggle("cur",j===cur));
+  if(scroll){cs[cur].focus({preventScroll:true});cs[cur].scrollIntoView({block:"nearest"})}
+}
+function paintCell(cell,it,c){
+  const x=labOf(it,c),v=x&&x.v;
+  cell.classList.toggle("need",!v);
+  for(const b of cell.querySelectorAll(".qb button"))b.setAttribute("aria-pressed",String(b.dataset.v===v));
+  const pd=cell.querySelector(".pg-def");if(pd)pd.textContent=x&&x.how==="page_ok"?"（翻页时默认）":"";
+}
+function card(it,idx){
+  const box=document.createElement("div");box.className="card";box.tabIndex=0;box.dataset.i=idx;
+  const m=document.createElement("div");m.className="meta";
+  const ch=document.createElement("span");ch.className="ch";ch.textContent=it.char||"？";
+  const id=document.createElement("span");id.textContent=it.id+(it.end?" · "+(it.end==="top"?"列首":"列尾"):"")+(it.book&&it.book!==D.book?" · "+it.book:"");
+  m.append(ch,id);box.appendChild(m);
+  const row=document.createElement("div");row.className="row";
+  if(it.ctx){const w=document.createElement("div");w.className="ctx";const im=document.createElement("img");im.src=it.ctx;im.alt="原图上下文";w.appendChild(im);row.appendChild(w)}
+  const right=document.createElement("div");right.className="row";
+  if(it.ref){const r=glyphBox(it.ref,{label:"参照",dims:false});r.classList.add("ref");right.appendChild(r)}
+  const pair=glyphPair(it.crops.map(c=>({src:c.img,label:c.name,alt:(it.char||"")+" "+c.name})),{size:D.box||120});
+  pair.cells.forEach((cell,j)=>{
+    const c=it.crops[j],qb=document.createElement("div");qb.className="qb";
+    for(const [v,t] of D.options){
+      const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
+      b.onclick=e=>{e.stopPropagation();const x=labOf(it,c);setLab(it,c,x&&x.v===v&&x.how!=="page_ok"?null:v);paintCell(cell,it,c);stat()};
+      qb.appendChild(b);
+    }
+    const pd=document.createElement("div");pd.className="pg-def";
+    cell.append(qb,pd);paintCell(cell,it,c);
+  });
+  right.appendChild(pair);row.appendChild(right);box.appendChild(row);
+  box.onfocus=()=>setCur(idx,false);box.onclick=()=>setCur(idx,false);
+  box.onkeydown=e=>{
+    const v=KEYS[e.key];
+    if(v){e.preventDefault();const j=it.crops.findIndex(c=>!labOf(it,c)),c=it.crops[j<0?it.crops.length-1:j];
+      setLab(it,c,v);paintCell(pair.cells[it.crops.indexOf(c)],it,c);stat();if(done(it))setCur(idx+1,true)}
+    else if(e.key==="j"||e.key==="ArrowDown"){e.preventDefault();setCur(idx+1,true)}
+    else if(e.key==="k"||e.key==="ArrowUp"){e.preventDefault();setCur(idx-1,true)}
+  };
+  return box;
+}
+function stat(){
+  const n=Counter0();for(const it of D.items)for(const c of it.crops){const x=labOf(it,c);if(x)n[x.v]++}
+  const tot=D.items.reduce((a,it)=>a+it.crops.length,0),got=Object.values(n).reduce((a,b)=>a+b,0);
+  $("stat").textContent=`已审 ${st.seen}/${NP()} 页 · 已点 ${got}/${tot} 块（`+D.options.map(([v,t])=>t+" "+n[v]).join("、")+"）";
+  $("bar").style.width=(got/Math.max(1,tot)*100)+"%";
+}
+function Counter0(){return Object.fromEntries(D.options.map(([v])=>[v,0]))}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP()-1);
+  const L=$("list");L.textContent="";
+  list().slice(st.page*P,(st.page+1)*P).forEach((it,i)=>L.appendChild(card(it,i)));
+  if(!L.childNodes.length){const e=document.createElement("p");e.className="hint";e.textContent=st.f==="todo"?"全部点完了。":"这一类还没有。";L.appendChild(e)}
+  $("pg").textContent=`第 ${st.page+1} / ${NP()} 页`;
+  $("sub").textContent=`册 ${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`+(D.n_excluded?` · 已录入撤出 ${D.n_excluded}`:"");
+  $("hint").textContent=D.hint||"每张卡是一格的字块（有两块时左旧右新，同一倍数放大）。只看字块本身：干净＝没有框线、笔画完整；带框＝留着一截版框线（哪怕只挂在字脚上）；切笔＝笔画被切掉一块；看不清＝判断不了。每点一下就存后台，再点取消。点卡片后可用数字键 1–4 点当前卡下一块、J/K 换卡。「本页其余都干净」把本页没点的字块记干净再翻页。";
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页其余都干净，完成":"本页其余都干净，下一页";
+  stat();setCur(0,false);S.save();
+}
+function exportAll(){
+  const labels=[],unconfirmed=[];
+  for(const it of D.items)for(const c of it.crops){const x=labOf(it,c);
+    if(x)labels.push({cell:it.id,vol:it.book||D.book,sha:c.sha,key:c.key,keys:[c.key].concat(c.also||[]),label:x.v,how:x.how});else unconfirmed.push(K(it,c))}
+  return {page_type:TPL.type,tpl_version:TPL.version,book:D.book,pages_seen:st.seen,labels,unconfirmed};
+}
+function next(){
+  const its=list().slice(st.page*P,(st.page+1)*P);
+  for(const it of its)for(const c of it.crops)if(!labOf(it,c))setLab(it,c,"clean","page_ok");
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids:its.flatMap(it=>it.crops.map(c=>K(it,c)))});
+  st.seen=Math.max(st.seen,st.page+1);
+  if(st.page<NP()-1)st.page++;else{S.flush();showOut(exportAll())}
+  render();scrollTo(0,0);
+}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=()=>showOut(exportAll());
+{const sel=document.createElement("select");sel.setAttribute("aria-label","筛选");
+  for(const [v,t] of FILTERS){const op=document.createElement("option");op.value=v;op.textContent=t;sel.appendChild(op)}
+  sel.value=st.f;sel.onchange=()=>{st.f=sel.value;st.page=0;render()};document.querySelector(".ctl").prepend(sel)}
+wireDlg();render();
+initDB(async()=>{if(await S.restore())render()});
+</script>

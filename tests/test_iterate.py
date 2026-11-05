@@ -122,3 +122,60 @@ def test_freeze(tmp_path):
     assert not freeze.conflicts(fr, ["dianben"], ["row_segment"], freeze.parse_t("2026-11-06 09:00"))
     assert freeze.main(["check", "--file", str(f), "--books", "dianben", "--steps", "border_detect", "--at", "2026-11-05 12:00"]) == 3
     assert freeze.main(["check", "--file", str(f), "--books", "dianben", "--at", "2026-11-05 12:00"]) == 3   # 不写 steps＝按结构步查
+
+
+def test_progress_rounds_rows_and_report(tmp_path, capsys):
+    from guji_manager.iterate import progress_rounds as pr
+    assert [pr.round_key(x) for x in ("r5", "第5轮", "5", "r10b")] == ["r5", "r5", "r5", "r10b"]
+    res = {"n": 90, "prev_n": 100, "cells_total": 45000, "net": 80, "regress": [{}] * 3, "by_vol": [{}, {}],
+           "reasons": [{"reason": "a", "cur": 10, "delta": -8}, {"reason": "b", "cur": 5, "delta": 0}, {"reason": "c", "cur": 9, "delta": 2}]}
+    rec = pr.from_report(res, "r5", kind="D", cv=None, verdict="main")
+    assert rec["key"] == "r5" and rec["gain"] == 10 and rec["regress"] == 3 and rec["rate"] == 0.002
+    assert [t["reason"] for t in rec["top"]] == ["a", "c"] and "cv" not in rec
+    rs = pr.rows("bk", [rec, {"key": "r10b", "label": "第10b轮", "rate": None}], target=0.0015)
+    assert rs[0][1] == "target" and rs[0][3] == 0.0015
+    assert rs[1][4]["kind"] == "D" and "key" not in rs[1][4] and rs[1][5] < rs[2][5]
+    f = tmp_path / "h.json"
+    f.write_text(json.dumps({"books": {"bk": {"target": 0.002, "rounds": [rec]}, "other": {"rounds": [rec]}}}), encoding="utf-8")
+    assert pr.main(["--json", str(f), "--book", "bk"]) == 0
+    out = capsys.readouterr().out
+    assert "bk\tr5" in out and "other" not in out
+
+
+def test_progress_rounds_aggregate():
+    from guji_manager.iterate import progress_rounds as pr
+    v = lambda vol, m, p, cells, rev, cv="v0.6.3": {"vol": vol, "cv_version": cv, "extra": {"a31.main": {"label": m}, "cv.pack": {"label": p, "cells": cells, "review": rev}}}
+    vols = [v("11", "x", "cv0.6.3-c30-g19-r5", 1000, 2), v("12", "x", "cv0.6.3-c31-g19-r5-a2", 3000, 4), v("13", "x", "cv0.6.2-c30-g19-r4", 1000, 9), v("01", "x", "job207", 500, 1)]
+    assert pr.round_of("cv0.6.1.dev185pg85-c--g-2a1a4c-qtw07-r9b-a2") == "r9b" and pr.round_of("cv0.6.2-c1-g4-job207") is None
+    r = pr.aggregate(vols, "r5", prev={"key": "r4", "vols": 2, "pending": 10})
+    assert (r["vols"], r["cells"], r["pending"], r["gain"], r["cv"]) == (2, 4000, 6, 4, "0.6.3")
+    assert abs(r["rate"] - 0.0015) < 1e-9 and r["key"] == "r5" and r["verdict"] == "main"
+    assert "gain" not in pr.aggregate(vols, "r5", prev={"vols": 3, "pending": 10})
+    assert pr.aggregate(vols, "r9", None) is None
+
+
+def test_progress_rounds_auto_round_merges(monkeypatch):
+    from guji_manager.iterate import progress_rounds as pr
+    calls = []
+
+    class Cur:
+        def __init__(self, rows): self.rows = rows
+        def fetchall(self): return self.rows
+
+    class Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, q, args=()):
+            if "FROM progress.volume" in q:
+                return Cur([("11", {"a31.main": {"label": "r5"}, "cv.pack": {"label": "cv0.6.3-c30-g19-r5", "cells": 2000, "review": 3, "pick": "main"}}, None)])
+            if "FROM progress.metric" in q:
+                return Cur([("r4", {"pending": 5, "vols": 1}, "第4轮"), ("r5", {"note": "人工备注", "human_min": 12}, "第5轮")])
+            calls.append((q, args)); return Cur([])
+
+    import guji_manager._cv as cv
+    monkeypatch.setattr(cv, "connect", lambda: Conn(), raising=False)
+    out = pr.auto_round("bk", "r5")
+    assert out["note"] == "人工备注" and out["human_min"] == 12 and out["gain"] == 2 and out["pending"] == 3
+    put = [c for c in calls if "put_metric" in c[0]]
+    assert put and put[0][1][2] == "r5" and put[0][1][3] == "第5轮" and out["cv"] == "0.6.3"
+    assert pr.auto_round("bk", "cv0.6.2-c1-g4-job207") is None

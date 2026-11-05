@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -74,7 +75,7 @@ def record_main(book: str, label: str, ws: str | None = None) -> None:
         print(f"（后台看板没记上 main 标签：{e}）")
 
 
-def push_pack_rate(book: str, ws: str | None) -> None:
+def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
     """标 main 后在后台统计这册 ★main 包的人审率，写进后台看板（progress.volume.extra['cv.pack']）。
     要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、NEON_DATABASE_URL；缺了就静默跳过。永远不抛。"""
     try:
@@ -91,9 +92,12 @@ def push_pack_rate(book: str, ws: str | None) -> None:
         out = os.path.join(ws, "reports", book, "_pack_rate")
         os.makedirs(out, exist_ok=True)
         with open(os.path.join(out, "run.log"), "ab") as f:
-            subprocess.Popen([sys.executable, "-u", run_py, "--ws", ws, "--vol-names", book, "--pick", "main",
-                              "--out", out, "--push-progress", bid], stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
-        print(f"包口径人审率已在后台统计并写看板，日志 {out}/run.log")
+            # 包口径写完后接着汇总这一轮，写后台「迭代轮次」（每标一册更新一次，册数随之增长）
+            cmd = [sys.executable, "-u", run_py, "--ws", ws, "--vol-names", book, "--pick", "main", "--out", out, "--push-progress", bid]
+            nxt = [sys.executable, "-u", "-m", "guji_manager.iterate", "auto-round", "--book", bid, "--label", label] if label else None
+            sh = " ".join(shlex.quote(x) for x in cmd) + (" && " + " ".join(shlex.quote(x) for x in nxt) if nxt else "")
+            subprocess.Popen(["/bin/sh", "-c", sh], stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        print(f"包口径人审率已在后台统计并写看板{'，随后汇总本轮写「迭代轮次」' if label else ''}，日志 {out}/run.log")
     except Exception as e:  # noqa: BLE001
         print(f"（包口径人审率没起来：{e}）")
 
@@ -101,7 +105,7 @@ def push_pack_rate(book: str, ws: str | None) -> None:
 def on_promote(book: str, label: str, ws: str | None = None) -> None:
     """cv 标 main 后调用。永远不抛：自动重出失败不能挡标 main。"""
     record_main(book, label, ws)
-    push_pack_rate(book, ws)
+    push_pack_rate(book, ws, label)
     try:
         if os.environ.get("GUJI_AUTO_ONLINE_LISTS", "1") == "0":
             return

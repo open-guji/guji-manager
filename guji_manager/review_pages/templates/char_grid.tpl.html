@@ -58,78 +58,56 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 <dialog id="dlg"><p>结果已自动存到后台，不用发给我。下面的 JSON 只是备份：</p><textarea id="out" readonly></textarea><p><button id="copy" class="primary">复制</button> <button id="close">关闭</button></p></dialog>
 <script>
 const D=/*DATA*/null;
-// 用时：只算有操作的时间，两次操作间隔超过 30 秒按 30 秒计
-const T={secs:0,last:Date.now()};function tick(){const n=Date.now();T.secs+=Math.min(n-T.last,30000)/1000;T.last=n}
-addEventListener("pointerdown",tick);addEventListener("keydown",tick);
-function takeSecs(){tick();const s=Math.round(T.secs*10)/10;T.secs=0;return s}
-const KEY="char-grid-"+D.book+"-"+D.per_page;
-const P=D.per_page, NP=Math.ceil(D.tiles.length/P);
-let st={bad:{},seen:0,page:0};
-try{const s=localStorage.getItem(KEY);if(s)st=Object.assign(st,JSON.parse(s))}catch(e){}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
-const $=id=>document.getElementById(id);
-// 后台存档：每审完一页写一份 review/b<册>_p<页>；我用 scripts/pull_char_review.py 直接取，不用复制 JSON
-let DB=null;
-function pageDoc(pi){
-  const ts=D.tiles.slice(pi*P,(pi+1)*P);
-  return {book:D.book,page_type:"char_grid",tpl_version:D.tpl_version,secs:takeSecs(),page:pi,bad:ts.filter(t=>st.bad[t[0]]).map(t=>t[0]),ok:ts.filter(t=>!st.bad[t[0]]).map(t=>[t[0],t[1]])};
-}
-async function saveRemote(pi){
-  if(!DB){$("sync").textContent="未联网存档（只存在本浏览器）";return}
-  try{await DB.doc("review/b"+D.book+"_p"+pi).set(pageDoc(pi));$("sync").textContent="已存后台 · 第 "+(pi+1)+" 页"}
-  catch(e){$("sync").textContent="后台存档失败："+(e.code||e.message)}
-}
-async function loadRemote(){
-  try{
-    DB=await claude.use("db"); if(!DB)return;
-    const snap=await DB.collection("review").get();
-    let n=0;
-    for(const d of snap.docs){const v=d.data();if(!v||v.book!==D.book)continue;
-      const t=D.tiles.slice(v.page*P,(v.page+1)*P);for(const x of t)delete st.bad[x[0]];
-      for(const id of v.bad)st.bad[id]=1;n=Math.max(n,v.page+1)}
-    if(n>st.seen){st.seen=n;st.page=Math.min(n,NP-1)}
-    // 本机已审但后台还没有的页，补传一次
-    const have=new Set(snap.docs.map(d=>d.data()).filter(v=>v&&v.book===D.book).map(v=>v.page));
-    let up=0;for(let i=0;i<st.seen;i++)if(!have.has(i)){await saveRemote(i);up++}
-    if(up)$("sync").textContent="已补传 "+up+" 页到后台";
-    render();
-  }catch(e){}
-}
+/*COMMON_JS*//*STORE_JS*/
+// 1.2：点一下就存（点「不对」写该格、点回去也存）；重开从后台读回；「本页没问题」＝本页没点的格按预选字认下（how=page_ok）。
+const P=D.per_page, NP=Math.max(1,Math.ceil(D.tiles.length/P));
+const byId={};D.tiles.forEach((t,i)=>byId[t[0]]={t,i});
+const S=makeStore({key:"char-grid-"+D.book+"-"+D.tpl_version,pageOf:id=>Math.floor(((byId[id]||{i:0}).i)/P),
+  legacy:[["char-grid-"+D.book+"-"+D.per_page,o=>({v:Object.fromEntries(Object.keys(o.bad||{}).map(id=>[id,{raw:{bad:1},how:"click",t:Date.now()}])),seen:o.seen||0,page:o.page||0})]],
+  docOf:(id,raw)=>{const t=(byId[id]||{t:[id,""]}).t;const bad=!!(raw&&raw.bad);return {pre:t[1],pick:bad?"":t[1],bad,ok:!bad}}});
+const st=S.st;
+const isBad=id=>{const r=S.raw(id);return !!(r&&r.bad)};
+const nBad=()=>Object.keys(st.v).filter(id=>isBad(id)).length;
 function render(){
   st.page=Math.min(Math.max(0,st.page),NP-1);
   const g=$("grid");g.textContent="";
   const frag=document.createDocumentFragment();
   for(const [id,ch,cov,src] of D.tiles.slice(st.page*P,(st.page+1)*P)){
-    const b=document.createElement("button");b.className="tile"+(st.bad[id]?" bad":"");b.title=id;b.setAttribute("aria-label",`${ch} ${id}`);
+    const b=document.createElement("button");b.className="tile"+(isBad(id)?" bad":"");b.title=id;b.setAttribute("aria-label",`${ch} ${id}`);
     const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=src;im.alt=ch;w.appendChild(im);
     const c=document.createElement("div");c.className="c";c.textContent=ch;
     const m=document.createElement("div");m.className="m";m.textContent=cov.toFixed(2);
-    b.append(w,c,m);b.onclick=()=>{if(st.bad[id])delete st.bad[id];else st.bad[id]=1;save();b.classList.toggle("bad")};
+    b.append(w,c,m);b.onclick=()=>{const bad=!isBad(id);S.set(id,{bad:bad?1:0},"click");b.classList.toggle("bad",bad);stat()};
     frag.appendChild(b);
   }
   g.appendChild(frag);
   $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
-  $("sub").textContent=`册 ${D.book} · ${D.tiles.length} 格 · 覆盖 ${D.n_chars} 个字`;
-  $("stat").textContent=`已审 ${st.seen}/${NP} 页 · 不对 ${Object.keys(st.bad).length}`;
-  $("bar").style.width=(st.seen/NP*100)+"%";
+  $("sub").textContent=`册 ${D.book} · ${D.tiles.length} 格 · 覆盖 ${D.n_chars} 个字 · 模板 ${D.tpl_version}`;
+  stat();
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
   for(const id of ["next","next2"]){$(id).textContent=st.page===NP-1?"本页没问题，完成":"本页没问题，下一页"}
-  save();
+  S.save();
 }
-function next(){saveRemote(st.page);st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else{exportNow()}render();scrollTo(0,0)}
+function stat(){
+  const n=D.tiles.filter(t=>S.how(t[0])).length;
+  $("stat").textContent=`已确认 ${n}/${D.tiles.length} 格 · 已翻 ${st.seen}/${NP} 页 · 不对 ${nBad()}`;
+  $("bar").style.width=(n/Math.max(1,D.tiles.length)*100)+"%";
+}
+function next(){
+  const ts=D.tiles.slice(st.page*P,(st.page+1)*P);
+  for(const t of ts)if(!S.how(t[0]))S.set(t[0],{},"page_ok");
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids:ts.map(t=>t[0])});
+  st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else exportNow();render();scrollTo(0,0)}
 function prev(){st.page--;render();scrollTo(0,0)}
 function exportNow(){
-  const seenTiles=D.tiles.slice(0,st.seen*P);
-  const bad=seenTiles.filter(t=>st.bad[t[0]]).map(t=>t[0]);
-  const ok=seenTiles.filter(t=>!st.bad[t[0]]).map(t=>[t[0],t[1]]);
-  $("out").value=JSON.stringify({book:D.book,pages_seen:st.seen,ok,bad});
-  $("dlg").showModal();
+  const ok=[],bad=[],unconfirmed=[];
+  for(const t of D.tiles){const id=t[0],h=S.how(id);if(!h)unconfirmed.push(id);else if(isBad(id))bad.push(id);else ok.push([id,t[1]])}
+  showOut({book:D.book,page_type:TPL.type,tpl_version:TPL.version,pages_seen:st.seen,ok,bad,unconfirmed});
 }
 for(const id of ["next","next2"])$(id).onclick=next;
 for(const id of ["prev","prev2"])$(id).onclick=prev;
 $("export").onclick=exportNow;
-$("close").onclick=()=>$("dlg").close();
-$("copy").onclick=async()=>{const t=$("out");try{await navigator.clipboard.writeText(t.value)}catch(e){t.select()}$("copy").textContent="已复制"};
-addEventListener("keydown",e=>{if(e.target.tagName==="TEXTAREA")return;if(e.key==="ArrowRight")next();if(e.key==="ArrowLeft"&&st.page>0)prev()});
-render();loadRemote();
+wireDlg();
+addEventListener("keydown",e=>{if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;if(e.key==="ArrowRight")next();if(e.key==="ArrowLeft"&&st.page>0)prev()});
+render();initDB(async()=>{if(await S.restore())render()});
 </script>

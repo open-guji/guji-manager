@@ -95,6 +95,18 @@ def load_nonbody(ws: str) -> dict[str, dict[str, str]]:
     return out
 
 
+L3_MISSING = "文意 L3 未运行：本书缺 config/groups/book_prompt.json（seed_admit 会静默跳过所有文意组，待审偏高）"
+
+
+def has_book_prompt(ws: str) -> bool:
+    """中心库里本书有没有提示词变量文件；没有则 seed_admit 的文意 L3 一格都不问（`_l3_online` 遇 KeyError 跳过）。"""
+    from ._cv import connect
+    with connect() as con:
+        cur = con.cursor()
+        cur.execute("select 1 from files where ws=%s and src_path='config/groups/book_prompt.json' limit 1", (ws,))
+        return cur.fetchone() is not None
+
+
 def load_db(ws: str, text: str, vols: set[int] | None):
     """→ (lists {册号: doc}, cells_total {册号: n}, codepoints {另一码位: 本书码位})。"""
     from ._cv import connect
@@ -226,6 +238,7 @@ def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) 
     ps = (prev or {}).get("by_sub", {})
     tot_cells = sum(v["cells"] or 0 for v in s["vols"].values())
     out = ["# 待审格分类统计", "",
+           *([f"> **注意：{L3_MISSING}**", ""] if s.get("l3_missing") else []),
            f"口径：线上待审单（中心库 `files` 表），{len(s['vols'])} 册，待审 **{n}** 格"
            + (f"，占全册 {tot_cells} 格的 {n / tot_cells:.2%}" if tot_cells else "")
            + (f"；另有非正文页（职名、表格）待审 {s['n_nonbody']} 格，单列、不计入" if s.get("n_nonbody") else "")
@@ -320,6 +333,9 @@ def main(argv=None) -> int:
         nonbody = load_nonbody(a.ws)
     rows = analyse(lists, cp, extra, lib_n, nonbody)
     s = summarize(rows, lists, total)
+    if not a.from_dir and not has_book_prompt(a.ws):
+        s["l3_missing"] = True
+        print(f"警告：{L3_MISSING}", file=sys.stderr)
     body_rows = [r for r in rows if r["kind"] == "body"]
     prev = json.loads(a.prev.read_text(encoding="utf-8")) if a.prev else None
     a.out.mkdir(parents=True, exist_ok=True)
