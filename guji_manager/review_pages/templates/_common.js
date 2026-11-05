@@ -21,3 +21,26 @@ function lsGet(k,d){try{const s=localStorage.getItem(k);return s?Object.assign(d
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 function showOut(obj){$("out").value=JSON.stringify(obj);$("dlg").showModal()}
 function wireDlg(){$("close").onclick=()=>$("dlg").close();$("copy").onclick=async()=>{const t=$("out");try{await navigator.clipboard.writeText(t.value)}catch(e){t.select()}$("copy").textContent="已复制"}}
+// 字块放大框（共用组件，不管存档）。glyphBox(src,{size,label,alt,dims}) → 固定 size×size 框，图等比放大撑满，宽扁字也看得清；
+// glyphPair([{src,label,alt}],{size,shared,dims}) → 并排；shared（默认 true）几张图用同一倍数（按最大那张定），看得出大小差。
+function glyphBox(src,o){
+  o=o||{};const c=document.createElement("div");c.className="gcell";
+  const b=document.createElement("div");b.className="gbox";if(o.size)b.style.setProperty("--gbox",o.size+"px");
+  const im=document.createElement("img");im.alt=o.alt||o.label||"字块";im.decoding="async";b.appendChild(im);c.appendChild(b);
+  const cap=document.createElement("div");cap.className="gcap";
+  if(o.label){const l=document.createElement("b");l.textContent=o.label;cap.appendChild(l)}
+  const dm=document.createElement("span");cap.appendChild(dm);if(o.label||o.dims!==false)c.appendChild(cap);
+  im.onload=()=>{if(o.dims!==false)dm.textContent=(o.label?" ":"")+im.naturalWidth+"×"+im.naturalHeight;if(o.onload)o.onload(im)};im.onerror=()=>{if(o.onload)o.onload(im)};
+  im.src=src||"";c.img=im;c.box=b;return c;
+}
+function glyphPair(items,o){
+  o=o||{};const shared=o.shared!==false&&items.length>1,row=document.createElement("div");row.className="gpair";
+  const cells=[];let left=items.length;
+  const fit=()=>{ // 同一倍数：框内可用边长 ÷ 几张图里最大的边
+    const inner=(o.size||parseFloat(getComputedStyle(cells[0].box).getPropertyValue("--gbox"))||120)-10;
+    const m=Math.max(1,...cells.map(c=>Math.max(c.img.naturalWidth,c.img.naturalHeight)));
+    for(const c of cells){c.box.classList.add("shared");c.img.style.width=(c.img.naturalWidth*inner/m)+"px";c.img.style.height=(c.img.naturalHeight*inner/m)+"px"}
+  };
+  for(const it of items){const c=glyphBox(it.src,Object.assign({},o,{label:it.label,alt:it.alt,onload:()=>{if(shared&&--left===0)fit()}}));cells.push(c);row.appendChild(c)}
+  row.cells=cells;return row;
+}

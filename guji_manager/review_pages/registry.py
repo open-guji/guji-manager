@@ -37,6 +37,10 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
     PageType("seg_cause", "切分归因看图", "seg_cause.tpl.html", "1.1.0",
              "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 A22 seg_causes",
              options=("切分错", "切对了不是切分", "特殊页型", "看不出"), doc_prefix="review_seg"),
+    PageType("glyph_quality", "字块质量（干净/带框/切笔/看不清）", "glyph_quality.tpl.html", "1.0.0",
+             "切分字块验收（列端框线等）；单块或同格新旧两版同倍放大并排，按字块 sha 锚定；"
+             "输入可直接用 dataset 金标信封（如 frame-end-crop），结果用 gq-apply 回写（见 glyph_quality.py）",
+             options=("clean", "frame", "cut", "unsure"), doc_prefix="review_glyph"),
     PageType("closeout", "收口单", "closeout.tpl.html", "1.0.0",
              "判停（R5）；每类剩余格一行，定去向：人审底／留后／精校待办／再处理，合计即收口单",
              options=("人审底", "留后", "精校待办", "再处理"), doc_prefix="review_closeout"),

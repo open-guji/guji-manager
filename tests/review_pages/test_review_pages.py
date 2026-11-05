@@ -93,6 +93,8 @@ def test_every_template_builds(t, tmp_path):
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
         "closeout": [dict(id="S02", label="切分", n=12, pre="再处理", examples=["vol1:1:1:1"])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
+        "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
+                                                                   dict(key="on", sha="bb", img=str(img))])],
     }[t]
     out = tmp_path / "p.html"
     st = B.build(t, items, "b1", out)
@@ -361,3 +363,84 @@ def test_gold_strip_and_check_mode(tmp_path):
     B.build("gold_sample", [it], "b", tmp_path / "g.html", mode="check")
     h = (tmp_path / "g.html").read_text(encoding="utf-8")
     assert '"mode": "check"' in h and h.count("data:image/png;base64,") >= 3
+
+
+# ---- 字块质量 glyph_quality ----
+
+def envelope(i, crops, book="vol05"):
+    return {"id": i, "status": "active", "label_origin": "human", "history": [], "source_events": [],
+            "anchor": {"book": book, "page": 1, "col": 1, "slot": 21, "sub": None, "end": "bot", "patch_key": "k"},
+            "expected": {"char": "索", "crops": crops}, "input": {}}
+
+
+def test_glyph_quality_envelope_input(tmp_path):
+    from guji_manager.review_pages import glyph_quality as gq
+    (tmp_path / "crops").mkdir(); (tmp_path / "crops/a.png").write_bytes(PNG)
+    rows = [envelope("vol05:1:1:21", {"off": {"file": "crops/a.png", "sha": "s1", "label": None},
+                                      "on": {"file": "crops/a.png", "sha": "s2", "label": None}}),
+            envelope("vol05:2:1:21", {"off": {"file": "crops/a.png", "sha": "s3", "label": "clean"},   # 已标：不上页
+                                      "on": {"file": "crops/a.png", "sha": "s3", "label": "clean"}}),
+            envelope("vol18:3:1:21", {"off": {"file": "crops/a.png", "sha": "s4", "label": None},
+                                      "on": {"file": "crops/a.png", "sha": "s4", "label": None}}, "vol18")]
+    its = gq.normalize(rows, tmp_path)
+    assert [r["id"] for r in its] == ["vol05:1:1:21", "vol18:3:1:21"]
+    assert [c["name"] for c in its[0]["crops"]] == ["旧", "新"]
+    assert len(its[1]["crops"]) == 1 and its[1]["crops"][0]["also"] == ["on"] and its[1]["crops"][0]["name"] == "旧＝新"            # 同 sha 只上一块
+    assert its[1]["book"] == "vol18" and its[0]["crops"][0]["img"] == str(tmp_path / "crops/a.png")
+    assert len(gq.normalize(rows, tmp_path, include_labeled=True)) == 3
+    out = tmp_path / "p.html"
+    st = B.build("glyph_quality", rows, "frame-end", out, root=tmp_path, exclude={"s2", "vol18:3:1:21"})
+    assert st["items"] == 1 and st["crops"] == 1 and st["excluded"] == 1
+    html = out.read_text(encoding="utf-8")
+    assert '"sha": "s1"' in html and '"s2"' not in html and "glyphPair" in html
+
+
+def test_glyph_quality_apply_newest_wins():
+    from guji_manager.review_pages import glyph_quality as gq
+    D = dict(page_type="glyph_quality", tpl_version="1.0.0", book="frame-end", vol="vol05")
+    docs = [dict(D, id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off", label="frame", how="click", t=1),
+            dict(D, id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off", label="cut", how="click", t=5),   # 新的赢
+            dict(D, id="vol05:1:1:21|s2", cell="vol05:1:1:21", sha="s2", key="on", label="clean", how="page_ok", t=2),
+            dict(D, id="vol05:1:1:21|s9", cell="vol05:1:1:21", sha="s9", key="on", label="frame", how="click", t=3),  # sha 对不上：不写
+            dict(D, id="vol05:2:1:21|s3", cell="vol05:2:1:21", sha="s3", label="frame", t=4),                      # 没 how：未确认
+            {"kind": "secs", "page": 0, "secs": 3, "ids": []},
+            dict(page_type="char_card", id="x", sha="s1", label="frame", how="click", t=9)]
+    lab = gq.labels_from_docs(docs)
+    assert lab[("vol05:1:1:21", "s1")]["label"] == "cut" and ("vol05:2:1:21", "s3") not in lab
+    assert {r["sha"] for r in gq.label_rows(lab)} == {"s1", "s2", "s9"}
+    exp = {"page_type": "glyph_quality", "labels": [dict(cell="vol05:3:1:21", sha="s5", label="unsure", how="click")]}
+    assert gq.labels_from_docs([exp])[("vol05:3:1:21", "s5")]["label"] == "unsure"          # 导出 JSON 也认
+    rows = [envelope("vol05:1:1:21", {"off": {"sha": "s1", "label": None}, "on": {"sha": "s2", "label": "frame"}}),
+            envelope("vol05:2:1:21", {"off": {"sha": "s3", "label": "clean"}})]
+    rows, stat = gq.apply_to_shard(rows, lab, "2026-11-05T00:00:00Z", "测试")
+    assert rows[0]["expected"]["crops"]["off"]["label"] == "cut" and rows[0]["expected"]["crops"]["on"]["label"] == "clean"
+    assert stat["labeled"] == 1 and stat["relabeled"] == 1
+    assert rows[0]["history"][-1]["change"] == "labeled" and "off:None→cut" in rows[0]["history"][-1]["why"]
+    assert rows[1]["expected"]["crops"]["off"]["label"] == "clean" and rows[1]["history"] == []
+
+
+def test_glyph_quality_cli_roundtrip(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    shard = tmp_path / "items.jsonl"
+    shard.write_text(json.dumps(envelope("vol05:1:1:21", {"off": {"sha": "s1", "label": None}})) + "\n", encoding="utf-8")
+    res = tmp_path / "res"; res.mkdir()
+    (res / "a.json").write_text(json.dumps(dict(page_type="glyph_quality", tpl_version="1.0.0", book="b", vol="vol05",
+                                                id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off",
+                                                label="frame", how="click", t=1)), encoding="utf-8")
+    main(["gq-apply", "--results", str(res), "--out", str(tmp_path / "lab.jsonl")])
+    lab = [json.loads(l) for l in (tmp_path / "lab.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert lab == [dict(id="vol05:1:1:21", sha="s1", book="vol05", key="off", keys=None, label="frame", how="click", t=1)]
+    assert B.read_ids([tmp_path / "lab.jsonl"]) == {"s1"}                      # 结果文件直接当 --exclude：按字块撤
+    main(["gq-apply", "--results", str(res), "--out", str(tmp_path / "new.jsonl"), "--shard", str(shard)])
+    new = json.loads((tmp_path / "new.jsonl").read_text(encoding="utf-8"))
+    assert new["expected"]["crops"]["off"]["label"] == "frame"
+
+
+def test_glyph_quality_template_contract():
+    """必备功能：点即存（每点一条文档，id 过 safeId、带页型/版本/册/格号/sha）、读回、导出、共用放大组件。"""
+    from pathlib import Path
+    tpl = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/glyph_quality.tpl.html").read_text(encoding="utf-8")
+    assert "makeStore(" in tpl and "/*STORE_JS*/" in tpl and "S.restore()" in tpl and "exportAll" in tpl
+    assert "glyphPair(" in tpl
+    js = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/_common.js").read_text(encoding="utf-8")
+    assert "function glyphBox(" in js and "function glyphPair(" in js

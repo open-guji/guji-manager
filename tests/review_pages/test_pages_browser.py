@@ -137,3 +137,33 @@ def test_other_pages_click_save_no_errors(browser, tmp_path):
         page2, errs2 = _open(browser, str(out), db=db)
         assert "已确认 1/1" in page2.inner_text("#stat"), t
         assert not errs and not errs2, (t, errs, errs2)
+
+
+def _gq(tmp_path):
+    img = tmp_path / "a.png"
+    img.write_bytes(bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082"))
+    items = [dict(id=f"vol05:{i}:1:21", book="vol05", char="一", end="bot",
+                  crops=[dict(key="off", sha=f"a{i}", img=str(img)), dict(key="on", sha=f"b{i}", img=str(img))]) for i in range(3)]
+    out = tmp_path / "q.html"
+    B.build("glyph_quality", items, "frame-end", out, per_page=2)
+    return str(out)
+
+
+def test_glyph_quality_click_saves_restores_and_page_ok(browser, tmp_path):
+    html = _gq(tmp_path)
+    page, errs = _open(browser, html)
+    page.locator("#list .card").nth(0).locator("button[data-v=frame]").nth(1).click()
+    page.wait_for_timeout(1500)
+    db = page.evaluate("window.__db")
+    docs = [v for k, v in db.items() if "/i_" in k]
+    assert len(docs) == 1 and docs[0]["label"] == "frame" and docs[0]["how"] == "click"
+    assert docs[0]["sha"] == "b0" and docs[0]["cell"] == "vol05:0:1:21" and docs[0]["page_type"] == "glyph_quality"
+    page2, errs2 = _open(browser, html, db=db)                      # 只靠后台读回
+    assert page2.locator("button[aria-pressed=true]").all_text_contents() == ["带框"]
+    page2.click("#next")                                            # 本页其余 3 块记干净
+    page2.wait_for_timeout(1500)
+    db2 = page2.evaluate("window.__db")
+    items = [v for k, v in db2.items() if "/i_" in k]
+    assert sorted(v["how"] for v in items) == ["click", "page_ok", "page_ok", "page_ok"]
+    assert all(v["label"] == "clean" for v in items if v["how"] == "page_ok")
+    assert not errs and not errs2
