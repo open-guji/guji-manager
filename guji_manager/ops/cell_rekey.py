@@ -77,6 +77,8 @@ class CellMap:
     #: 局部改号表（`load_shift_table`）：只列动了的格，表里没有的格**原样不动**（`lookup` 回 `keep`），
     #: 不像整册格级表那样把「表里没有」当作对不上而停放
     partial: bool = False
+    #: 局部表里多个旧格对上同一个新格：新格 → [旧格…]（整册格级表这是错误；局部表放行，到库里真有两个实例才拒）
+    many_to_one: dict[str, list[str]] = field(default_factory=dict)
 
     def lookup(self, old: str) -> tuple[str, str | None]:
         """→ (`move`|`deleted`|`unknown`|`keep`, 新格或 None)；`keep` 只在局部改号表里出现。"""
@@ -167,12 +169,13 @@ def load_shift_table(path: str | Path, book: str) -> CellMap:
         if new in ("?", "删"):
             cm.deleted[old] = "挤出列尾，无对应新格"
             continue
-        nk = pre + new + sub
+        nsub = (r["新sub"] or "").strip() if r.get("新sub") is not None else sub      # 第二版表有「新sub」列，夹注 a/b 可改
+        nk = pre + new + nsub
         if parse_cell(nk) is None:
             raise ValueError(f"{p.name}:{i}: 新格 {nk!r} 解析不了")
-        if nk in seen_new:
-            raise ValueError(f"{p.name}:{i}: 新格 {nk} 被 {seen_new[nk]} 和 {old} 同时对上")
-        seen_new[nk] = old
+        if nk in seen_new:      # 多对一（旧切分里两格并成新的一格）：表里允许，真有实例压上来时 plan_glyph_db 拒
+            cm.many_to_one.setdefault(nk, [seen_new[nk]]).append(old)
+        seen_new.setdefault(nk, old)
         cm.move[old] = nk
         cm.new_cells.add(nk)
     if not cm.move and not cm.deleted:
@@ -234,6 +237,10 @@ def plan_glyph_db(c: sqlite3.Connection, cm: CellMap, rev: int | str) -> list[di
         clash = sorted(r["new"] for r in out if r["new"] in existing and r["new"] not in moving)
         if clash:
             raise SystemExit(f"✗ 改键后撞上没动的现有实例 {len(clash)} 个：{clash[:5]}")
+        dup = sorted(n for n in {r["new"] for r in out if r["action"] == "rekey"}
+                     if sum(1 for r in out if r["new"] == n) > 1)
+        if dup:
+            raise SystemExit(f"✗ 多个实例改键后落到同一个新 id（表里多对一）{len(dup)} 个：{dup[:5]}")
     return out
 
 
