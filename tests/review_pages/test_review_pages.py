@@ -92,7 +92,12 @@ def test_every_template_builds(t, tmp_path):
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
         "closeout": [dict(id="S02", label="切分", n=12, pre="再处理", examples=["vol1:1:1:1"])],
+        "near_pair": [dict(key="畫書", a="畫", b="書", ex_a=[["i1", str(img)]], ex_b=[["i2", str(img)]],
+                           cells=[dict(id="1:1:1:1", img=str(img), inst=True, cur="畫")])],
+        "lib_audit": [dict(char="官", tiles=[dict(id="1:1:1:1", img=str(img))])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
+        "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
+                                                                   dict(key="on", sha="bb", img=str(img))])],
     }[t]
     out = tmp_path / "p.html"
     st = B.build(t, items, "b1", out)
@@ -361,3 +366,180 @@ def test_gold_strip_and_check_mode(tmp_path):
     B.build("gold_sample", [it], "b", tmp_path / "g.html", mode="check")
     h = (tmp_path / "g.html").read_text(encoding="utf-8")
     assert '"mode": "check"' in h and h.count("data:image/png;base64,") >= 3
+
+
+# ── near_pair / lib_audit（A23 11-05）────────────────────────────────────────
+def _np_items():
+    return [dict(key="畫書", a="畫", b="書", ex_a=[["i1", PNG_PATH_PLACEHOLDER]], ex_b=[["i2", PNG_PATH_PLACEHOLDER]],
+                 cells=[dict(id="v2:vol01:1:1:1", img=PNG_PATH_PLACEHOLDER, inst=True, cur="畫"),
+                        dict(id="v2:vol01:1:1:2", img=PNG_PATH_PLACEHOLDER, inst=False),
+                        dict(id="v2:vol01:1:1:3", img=PNG_PATH_PLACEHOLDER, inst=False),
+                        dict(id="v2:vol01:1:1:4", img=PNG_PATH_PLACEHOLDER, inst=False)])]
+
+
+PNG_PATH_PLACEHOLDER = ""
+
+
+def test_near_pair_build_and_events(tmp_path):
+    from guji_manager.review_pages import pair_audit as PA
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = _np_items()
+    for g in items:
+        g["ex_a"] = [[t[0], str(img)] for t in g["ex_a"]]; g["ex_b"] = [[t[0], str(img)] for t in g["ex_b"]]
+        for c in g["cells"]:
+            c["img"] = str(img)
+    out = tmp_path / "np.html"
+    st = B.build("near_pair", items, "b1", out)
+    assert st["pairs"] == 1 and st["cells"] == 4 and st["page_type"] == "near_pair"
+    side = json.loads(out.with_suffix(".items.json").read_text(encoding="utf-8"))
+    assert "img" not in side[0]["cells"][0] and "ex_a" not in side[0]
+    docs = [dict(id="v2:vol01:1:1:1", pair="畫書", how="click", v="b", t=1),        # 库里标畫，人定書 → relabel
+            dict(id="v2:vol01:1:1:1", pair="畫書", how="click", v="a", t=2),        # 后写覆盖：改回畫＝认同，不出事件
+            dict(id="v2:vol01:1:1:2", pair="畫書", how="click", v="b", t=1),        # 待审格 → confirm
+            dict(id="v2:vol01:1:1:3", pair="畫書", how="click", v="neither", pick="盡", t=1),
+            dict(id="v2:vol01:1:1:4", pair="畫書", how="click", v="unclear", t=1)]
+    decs = PA.near_pair_decisions(side, docs)
+    assert {d["id"]: d["status"] for d in decs} == {"v2:vol01:1:1:1": "pick", "v2:vol01:1:1:2": "pick",
+                                                    "v2:vol01:1:1:3": "pick", "v2:vol01:1:1:4": "unclear"}
+    sp = PA.to_specs(decs, "b1", "t")
+    got = {s["key"]: (s["kind"], s["payload"].get("v"), s["payload"].get("char") or s["payload"].get("shape")) for s in sp}
+    assert got == {"v2:vol01:1:1:2": ("confirm", "confirm", "書"), "v2:vol01:1:1:3": ("confirm", "confirm", "盡")}
+
+
+def test_near_pair_exclude(tmp_path):
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = _np_items()
+    for g in items:
+        g["ex_a"] = []; g["ex_b"] = []
+        for c in g["cells"]:
+            c["img"] = str(img)
+    st = B.build("near_pair", items, "b1", tmp_path / "x.html", exclude={"v2:vol01:1:1:1", "v2:vol01:1:1:2"})
+    assert st["cells"] == 2 and st["excluded"] == 2
+    st = B.build("near_pair", items, "b1", tmp_path / "y.html", exclude={c["id"] for c in items[0]["cells"]})
+    assert st["pairs"] == 0
+
+
+def test_lib_audit_build_and_events(tmp_path):
+    from guji_manager.review_pages import pair_audit as PA
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = [dict(char="官", tiles=[dict(id="v2:vol01:1:1:1", img=str(img)), dict(id="v2:vol01:1:1:2", img=str(img)),
+                                    dict(id="v2:vol01:1:1:3", img=str(img)), dict(id="v2:vol01:1:1:4", img=str(img))])]
+    out = tmp_path / "la.html"
+    st = B.build("lib_audit", items, "b1", out)
+    assert st["groups"] == 1 and st["tiles"] == 4
+    side = json.loads(out.with_suffix(".items.json").read_text(encoding="utf-8"))
+    docs = [dict(id="v2:vol01:1:1:1", char="官", how="click", v="relabel", to="宫", t=1),
+            dict(id="v2:vol01:1:1:2", char="官", how="click", v="relabel", to="官", t=1),      # 改成自己＝无效
+            dict(id="v2:vol01:1:1:3", char="官", how="click", v="evict", t=1),
+            dict(id="v2:vol01:1:1:4", char="官", how="click", v="near_form", to="宮", t=1),
+            dict(id="nope", char="官", how="click", v="evict", t=1)]
+    decs = PA.lib_audit_decisions(side, docs)
+    assert [d["status"] for d in decs] == ["relabel", "evict", "near_form"]
+    sp = PA.to_specs(decs, "b1", "t")
+    assert [s["payload"]["v"] for s in sp] == ["relabel", "evict", "near_form"]
+    assert sp[0]["payload"]["char"] == "宫" and sp[2]["payload"]["peer_char"] == "宮"
+    assert all(s["kind"] == "glyph_audit" and s["payload"]["instance_id"] == s["key"] for s in sp)
+
+
+def test_cli_pair_events(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    items = [dict(char="官", tiles=[dict(id="v2:vol01:1:1:1", img=str(img))])]
+    out = tmp_path / "la.html"
+    B.build("lib_audit", items, "b1", out)
+    res = tmp_path / "res"; res.mkdir()
+    (res / "x.json").write_text(json.dumps(dict(id="v2:vol01:1:1:1", char="官", how="click", v="evict", t=1)), encoding="utf-8")
+    ev = tmp_path / "ev.jsonl"
+    main(["pair-events", "lib_audit", "--items", str(out.with_suffix(".items.json")), "--results", str(res),
+          "--book", "b1", "--out", str(ev)])
+    rows = [json.loads(l) for l in ev.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["kind"] == "glyph_audit" and rows[0]["payload"]["v"] == "evict"
+    assert "dry-run" in capsys.readouterr().out
+
+
+def test_pair_audit_ignores_unconfirmed_docs():
+    from guji_manager.review_pages import pair_audit as PA
+    items = [dict(key="畫書", a="畫", b="書", cells=[dict(id="c1", inst=False)])]
+    assert PA.near_pair_decisions(items, [dict(id="c1", pair="畫書", v="a", t=1)]) == []      # 没有 how＝没确认
+    assert PA.near_pair_decisions(items, [dict(id="c1", pair="另一对", how="click", v="a", t=1)]) == []
+
+
+# ---- 字块质量 glyph_quality ----
+
+def envelope(i, crops, book="vol05"):
+    return {"id": i, "status": "active", "label_origin": "human", "history": [], "source_events": [],
+            "anchor": {"book": book, "page": 1, "col": 1, "slot": 21, "sub": None, "end": "bot", "patch_key": "k"},
+            "expected": {"char": "索", "crops": crops}, "input": {}}
+
+
+def test_glyph_quality_envelope_input(tmp_path):
+    from guji_manager.review_pages import glyph_quality as gq
+    (tmp_path / "crops").mkdir(); (tmp_path / "crops/a.png").write_bytes(PNG)
+    rows = [envelope("vol05:1:1:21", {"off": {"file": "crops/a.png", "sha": "s1", "label": None},
+                                      "on": {"file": "crops/a.png", "sha": "s2", "label": None}}),
+            envelope("vol05:2:1:21", {"off": {"file": "crops/a.png", "sha": "s3", "label": "clean"},   # 已标：不上页
+                                      "on": {"file": "crops/a.png", "sha": "s3", "label": "clean"}}),
+            envelope("vol18:3:1:21", {"off": {"file": "crops/a.png", "sha": "s4", "label": None},
+                                      "on": {"file": "crops/a.png", "sha": "s4", "label": None}}, "vol18")]
+    its = gq.normalize(rows, tmp_path)
+    assert [r["id"] for r in its] == ["vol05:1:1:21", "vol18:3:1:21"]
+    assert [c["name"] for c in its[0]["crops"]] == ["旧", "新"]
+    assert len(its[1]["crops"]) == 1 and its[1]["crops"][0]["also"] == ["on"] and its[1]["crops"][0]["name"] == "旧＝新"            # 同 sha 只上一块
+    assert its[1]["book"] == "vol18" and its[0]["crops"][0]["img"] == str(tmp_path / "crops/a.png")
+    assert len(gq.normalize(rows, tmp_path, include_labeled=True)) == 3
+    out = tmp_path / "p.html"
+    st = B.build("glyph_quality", rows, "frame-end", out, root=tmp_path, exclude={"s2", "vol18:3:1:21"})
+    assert st["items"] == 1 and st["crops"] == 1 and st["excluded"] == 1
+    html = out.read_text(encoding="utf-8")
+    assert '"sha": "s1"' in html and '"s2"' not in html and "glyphPair" in html
+
+
+def test_glyph_quality_apply_newest_wins():
+    from guji_manager.review_pages import glyph_quality as gq
+    D = dict(page_type="glyph_quality", tpl_version="1.0.0", book="frame-end", vol="vol05")
+    docs = [dict(D, id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off", label="frame", how="click", t=1),
+            dict(D, id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off", label="cut", how="click", t=5),   # 新的赢
+            dict(D, id="vol05:1:1:21|s2", cell="vol05:1:1:21", sha="s2", key="on", label="clean", how="page_ok", t=2),
+            dict(D, id="vol05:1:1:21|s9", cell="vol05:1:1:21", sha="s9", key="on", label="frame", how="click", t=3),  # sha 对不上：不写
+            dict(D, id="vol05:2:1:21|s3", cell="vol05:2:1:21", sha="s3", label="frame", t=4),                      # 没 how：未确认
+            {"kind": "secs", "page": 0, "secs": 3, "ids": []},
+            dict(page_type="char_card", id="x", sha="s1", label="frame", how="click", t=9)]
+    lab = gq.labels_from_docs(docs)
+    assert lab[("vol05:1:1:21", "s1")]["label"] == "cut" and ("vol05:2:1:21", "s3") not in lab
+    assert {r["sha"] for r in gq.label_rows(lab)} == {"s1", "s2", "s9"}
+    exp = {"page_type": "glyph_quality", "labels": [dict(cell="vol05:3:1:21", sha="s5", label="unsure", how="click")]}
+    assert gq.labels_from_docs([exp])[("vol05:3:1:21", "s5")]["label"] == "unsure"          # 导出 JSON 也认
+    rows = [envelope("vol05:1:1:21", {"off": {"sha": "s1", "label": None}, "on": {"sha": "s2", "label": "frame"}}),
+            envelope("vol05:2:1:21", {"off": {"sha": "s3", "label": "clean"}})]
+    rows, stat = gq.apply_to_shard(rows, lab, "2026-11-05T00:00:00Z", "测试")
+    assert rows[0]["expected"]["crops"]["off"]["label"] == "cut" and rows[0]["expected"]["crops"]["on"]["label"] == "clean"
+    assert stat["labeled"] == 1 and stat["relabeled"] == 1
+    assert rows[0]["history"][-1]["change"] == "labeled" and "off:None→cut" in rows[0]["history"][-1]["why"]
+    assert rows[1]["expected"]["crops"]["off"]["label"] == "clean" and rows[1]["history"] == []
+
+
+def test_glyph_quality_cli_roundtrip(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    shard = tmp_path / "items.jsonl"
+    shard.write_text(json.dumps(envelope("vol05:1:1:21", {"off": {"sha": "s1", "label": None}})) + "\n", encoding="utf-8")
+    res = tmp_path / "res"; res.mkdir()
+    (res / "a.json").write_text(json.dumps(dict(page_type="glyph_quality", tpl_version="1.0.0", book="b", vol="vol05",
+                                                id="vol05:1:1:21|s1", cell="vol05:1:1:21", sha="s1", key="off",
+                                                label="frame", how="click", t=1)), encoding="utf-8")
+    main(["gq-apply", "--results", str(res), "--out", str(tmp_path / "lab.jsonl")])
+    lab = [json.loads(l) for l in (tmp_path / "lab.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert lab == [dict(id="vol05:1:1:21", sha="s1", book="vol05", key="off", keys=None, label="frame", how="click", t=1)]
+    assert B.read_ids([tmp_path / "lab.jsonl"]) == {"s1"}                      # 结果文件直接当 --exclude：按字块撤
+    main(["gq-apply", "--results", str(res), "--out", str(tmp_path / "new.jsonl"), "--shard", str(shard)])
+    new = json.loads((tmp_path / "new.jsonl").read_text(encoding="utf-8"))
+    assert new["expected"]["crops"]["off"]["label"] == "frame"
+
+
+def test_glyph_quality_template_contract():
+    """必备功能：点即存（每点一条文档，id 过 safeId、带页型/版本/册/格号/sha）、读回、导出、共用放大组件。"""
+    from pathlib import Path
+    tpl = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/glyph_quality.tpl.html").read_text(encoding="utf-8")
+    assert "makeStore(" in tpl and "/*STORE_JS*/" in tpl and "S.restore()" in tpl and "exportAll" in tpl
+    assert "glyphPair(" in tpl
+    js = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/_common.js").read_text(encoding="utf-8")
+    assert "function glyphBox(" in js and "function glyphPair(" in js

@@ -6,11 +6,15 @@
 
 ## [0.5.0] - 2026-11-05
 
+- 人审页新增两个页型（MINOR，A23，A31 11-05 同意）：`near_pair` 1.0.0 形近字对比卡（两字各摆库里人裁刻例、待审格居中、A/B/都不是/看不清/切分有问题、可带 near_shape 差异区图）与 `lib_audit` 1.0.0 库内刻例审阅卡（按字头列刻例，改成/撤库/形近没错），都用 `_store.js` 逐项存档；`review-pages pair-events` 把结果转成 `glyph_audit` relabel／evict／near_form 与 `confirm` 事件（缺省只写说明文件，`--apply --batch` 才追加本机事件日志）。`build --exclude` 对这两个页型按组内的格/刻例撤。
+
 - `review/seg_defect` 出单同字对照自检（PATCH，A22 长期计划 B1③，A20／A31 11-05 定方案）：加整册入口 `book_flags()`、CLI `--gate`（只出同字对照命中的 clipped／frame_residue，写 `<工作区>/reports/<册>/seg_selfcheck.tsv`＋`.meta.json`，meta 记参数与各页 seed_admit／cell_shrink 产物指纹，`meta_fresh()` 判过期）；补「偏高／墨宽＝带框」一侧 `same_char_frame`（归 frame_residue）；书级小表 `SELFCHECK_BOOKS`（按 book-text 条目 id，殿本、史記两项，缺省都不开，`review_kinds` 缺省只送 clipped）。`review/reasons.py`：单上 `src="seg_selfcheck"` 的格归 seg_defect，detail 写「同字对照自检：<seg_kind>」。不进任何 Step 的 code_deps。
+- 修：`_cv` 里 RulingLog 等六个名字（feedback.rulings）误登记进了 `_LOCAL`（本包模块表），实际在 cv，导致 final-review 报「需要装 open-guji-cv」（PATCH，A31）；`test_cv_surface` 加守卫：`_LOCAL` 的名字必须有对应本包模块。
 
 - 评测注册表守卫（tests/from_cv/test_eval_v2.py）登记 cv 的 `eval_fold`（折叠表辅助模块）与 `eval_ref_verify`（5b 验证整理本字，A23），修 dev CI 自 #157 起因这两个脚本没登记而红（PATCH，只动测试）。
 
 - 人审页补齐必备功能（MINOR，A31，sheldon 11-05）：逐项存档通用件 `_store.js`（点一下就存、读回、how=click/page_ok、未确认项标出），`gold_sample` 1.1.0（切分错/看不清/库里无此字、整理本字入上下文、邻格条、按 kind 筛选、核对模式）、`codepoint` 2.1.0、`pair_whitelist` 1.1.0、`seg_cause` 1.1.0、`char_grid` 1.2.0 改点即存；新增 `closeout` 1.0.0 收口单；`expand` 带 kind；新增 `unconfirmed`、`closeout-sum`，`cp-apply --items`；下游（cp-apply、ledger、char pull）只认已确认。
+- 人审页模板库新页型 `glyph_quality` 1.0.0（PATCH，新增页型与命令，A22，A31 11-05 转）：字块质量看图，单块或同格新旧两版同倍放大并排，点干净/带框/切笔/看不清，存档用 `_store.js`（项 id＝格号|sha，点即存、读回、how=click/page_ok）；`build glyph_quality` 直接吃 dataset 金标信封（`--root`、`--all-crops`、`--box`），新命令 `gq-apply` 出标签 jsonl 或回写信封；`--exclude` 认带 sha 的行（按块撤）。`_common` 加共用放大组件 `glyphBox`/`glyphPair`（固定框放大、多块同倍并排）。
 
 - 后台「迭代轮次」（PATCH，A31，sheldon 11-05）：`iterate push-rounds`（回填）、`round-report --push-progress`（验收后写一轮）、`iterate auto-round`（从各册★main 包口径汇总一轮）；标 main 的钩子在包口径写完后自动接 `auto-round`，每标一册更新一次该轮（包标签无 `-rN` 段的不自动收）。人审页 `char_card` 1.3.0：每格多路候选＋来源；`_common.js` saveDoc 把文档 id 编成 ASCII。
 

@@ -1,0 +1,86 @@
+<title>库内刻例审阅卡</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.gh{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.big{font:600 40px/1 var(--font-glyph);min-width:1.3em;text-align:center}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.t{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;background:var(--tile);border:2px solid var(--line);border-radius:8px}
+.t .img{background:#fff;border-radius:4px;padding:2px;line-height:0;height:88px;display:flex;align-items:center;justify-content:center;width:100%}
+.t .img img{max-height:82px;max-width:100%;object-fit:contain}
+.t .m{font-size:10px;color:var(--muted);text-align:center}
+.t .ctx{font:13px/1.4 var(--font-glyph);text-align:center;word-break:break-all}
+.t .opts{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.t .opts button{padding:3px 7px;font-size:12px}
+.t .opts button.sel{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.t .pk{width:3em;font:600 18px/1 var(--font-glyph);text-align:center}
+.t.v-relabel,.t.v-evict{border-color:var(--bad);background:var(--bad-bg)}.t.v-near_form{border-color:#b7791f}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*//*STORE_JS*/
+// 每页 per_page 个字头。每个字头列出库里该字的刻例；人只点有问题的：
+// 「改成…」填应为的字（relabel）／「撤库」（evict，图不能当这个字的刻例）／「形近没错」（图就是这个字，只是与某字形近，可填那个字）。
+// 每点一下写一份逐项文档 i_<实例号>（通用件，重开读回）；没点的刻例不记结果（不等于认可）。
+const VN={relabel:"改成",evict:"撤库",near_form:"形近没错"};
+const P=D.per_page, NP=Math.max(1,Math.ceil(D.groups.length/P));
+const gOf={};D.groups.forEach((g,i)=>g.tiles.forEach(t=>gOf[t.id]={g,i}));
+const S=makeStore({key:"lib-audit-"+D.book+"-"+D.tpl_version.split(".")[0],
+  pageOf:id=>Math.floor(((gOf[id]||{i:0}).i)/P),
+  docOf:(id,raw)=>({char:(gOf[id]||{g:{char:""}}).g.char,v:raw.v,to:raw.to||""})});
+const st=S.st;
+function updStat(){$("stat").textContent=`已标 ${Object.keys(st.v).length} 例`}
+function setV(id,v,to){if(v)S.set(id,{v,to:to||""},"click");else S.clear(id);updStat()}
+function paint(box,t){
+  const x=S.raw(t.id);box.className="t"+(x?" v-"+x.v:"");
+  for(const b of box.querySelectorAll("button"))b.classList.toggle("sel",!!x&&b.dataset.v===x.v);
+  const k=box.querySelector(".pk");k.hidden=!(x&&(x.v==="relabel"||x.v==="near_form"));
+  k.placeholder=x&&x.v==="near_form"?"形近的字":"应为";
+  if(!k.hidden&&document.activeElement!==k)k.value=x.to||"";
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP-1);
+  const L=$("list");L.textContent="";
+  for(const g of D.groups.slice(st.page*P,(st.page+1)*P)){
+    const box=document.createElement("div");box.className="card";
+    const hd=document.createElement("div");hd.className="gh";
+    const big=document.createElement("div");big.className="big";big.textContent=g.char;
+    const mt=document.createElement("div");mt.className="stat";mt.textContent=`库里 ${g.tiles.length} 例`+(g.note?" · "+g.note:"");
+    hd.append(big,mt);
+    const gr=document.createElement("div");gr.className="tiles";
+    for(const t of g.tiles){
+      const b=document.createElement("div");b.title=t.id;
+      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=t.img||"";im.alt=g.char;w.appendChild(im);
+      const m=document.createElement("div");m.className="m";m.textContent=[t.prov||"",t.score!=null?"分 "+Number(t.score).toFixed(3):""].filter(Boolean).join(" · ");
+      const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.setAttribute("aria-label","对应的字");
+      pk.oninput=()=>{const x=S.raw(t.id);if(x){setV(t.id,x.v,pk.value.trim());paint(b,t)}};
+      const o=document.createElement("div");o.className="opts";
+      for(const v of ["relabel","evict","near_form"]){
+        const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=VN[v]+(v==="relabel"?"…":"");
+        bt.onclick=()=>{const x=S.raw(t.id);if(x&&x.v===v)setV(t.id,null);else setV(t.id,v,"");paint(b,t);if(S.raw(t.id)&&v!=="evict")pk.focus()};
+        o.appendChild(bt);
+      }
+      b.append(w);if(t.ctx){const cx=document.createElement("div");cx.className="ctx";cx.textContent=t.ctx;b.append(cx)}
+      b.append(m,o,pk);paint(b,t);gr.appendChild(b);
+    }
+    box.append(hd,gr);L.appendChild(box);
+  }
+  updStat();$("bar").style.width=(st.seen/NP*100)+"%";
+  $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
+  $("sub").textContent=`册 ${D.book} · ${D.groups.length} 个字头 · ${D.n_tiles} 例 · 模板 ${D.tpl_version}`;
+  $("hint").textContent=D.hint||"每个字头下是库里标成这个字的刻例。只点有问题的：图其实是别的字 → 「改成…」并填应为的字；图不能当刻例 → 「撤库」；图就是这个字、只是和某字形近 → 「形近没错」。每点一下就存后台，没点的不记结果（不等于认可）。";
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"完成":"下一页";
+  S.save();
+}
+const exportNow=()=>showOut({book:D.book,tiles:Object.fromEntries(Object.entries(st.v).map(([k,x])=>[k,x.raw]))});
+function next(){
+  const ids=D.groups.slice(st.page*P,(st.page+1)*P).flatMap(g=>g.tiles.map(t=>t.id));
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids});
+  st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else exportNow();render();scrollTo(0,0)}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=exportNow;
+wireDlg();render();
+initDB(async()=>{if(await S.restore())render()});
+</script>
