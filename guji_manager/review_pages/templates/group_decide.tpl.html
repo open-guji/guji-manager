@@ -29,6 +29,8 @@ function render(){
     for(const [id,img,cap] of g.tiles){const t=document.createElement("div");t.className="tile";t.style.cursor="default";t.title=id;
       const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=img;im.alt=cap||"";w.appendChild(im);
       const m=document.createElement("div");m.className="m";m.textContent=cap||"";t.append(w,m);tl.appendChild(t)}
+    const ln=document.createElement("div");ln.style.cssText="font:16px/1.7 var(--font-glyph);margin:6px 0";
+    for(const t of (g.lines||[])){const d=document.createElement("div");d.textContent=t;ln.appendChild(d)}
     const op=document.createElement("div");op.className="opts";
     for(const o of D.options){
       const lb=document.createElement("label");const r=document.createElement("input");r.type="radio";r.name="g_"+g.key;r.checked=picked(g)===o;
@@ -37,7 +39,7 @@ function render(){
       op.appendChild(lb);
     }
     const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=st.note[g.key]||"";nt.oninput=()=>{st.note[g.key]=nt.value;lsSet(KEY,st)};op.appendChild(nt);
-    box.append(hd,meta,tl,op);L.appendChild(box);
+    box.append(hd,meta,ln,tl,op);L.appendChild(box);
   }
   $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
   $("sub").textContent=`册 ${D.book} · ${D.groups.length} 组 · 模板 ${D.tpl_version}`;

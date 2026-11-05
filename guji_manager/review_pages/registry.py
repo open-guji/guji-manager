@@ -33,7 +33,16 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
     PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.0.0",
              "新放行类别上线前（R3）；终审标注页的通用版，保留 cell/pick/other/note/review 字段",
              doc_prefix="labels"),
-    PageType("seg_cause", "切分归因看图", None, "0.0.0", "S01–S04；seg_causes 输出，待建"),
+    PageType("name_pick", "专名待确认点选页", "cell_pick.tpl.html", "1.0.0",
+             "点校预标（A33）；每项一处待定专名，上下文＋候选专名（带来源），点选或填其它；字段同 gold_sample",
+             doc_prefix="review_name"),
+    PageType("name_register", "库无专名建档确认页", "group_decide.tpl.html", "1.0.0",
+             "点校预标（A33）；每组一个库里没有的专名，看出处语句，定建档/并入已有/不建",
+             options=("建档", "并入已有", "不建", "不确定"), doc_prefix="review_namereg"),
+    PageType("punct_check", "标点抽样验收页", "group_decide.tpl.html", "1.0.0",
+             "点校验收（A33）；抽样段落带标点，逐段判对/错/存疑，备注写错在哪",
+             options=("对", "错", "存疑"), doc_prefix="review_punct"),
+    PageType("seg_cause", "切分归因看图", None, "0.0.0", "S01–S04；输入字段要和 A22 的 seg_causes 表一起定，待建"),
     PageType("closeout", "收口单", None, "0.0.0", "判停（R5），待建"),
 ]}
 
