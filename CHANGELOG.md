@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 任务库：空闲执行方不再碰 Neon（PATCH，用户 11-05 定「job 彻底从 Neon 撤掉，不要有进程不断 query」）。原先每个空闲执行方每 5 分钟把看板写进中心库 `progress.metric`，约 40 个执行方合起来每 8 秒一次，Neon 永远不休眠；现在空闲只连任务库，看板在领单、收尾、心跳（跑单中）和 `guji job submit` 交单时更新。
+
 - eval：登记三书人裁冻结金标的 7 个评测（`db_match_books`、`match_pairs_{siku_v2,shiji,qtw}`、`rare_{siku_v2,shiji,qtw}`），集在 open-guji-dataset #64，脚本在 cv #1069（PATCH）。
 - final-review：`finalize --book-yaml` 读 `params.seed_admit.ruling_override_groups`（cv #1064）作越过参校本白名单，与 `--whitelist` 不一致拒绝（PATCH）。
 

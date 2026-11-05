@@ -612,8 +612,8 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                     db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
                 got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only)
                 if got is None:
-                    # 空闲时也定期刷新看板：排队中的新单（别人刚交的）要在几分钟内出现在表里，不等有人收尾
-                    BOARD.publish(db, min_gap=IDLE_BOARD_S)
+                    # 空闲时不碰 Neon（看板写在中心库，40 个执行方每 5 分钟写一次会让 Neon 永远不休眠，11-05 用户定）；
+                    # 看板在领单、收尾、心跳与交单时更新
                     notify_submitters(db, say)      # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发
                     if (until_empty and not idle_minutes) or time.time() - idle_since > idle_minutes * 60:
                         say(f"没有可跑的单，退出（本轮跑了 {done} 条）")
