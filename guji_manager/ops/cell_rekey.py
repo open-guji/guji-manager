@@ -74,14 +74,17 @@ class CellMap:
     new_cells: set[str] = field(default_factory=set)
     iou: dict[str, float] = field(default_factory=dict)
     source: str = ""
+    #: 局部改号表（`load_shift_table`）：只列动了的格，表里没有的格**原样不动**（`lookup` 回 `keep`），
+    #: 不像整册格级表那样把「表里没有」当作对不上而停放
+    partial: bool = False
 
     def lookup(self, old: str) -> tuple[str, str | None]:
-        """→ (`move`|`deleted`|`unknown`, 新格或 None)。"""
+        """→ (`move`|`deleted`|`unknown`|`keep`, 新格或 None)；`keep` 只在局部改号表里出现。"""
         if old in self.move:
             return "move", self.move[old]
         if old in self.deleted:
             return "deleted", None
-        return "unknown", None
+        return ("keep" if self.partial else "unknown"), None
 
     def counts(self) -> dict:
         return {"move": len(self.move), "renumbered": sum(1 for o, n in self.move.items() if o != n),
@@ -136,6 +139,50 @@ def load_cell_map(path: str | Path) -> CellMap:
     return cm
 
 
+def load_shift_table(path: str | Path, book: str) -> CellMap:
+    """读 A22 出的局部改号表（如殿本抬头漏认 `格号旧到新.tsv`，列 `册 页 列 旧格 sub 新格`，只列动了的格）。
+
+    只取 `book` 这一册；新格是 `?` 的（顺移后挤出列尾、没有对应格）记为 `删`。
+    `partial=True`：表里没列的格不动，不会停放。旧格、新格都必须一对一。"""
+    p = Path(path)
+    cm = CellMap(book=book, source=p.name, partial=True)
+    with open(p, encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh, delimiter="\t"))
+    seen_new: dict[str, str] = {}
+    for i, r in enumerate(rows, start=2):
+        if (r.get("册") or "").strip() != book:
+            continue
+        pre, sub = f"{book}:{r['页'].strip()}:{r['列'].strip()}:", (r.get("sub") or "").strip()
+        old, new = pre + r["旧格"].strip() + sub, (r.get("新格") or "").strip()
+        if parse_cell(old) is None:
+            raise ValueError(f"{p.name}:{i}: 格键 {old!r} 解析不了")
+        if old in cm.move or old in cm.deleted:
+            raise ValueError(f"{p.name}:{i}: 旧格 {old} 出现两次")
+        if new == "?":
+            cm.deleted[old] = "挤出列尾，无对应新格"
+            continue
+        nk = pre + new + sub
+        if parse_cell(nk) is None:
+            raise ValueError(f"{p.name}:{i}: 新格 {nk!r} 解析不了")
+        if nk in seen_new:
+            raise ValueError(f"{p.name}:{i}: 新格 {nk} 被 {seen_new[nk]} 和 {old} 同时对上")
+        seen_new[nk] = old
+        cm.move[old] = nk
+        cm.new_cells.add(nk)
+    if not cm.move and not cm.deleted:
+        raise ValueError(f"{p.name}: 里面没有 {book} 的行")
+    return cm
+
+
+def is_shift_table(path: str | Path) -> bool:
+    """表头像 A22 局部改号表（有 `册`、`页`、`列`、没有 `类别`）。"""
+    p = Path(path)
+    raw = gzip.open(p, "rt", encoding="utf-8") if p.suffix == ".gz" else open(p, encoding="utf-8")
+    with raw as fh:
+        head = fh.readline().rstrip("\n").split("\t")
+    return {"册", "页", "列", "旧格", "新格"} <= set(head) and "类别" not in head
+
+
 # —— 字形库 ——
 
 def _split_instance(iid: str, book: str) -> tuple[str, str] | None:
@@ -167,12 +214,20 @@ def plan_glyph_db(c: sqlite3.Connection, cm: CellMap, rev: int | str) -> list[di
             rec.update(action="park", new=parked_id(pre or "v1", key, rev), why="v1_idx")
         else:
             kind, new = cm.lookup(key)
+            if kind == "keep":
+                continue
             if kind == "move":
                 rec.update(action="rekey", new=f"{pre}:{new}" if pre else new, iou=cm.iou.get(key))
             else:
                 rec.update(action="park", new=parked_id(pre or "bare", key, rev),
                            why="deleted:" + cm.deleted[key] if kind == "deleted" else "not_in_table")
         out.append(rec)
+    if cm.partial:       # 局部表：新 id 不能压到一个没动的现有实例上（动了的互相交错没事，改名分两段）
+        moving = {r["old"] for r in out}
+        existing = {r[0] for r in c.execute("SELECT instance_id FROM instances")}
+        clash = sorted(r["new"] for r in out if r["new"] in existing and r["new"] not in moving)
+        if clash:
+            raise SystemExit(f"✗ 改键后撞上没动的现有实例 {len(clash)} 个：{clash[:5]}")
     return out
 
 
@@ -280,11 +335,17 @@ def verify_glyph_db(db_path: str | Path, cm: CellMap, events: list[dict] | None 
         stray = []
         for (iid,) in c.execute("SELECT instance_id FROM instances"):
             sp = _split_instance(iid, cm.book)
-            if sp is not None and (sp[0] == "v1" or sp[1] not in cm.new_cells):
+            if sp is None:
+                continue
+            if cm.partial:       # 局部表：只查「该走的没走」——旧格（改号的、挤出的）上不该再有本册实例
+                if sp[1] in cm.deleted or (sp[1] in cm.move and cm.move[sp[1]] != sp[1] and sp[1] not in cm.new_cells):
+                    stray.append(iid)
+            elif sp[0] == "v1" or sp[1] not in cm.new_cells:
                 stray.append(iid)
     finally:
         c.close()
-    out = {"human_keys": len(human), "human_not_in_new": sorted(k for k in human if k not in cm.new_cells),
+    out = {"human_keys": len(human),
+           "human_not_in_new": [] if cm.partial else sorted(k for k in human if k not in cm.new_cells),
            "stray_ids": stray}
     if events is not None:
         last: dict[str, tuple[str, str]] = {}
@@ -336,7 +397,7 @@ def rekey_json(path: str | Path, cm: CellMap, out: str | Path | None = None, *, 
             s["move"] += 1
             s["renumbered"] += nk != k
             new_cells[nk] = v
-        elif kind == "other":
+        elif kind in ("other", "keep"):
             s["other"] += 1
             if k in new_cells:
                 raise ValueError(f"{p.name}: 键 {k} 和改键后的格撞了")
@@ -428,7 +489,7 @@ def rekey_ids_bank(path: str | Path, cm: CellMap, rev: int | str, out: str | Pat
             s["move"] += 1
             s["renumbered"] += nk != k
             cells[i] = nk
-        elif kind == "other":
+        elif kind in ("other", "keep"):
             s["other"] += 1
         else:
             s["parked"] += 1
