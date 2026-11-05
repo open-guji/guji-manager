@@ -9,7 +9,7 @@ TSV = ("册\t页\t列\t旧格\tsub\t新格\n"
        "vol01\t3\t4\t1\t\t-1\n"
        "vol01\t3\t4\t2\t\t1\n"
        "vol01\t3\t4\t3\t\t2\n"
-       "vol01\t3\t4\t21\t\t?\n"
+       "vol01\t3\t4\t21\t\t删\n"
        "vol01\t3\t5\t8\ta\t7\n"
        "vol01\t3\t5\t8\tb\t7\n"
        "vol02\t9\t1\t1\t\t-1\n")
