@@ -12,6 +12,9 @@
 .tile .pk{width:3em;font:600 20px/1 var(--font-glyph);text-align:center}
 .tile .ctx{font:13px/1.4 var(--font-glyph);color:var(--fg);text-align:center;word-break:break-all;max-width:100%}
 .tile .note{font-size:11px;color:var(--muted);text-align:left;max-width:100%;line-height:1.35}
+.tile .cs{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
+.tile .cand{font:600 18px/1 var(--font-glyph);padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:2.2em}
+.tile .cand small{font:10px/1.2 var(--font-ui);color:var(--muted)}.tile .cand.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.tile .cand.sel small{color:var(--accent-fg)}
 .tiles.wide{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 </style>
 /*SHELL*/
@@ -24,7 +27,7 @@ const D=/*DATA*/null;
 const KEY="char-card-"+D.book+"-"+D.tpl_version.split(".").slice(0,2).join("."), P=D.per_page, NP=Math.max(1,Math.ceil(D.cards.length/P));
 const CYC=["seg","other","unclear","ok"], VN={seg:"切分有问题",other:"改字",unclear:"看不清",ok:"对"};
 function lsRaw(k){try{const x=localStorage.getItem(k);return x?JSON.parse(x):null}catch(e){return null}}
-let st=lsRaw(KEY)||lsRaw("char-card-"+D.book+"-1.1.0")||{};
+let st=lsRaw(KEY)||lsRaw("char-card-"+D.book+"-1.2")||lsRaw("char-card-"+D.book+"-1.1.0")||{};
 st=Object.assign({v:{},pick:{},pickT:{},seen:0,page:0},st);st.pickT=st.pickT||{};for(const k in st.pick)if(!st.pickT[k])st.pickT[k]=Date.now();
 const savedT={}, savedK={};
 const cellVal=(c,id)=>{const x=st.v[id];if(!x)return null;return x.v==="other"?(x.pk?"pick:"+x.pk:"other"):x.v==="ok"?"pick:"+(st.pick[c.char]||c.char):x.v};
@@ -65,6 +68,7 @@ function pageDoc(pi){
 function paint(b,c,s){
   const x=st.v[s.id];b.className="tile"+(x?" v-"+x.v:"");
   b.querySelector(".m").textContent=x?(x.v==="other"?"改字"+(x.pk?"："+x.pk:""):VN[x.v]):((s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):""));
+  for(const e of b.querySelectorAll(".cand"))e.classList.toggle("sel",!!(x&&x.v==="other"&&x.pk===e.dataset.ch));
   const inp=b.querySelector(".pk");inp.hidden=!(x&&x.v==="other");if(!inp.hidden&&document.activeElement!==inp)inp.value=x.pk||"";
 }
 function render(){
@@ -79,7 +83,7 @@ function render(){
     const meta=document.createElement("div");meta.className="stat";meta.textContent=`共 ${c.n} 格，看 ${c.samples.length} 格，其余 ${c.followers.length} 格跟随`;
     const tg=document.createElement("div");tg.className="tags";for(const k of c.kinds){const t=document.createElement("span");t.className="tag";t.textContent=D.kind_names[k]||k;tg.appendChild(t)}
     hd.append(big,inp,meta,tg);
-    const g=document.createElement("div");g.className="tiles"+(c.samples.some(s=>s.ctx||s.note)?" wide":"");
+    const g=document.createElement("div");g.className="tiles"+(c.samples.some(s=>s.ctx||s.note||(s.cands&&s.cands.length))?" wide":"");
     for(const s of c.samples){
       const b=document.createElement("div");b.setAttribute("role","button");b.tabIndex=0;b.title=s.id;
       const sg=document.createElement("div");sg.className="sug";sg.textContent=c.char;
@@ -90,7 +94,16 @@ function render(){
       pk.oninput=()=>{setCell(c,s.id,"other",pk.value.trim());paint(b,c,s)};
       const cx=document.createElement("div");cx.className="ctx";cx.textContent=s.ctx||"";
       const nt=document.createElement("div");nt.className="note";nt.textContent=s.note||"";
-      b.append(sg,w,m,pk);if(s.ctx)b.append(cx);if(s.note)b.append(nt);
+      // 多路候选（字体、OCR、库前五、参校本、IDS 检索……）：点一下＝这格改成该字；小字是来源
+      const cs=document.createElement("div");cs.className="cs";
+      for(const cd of s.cands||[]){
+        const [ch,src]=Array.isArray(cd)?cd:[cd.ch,cd.src];if(!ch)continue;
+        const bt=document.createElement("button");bt.type="button";bt.className="cand";bt.dataset.ch=ch;bt.title=src?"来源："+src:"";
+        bt.append(document.createTextNode(ch));if(src){const sm=document.createElement("small");sm.textContent=Array.isArray(src)?src.join("、"):src;bt.appendChild(sm)}
+        bt.onclick=e=>{e.stopPropagation();const x=st.v[s.id];if(x&&x.v==="other"&&x.pk===ch)setCell(c,s.id,null);else setCell(c,s.id,"other",ch);paint(b,c,s)};
+        bt.onkeydown=e=>e.stopPropagation();cs.appendChild(bt);
+      }
+      b.append(sg,w,m,pk);if(s.ctx)b.append(cx);if(cs.childNodes.length)b.append(cs);if(s.note)b.append(nt);
       const cyc=()=>{const x=st.v[s.id],i=x?CYC.indexOf(x.v):-1,nv=CYC[i+1]||null;setCell(c,s.id,nv,nv==="other"?(x&&x.pk)||"":"");paint(b,c,s);if(nv==="other")pk.focus()};
       b.onclick=cyc;b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();cyc()}};
       paint(b,c,s);g.appendChild(b);
