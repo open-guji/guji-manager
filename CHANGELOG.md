@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 借库新写法 `glyph_lib.borrow: [{from, scope: human, pin: N}]`（PATCH，缺省关的新功能，A23；借库参照方案缺口 1、2）：`scope: human` 只借被借库人裁；`pin` 钉被借库字形库快照 g<N>（`pinned_lender_copy`，一次拼好不再连网），`borrow_fingerprint` 带记号，快照清单记 `borrow_how`。旧写法与缺省借法逐位不变。依赖 cv #1095（`borrowed_store`）。说明见 `doc/01-开新书/借库写法.md`。
 - 局部改号表第二版（cv #1081）：认「新sub」列（夹注 a/b 可改）；多个旧格对上同一新格（多对一）表里放行，库里真有两个实例落到同一新 id 才拒（PATCH）。
 
 - 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
