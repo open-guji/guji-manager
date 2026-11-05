@@ -298,6 +298,18 @@ reasons:
     legacy: {cause: [A6], taxonomy: [S1], v2: "L 乱码闸／影子闸拦下"}
 
   # ── R 整理本缺位 ──────────────────────────────────────
+  glyph_pending:
+    code: R03
+    category: reference
+    route: deferred
+    owner: A24
+    reviewer: none
+    priority: 49
+    label: 待收字
+    hint: 整理本这里是没收进 Unicode 的僻字，暂时找不到合适异体字；已判过，页面先显示字图不留字，将来找到字按码位统一回填（不同于真图／小篆的留图不留字）
+    ui: confirm
+    detect: 整理本这位是私用码，且该码位在私用码表里登记为「已判定待收」（sheldon 11-05）；没登记过的仍记 ref_lacuna。detail 只写永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001；两套码不一一对应，必须带来源；占位码 U+1001 等以图代字属真图，不进待收字）
+    legacy: {v2: "R 整理本缺字·待收字"}
   ref_lacuna:
     code: R01
     category: reference

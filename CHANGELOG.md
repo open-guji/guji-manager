@@ -4,10 +4,14 @@
 
 ## [未发版]
 
+## [0.4.8] - 2026-11-05
+
+- 待审原因新增 `glyph_pending`「待收字」R03（PATCH，缺省关的新功能，A24；sheldon 11-05 定、A20 审）：整理本这位是私用码、且码位在私用码表里登记为「已判定待收」（没收进 Unicode、暂找不到合适异体）。登记表缺省空＝都不算，所以不登记就没有任何变化。待收字格**仍上单**（book-text 靠单写 `pending_reason`，网站凭它显示字图）；不派人审、不进大模型，靠下游按 `reviewer: none`、`route: deferred` 跳过，随 web／console 副本同步做（现在只有 iterate／leverage 认 route，出单、pending_route 都不看）。priority 49（先于 ref_lacuna）。`Cell` 加 `pua_code`（单上同名字段、产物 evidence.pua_code 都读），`build_context`／`reasons_for_pending`／`stamp_cards` 加 `glyph_pending` 登记表参数；登记表从哪读、产物里的 pua_code 由 cv fix_pua 那边接。detail 只写永久编号「来源:码位」（`daizhige:U+E123`、`siku-qiefen-v2:U+F1001`，两套码不一一对应，必须带来源）。占位码（以图代字，U+1001 等）属真图，不进待收字。`--json` 导出后 web、console、book-text 三份副本要同步，已出的单用 backfill_pending_reason.py。
+
 ## [0.4.7] - 2026-11-05
 
 - 标 main 后先在后台看板「迭代轮次」占上这一轮（PATCH，A31）：包口径统计在标 main 的机器上跑不成（缺 ai-team 检出等）时，也写一条 `verdict=pending`、人审率待统计的记录，不再静默漏轮；统计跑成后 `auto-round` 照旧补全。与 `GUJI_AUTO_ONLINE_LISTS` 无关。
-- `pending-stats` 按单上 `src` 单独计数（PATCH，A31）：`summary.json` 加 `by_src`，报告在原因表后列「同字对照自检（seg_selfcheck）N」（格已含在 seg_defect 里）；另按 `pending_reason_detail` 前缀单列「待收字」（`glyph_pending:<私用码>`，A24 11-05）。
+- `pending-stats` 按单上 `src` 单独计数（PATCH，A31）：`summary.json` 加 `by_src`，报告在原因表后列「同字对照自检（seg_selfcheck）N」（格已含在 seg_defect 里），单上没 src 的按 detail 前缀「同字对照自检：」认。待收字改走新取值 glyph_pending（A20 11-05），按原因计数。
 ## [0.4.6] - 2026-11-05
 
 - 终审 `final-review finalize` 接册 yaml 的 `params.seed_admit.ruling_glyph_min_score/margin` 与 `ruling_ref_lead_min_unseen/oov`（PATCH，A24；A31 要，依赖 cv #1110）：图一致证人改判「首位、分 ≥ t、领先次优异字 ≥ margin」（折叠组 己已巳／日曰内不当竞争者；`cells.json` 新增 `glyph_cands` 前五按名次；没写 yaml 键＝旧口径，命令行 `--min-score`）。ref_lead 证人：选中字＝整理本字、且在 unseen（需 `--glyph-db`，库样本 ≤2）或 oov（需 `--cnn-classes`）层时，整理本字须首位且领先 ≥ 该层阈值，并与图一致证人同时成立才放行，否则 `ref_lead_fail`；不单独放行；逐格结果多「证据」列（`ref_lead:层:领先量`），裁定 payload 带 `via`、`ref_lead`。
