@@ -103,7 +103,10 @@ def test_same_char_frame():
     hit = same_char_frame(_framed(), ref, 80.0, True)
     assert hit and hit.startswith(SAME_PREFIX)
     assert same_char_frame(_framed(), ref, 80.0, False) is None        # 看错了一头
-    assert same_char_frame(_framed(wide=False), ref, 80.0, True) is None
+    stroke = _framed(wide=False)
+    stroke[70:78, 30:50] = 0                            # 字自己的末横（「三」「旦」）：厚 8 行、不伸出字身
+    assert same_char_frame(stroke, ref, 80.0, True) is None
+    assert "端区碎线" in same_char_frame(_framed(wide=False), ref, 80.0, True)   # 字下一截细线：磨断框线
     assert same_char_frame(_framed(), (60.0, 30.0, 4, 25.0), 80.0, True) is None   # 参照不到 5 个
     assert same_char_frame(_framed(), (60.0, 30.0, 20), 80.0, True) is None       # 老参照没墨宽
     assert same_char_frame(_framed(), (90.0, 30.0, 20, 25.0), 80.0, True) is None  # 比同字矮
@@ -123,3 +126,25 @@ def test_gate_rows_and_book_table(tmp_path):
     o = book_opts("96mid1ogzk")
     assert o["frame"] and o["review_kinds"] == ["clipped"]
     assert book_opts("nosuchbook") is None
+
+
+def test_end_debris_and_grade():
+    """端区碎线：端头几截细碎线；带框程度按同字宽比分轻重；贴字细端条（11-05 看图单查准 0.20）已删。"""
+    from guji_manager.review import seg_defect as sd
+    img = np.full((80, 80), 255, np.uint8)
+    img[5:70, 30:50] = 0                                # 字身
+    img[76:78, 2:12] = 0
+    img[76:78, 60:75] = 0                               # 两截磨断的框线
+    ds, k = sd.end_debris(img, True)
+    assert k == 2 and abs(ds - 25 / 80) < 1e-6
+    assert sd.end_debris(img, False) == (0.0, 0)        # 上头没有
+    assert not hasattr(sd, "end_thin_rows")
+    glued = np.full((80, 80), 255, np.uint8)
+    glued[5:70, 30:50] = 0
+    glued[70:72, 25:55] = 0                             # 贴着字脚的细线、不伸出字身：不再判带框
+    assert sd.same_char_frame(glued, (60.0, 30.0, 20, 20.0), 80.0, True) is None
+    assert sd.frame_grade("同字墨高 1.12 宽 1.23（参照 197 个）端区碎线 4 截占宽 0.59") == "重"
+    assert sd.frame_grade("同字墨高 0.99 宽 1.05（参照 9 个）端区碎线 1 截占宽 0.16") == "轻"
+    assert sd.frame_grade("同字墨高 1.20 宽 1.71（参照 36 个）端条隔开 0.21 伸出 0.08") == "重"
+    assert sd.frame_grade("同字墨高 0.70 宽 1.30（参照 9 个）") == ""   # 切笔
+    assert sd.frame_grade("下线 30px") == ""

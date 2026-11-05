@@ -394,9 +394,9 @@ reasons:
     reviewer: human
     priority: 7
     label: 机器改了字
-    hint: 这一轮机器把这个字改了（和已发布的文本不同），请确认
+    hint: 这一轮机器改了人工审定过的字，请确认
     ui: pick
-    detect: 未冻结册机器改判（相对 book-text 现文变字）进复审；单上 recheck=true 且 note 为改判
+    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 为改判。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
     legacy: {}
   recheck:
     code: X04
