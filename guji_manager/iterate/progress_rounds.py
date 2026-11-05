@@ -64,6 +64,10 @@ def rows(book: str, rounds: list[dict], target: float | None = None) -> list[tup
 def write(rs: list[tuple]) -> int:
     from .._cv import connect
     with connect() as conn:
+        # metric.section 外键要求先登记栏目；网站把 rounds 从侧栏隐去，只在总览各书的「迭代轮次」页显示
+        conn.execute("INSERT INTO progress.section (section, title, owner, description, sort) VALUES (%s, %s, %s, %s, 90)"
+                     " ON CONFLICT (section) DO NOTHING",
+                     (SECTION, "迭代轮次", WHO, "每本书每轮粗校迭代的首审人审率与轮记录（总览各书展开看）"))
         for book, key, label, value, detail, sort in rs:
             conn.execute("SELECT progress.put_metric(%s, '', %s, %s, %s, %s, '%%', %s, NULL, %s::jsonb, %s)",
                          (book, SECTION, key, label, value, WHO,
