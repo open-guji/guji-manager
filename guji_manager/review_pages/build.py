@@ -3,7 +3,9 @@
 输入统一用 items（jsonl 或 json 列表），每项字段按页型：
   char_card / char_grid：{id, pre(预选字), pre_conf?, kind?, img(图文件路径或 data URI), cov?}
     img 用 crop.py 按 cell_shrink 字框裁（不要按 row_segment 的 quad 裁，会带进边框线）
-  pair_whitelist / codepoint：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
+  pair_whitelist：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
+  codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
+             rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
   name_register：{key, pre(建档|并入已有|不建|不确定), type, std_name, name?, dynasty, src_url?, n, lines[≤8 出处句], cands[{id,name,brief}], route_to?(书名/出版者→A11/A12)}
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
   punct_check：{key, pre(对|错|存疑), vol, para, anchor(点号在段内下标), text(整个自然段≤450字)}
@@ -20,6 +22,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import cards as cards_mod
+from . import codepoint as cp_mod
 from .preselect import KINDS
 from .registry import PageType, get
 
@@ -100,7 +103,19 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "n_chars": len(chars),
                 "n_cells": sum(t[4] for t in tiles), "tiles": tiles}
         stat = {"tiles": len(tiles), "chars": len(chars), "pages": -(-len(tiles) // pp)}
-    elif page_type in ("pair_whitelist", "codepoint", "name_register", "punct_check", "seg_cause"):
+    elif page_type == "codepoint":
+        pp = per_page or 8
+        gs = []
+        for g in items:
+            if g.get("pre"):
+                cp_mod.parse_pick(g["pre"])
+            rows = {c: dict(r, tiles=[[t[0], embed(t[1])] for t in r.get("tiles", [])])
+                    for c, r in (g.get("rows") or {}).items()}
+            gs.append(dict(g, rows=rows))
+        data = {"book": book, "per_page": pp, "groups": gs, "hint": hint}
+        stat = {"groups": len(gs), "pages": -(-len(gs) // pp),
+                "tiles": sum(len(r["tiles"]) for g in gs for r in g["rows"].values())}
+    elif page_type in ("pair_whitelist", "name_register", "punct_check", "seg_cause"):
         items = [dict(g, n=g.get("n") or len(g.get("lines") or [])) if page_type == "name_register" else g for g in items]
         pp = per_page or 6
         gs = [dict(g, tiles=[[t[0], embed(t[1]), *t[2:]] for t in g.get("tiles", [])],
