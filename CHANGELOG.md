@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 局部改号表第二版（cv #1081）：认「新sub」列（夹注 a/b 可改）；多个旧格对上同一新格（多对一）表里放行，库里真有两个实例落到同一新 id 才拒（PATCH）。
+
 - 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
 
 - `review-pages build char_card --no-rest-ok`（PATCH，QTW 提 #158）：难认字页没有「本页其余都对」，没点的格不算对，只存点过、改过的格；char_card 升 1.3.1。
