@@ -1,16 +1,16 @@
-"""三书冻结日历（T6）：把殿本/史記/全唐文的冻结期写进一个共享 yaml，PR 合 dev 前查有没有撞（框架 8.3）。
+"""三书冻结日历（T6）：只冻结 S 轮（结构层）。D 轮期间各线照常合决策层改动（框架 14.3，A22/用户 11-05）。
 
-日历文件（建议放 ai-team `domain/CV/质检/迭代降人审框架/冻结日历.yaml`，各线只读，A31 维护）：
+日历文件（放 ai-team `domain/CV/质检/迭代降人审框架/冻结日历.yaml`，A31 维护，各线只读；时间洛杉矶）：
 
   freezes:
-    - {book: dianben, layer: struct, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "r5 统一重跑"}
-  时间一律洛杉矶时间；layer 是 struct（结构轮：整册从 border_detect 起，冻结期内别合会改指纹的 PR）或 decision（决策轮：只冻 seed_admit 及之后）。
-  steps 写受冻结的 Step 名，["*"]＝全部。
+    - {book: dianben, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "S 轮 r5", notify: [A22, A23, A30, A20, A33]}
+  冻结期内**不合会改切分指纹的 PR**（border_detect、cell_shrink、row_segment、页型、图源、语料、库快照等）；`steps` 缺省＝这些结构步，
+  也可列具体 Step 名。格号变化通知名单缺省 A22 A23 A30 A20 A33（A22 11-05 要求加 A33）。
 
   guji-manager iterate freeze list  --file 冻结日历.yaml [--at "2026-11-05 12:00"]
-  guji-manager iterate freeze add   --file … --book sj --from … --to … [--layer decision] [--steps seed_admit,glyph_pin] [--note …]
-  guji-manager iterate freeze check --file … --books dianben,sj --steps seed_admit [--at …]
-      # PR 描述里写「影响哪几本书、哪几步指纹」，合并前跑这条；撞了退出码 3，写明撞的是谁的冻结
+  guji-manager iterate freeze add   --file … --book sj --from … --to … [--steps border_detect,row_segment] [--note …]
+  guji-manager iterate freeze check --file … --books dianben,sj --steps border_detect [--at …]
+      # PR 描述写「影响哪几本书、哪几步指纹」，合并前跑；撞了退出码 3，并打印要通知的人
 cv PR 模板建议加一行：`影响的书／Step／指纹变化：`（A20 在 cv 仓加）。
 """
 from __future__ import annotations
@@ -23,8 +23,9 @@ from pathlib import Path
 import yaml
 
 FMT = "%Y-%m-%d %H:%M"
-#: 决策层的 Step（冻结 layer=decision 时只管这些及其后）；顺序取自殿本流水线
-DECISION_STEPS = ("seed_admit", "glyph_pin", "group_flow", "group_flow_llm", "finalize", "ctx_ruling", "publish")
+#: 结构层 Step（改它们会改切分指纹/格号）；S 轮冻结的缺省范围
+STRUCT_STEPS = ("border_detect", "border_detect_gate", "cell_shrink", "row_segment", "page_kinds", "source", "corpus", "glyph_snapshot")
+NOTIFY = ["A22", "A23", "A30", "A20", "A33"]
 
 
 def now_la() -> datetime.datetime:
@@ -53,20 +54,16 @@ def active(freezes: list[dict], at: datetime.datetime) -> list[dict]:
 
 def _covers(f: dict, step: str) -> bool:
     steps = f.get("steps") or ["*"]
-    if "*" not in steps and step not in steps:
-        return False
-    if f.get("layer") == "decision" and "*" in steps and step not in DECISION_STEPS:
-        return False
-    return True
+    return step in (STRUCT_STEPS if "*" in steps else steps)
 
 
 def conflicts(freezes: list[dict], books: list[str], steps: list[str], at: datetime.datetime) -> list[dict]:
-    steps = steps or ["*"]
+    steps = steps or list(STRUCT_STEPS)
     out = []
     for f in active(freezes, at):
         if f["book"] not in books:
             continue
-        if any(s == "*" or _covers(f, s) for s in steps):
+        if any(_covers(f, s) for s in steps):
             out.append(f)
     return out
 
@@ -78,15 +75,15 @@ def cmd_list(a) -> int:
     print(f"现在（洛杉矶）{at.strftime(FMT)}；共 {len(fr)} 条")
     for f in sorted(fr, key=lambda f: parse_t(f["from"])):
         tag = "冻结中" if id(f) in act else ("已过" if parse_t(f["to"]) < at else "待到")
-        print(f"[{tag}] {f['book']} {f.get('layer', 'struct')} {f['from']} → {f['to']} steps={','.join(f.get('steps') or ['*'])} {f.get('note', '')}")
+        print(f"[{tag}] {f['book']} {f['from']} → {f['to']} steps={','.join(f.get('steps') or ['*'])} {f.get('note', '')}")
     return 0
 
 
 def cmd_add(a) -> int:
     fr = load(a.file)
     parse_t(a.from_), parse_t(a.to)
-    fr.append({"book": a.book, "layer": a.layer, "from": a.from_, "to": a.to,
-               "steps": a.steps.split(",") if a.steps else ["*"], "note": a.note})
+    fr.append({"book": a.book, "from": a.from_, "to": a.to,
+               "steps": a.steps.split(",") if a.steps else ["*"], "note": a.note, "notify": a.notify.split(",") if a.notify else NOTIFY})
     a.file.parent.mkdir(parents=True, exist_ok=True)
     a.file.write_text("# 三书冻结日历（洛杉矶时间；A31 维护，各线只读）。用法见 guji-manager iterate freeze。\n"
                       + yaml.safe_dump({"freezes": fr}, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -101,7 +98,7 @@ def cmd_check(a) -> int:
         print("✓ 没有撞冻结")
         return 0
     for f in cs:
-        print(f"✗ 撞冻结：{f['book']} {f.get('layer', 'struct')} {f['from']} → {f['to']} {f.get('note', '')}")
+        print(f"✗ 撞冻结（S 轮）：{f['book']} {f['from']} → {f['to']} {f.get('note', '')}；改格号/切分指纹的 PR 请等解冻，并通知 {' '.join(f.get('notify') or NOTIFY)}")
     return 3
 
 
@@ -114,7 +111,7 @@ def main(argv=None) -> int:
         p.add_argument("--at")
         if name == "add":
             p.add_argument("--book", required=True); p.add_argument("--from", dest="from_", required=True); p.add_argument("--to", required=True)
-            p.add_argument("--layer", choices=("struct", "decision"), default="struct"); p.add_argument("--steps"); p.add_argument("--note", default="")
+            p.add_argument("--steps"); p.add_argument("--note", default=""); p.add_argument("--notify")
         if name == "check":
             p.add_argument("--books", required=True); p.add_argument("--steps", default="")
     a = ap.parse_args(argv)
