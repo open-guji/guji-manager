@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- `_cv._FALLBACK` 登记 cv 新增门面名 `borrowed_store`（cv #1095），修 test_cv_surface 红（PATCH）。
 - 局部改号表第二版（cv #1081）：认「新sub」列（夹注 a/b 可改）；多个旧格对上同一新格（多对一）表里放行，库里真有两个实例落到同一新 id 才拒（PATCH）。
 
 - 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。

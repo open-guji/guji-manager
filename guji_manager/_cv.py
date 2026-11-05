@@ -35,6 +35,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "default_products_root": ("products.store", "default_products_root"),
     "load_book": ("core.book", "load_book"),
     "BlobCache": ("datastore.client", "BlobCache"),
+    "borrowed_store": ("clustering.glyph_db", "borrowed_store"),
     # exp、snap/archive/release/deploy、events/gold/batch、eval/check/collate 等（P2 第三批搬来，2026-11-04）
     "BadRequest": ("errors", "BadRequest"),
     "workspace_root": ("core.workspace", "workspace_root"),
