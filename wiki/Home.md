@@ -1,14 +1,14 @@
 # guji-manager Wiki
 
-> **本 Wiki 对应 guji-manager v0.3**（2026-11-04 按 0.3.0 重改；首版 2026-11-03 对应 0.2.0）。
-> 版本号差了一个 MINOR（比如代码到了 0.3.x），说明这里可能过时，以仓里 [doc/](https://github.com/open-guji/guji-manager/blob/dev/doc/README.md) 为准，并按[维护规矩](版本与Wiki维护)重改。
+> **本 Wiki 对应 guji-manager v0.4**（2026-11-05 按 0.4.0 重改；之前 0.3、首版 0.2.0）。
+> 版本号差了一个 MINOR（比如代码到了 0.5.x），说明这里可能过时，以仓里 [doc/](https://github.com/open-guji/guji-manager/blob/dev/doc/README.md) 为准，并按[维护规矩](版本与Wiki维护)重改。
 
 **guji-manager** 是开源古籍整理流水线的「管家」：新建工作区、登记和取原图、跑批派单、推拉中心库、出线上待审单、收读者投票、冻结发布——一切和外界打交道的事。
 识别算法本身（切分、识别、定字）在 [open-guji-cv](https://github.com/open-guji/open-guji-cv)。
 
 ![两个仓怎么分工](images/boundary.png)
 
-一句话分界：**会改变识别产物字节的在 cv，其余在 manager**。所以改 manager 不用给 cv 发版，也不会让任何一册的产物过期。
+一句话分界：**会改变识别产物字节的在 cv，其余在 manager**。所以改 manager 不用给 cv 发版，也不会让任何一册的产物过期。0.4 起拆分完成：cv 里已没有 manager 一侧的代码，`guji` 里整理流程的命令都由 manager 提供，cv 只留识别本身的（`pipeline`／`step`／`status` 等）。
 
 ## 先看哪页
 

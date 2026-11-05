@@ -14,14 +14,14 @@ h3{margin:0 0 18px;font-size:22px}
 table.c td{padding:4px 8px;font-size:15px;white-space:nowrap}
 </style></head><body>
 
-<div class="d" id="boundary"><h3>两个仓怎么分工</h3>
+<div class="d" id="boundary"><h3>两个仓怎么分工（v0.4 起拆分完成）</h3>
 <div class="row">
  <div class="box cv" style="width:330px"><div class="big">open-guji-cv（pipeline）</div>
- 凡是会改变<b>识别产物字节</b>的：<br>图像处理 · 切分 · 识别 · 定字 · 放行规则 · Step9 汇总与导出<br>
+ 凡是会改变<b>识别产物字节</b>的：<br>图像处理 · 切分 · 识别 · 定字 · 放行规则 · Step 读人裁 · 取钉版模型 · Step9 汇总与导出<br>命令：<code>guji pipeline／step／status</code><br>
  <span class="tag">tag：vX.Y.Z</span><span class="tag">钉到册、进产物指纹</span><br><span class="small">改它 = 相关册的产物过期、要重跑</span></div>
- <div class="col" style="align-items:center"><div class="arr">⟵</div><div class="small" style="text-align:center;width:170px">manager 只通过子进程调<br><code>guji-cv --json</code><br>按契约（COMPAT.md）核对版本</div></div>
- <div class="box mg" style="width:360px"><div class="big">guji-manager（本仓）</div>
- 其余一切<b>与外界的交互</b>：<br>工作区 · 原图登记与取图 · 中心库与 R2 · 任务库 · 人审意见与投票 · 线上待审单 · 冻结登记 · 中心库清理<br>
+ <div class="col" style="align-items:center"><div class="arr">⟷</div><div class="small" style="text-align:center;width:200px">命令经入口点 <code>guji.commands</code> 并进 <code>guji</code><br>开跑准备、自动存包、status 报告经钩子 <code>guji.hooks</code><br>manager 用 cv 的名字只经 <code>manager_api</code><br>契约版本按 COMPAT.md 核对</div></div>
+ <div class="box mg" style="width:380px"><div class="big">guji-manager（本仓）</div>
+ 其余一切<b>与外界的交互</b>：<br>工作区 · 原图登记与取图 · 中心库与 R2 · 产物包 · 任务库 · 人裁事件消费 · 审阅卡 · 评测 · 线上待审单与投票 · 冻结 · 中心库清理 · 控制台门面<br>
  <span class="tag">tag：vX.Y.Z</span><span class="tag">不钉到册、不进指纹</span><br><span class="small">改它不用给 pipeline 发版，不会让任何册过期</span></div>
 </div></div>
 
