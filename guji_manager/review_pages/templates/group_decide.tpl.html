@@ -1,0 +1,56 @@
+<title>分组定夺</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:8px 0}
+.opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.opts label{border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+.opts input{margin-right:4px}.opts label.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}
+.gk{font:600 24px/1.2 var(--font-glyph)}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*/
+const KEY="group-"+D.page_type+"-"+D.book+"-"+D.tpl_version, P=D.per_page, NP=Math.ceil(D.groups.length/P);
+let st=lsGet(KEY,{pick:{},note:{},seen:0,page:0});
+const picked=g=>st.pick[g.key]??g.pre;
+function pageDoc(pi){
+  const items=D.groups.slice(pi*P,(pi+1)*P).map(g=>({id:g.key,pre:g.pre,pick:picked(g),note:st.note[g.key]||"",kind:g.kind||null}));
+  return {page:pi,items,secs:takeSecs()};
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP-1);
+  const L=$("list");L.textContent="";
+  for(const g of D.groups.slice(st.page*P,(st.page+1)*P)){
+    const box=document.createElement("div");box.className="card";
+    const hd=document.createElement("div");hd.className="gk";hd.textContent=g.label||g.key;
+    const meta=document.createElement("div");meta.className="stat";meta.textContent=(g.hint||"")+(g.n?`　共 ${g.n} 格，抽 ${g.tiles.length} 格`:"");
+    const tl=document.createElement("div");tl.className="tiles";
+    for(const [id,img,cap] of g.tiles){const t=document.createElement("div");t.className="tile";t.style.cursor="default";t.title=id;
+      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=img;im.alt=cap||"";w.appendChild(im);
+      const m=document.createElement("div");m.className="m";m.textContent=cap||"";t.append(w,m);tl.appendChild(t)}
+    const op=document.createElement("div");op.className="opts";
+    for(const o of D.options){
+      const lb=document.createElement("label");const r=document.createElement("input");r.type="radio";r.name="g_"+g.key;r.checked=picked(g)===o;
+      lb.className=r.checked?"sel":"";lb.append(r,o);
+      r.onchange=()=>{st.pick[g.key]=o;lsSet(KEY,st);for(const l of op.querySelectorAll("label"))l.className="";lb.className="sel"};
+      op.appendChild(lb);
+    }
+    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=st.note[g.key]||"";nt.oninput=()=>{st.note[g.key]=nt.value;lsSet(KEY,st)};op.appendChild(nt);
+    box.append(hd,meta,tl,op);L.appendChild(box);
+  }
+  $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
+  $("sub").textContent=`册 ${D.book} · ${D.groups.length} 组 · 模板 ${D.tpl_version}`;
+  $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
+  $("hint").textContent=D.hint||"每组看图后选一个结论；已按预选选好，不同意就改。";
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页没问题，完成":"本页没问题，下一页";
+  lsSet(KEY,st);
+}
+function exportAll(){return {book:D.book,pages_seen:st.seen,items:D.groups.slice(0,st.seen*P).map(g=>({id:g.key,pre:g.pre,pick:picked(g),note:st.note[g.key]||""}))}}
+function next(){saveDoc("g_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut(exportAll());render();scrollTo(0,0)}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=()=>showOut(exportAll());
+wireDlg();render();initDB();
+</script>

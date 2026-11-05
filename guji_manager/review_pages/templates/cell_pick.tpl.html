@@ -1,0 +1,58 @@
+<title>逐格定字</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.ctx{font:16px/1.7 var(--font-glyph)}.ctx b{background:var(--accent);color:var(--accent-fg);padding:0 4px;border-radius:3px}
+.cands{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;align-items:center}
+.cand{font:600 22px/1 var(--font-glyph);padding:6px 12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.cand small{font:11px var(--font-ui);color:var(--muted)}.cand.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.cand.sel small{color:var(--accent-fg)}
+.cand.pre::after{content:"预选";font:10px var(--font-ui);opacity:.8}
+.cellimg{max-height:90px;background:#fff;border-radius:4px;padding:2px}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*/
+// 与 A24 终审标注页同字段：cell、pick、other、note、review（存疑）、at；另加 pre、secs
+const KEY="cellpick-"+D.page_type+"-"+D.book+"-"+D.tpl_version, P=D.per_page, NP=Math.ceil(D.items.length/P);
+let st=lsGet(KEY,{pick:{},other:{},note:{},review:{},seen:0,page:0});
+const picked=it=>st.pick[it.id]??it.pre;
+function pageDoc(pi){
+  const items=D.items.slice(pi*P,(pi+1)*P).map(it=>({id:it.id,cell:it.id,pre:it.pre,pick:picked(it),other:st.other[it.id]||"",note:st.note[it.id]||"",review:!!st.review[it.id],kind:it.kind||null,pilot:it.pilot||null,at:Date.now()}));
+  return {page:pi,items,secs:takeSecs()};
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP-1);
+  const L=$("list");L.textContent="";
+  for(const it of D.items.slice(st.page*P,(st.page+1)*P)){
+    const box=document.createElement("div");box.className="card";
+    const hd=document.createElement("div");hd.className="stat";hd.textContent=it.id+(it.kind?" · "+it.kind:"")+(it.fact?" · "+it.fact:"");
+    const cx=document.createElement("div");cx.className="ctx";
+    cx.append(document.createTextNode(it.left||""));const b=document.createElement("b");b.textContent="〔？〕";cx.append(b,document.createTextNode(it.right||""));
+    const cs=document.createElement("div");cs.className="cands";
+    if(it.img){const im=document.createElement("img");im.className="cellimg";im.src=it.img;im.alt="字块";cs.appendChild(im)}
+    for(const [ch,srcs] of Object.entries(it.cands||{})){
+      const bt=document.createElement("button");bt.className="cand"+(picked(it)===ch?" sel":"")+(it.pre===ch?" pre":"");
+      bt.append(document.createTextNode(ch));const sm=document.createElement("small");sm.textContent=(srcs||[]).join("、");bt.appendChild(sm);
+      bt.onclick=()=>{st.pick[it.id]=ch;lsSet(KEY,st);for(const x of cs.querySelectorAll(".cand"))x.classList.remove("sel");bt.classList.add("sel")};cs.appendChild(bt);
+    }
+    const ot=document.createElement("input");ot.type="text";ot.placeholder="其它字";ot.size=4;ot.value=st.other[it.id]||"";
+    ot.oninput=()=>{st.other[it.id]=ot.value;if(ot.value)st.pick[it.id]=ot.value;lsSet(KEY,st)};cs.appendChild(ot);
+    const rv=document.createElement("label");const ck=document.createElement("input");ck.type="checkbox";ck.checked=!!st.review[it.id];ck.onchange=()=>{st.review[it.id]=ck.checked;lsSet(KEY,st)};rv.append(ck," 存疑，留人审");cs.appendChild(rv);
+    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.size=24;nt.value=st.note[it.id]||"";nt.oninput=()=>{st.note[it.id]=nt.value;lsSet(KEY,st)};cs.appendChild(nt);
+    box.append(hd,cx,cs);L.appendChild(box);
+  }
+  $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
+  $("sub").textContent=`册 ${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`;
+  $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
+  $("hint").textContent=D.hint||"每格看上下文（和字块图），点选正确的字，已按预选选好；候选下面小字是它的来源。拿不准勾「存疑」。";
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页没问题，完成":"本页没问题，下一页";
+  lsSet(KEY,st);
+}
+function exportAll(){return {book:D.book,pages_seen:st.seen,items:D.items.slice(0,st.seen*P).map(it=>({id:it.id,cell:it.id,pre:it.pre,pick:picked(it),other:st.other[it.id]||"",note:st.note[it.id]||"",review:!!st.review[it.id]}))}}
+function next(){saveDoc("p_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut(exportAll());render();scrollTo(0,0)}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=()=>showOut(exportAll());
+wireDlg();render();initDB();
+</script>
