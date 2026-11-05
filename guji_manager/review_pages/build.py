@@ -12,6 +12,8 @@
   gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
                ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
   closeout：{id, label, n, rate?, examples?[…], pre?(人审底|留后|精校待办|再处理)}
+  glyph_quality：{id, book?, char?, end?, ctx?, ref?, crops:[{key, sha, img}]}，或 dataset 金标信封（expected.crops.{off,on}，
+             图路径相对 root）；--exclude 里的格号撤整格、sha 撤单块（见 glyph_quality.py）
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
 """
 from __future__ import annotations
@@ -25,6 +27,7 @@ from pathlib import Path
 from . import cards as cards_mod
 from . import pair_audit
 from . import codepoint as cp_mod
+from . import glyph_quality as gq_mod
 from .preselect import KINDS
 from .registry import PageType, get
 
@@ -73,22 +76,31 @@ def read_ids(paths) -> set[str]:
         if not t:
             continue
         if t.startswith("["):
-            ids |= {x if isinstance(x, str) else x["id"] for x in json.loads(t)}
+            ids |= {x if isinstance(x, str) else x.get("sha") or x["id"] for x in json.loads(t)}
             continue
         for l in t.splitlines():
             l = l.strip()
             if l:
-                ids.add(json.loads(l)["id"] if l.startswith("{") else l.split("\t")[0])
+                o = json.loads(l) if l.startswith("{") else None   # 带 sha 的行（字块质量结果）按字块撤
+                ids.add((o.get("sha") or o["id"]) if o else l.split("\t")[0])
     return ids
 
 
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
-          hint: str | None = None, exclude: set[str] | None = None, mode: str | None = None) -> dict:
+          hint: str | None = None, exclude: set[str] | None = None, mode: str | None = None, root=None,
+          include_labeled: bool = False, box: int | None = None) -> dict:
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。"""
     pt = get(page_type)
     n0 = len(items)
     excluded_n = None
-    if exclude and page_type in ("near_pair", "lib_audit"):
+    if page_type == "glyph_quality":
+        items = gq_mod.normalize(items, root, include_labeled)
+        n0 = len(items)
+        if exclude:
+            items = [dict(r, crops=[c for c in r["crops"] if c["sha"] not in exclude])
+                     for r in items if r["id"] not in exclude]
+            items = [r for r in items if r["crops"]]
+    elif exclude and page_type in ("near_pair", "lib_audit"):
         # 这两个页型的「格」在组里面：撤掉已录入的格/刻例，组空了整组撤
         sub = "cells" if page_type == "near_pair" else "tiles"
         before = sum(len(g.get(sub, [])) for g in items)
@@ -150,6 +162,13 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"groups": len(gs), "tiles": data["n_tiles"], "pages": -(-len(gs) // pp)}
         Path(out).with_suffix(".items.json").write_text(
             json.dumps(pair_audit.strip_images(items), ensure_ascii=False), encoding="utf-8")
+    elif page_type == "glyph_quality":
+        pp = per_page or 24
+        its = [dict(r, ctx=embed(r["ctx"]), ref=embed(r["ref"]),
+                    crops=[dict(c, img=embed(c["img"])) for c in r["crops"]]) for r in items]
+        data = {"book": book, "per_page": pp, "items": its, "hint": hint, "box": box,
+                "options": [[o, gq_mod.LABEL_NAMES[o]] for o in pt.options], "n_excluded": n0 - len(items)}
+        stat = {"items": len(its), "crops": sum(len(r["crops"]) for r in its), "pages": -(-len(its) // pp)}
     elif page_type == "gold_sample":
         pp = per_page or 10
         its = [dict(r, img=embed(r.get("img")), **({"strip": [embed(x) for x in r["strip"]]} if r.get("strip") else {}))
