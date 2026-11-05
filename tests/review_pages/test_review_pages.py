@@ -297,7 +297,16 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.3.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.3.1" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+
+
+def test_cli_build_no_rest_ok(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    items = tmp_path / "i.jsonl"
+    items.write_text(json.dumps(dict(id="1:0:1:1", pre="以")) + "\n", encoding="utf-8")
+    out = tmp_path / "p.html"
+    main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(out), "--no-rest-ok"])
+    assert '"rest_ok": false' in out.read_text(encoding="utf-8")
 
 
 def test_results_flatten_and_unconfirmed():
