@@ -89,9 +89,10 @@ def test_every_template_builds(t, tmp_path):
         "char_grid": [dict(id="1:1:1:1", pre="以", cov=0.9, img=str(img))],
         "pair_whitelist": [dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])],
         "codepoint": [dict(key="A/B", pre="归一到前者", tiles=[["1:1:1:1", str(img)]])],
-        "name_pick": [dict(id="1:1:1:1", pre="孔安國", left="漢", right="傳", cands={"孔安國": ["名表"], "孔安囯": ["机器"]})],
-        "name_register": [dict(key="某某", pre="建档", lines=["見於某某傳"], n=3)],
-        "punct_check": [dict(key="p1", pre="对", label="學而時習之，不亦說乎？", lines=["學而時習之，不亦說乎？"])],
+        "name_pick": [dict(id="n1", type="人", span="孔安國", left="漢", right="傳", pre="P1", cands=[{"id":"P1","name":"孔安國","brief":"西漢"}])],
+        "name_register": [dict(key="某某", pre="建档", type="人", lines=["見於某某傳"], cands=[{"id":"P9","name":"某","brief":"x"}])],
+        "punct_check": [dict(key="p1", pre="对", vol="01", para=3, anchor=4, text="學而時習之，不亦說乎？")],
+        "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
     }[t]
     out = tmp_path / "p.html"
@@ -143,3 +144,12 @@ def test_char_review_pull_and_patch_name(tmp_path):
     cr.main(["pull", str(src), str(out)])
     d = json.loads(out.read_text(encoding="utf-8"))
     assert d["pages_seen"] == 2 and d["ok"][0][1] == "天" and d["bad"] == ["1:1:1:2"]
+
+
+def test_seg_cause_cards(tmp_path):
+    from guji_manager.review_pages import seg_causes as sc
+    pp, pc = tmp_path / "页.tsv", tmp_path / "格.tsv"
+    pp.write_text("册\t页\t格数\tpending_reason\t主成因\t全部旗\t细节\nvol44\t236\t2\tS02=2\tcol_gate=2\tcol_gate\t列异常\n", encoding="utf-8")
+    pc.write_text("册\t格号\t页\t列\tpending_reason\nvol44\tvol44:236:1:3\t236\t1\tS02\nvol44\tvol44:236:1:4a\t236\t1\tS02\n", encoding="utf-8")
+    c = sc.build_cards(pp, pc, crop=lambda i: "")[0]
+    assert c["key"] == "vol44:236" and c["pre"] == "切分错" and len(c["cells"]) == 2
