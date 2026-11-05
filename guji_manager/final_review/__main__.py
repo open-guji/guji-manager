@@ -138,6 +138,21 @@ def cmd_finalize(a) -> dict:
         for ch, k in sqlite3.connect(a.glyph_db).execute("select char,sum(n_confirmed) from glyphs group by char"):
             cnt[ch] += k or 0
         lib_n = lambda ch: cnt.get(ch, 0)   # noqa: E731
+    glyph, ref_lead, oov = None, None, None
+    if getattr(a, "book_yaml", None):
+        sp = core.seed_admit_params_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"))
+        if sp["ruling_glyph_min_score"] is not None or sp["ruling_glyph_min_margin"] is not None:
+            glyph = (sp["ruling_glyph_min_score"], sp["ruling_glyph_min_margin"])
+        if sp["ruling_ref_lead_min_unseen"] is not None or sp["ruling_ref_lead_min_oov"] is not None:
+            ref_lead = {"unseen": sp["ruling_ref_lead_min_unseen"], "oov": sp["ruling_ref_lead_min_oov"]}
+            if ref_lead["unseen"] is not None and lib_n is None:
+                print("⚠ 册 yaml 写了 ruling_ref_lead_min_unseen 但没给 --glyph-db：unseen 层不适用（判不了库样本数）", file=sys.stderr)
+            if ref_lead["oov"] is not None:
+                if getattr(a, "cnn_classes", None):
+                    cls_set = set(Path(a.cnn_classes).read_text(encoding="utf-8").replace("\n", "").replace("\t", "").replace(" ", ""))
+                    oov = lambda ch: ch not in cls_set   # noqa: E731
+                else:
+                    print("⚠ 册 yaml 写了 ruling_ref_lead_min_oov 但没给 --cnn-classes：oov 层不适用", file=sys.stderr)
     sort_fn, _, _, width = pack.default_cv() if not getattr(a, "_inject", None) else a._inject
     win = pack.key_windows(a.pkg, list(cells), sort_fn, width)
     rows, miss = [], 0
@@ -146,21 +161,23 @@ def cmd_finalize(a) -> dict:
         if not (A and B):
             miss += 1
             continue
-        ok, why = core.gate(x, A, B, over, a.min_score, a.min_sources, lib_n)
+        g = core.gate_ex(x, A, B, over, a.min_score, a.min_sources, lib_n, glyph=glyph, ref_lead=ref_lead, oov=oov)
+        ok, why = g["ok"], g["why"]
         if ok and i not in win:
             ok, why = False, "no_window"
         rows.append({"id": i, "cls": x["cls"], "reason": x.get("reason"), "group": x.get("group"), "A": A, "B": B, "ref": x.get("ref_char"),
-                     "machine": x.get("machine_char"), "admit_ok": ok, "why": why, "win": win.get(i)})
+                     "machine": x.get("machine_char"), "admit_ok": ok, "why": why, "win": win.get(i),
+                     "via": g.get("via"), "layer": g.get("layer"), "lead": g.get("lead")})
     gold = {}
     if a.gold:
         gold = {r["id"]: r.get("char") or r.get("字") for r in _read_tsv(a.gold)}
     gc = core.gold_check(rows, gold) if gold else None
     _jdump(a.out / "result.json", rows)
     with open(a.out / "逐格结果.tsv", "w", encoding="utf-8") as f:
-        f.write("格号\t类\t原因\t字组\t参校本\tA字\tA置信\tB字\tB置信\t放行\t门槛结果\n")
+        f.write("格号\t类\t原因\t字组\t参校本\tA字\tA置信\tB字\tB置信\t放行\t门槛结果\t证据\n")
         for r in rows:
             f.write("\t".join(str(x) for x in (r["id"], r["cls"], r["reason"], r["group"] or "", r["ref"] or "", r["A"]["char"], r["A"]["conf"],
-                                               r["B"]["char"], r["B"]["conf"], int(r["admit_ok"]), r["why"])) + "\n")
+                                               r["B"]["char"], r["B"]["conf"], int(r["admit_ok"]), r["why"])) + "\t" + (f'{r["via"]}:{r["layer"]}:{r["lead"]}' if r.get("via") else "") + "\n")
     tot = Counter(r["why"] for r in rows)
     print(f"判读 {len(rows)} 格（缺回 {miss}）：放行 {tot['ok']}；" + "；".join(f"{k} {v}" for k, v in tot.items() if k != "ok"))
     by = Counter((r["cls"], r["admit_ok"]) for r in rows)
@@ -200,6 +217,9 @@ def cmd_write(a) -> int:
                    "subclass": r["cls"], "zgroup": r["group"], "ref": ref, "machine": r["machine"],
                    "admit_ok": bool(r["admit_ok"]), "gate": r["why"], "ab": [A["char"], B["char"]], "conf_ab": [A["conf"], B["conf"]],
                    "why_b": (B.get("why") or "")[:60], "pending_reason": r["reason"] or "unknown"}
+        if r.get("via"):
+            payload["via"] = r["via"]
+            payload["ref_lead"] = {"layer": r.get("layer"), "lead": r.get("lead")}
         evs.append(make_event(a.batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
                               actor="model", ts=a.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
     print(len(evs), log.append(evs))
@@ -236,6 +256,7 @@ def main(argv=None) -> int:
     p.add_argument("--whitelist", help="本书可越过参校本的字组，逗号分隔（按书按组抽 30 格金标定，不继承别的书）")
     p.add_argument("--gold", type=Path, help="金标 tsv（列 id、char）")
     p.add_argument("--glyph-db", type=Path, help="L 类用：选中字库样本须 >2")
+    p.add_argument("--cnn-classes", type=Path, help="CNN 类表（一行一字或连写），oov 层（ruling_ref_lead_min_oov）用")
     p.add_argument("--min-score", type=float, default=0.95)
     p.add_argument("--min-sources", type=int, default=2)
     p = sub.add_parser("write"); common(p)
