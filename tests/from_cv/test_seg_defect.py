@@ -57,3 +57,14 @@ def test_same_char_clip():
     img[10:50, 5:30] = 0
     img[55, 3] = 0                                      # 一行只一个墨点不算
     assert _ink_h(img) == 40
+
+
+def test_edge_ink():
+    """列端边线压墨：靠版框一侧最外几行有墨的列占宽比例。"""
+    from guji_manager.review.seg_defect import edge_ink
+    img = np.full((60, 40), 255, np.uint8)
+    img[10:50, 18:22] = 0                               # 一竖：上下沿都只占 0.1
+    assert abs(edge_ink(img, False) - 0.1) < 1e-6
+    img[47:50, 2:38] = 0                                # 底下被齐刷刷截断的一片
+    assert edge_ink(img, True) >= 0.9
+    assert abs(edge_ink(img, False) - 0.1) < 1e-6

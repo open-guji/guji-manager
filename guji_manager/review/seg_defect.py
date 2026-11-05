@@ -52,6 +52,7 @@ SAME_ASPECT = 1.30   # 宽比/墨高比 ≥ 它＝只矮不窄（整字压扁的
 SAME_MIN_REF = 5     # 同字参照至少几个
 SAME_FLAT = 0.30     # 参照墨高 < 它×格高的扁字（「一」）不判：墨高只有几像素，比值不稳
 INK_THR = 160        # 墨像素：灰度 < 它
+EDGE_ROWS = 3        # 列端边线压墨：量字块靠版框一侧最外几行墨
 
 FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键")
 
@@ -86,6 +87,19 @@ def _ink_h(patch: np.ndarray | None) -> int | None:
         return None
     rows = np.nonzero((patch < INK_THR).sum(axis=1) >= 2)[0]
     return None if rows.size == 0 else int(rows[-1] - rows[0] + 1)
+
+
+def edge_ink(patch: np.ndarray | None, bottom: bool) -> float:
+    """列端边线压墨：字块靠版框一侧（列首格量上沿、列尾格量下沿）最外 `EDGE_ROWS` 行墨里，
+    有墨的列占字块宽的比例。笔画被截断的字，截口那一侧常有好几笔齐刷刷顶到边上。"""
+    if patch is None or patch.size == 0:
+        return 0.0
+    ink = patch < INK_THR
+    rows = np.nonzero(ink.sum(axis=1) >= 2)[0]
+    if rows.size == 0:
+        return 0.0
+    band = ink[rows[-1] - EDGE_ROWS + 1: rows[-1] + 1] if bottom else ink[rows[0]: rows[0] + EDGE_ROWS]
+    return float(band.any(axis=0).sum()) / ink.shape[1]
 
 
 def same_char_clip(h: int, w: int, ref: tuple[float, float, int] | None, period: float) -> str | None:
@@ -189,16 +203,21 @@ def _frame_residue(patch, r, cc_cells, lines: dict) -> str | None:
     return " ".join(out) or None
 
 
-def _at_frame_end(r, lo: int, hi: int, c_cells, cell_h: float) -> bool:
-    """列首格（本列第一个字格、贴上版框一格高以内）或列尾格（最后一个、贴下版框一格高以内）。"""
+def _at_frame_end(r, lo: int, hi: int, c_cells, cell_h: float) -> str | None:
+    """列首格（本列第一个字格、贴上版框一格高以内）给 "top"，列尾格（最后一个、贴下版框一格高以内）给 "bottom"。"""
     if r.slot == lo and c_cells.border_top is not None and r.bbox_col[1] <= c_cells.border_top + cell_h:
-        return True
-    return r.slot == hi and c_cells.border_bottom is not None and r.bbox_col[3] >= c_cells.border_bottom - cell_h
+        return "top"
+    if r.slot == hi and c_cells.border_bottom is not None and r.bbox_col[3] >= c_cells.border_bottom - cell_h:
+        return "bottom"
+    return None
 
 
 def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.35,
-              refs: dict | None = None) -> list[dict]:
-    """一页的疑似切坏格。`refs` 是 `same_char_refs` 的同字参照；不给就不做同字对照。"""
+              refs: dict | None = None, min_edge_ink: float = 0.0) -> list[dict]:
+    """一页的疑似切坏格。`refs` 是 `same_char_refs` 的同字参照；不给就不做同字对照。
+    `min_edge_ink`：同字对照命中后还要列端边线压墨（`edge_ink`）≥ 它才标，书级参数，缺省 0＝不要求。
+    史記 02/03/08（SJ 11-05）：写本字大小差异大，同字对照 117 格只约 14 格真切坏，真的边线压墨都 ≥ 0.2；
+    殿本尺子上加 0.2 会把 25 格真切坏掉到 17 格、误标只少 1 格，所以殿本不开。"""
     from .._cv import steps  # noqa: F401  —— 注册产物种类
     from .._cv import page_key
     from .._cv import read_view, resolve_patch_key
@@ -264,12 +283,13 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
             elif "boundary_ink" in r.flags and r.slot < hi and not (a is not None and a.admit):
                 hits.append(("clipped", "boundary_ink"))
             elif refs and a is not None and a.char and c_cells is not None and ph \
-                    and _at_frame_end(r, lo, hi, c_cells, ph):
+                    and (end := _at_frame_end(r, lo, hi, c_cells, ph)):
                 p = _patch(cache, book, resolve_patch_key(book, r.patch_key, store))
                 sc = same_char_clip(_ink_h(p), p.shape[1] if p is not None else 0,
                                     refs.get((a.char, bool(r.sub))), ph)
-                if sc:
-                    hits.append(("clipped", sc))
+                ei = edge_ink(p, end == "bottom") if sc else 0.0
+                if sc and ei >= min_edge_ink:
+                    hits.append(("clipped", f"{sc} 边线压墨 {ei:.2f}"))
             if "edge_blob" in r.flags:
                 hits.append(("bleed", "edge_blob"))
             if lines:
@@ -294,6 +314,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pages", default="")
     ap.add_argument("-w", "--workspace", required=True)
     ap.add_argument("--out", default="")
+    ap.add_argument("--clip-edge-ink", type=float, default=0.0,
+                    help="同字对照还要列端边线压墨 ≥ 它（书级；史記建议 0.2，殿本不用）")
     ap.add_argument("--no-same-char", action="store_true", help="不做同字对照（省读全册字块）")
     ap.add_argument("--frame-line-max-off", type=float, default=0.35, help="同册配置 cell_shrink.frame_line_max_off")
     a = ap.parse_args(argv)
@@ -307,7 +329,8 @@ def main(argv=None) -> int:
         pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
     all_pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
     refs = None if a.no_same_char else same_char_refs(a.book, all_pages, store, cache)
-    rows = [r for p in pages for r in scan_page(a.book, p, store, cache, a.frame_line_max_off, refs)]
+    rows = [r for p in pages for r in scan_page(a.book, p, store, cache, a.frame_line_max_off, refs,
+                                                    a.clip_edge_ink)]
     import contextlib
     with (open(a.out, "w", encoding="utf-8", newline="") if a.out else contextlib.nullcontext(sys.stdout)) as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, delimiter="\t")
