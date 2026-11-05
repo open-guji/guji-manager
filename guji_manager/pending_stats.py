@@ -326,7 +326,7 @@ def main(argv=None) -> int:
     (a.out / "report.md").write_text(render(s, prev, a.top, diagnose.render(body_rows, lib_n)), encoding="utf-8")
     s["signals"] = diagnose.signals(body_rows, lib_n)
     (a.out / "summary.json").write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
-    cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause", "kind"]
+    cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause", "kind", "ref", "top"]
     (a.out / "cells.tsv").write_text("\n".join(["\t".join(cols)] + ["\t".join(str(r[c]) for c in cols) for r in rows]) + "\n", encoding="utf-8")
     print(f"待审 {s['n']} 格（另非正文 {s['n_nonbody']} 格），{len(lists)} 册 → {a.out}/report.md、cells.tsv、summary.json")
     return 0
