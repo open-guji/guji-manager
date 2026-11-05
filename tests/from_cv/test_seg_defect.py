@@ -128,20 +128,23 @@ def test_gate_rows_and_book_table(tmp_path):
     assert book_opts("nosuchbook") is None
 
 
-def test_end_debris_and_thin_rows():
-    """端区碎线：端头几截细碎线；贴字细端条：从端头起 1–5 行墨占宽 ≥ 0.3。"""
-    from guji_manager.review.seg_defect import end_debris, end_thin_rows
+def test_end_debris_and_grade():
+    """端区碎线：端头几截细碎线；带框程度按同字宽比分轻重；贴字细端条（11-05 看图单查准 0.20）已删。"""
+    from guji_manager.review import seg_defect as sd
     img = np.full((80, 80), 255, np.uint8)
     img[5:70, 30:50] = 0                                # 字身
     img[76:78, 2:12] = 0
     img[76:78, 60:75] = 0                               # 两截磨断的框线
-    ds, k = end_debris(img, True)
+    ds, k = sd.end_debris(img, True)
     assert k == 2 and abs(ds - 25 / 80) < 1e-6
-    assert end_debris(img, False) == (0.0, 0)           # 上头没有
+    assert sd.end_debris(img, False) == (0.0, 0)        # 上头没有
+    assert not hasattr(sd, "end_thin_rows")
     glued = np.full((80, 80), 255, np.uint8)
     glued[5:70, 30:50] = 0
-    glued[70:72, 5:75] = 0                              # 贴着字脚的细线
-    assert end_thin_rows(glued, True) == 2
-    clean = np.full((80, 80), 255, np.uint8)
-    clean[5:70, 30:50] = 0
-    assert end_thin_rows(clean, True) == 0              # 字身窄于 0.3 宽
+    glued[70:72, 25:55] = 0                             # 贴着字脚的细线、不伸出字身：不再判带框
+    assert sd.same_char_frame(glued, (60.0, 30.0, 20, 20.0), 80.0, True) is None
+    assert sd.frame_grade("同字墨高 1.12 宽 1.23（参照 197 个）端区碎线 4 截占宽 0.59") == "重"
+    assert sd.frame_grade("同字墨高 0.99 宽 1.05（参照 9 个）端区碎线 1 截占宽 0.16") == "轻"
+    assert sd.frame_grade("同字墨高 1.20 宽 1.71（参照 36 个）端条隔开 0.21 伸出 0.08") == "重"
+    assert sd.frame_grade("同字墨高 0.70 宽 1.30（参照 9 个）") == ""   # 切笔
+    assert sd.frame_grade("下线 30px") == ""

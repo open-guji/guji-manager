@@ -22,11 +22,15 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
   本判据加上后 clipped 中 26/41、误标 5 块（查准 0.84）；原来 seam_ink／boundary_ink 两条只中 1 块。
   殿本 vol12 全册仍是 0 条（列端没有缺一截的字）。
   **带框一侧**（B1③，11-05；11-05 晚提查全）：列端格墨高不比同字矮（`≥ FRAME_MIN_H`），靠版框那头有三种框线样之一，
-  归 `frame_residue`：① 端区碎线（`end_debris`：端区里和字身分开的细碎截，占宽 ≥ `FRAME_DEBRIS`）；② 贴字细端条
-  （`end_thin_rows`：端头 1–`FRAME_THIN_MAX` 行墨占宽 ≥ `FRAME_THIN_INK`）；③ 隔开又伸出字身的横条（第一版判据）。
+  归 `frame_residue`：① 端区碎线（`end_debris`：端区里和字身分开的细碎截，占宽 ≥ `FRAME_DEBRIS`）；② 隔开又伸出
+  字身的横条（第一版判据）。墨宽比同字 ≥ `FRAME_HEAVY_W` 的记「程度＝重」（整条框线横在字头字脚，影响识别），
+  其余记「轻」（细微残笔，Sheldon 11-05：清得掉最好、清不掉也不太影响使用）；清框、不进字库只管「重」。
   殿本尺子（open-guji-dataset frame-end-crop，开关前后两版字块 677 块：带框 86、干净 526、切笔 65）：第一版只有 ③，
   中 27/86、误标 5；三样合起来中 52/86（查全 0.60）、误标 14（查准 0.79，误标里有几块看图确有残线）。漏的多是
   残线很短、贴在字脚里。只看墨高分不开（带框挂的线多只几像素高）。
+  殿本 10 册看图单（11-05，按当时三样判据随机抽 150 块）：带框 69 块，查准 0.46；端区碎线 58/100、
+  隔开横条 3/10、贴字细端条 8/40——细端条几乎全是字自己的横画或细微残笔，删掉。宽比 ≥ 1.20 的 40 块里带框 28
+  （0.70），Sheldon 点名「严重、影响识别」的 4 格全在里面。
 - `bleed`   邻格笔画溢入：cell_shrink 的 `edge_blob` 旗（上下带里与主体隔开的一块墨，`extractor._shape_features`）。
   A22 建议改用 `partition_strip` 的归属图，第一期先用现成旗，抽样不准再换。
 - `frame_residue` 框线残笔：列首／列尾格（贴着版框一格高以内）的最终字块上，按全页半格线位
@@ -45,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -74,8 +79,7 @@ FRAME_OVER = 0.05    # 端条墨列伸出字身左右的占比 ≥ 它
 FRAME_MIN_H = 0.90   # 带框三种样都要墨高不比同字矮这么多（更矮的是切笔，归 clipped）
 FRAME_DEBRIS = 0.15  # ① 端区碎线占字块宽 ≥ 它
 FRAME_DEBRIS_H = 0.08  # ① 碎截高 ≤ max(3, 它×墨高)（再高像字自己的横画：「三」「旦」的末横也是独立一块）
-FRAME_THIN_INK = 0.30  # ② 细端条：一行墨占字块宽 ≥ 它
-FRAME_THIN_MAX = 5   # ② 细端条最多几行（再厚就是字自己的横画）
+FRAME_HEAVY_W = 1.20  # 带框记「重」：墨宽比同字 ≥ 它（看图单 11-05：40 块里 28 带框，严重 4 格全中）
 SAME_PREFIX = "同字"  # 同字对照命中的特征都以它起头（--gate 只出这些）
 
 #: 出单自检开不开、书级阈值，按 book-text 条目 id（工作区目录名 `<id>-<书名>` 的 id 段）。第一期两部，缺省都不开，
@@ -90,7 +94,7 @@ SELFCHECK_BOOKS: dict[str, dict] = {
                    "review_kinds": ["clipped"]},
 }
 
-FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键")
+FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键", "程度")
 
 
 def _valley_split(patch: np.ndarray, cell_h: float) -> str | None:
@@ -212,29 +216,10 @@ def end_debris(patch: np.ndarray | None, bottom: bool) -> tuple[float, int]:
     return float(cols.sum() / m.shape[1]), k
 
 
-def end_thin_rows(patch: np.ndarray | None, bottom: bool) -> int:
-    """靠版框那头从最外一行起，连续几行墨占字块宽 ≥ `FRAME_THIN_INK`（贴着字脚的细框线：1–`FRAME_THIN_MAX` 行）。"""
-    if patch is None or patch.size == 0:
-        return 0
-    m = patch < INK_THR
-    if bottom:
-        m = m[::-1]
-    rows = np.nonzero(m.sum(axis=1) >= 2)[0]
-    if rows.size == 0:
-        return 0
-    t = 0
-    for y in range(int(rows[0]), min(m.shape[0], int(rows[0]) + 12)):
-        if m[y].sum() < FRAME_THIN_INK * m.shape[1]:
-            break
-        t += 1
-    return t
-
-
 def same_char_frame(patch: np.ndarray | None, ref: tuple | None, period: float, bottom: bool) -> str | None:
     """同字对照带框一侧：列端字块不比同字矮（墨高比 ≥ `FRAME_MIN_H`，矮的归 clipped），靠版框那头有下面任一种框线样：
-    ① 端区碎线（`end_debris` 占宽 ≥ `FRAME_DEBRIS`）；② 贴字细端条（`end_thin_rows` 1–`FRAME_THIN_MAX` 行）；
-    ③ 隔开又伸出字身的横条（墨宽比同字 ≥ `SAME_FRAME_W`、墨高比 ≥ `SAME_FRAME_H`、`end_band` gap ≤ `FRAME_GAP`、
-    overhang ≥ `FRAME_OVER`）。"""
+    ① 端区碎线（`end_debris` 占宽 ≥ `FRAME_DEBRIS`）；② 隔开又伸出字身的横条（墨宽比同字 ≥ `SAME_FRAME_W`、墨高比 ≥ `SAME_FRAME_H`、`end_band` gap ≤ `FRAME_GAP`、
+    overhang ≥ `FRAME_OVER`）。特征以「同字墨高 … 宽 …」起头，`frame_grade` 从里面读宽比定轻重。"""
     if patch is None or ref is None or len(ref) < 4 or not period:
         return None
     rh_med, _, n, rw_ink = ref[:4]
@@ -250,14 +235,19 @@ def same_char_frame(patch: np.ndarray | None, ref: tuple | None, period: float, 
     ds, k = end_debris(patch, bottom)
     if ds >= FRAME_DEBRIS:
         return f"{head}端区碎线 {k} 截占宽 {ds:.2f}"
-    t = end_thin_rows(patch, bottom)
-    if 1 <= t <= FRAME_THIN_MAX:
-        return f"{head}贴字细端条 {t} 行"
     if rh >= SAME_FRAME_H and rw >= SAME_FRAME_W:
         eb = end_band(patch, bottom)
         if eb is not None and eb[0] <= FRAME_GAP and eb[1] >= FRAME_OVER:
             return f"{head}端条隔开 {eb[0]:.2f} 伸出 {eb[1]:.2f}"
     return None
+
+
+def frame_grade(feature: str) -> str:
+    """同字带框特征的程度：墨宽比 ≥ `FRAME_HEAVY_W` 为「重」，否则「轻」；不是同字带框特征返回空串。"""
+    m = re.match(rf"{SAME_PREFIX}墨高 [\d.]+ 宽 ([\d.]+)", feature or "")
+    if not m or "端区碎线" not in feature and "端条隔开" not in feature:
+        return ""
+    return "重" if float(m.group(1)) >= FRAME_HEAVY_W else "轻"
 
 
 def _body(cc_chars):
@@ -463,7 +453,8 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
                             "通道": (a.channel or "") if a is not None else "",
                             "机器字": (a.char or "") if a is not None else "",
                             "整理本字": coord.get(r.id) or "",
-                            "字块键": r.patch_key})
+                            "字块键": r.patch_key,
+                            "程度": frame_grade(feat) if kind == "frame_residue" else ""})
     return out
 
 
@@ -516,10 +507,11 @@ def book_flags(book: str, store, cache, opts: dict | None = None, *, pages=None,
                        "thresholds": {k: globals()[k] for k in (
                            "SAME_H", "SAME_H_WIDE", "SAME_ASPECT", "SAME_MIN_REF", "SAME_FLAT", "SAME_FRAME_W",
                            "SAME_FRAME_H", "END_BAND", "FRAME_GAP", "FRAME_OVER", "FRAME_MIN_H", "FRAME_DEBRIS",
-                           "FRAME_THIN_INK", "FRAME_THIN_MAX", "INK_THR")}},
+                           "FRAME_DEBRIS_H", "FRAME_HEAVY_W", "INK_THR")}},
             "products": {step: {page_key(p): store.sha(book, step, page_key(p)) for p in all_pages}
                          for step in ("seed_admit", "cell_shrink")},
-            "n": len(rows), "by_kind": {k: sum(1 for r in rows if r["seg_kind"] == k) for k in SEG_KINDS}}
+            "n": len(rows), "by_kind": {k: sum(1 for r in rows if r["seg_kind"] == k) for k in SEG_KINDS},
+            "frame_heavy": sum(1 for r in rows if r.get("程度") == "重")}
     return rows, meta
 
 
