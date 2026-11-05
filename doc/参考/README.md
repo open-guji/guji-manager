@@ -6,5 +6,5 @@
 |---|---|---|
 | [中心库.md](中心库.md) | 数据放哪、表结构、读写权限、日常命令、实验分支、备份（迁自 ai-team `通用/中心库设计.md`） | 已写（A20） |
 | [册配置.md](册配置.md) | 五层配置、合并规则、各层能写哪些字段、`--override`、`book split` | 已写（A20） |
-| [产物包与版本钉.md](产物包与版本钉.md) | `cv_version`／`corpus`／`glyph_pin`、产物包与 main、冻结登记、现状 | 已写（A20） |
+| [产物包与版本钉.md](产物包与版本钉.md) | `cv_version`／`corpus`／`glyph_pin`、降人审 D／S 轮怎么钉、产物包与 main、冻结登记、现状 | 已写（A20；11-05 补轮次） |
 | [../../COMPAT.md](../../COMPAT.md) | manager 与 pipeline 契约兼容矩阵 | 已有 |

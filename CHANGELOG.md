@@ -4,6 +4,19 @@
 
 ## [未发版]
 
+## [0.4.2] - 2026-11-05
+
+- 任务库：空闲执行方不再碰 Neon（PATCH，用户 11-05 定「job 彻底从 Neon 撤掉，不要有进程不断 query」）。原先每个空闲执行方每 5 分钟把看板写进中心库 `progress.metric`，约 40 个执行方合起来每 8 秒一次，Neon 永远不休眠；现在空闲只连任务库，看板在领单、收尾、心跳（跑单中）和 `guji job submit` 交单时更新。
+
+- eval：登记三书人裁冻结金标的 7 个评测（`db_match_books`、`match_pairs_{siku_v2,shiji,qtw}`、`rare_{siku_v2,shiji,qtw}`），集在 open-guji-dataset #64，脚本在 cv #1069（PATCH）。
+- final-review：`finalize --book-yaml` 读 `params.seed_admit.ruling_override_groups`（cv #1064）作越过参校本白名单，与 `--whitelist` 不一致拒绝（PATCH）。
+
+- 人审页模板库页型 `codepoint` 升 2.0.0（PATCH，全唐文码位线，总览 11-05 转 A31）：换专用模板 `codepoint.tpl.html`（按组看图定夺：每字一行原书字块＋码位、已认/整理本数；统一作某字／分开·互认／分开·不同字／合并到别的字，未选的组挡住下一页）；新增 `review_pages/codepoint.py` 与命令 `review-pages cp-items`（groups.json → items）、`cp-apply`（结果 → codepoints 片段＋双向 follow_ref＋不同字/未定清单）。
+- final-review：参校本字取 align_char，缺时退回 cells.tsv 的 ref 列（PATCH，A24 反馈）。
+
+- 新增 `guji-manager iterate` 子命令组（PATCH，A31，用户 11-05 定降人审迭代框架）：`round-report` 轮报告、`gold` 金标登记与校验、`audit` 滚动抽检台账、`leverage` 杠杆排序、`freeze` 三书冻结日历；`pending-stats` 的 cells.tsv 末尾追加 `ref`、`top` 两列。文档 `doc/02-粗校/轮报告与验收工具.md`。
+- 一天做完一本书的自动化 P5／T2（PATCH，新增命令，A31，sheldon 11-05）：`guji-manager suggest`（诊断信号→A 档开关建议，点头后 `--apply` 文本追加写册 yaml、核合并结果、不覆盖已有键）；`guji-manager final-review`（殿本 r4 的 build／finalize／write_rulings 抽成跨书命令：run 选格＋取窗口候选＋按类 Z/N/L/P/D 分批出 A/B 判读会话清单，status 核齐，finalize 门槛＋金标，write 金标 0 错才写 ctx_ruling）；`pending-stats` 的 cells.tsv 末尾加 ref、top、tok 三列；`_cv` 登记 RulingLog 等六个名字（`_FALLBACK`）。文档 `doc/02-粗校/终审判读与开关建议.md`。
+
 ## [0.4.1] - 2026-11-05
 
 - 执行方自更新修复（PATCH，A30）：`_RUNNER_PATHS` 去掉拆分 P5 后已不存在的 `open_guji_cv/jobs`（否则 `_runner_outdated` 永远判不出 cv 侧更新）；自更新 re-exec 把老入口 `-m open_guji_cv.jobs` 换成 `guji_manager.jobs`（`_reexec_argv`）。

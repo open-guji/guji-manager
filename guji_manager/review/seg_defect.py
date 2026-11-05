@@ -14,6 +14,13 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
   或 cell_shrink 打了 `boundary_ink` 旗、且不是列尾格、本格没放行（列尾字脚贴版框就打旗；列首格留着）（A22：05:15:8:1a 字头被切到格外）。
   殿本 vol12 152 页（A22 11-04）：原口径 clipped 370 条几乎全是误报——boundary_ink 364 条多在列尾格，字脚贴版框
   就打旗；seam_ink 12–20 的 6 条有 4 条在卷首大印页。所以 boundary_ink 不单独算、阈值从 12 提到 30。
+  **同字对照**（A22-4，11-05）：列端格（贴版框一格高以内的列首／列尾格）的墨高比同册同字列中格的墨高中位数矮
+  （`< SAME_H`，或 `< SAME_H_WIDE` 且宽不跟着缩：宽比/高比 ≥ `SAME_ASPECT`），说明字缺了一截（多是剥框线连笔画
+  一起剥掉、或切线落在字里）。参照只取已放行、离列首列尾各 2 格以外的格，同字 ≥ `SAME_MIN_REF` 个；
+  扁字（参照墨高 < `SAME_FLAT` 格高，「一」）不判。只判列端：列中格同口径在殿本 vol12 标 18 格几乎全是好字
+  （列中本来就有压扁的字），没有尺子量过。尺子＝殿本列端看图单两批（10 册 548 块，人点「切笔」41 块）：
+  本判据加上后 clipped 中 26/41、误标 5 块（查准 0.84）；原来 seam_ink／boundary_ink 两条只中 1 块。
+  殿本 vol12 全册仍是 0 条（列端没有缺一截的字）。
 - `bleed`   邻格笔画溢入：cell_shrink 的 `edge_blob` 旗（上下带里与主体隔开的一块墨，`extractor._shape_features`）。
   A22 建议改用 `partition_strip` 的归属图，第一期先用现成旗，抽样不准再换。
 - `frame_residue` 框线残笔：列首／列尾格（贴着版框一格高以内）的最终字块上，按全页半格线位
@@ -39,6 +46,13 @@ MERGED_VALLEY = 0.10
 MERGED_GAP = 0.08
 MERGED_PART = 0.30
 CLIP_SEAM_INK = 30   # 殿本 vol12：12–20 全误报（A22 11-04）
+SAME_H = 0.80        # 同字对照：墨高比低于它就算缺一截
+SAME_H_WIDE = 0.85   # 墨高比在 SAME_H～它之间时，还要宽不跟着缩
+SAME_ASPECT = 1.30   # 宽比/墨高比 ≥ 它＝只矮不窄（整字压扁的宽也跟着缩）
+SAME_MIN_REF = 5     # 同字参照至少几个
+SAME_FLAT = 0.30     # 参照墨高 < 它×格高的扁字（「一」）不判：墨高只有几像素，比值不稳
+INK_THR = 160        # 墨像素：灰度 < 它
+EDGE_ROWS = 2        # 列端边线压墨：字块框边线上下各几行（[边-2, 边+3)）
 
 FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键")
 
@@ -65,6 +79,72 @@ def _valley_split(patch: np.ndarray, cell_h: float) -> str | None:
                 best = (y0, y)
         y += 1
     return None if best is None else f"valley={best[0]}-{best[1]}"
+
+
+def _ink_h(patch: np.ndarray | None) -> int | None:
+    """字块墨高：墨像素（< INK_THR）≥ 2 个的行，首末行之间的高。"""
+    if patch is None or patch.size == 0:
+        return None
+    rows = np.nonzero((patch < INK_THR).sum(axis=1) >= 2)[0]
+    return None if rows.size == 0 else int(rows[-1] - rows[0] + 1)
+
+
+def edge_line_ink(col_img: np.ndarray | None, bbox_col, bottom: bool) -> float:
+    """列端边线压墨（SJ 11-05 量法，ai-team 史記-r8-交A22/史記边线压墨量法-SJ.py）：在列图上，取本格
+    cell_shrink 字块框 `bbox_col`（不是 row_segment 格框：格框下沿常压着版框或邻字）靠版框那条边
+    （列首格上沿 y0、列尾格下沿 y1-1），上下 [边-2, 边+3) 共 5 行、框宽以内，灰度 < INK_THR 的像素占比。
+    字被切掉一截时，截口就压在这条边上。"""
+    if col_img is None or col_img.size == 0 or bbox_col is None:
+        return 0.0
+    x0, y0, x1, y1 = (int(v) for v in bbox_col)
+    edge = y1 - 1 if bottom else y0
+    band = col_img[max(0, edge - EDGE_ROWS): edge + EDGE_ROWS + 1, max(0, x0): x1]
+    return 0.0 if band.size == 0 else float((band < INK_THR).mean())
+
+
+def same_char_clip(h: int, w: int, ref: tuple[float, float, int] | None, period: float) -> str | None:
+    """同字对照：字块墨高 h、宽 w 对参照（墨高中位、宽中位、个数），像缺了一截就返回特征说明。"""
+    if ref is None or h is None or not period:
+        return None
+    rh_med, rw_med, n = ref
+    if n < SAME_MIN_REF or rh_med < SAME_FLAT * period or rh_med <= 0 or rw_med <= 0:
+        return None
+    rh, rw = h / rh_med, w / rw_med
+    if rh < SAME_H or (rh < SAME_H_WIDE and rw / rh >= SAME_ASPECT):
+        return f"同字墨高 {rh:.2f} 宽 {rw:.2f}（参照 {n} 个）"
+    return None
+
+
+def _body(cc_chars):
+    return [r for r in cc_chars if r.patch_key and r.cell_type != "empty"]
+
+
+def same_char_refs(book: str, pages, store, cache) -> dict:
+    """同册同字参照：(字, 是否夹注) → (墨高中位, 宽中位, 个数)。只取已放行、离本列首末各 2 格以外的格。"""
+    from .._cv import page_key, read_view, resolve_patch_key, steps  # noqa: F401  —— steps 注册产物种类
+    acc: dict[tuple[str, bool], list[tuple[int, int]]] = {}
+    for page in pages:
+        pk = page_key(page)
+        chars = read_view(store, book, "cell_shrink", pk, "char_index")
+        adm = store.read(book, "seed_admit", pk, "seed_admit")
+        if chars is None or adm is None:
+            continue
+        arec = {r.id: r for c in adm.columns for r in c.chars}
+        for cc in chars.columns:
+            body = _body(cc.chars)
+            if not body:
+                continue
+            lo, hi = min(r.slot for r in body), max(r.slot for r in body)
+            for r in body:
+                a = arec.get(r.id)
+                if a is None or not a.admit or not a.char or not (lo + 2 <= r.slot <= hi - 2):
+                    continue
+                p = _patch(cache, book, resolve_patch_key(book, r.patch_key, store))
+                h = _ink_h(p)
+                if h:
+                    acc.setdefault((a.char, bool(r.sub)), []).append((h, p.shape[1]))
+    return {k: (statistics.median(x[0] for x in v), statistics.median(x[1] for x in v), len(v))
+            for k, v in acc.items()}
 
 
 def _patch(cache, book: str, key: str | None):
@@ -123,7 +203,21 @@ def _frame_residue(patch, r, cc_cells, lines: dict) -> str | None:
     return " ".join(out) or None
 
 
-def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.35) -> list[dict]:
+def _at_frame_end(r, lo: int, hi: int, c_cells, cell_h: float) -> str | None:
+    """列首格（本列第一个字格、贴上版框一格高以内）给 "top"，列尾格（最后一个、贴下版框一格高以内）给 "bottom"。"""
+    if r.slot == lo and c_cells.border_top is not None and r.bbox_col[1] <= c_cells.border_top + cell_h:
+        return "top"
+    if r.slot == hi and c_cells.border_bottom is not None and r.bbox_col[3] >= c_cells.border_bottom - cell_h:
+        return "bottom"
+    return None
+
+
+def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.35,
+              refs: dict | None = None, min_edge_ink: float = 0.0) -> list[dict]:
+    """一页的疑似切坏格。`refs` 是 `same_char_refs` 的同字参照；不给就不做同字对照。
+    `min_edge_ink`：同字对照命中后还要列端边线压墨（`edge_line_ink`）≥ 它才标，书级参数，缺省 0＝不要求。
+    史記 02/03/08（SJ 11-05）：写本字大小差异大，同字对照 117 格只约 14 格真切坏，真的边线压墨都 ≥ 0.2；
+    殿本尺子上的量数见 PR #133，殿本不开。"""
     from .._cv import steps  # noqa: F401  —— 注册产物种类
     from .._cv import page_key
     from .._cv import read_view, resolve_patch_key
@@ -164,13 +258,22 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
         except Exception:                      # noqa: BLE001 —— 缺列图就不判这一类
             lines = {}
     by_col = {cc.col: cc for cc in (cells.columns if cells else [])}
+    col_imgs: dict[int, np.ndarray | None] = {}
+
+    def _edge_of(col: int, r, end: str) -> float:
+        if col not in col_imgs:
+            from .._cv import column_key
+            col_imgs[col] = _LineCtx(cache, book, frame_line_max_off).image("column_image", column_key(page, col))
+        return edge_line_ink(col_imgs[col], r.bbox_col, end == "bottom")
     out: list[dict] = []
     for cc in chars.columns:
         jz = [r.height for r in cc.chars if r.sub and r.patch_key and r.height]
         jz_med = statistics.median(jz) if jz else 0.0
         ph = period.get(cc.col) or 0.0
-        body = [r.slot for r in cc.chars if r.patch_key and r.cell_type != "empty"]
-        hi = max(body) if body else 0
+        body = _body(cc.chars)
+        hi = max((r.slot for r in body), default=0)
+        lo = min((r.slot for r in body), default=0)
+        c_cells = by_col.get(cc.col)
         for r in cc.chars:
             if not r.patch_key or r.cell_type == "empty":
                 continue
@@ -186,6 +289,14 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
                 hits.append(("clipped", f"seam_ink={si}"))
             elif "boundary_ink" in r.flags and r.slot < hi and not (a is not None and a.admit):
                 hits.append(("clipped", "boundary_ink"))
+            elif refs and a is not None and a.char and c_cells is not None and ph \
+                    and (end := _at_frame_end(r, lo, hi, c_cells, ph)):
+                p = _patch(cache, book, resolve_patch_key(book, r.patch_key, store))
+                sc = same_char_clip(_ink_h(p), p.shape[1] if p is not None else 0,
+                                    refs.get((a.char, bool(r.sub))), ph)
+                ei = _edge_of(cc.col, r, end) if sc else 0.0
+                if sc and ei >= min_edge_ink:
+                    hits.append(("clipped", f"{sc} 边线压墨 {ei:.2f}"))
             if "edge_blob" in r.flags:
                 hits.append(("bleed", "edge_blob"))
             if lines:
@@ -210,6 +321,9 @@ def main(argv=None) -> int:
     ap.add_argument("--pages", default="")
     ap.add_argument("-w", "--workspace", required=True)
     ap.add_argument("--out", default="")
+    ap.add_argument("--clip-edge-ink", type=float, default=0.0,
+                    help="同字对照还要列端边线压墨 ≥ 它（书级；史記建议 0.2，殿本不用）")
+    ap.add_argument("--no-same-char", action="store_true", help="不做同字对照（省读全册字块）")
     ap.add_argument("--frame-line-max-off", type=float, default=0.35, help="同册配置 cell_shrink.frame_line_max_off")
     a = ap.parse_args(argv)
     from .._cv import ImageCache
@@ -220,7 +334,10 @@ def main(argv=None) -> int:
         pages = [int(x) for x in a.pages.split(",") if x.strip()]
     else:
         pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
-    rows = [r for p in pages for r in scan_page(a.book, p, store, cache, a.frame_line_max_off)]
+    all_pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
+    refs = None if a.no_same_char else same_char_refs(a.book, all_pages, store, cache)
+    rows = [r for p in pages for r in scan_page(a.book, p, store, cache, a.frame_line_max_off, refs,
+                                                    a.clip_edge_ink)]
     import contextlib
     with (open(a.out, "w", encoding="utf-8", newline="") if a.out else contextlib.nullcontext(sys.stdout)) as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, delimiter="\t")

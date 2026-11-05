@@ -193,6 +193,25 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 2026-11-04 之前误登记成 glyph-match/pairs，一跑就找不到 expected.json。
     _e("db_match", "char-clustering", pythonpath=True,
        title="库匹配", needs=("products", "heavy")),
+    # 三书人裁冻结集（2026-11-05，cv scripts/build_book_human_shards.py）：5a/5b 金标以前全出自殿本
+    # vol01–02 老库，史記、全唐文一条没有。每书一个 char-clustering 分片（5a）＋分片里的
+    # rare.jsonl（5b：unseen=本书人裁 ≤2 例，oov=不在 CNN 类表），阈值标定对在 glyph-match/pairs-<书>。
+    EvalSpec(id="db_match_books", script="eval_db_match.py", shard="char-clustering", pythonpath=True,
+             extra=("--protocol", "incremental",
+                    "--shards", "004-siku-v2-human,005-shiji-human,006-qtw-human"),
+             title="库匹配·三书人裁", needs=("heavy",),
+             note="册内增量协议，三书各一行；人裁字位比全书随机字难，覆盖率不能当全书读"),
+    *[EvalSpec(id=f"match_pairs_{k}", script="eval_match_pairs.py", shard=f"glyph-match/pairs-{d}",
+               pythonpath=True, title=f"匹配阈值·{t}人裁", needs=("heavy",))
+      for k, d, t in (("siku_v2", "siku-v2", "殿本"), ("shiji", "shiji", "史記"), ("qtw", "qtw", "全唐文"))],
+    *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
+               arg_kind="none", out_flag="--json", pythonpath=True,
+               extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
+                      "--items", "rare.jsonl"),
+               title=f"5b 候选·{t}人裁", needs=("heavy",),
+               note="emb 检索 unicode-cjk-ab 全表；分 unseen／oov 两层报；--no-flagged 手跑可剔体检标过的")
+      for k, sh, t in (("siku_v2", "004-siku-v2-human", "殿本"), ("shiji", "005-shiji-human", "史記"),
+                       ("qtw", "006-qtw-human", "全唐文"))],
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
