@@ -87,25 +87,74 @@ def nsrc(x: dict, ch: str) -> int:
     return len({s.split("(")[0] for s in x["cands"].get(ch, []) if not s.startswith(("组成员", "护栏对"))})
 
 
-def gate(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.95, min_src: int = 2, lib_n=None) -> tuple[bool, str]:
-    """放行门槛（降人审框架 6.2/6.3）。→ (放行?, 门槛结果)。
+FOLD_GROUPS = ("己已巳", "日曰")   # 用户 11-05：折叠组内任一字算对，领先量不把组内字当竞争者
+
+
+def _same(a: str, b: str) -> bool:
+    return a == b or any(a in g and b in g for g in FOLD_GROUPS)
+
+
+def lead_of(x: dict, ch: str):
+    """字形库前五（`glyph_cands`，按名次）里 ch 是不是首位。→ None（不是首位或没有候选）或 (首位分, 领先次优异字的量)。
+    次优异字＝名次靠后、且与 ch 不同折叠组的最高分；没有这样的字，领先量取首位分本身。"""
+    gc = x.get("glyph_cands") or []
+    if not gc or not _same(gc[0][0], ch):
+        return None
+    top = float(gc[0][1])
+    rest = [float(v) for c, v in gc[1:] if not _same(c, ch)]
+    return top, top - (max(rest) if rest else 0.0)
+
+
+def glyph_witness(x: dict, ch: str, min_score: float | None, min_margin: float | None) -> bool:
+    """L2 图一致证人（ai-team 字形领域/L2图一致证人标定）：首位、分 ≥ min_score、领先次优异字 ≥ min_margin。
+    两项都没给＝旧口径（`字形库前五` 分 ≥ 0.95）。"""
+    if min_score is None and min_margin is None:
+        return score(x, ch) >= 0.95
+    lo = lead_of(x, ch)
+    return bool(lo) and lo[0] >= (min_score if min_score is not None else 0.0) and lo[1] >= (min_margin or 0.0)
+
+
+def gate_ex(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.95, min_src: int = 2, lib_n=None,
+            glyph: tuple | None = None, ref_lead: dict | None = None, oov=None) -> dict:
+    """放行门槛（降人审框架 6.2/6.3）。→ {ok, why, via?, layer?, lead?}。
 
     1 两路同字且都 high、字在候选里；2 越过参校本只许本书白名单组（Z 类），N/L/P/D 一律只收与参校本同字，
     但 P 类本意就是「取参校本字」，同样只收与参校本同字；3 字形分够或 ≥2 个独立来源；
     4 L 类若给了 lib_n，选中的字库样本须 >2。
+    `glyph`＝(ruling_glyph_min_score, ruling_glyph_min_margin)，来自册 yaml，给了就按「首位、≥t、领先 ≥ margin」判图一致证人
+    （不给：命令行 min_score 加前五分，旧口径）。
+    `ref_lead`＝{"unseen": 阈值|None, "oov": 阈值|None}（册 yaml `ruling_ref_lead_min_*`）：选中字就是整理本字、且在稀见层
+    （unseen＝本书库样本 ≤2，需 lib_n；oov＝不在 CNN 类表，需 oov(ch)）时，整理本字须是首位且领先 ≥ 该层阈值，
+    **并且**图一致证人成立才放行；任一不成立→`ref_lead_fail`。证据 via=ref_lead，带 layer、lead。其余格不适用；绝不单独放行。
     """
     ch = a["char"]
     if not (a["char"] == b["char"] and a["conf"] == "high" and b["conf"] == "high" and ch in x["cands"]):
-        return False, "no_double_high"
+        return {"ok": False, "why": "no_double_high"}
     ref = x.get("ref_char")
     if ch != ref:
         if not (x["cls"] == "Z" and x.get("group") in over_ref):
-            return False, "over_ref_not_allowed"
-    if not (score(x, ch) >= min_score or nsrc(x, ch) >= min_src):
-        return False, "weak_evidence"
+            return {"ok": False, "why": "over_ref_not_allowed"}
+    gs, gm_ = glyph if glyph else (None, None)
+    gw = glyph_witness(x, ch, gs if glyph else min_score, gm_) if glyph else (score(x, ch) >= min_score)
+    if not (gw or nsrc(x, ch) >= min_src):
+        return {"ok": False, "why": "weak_evidence"}
     if x["cls"] == "L" and lib_n is not None and lib_n(ch) <= 2:
-        return False, "lib_sparse_pick"
-    return True, "ok"
+        return {"ok": False, "why": "lib_sparse_pick"}
+    if ref_lead and ch == ref:
+        layer = ("unseen" if lib_n is not None and ref_lead.get("unseen") is not None and lib_n(ch) <= 2
+                 else "oov" if oov is not None and ref_lead.get("oov") is not None and oov(ch) else None)
+        if layer:
+            lo = lead_of(x, ch)
+            lead = None if lo is None else round(lo[1], 4)
+            if lo is None or lo[1] < ref_lead[layer] or not gw:
+                return {"ok": False, "why": "ref_lead_fail", "layer": layer, "lead": lead}
+            return {"ok": True, "why": "ok", "via": "ref_lead", "layer": layer, "lead": lead}
+    return {"ok": True, "why": "ok"}
+
+
+def gate(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.95, min_src: int = 2, lib_n=None, **kw) -> tuple[bool, str]:
+    r = gate_ex(x, a, b, over_ref, min_score, min_src, lib_n, **kw)
+    return r["ok"], r["why"]
 
 
 def gold_check(rows: list[dict], gold: dict[str, str]) -> dict:
@@ -125,3 +174,10 @@ def override_groups_from_yaml(text: str) -> set[str] | None:
     if isinstance(v, str):
         v = re.split(r"[\s,]+", v.strip())
     return {str(x) for x in v if str(x)}
+
+
+def seed_admit_params_from_yaml(text: str) -> dict:
+    """册/书 yaml 的 `params.seed_admit`（只取终审用到的键）：ruling_glyph_min_score/margin、ruling_ref_lead_min_unseen/oov。"""
+    import yaml
+    sa = (((yaml.safe_load(text) or {}).get("params") or {}).get("seed_admit") or {})
+    return {k: sa.get(k) for k in ("ruling_glyph_min_score", "ruling_glyph_min_margin", "ruling_ref_lead_min_unseen", "ruling_ref_lead_min_oov")}
