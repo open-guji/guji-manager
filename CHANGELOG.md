@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 补回 `guji cache build-rare-index` 的命令测试（只动测试，A31）：cv #1053 搬命令时测试留在 cv，装了 torch 就红；搬到 `tests/from_cv/test_cli_build_rare_index.py`，桩改打在 `_cv` 门面上。
+
 ## [0.4.12] - 2026-11-05
 
 - 待审原因、成因读产物认史記 `alt_cut` 备选列（PATCH，A22）：seed_admit `alt_cols` 里的列（读不到退回 align_ref 的）格号是备选切法的，`book_cells`／`book_causes` 原先照主切法的 align_ref `chars`／`coord` 按格号挂参校字，整列错位（如 02:106 第 6 列，备选多一个 -1 格，参校字全错一位）。新 `align_for_seed`：这些列丢掉现役对位字、改读 `alt_draft.coord`。史記 01–10 r12 main 包：参校字变 27 格（03:10 第 2 列 9、06:93 第 6 列 7、04:119 第 1 列 6、02:106 第 6 列 3 等），原因变 24 格。殿本没有备选列，不变。不动 Step、不改指纹。
