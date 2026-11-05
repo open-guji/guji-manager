@@ -18,7 +18,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("pending-stats", help="全部待审格分类统计（查中心库）；参数见 guji_manager.pending_stats", add_help=False)
     sub.add_parser("central-gc", help="中心库定期清理（产物包按保留规则清）；见 guji_manager.central_gc", add_help=False)
     sub.add_parser("triage", help="参校字快审分流（skip/pass/withdraw/review）；见 guji_manager.review_triage", add_help=False)
+    sub.add_parser("review-pages", help="人审页模板库（预选、一字一卡、版本、台账）；见 guji_manager.review_pages", add_help=False)
     a, rest = ap.parse_known_args(argv)
+    if a.cmd == "review-pages":
+        from .review_pages.__main__ import main as rp_main
+        return rp_main(rest)
     if a.cmd == "triage":
         from .review_triage.__main__ import main as triage_main
         return triage_main(rest)
