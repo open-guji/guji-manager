@@ -43,24 +43,49 @@ def read(path: Path) -> list[dict]:
 
 
 def from_result_docs(docs: list[dict], page_type: str, tpl_version: str, book: str | None = None) -> list[dict]:
-    """把页面存回 db 的结果文档（每页一份，带 secs、items 或 ok/bad）折成台账行。"""
+    """把页面存回 db 的结果文档折成台账行（每页一行）。
+
+    逐项文档（how=click/page_ok）按 page 归并，用时取同页的 secs 文档；旧按页文档（items 或 ok/bad）原样入账。
+    未确认的项（没有文档）不入账。"""
+    from . import results
     rows = []
+    item_docs = [d for d in docs if d.get("how") in ("click", "page_ok") and "items" not in d and "id" in d]
+    if item_docs:
+        secs = results.secs_by_page(docs)
+        by_page: dict = defaultdict(list)
+        for d in results.flatten(item_docs).values():
+            by_page[d.get("page")].append(d)
+        for pg, its in sorted(by_page.items(), key=lambda kv: (kv[0] is None, kv[0])):
+            kinds: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+            over = 0
+            for i in its:
+                o = int(i.get("pick") != i.get("pre")) if "pre" in i else int(bool(i.get("bad")))
+                over += o
+                k = i.get("kind") or "-"
+                kinds[k][0] += 1; kinds[k][1] += o
+            rows.append({"page_type": page_type, "tpl_version": its[0].get("tpl_version", tpl_version),
+                         "book": its[0].get("book", book), "page": pg, "cells": len(its),
+                         "secs": secs.get(pg, 0), "overturn": over, "pre_wrong": over, "by_kind": dict(kinds)})
     for d in docs:
-        if "id" in d and "v" in d and "items" not in d:   # 逐格文档（char_card 1.1 起每点即存），按页入账
+        if results.is_secs(d) or d in item_docs:
+            continue
+        if "id" in d and "v" in d and "items" not in d:       # char_card 逐格文档，按页入账另有读法
             continue
         if "items" in d:
             items = d["items"]
             cells = len(items)
             over = sum(1 for i in items if i.get("pick") != i.get("pre"))
-            kinds: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+            kinds = defaultdict(lambda: [0, 0])
             for i in items:
                 k = i.get("kind") or "-"
                 kinds[k][0] += 1
                 kinds[k][1] += int(i.get("pick") != i.get("pre"))
-        else:                                    # char_grid：ok/bad
+        elif "ok" in d or "bad" in d:                          # char_grid 旧按页文档
             cells = len(d.get("ok", [])) + len(d.get("bad", []))
             over = len(d.get("bad", []))
             kinds = {"-": [cells, over]}
+        else:
+            continue
         rows.append({"page_type": page_type, "tpl_version": d.get("tpl_version", tpl_version),
                      "book": d.get("book", book), "page": d.get("page"), "cells": cells,
                      "secs": d.get("secs", 0), "overturn": over, "pre_wrong": over,

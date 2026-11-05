@@ -101,3 +101,20 @@ def test_collision_with_unmoved_instance_refused(tmp_path):
     c.commit()
     with pytest.raises(SystemExit):
         ck.plan_glyph_db(c, ck.load_shift_table(p, "vol01"), "r1")
+
+
+def test_many_to_one_loads_but_refused_when_both_have_instances(tmp_path):
+    p = tmp_path / "t.tsv"
+    p.write_text("册\t页\t列\t旧格\tsub\t新格\t新sub\n"
+                 "vol01\t3\t4\t7\t\t9\t\nvol01\t3\t4\t8\t\t9\t\nvol01\t3\t5\t8\t\t7\ta\n", encoding="utf-8")
+    cm = ck.load_shift_table(p, "vol01")
+    assert cm.move["vol01:3:5:8"] == "vol01:3:5:7a"                         # 新sub
+    assert cm.many_to_one == {"vol01:3:4:9": ["vol01:3:4:7", "vol01:3:4:8"]}
+    db = tmp_path / "g.db"
+    _db(db)
+    c = sqlite3.connect(db)
+    for k in ("vol01:3:4:7", "vol01:3:4:8"):
+        c.execute("INSERT INTO instances VALUES (?,?,?,?,?,?,?,?)", (k, "s", "壬", "3", 4, 7, None, "t0"))
+    c.commit()
+    with pytest.raises(SystemExit):
+        ck.plan_glyph_db(c, cm, "r1")

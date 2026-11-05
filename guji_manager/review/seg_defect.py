@@ -21,6 +21,10 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
   （列中本来就有压扁的字），没有尺子量过。尺子＝殿本列端看图单两批（10 册 548 块，人点「切笔」41 块）：
   本判据加上后 clipped 中 26/41、误标 5 块（查准 0.84）；原来 seam_ink／boundary_ink 两条只中 1 块。
   殿本 vol12 全册仍是 0 条（列端没有缺一截的字）。
+  **偏高／墨宽一侧＝带框**（B1③，11-05）：列端格墨宽比同字宽（`≥ SAME_FRAME_W`）、墨高不比同字矮（`≥ SAME_FRAME_H`），
+  且靠版框那头最外 `END_BAND` 行是一道和字身隔开（`end_band` 的 gap ≤ `FRAME_GAP`）、伸出字身左右（overhang ≥
+  `FRAME_OVER`）的横条，归 `frame_residue`。殿本尺子（open-guji-dataset frame-end-crop，开关前后两版字块 677 块：
+  带框 83、干净 519、切笔 65）上中 33/83、误标 5（查准 0.87）。只看墨高的话带框和干净分不开（带框挂的线多只几像素高）。
 - `bleed`   邻格笔画溢入：cell_shrink 的 `edge_blob` 旗（上下带里与主体隔开的一块墨，`extractor._shape_features`）。
   A22 建议改用 `partition_strip` 的归属图，第一期先用现成旗，抽样不准再换。
 - `frame_residue` 框线残笔：列首／列尾格（贴着版框一格高以内）的最终字块上，按全页半格线位
@@ -28,6 +32,12 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
   （与 cell_shrink 剥线同一个定义；剥过还在＝没剥干净）。夹注 a/b 各自一块图块，各判。
 
 用法：`python -m guji_manager.review.seg_defect <册> --pages 2,10 -w <工作区> [--out x.tsv]`；不给 --pages 跑整册。
+
+**出单自检（B1③，A20／A31 11-05 定）**：`--gate` 只出同字对照命中的两类（`clipped`、`frame_residue`，特征以「同字」起头），
+就是出单时要把已放行格改送人审的那批；`book_flags()` 是它的整册入口，`republish prep` 先跑它出
+`<工作区>/reports/<册>/_publish/<rev>/seg_selfcheck.tsv`（旁边 `.meta.json` 记 manager 版本、参数、读过的各页
+seed_admit／cell_shrink 产物指纹），cv `scripts/zhengli/pending_list.py --seg-flags` 读。哪些书开、书级阈值在
+`SELFCHECK_BOOKS`（按 book-text 条目 id），不写册配置。不在任何 Step 的 code_deps 里，不动产物指纹。
 """
 from __future__ import annotations
 
@@ -53,6 +63,25 @@ SAME_MIN_REF = 5     # 同字参照至少几个
 SAME_FLAT = 0.30     # 参照墨高 < 它×格高的扁字（「一」）不判：墨高只有几像素，比值不稳
 INK_THR = 160        # 墨像素：灰度 < 它
 EDGE_ROWS = 2        # 列端边线压墨：字块框边线上下各几行（[边-2, 边+3)）
+
+SAME_FRAME_W = 1.10  # 带框：墨宽比同字宽到它（框线伸出字身）
+SAME_FRAME_H = 1.00  # 带框：墨高不比同字矮
+END_BAND = 3         # 带框：靠版框那头最外几行算「端条」
+FRAME_GAP = 0.30     # 端条往字身方向 8 行内最淡一行的墨 ≤ 它×端条最浓一行＝和字身隔开
+FRAME_OVER = 0.05    # 端条墨列伸出字身左右的占比 ≥ 它
+SAME_PREFIX = "同字"  # 同字对照命中的特征都以它起头（--gate 只出这些）
+
+#: 出单自检开不开、书级阈值，按 book-text 条目 id（工作区目录名 `<id>-<书名>` 的 id 段）。第一期两部，缺省都不开，
+#: A31 按轮次开（cv doc/开关登记表.md 有登记）。clip_edge_ink：同字矮一截还要列端边线压墨 ≥ 它（史記 SJ 11-05 定 0.2）；
+#: frame：开不开偏高／墨宽一侧（只在殿本尺子上量过）；review_kinds：哪几类把已放行格改送人审，其余只记旗
+#: （已在单上的格照样带 seg_kind 当证据）。带框格 OCR 多半读对、机器放行格本不进字形库，送审只加活、人确认后
+#: 带框字块反倒进库，所以缺省只送 clipped（第二期 glyphdb_admit 读旗表、有旗的人裁格不进库，再议送不送带框）。
+SELFCHECK_BOOKS: dict[str, dict] = {
+    "96mid1ogzk": {"enabled": False, "clip_edge_ink": 0.0, "frame": True,      # 欽定四庫全書總目（殿本）
+                   "review_kinds": ["clipped"]},
+    "988g3f0wsu": {"enabled": False, "clip_edge_ink": 0.2, "frame": False,     # 史記（文淵閣本）
+                   "review_kinds": ["clipped"]},
+}
 
 FIELDS = ("格号", "seg_kind", "特征", "放行", "通道", "机器字", "整理本字", "字块键")
 
@@ -106,7 +135,7 @@ def same_char_clip(h: int, w: int, ref: tuple[float, float, int] | None, period:
     """同字对照：字块墨高 h、宽 w 对参照（墨高中位、宽中位、个数），像缺了一截就返回特征说明。"""
     if ref is None or h is None or not period:
         return None
-    rh_med, rw_med, n = ref
+    rh_med, rw_med, n = ref[:3]
     if n < SAME_MIN_REF or rh_med < SAME_FLAT * period or rh_med <= 0 or rw_med <= 0:
         return None
     rh, rw = h / rh_med, w / rw_med
@@ -115,12 +144,64 @@ def same_char_clip(h: int, w: int, ref: tuple[float, float, int] | None, period:
     return None
 
 
+def _ink_w(patch: np.ndarray | None) -> int:
+    """字块墨宽：有墨像素（< INK_THR）的列数。"""
+    if patch is None or patch.size == 0:
+        return 0
+    return int(((patch < INK_THR).sum(axis=0) > 0).sum())
+
+
+def end_band(patch: np.ndarray | None, bottom: bool) -> tuple[float, float] | None:
+    """靠版框那头的端条：从最外一行有墨（≥2 像素）起 `END_BAND` 行。返回 (gap, overhang)：
+    gap＝端条往字身方向 8 行内最淡一行的墨 ÷ 端条最浓一行的墨（小＝端条和字身隔开，或端条比字脚宽得多）；
+    overhang＝端条的墨列落在字身左右范围以外的占比（字身＝端条往里 max(2, 0.05 墨高) 行起、到墨高一半）。"""
+    if patch is None or patch.size == 0:
+        return None
+    m = patch < INK_THR
+    if bottom:
+        m = m[::-1]
+    rows = np.nonzero(m.sum(axis=1) >= 2)[0]
+    if rows.size == 0:
+        return None
+    r0, ih = int(rows[0]), int(rows[-1] - rows[0] + 1)
+    band = m[r0:r0 + END_BAND]
+    nxt = m[r0 + END_BAND:r0 + END_BAND + 8].sum(axis=1)
+    gap = float(nxt.min() / max(1, band.sum(axis=1).max())) if nxt.size else 1.0
+    bcols = band.any(axis=0)
+    body = m[r0 + END_BAND + max(2, int(0.05 * ih)):r0 + ih // 2].any(axis=0)
+    xs = np.nonzero(body)[0]
+    if xs.size == 0 or not bcols.any():
+        return gap, 0.0
+    out = bcols.copy()
+    out[xs[0]:xs[-1] + 1] = False
+    return gap, float(out.sum() / bcols.sum())
+
+
+def same_char_frame(patch: np.ndarray | None, ref: tuple | None, period: float, bottom: bool) -> str | None:
+    """同字对照偏高／墨宽一侧：列端字块比同字宽、不矮，靠版框那头是一道和字身隔开又伸出字身的横条＝挂着框线。"""
+    if patch is None or ref is None or len(ref) < 4 or not period:
+        return None
+    rh_med, _, n, rw_ink = ref[:4]
+    if n < SAME_MIN_REF or rh_med < SAME_FLAT * period or rh_med <= 0 or rw_ink <= 0:
+        return None
+    h = _ink_h(patch)
+    if not h:
+        return None
+    rh, rw = h / rh_med, _ink_w(patch) / rw_ink
+    if rh < SAME_FRAME_H or rw < SAME_FRAME_W:
+        return None
+    eb = end_band(patch, bottom)
+    if eb is None or eb[0] > FRAME_GAP or eb[1] < FRAME_OVER:
+        return None
+    return f"{SAME_PREFIX}墨宽 {rw:.2f} 高 {rh:.2f}（参照 {n} 个）端条隔开 {eb[0]:.2f} 伸出 {eb[1]:.2f}"
+
+
 def _body(cc_chars):
     return [r for r in cc_chars if r.patch_key and r.cell_type != "empty"]
 
 
 def same_char_refs(book: str, pages, store, cache) -> dict:
-    """同册同字参照：(字, 是否夹注) → (墨高中位, 宽中位, 个数)。只取已放行、离本列首末各 2 格以外的格。"""
+    """同册同字参照：(字, 是否夹注) → (墨高中位, 宽中位, 个数, 墨宽中位)。只取已放行、离本列首末各 2 格以外的格。"""
     from .._cv import page_key, read_view, resolve_patch_key, steps  # noqa: F401  —— steps 注册产物种类
     acc: dict[tuple[str, bool], list[tuple[int, int]]] = {}
     for page in pages:
@@ -142,8 +223,9 @@ def same_char_refs(book: str, pages, store, cache) -> dict:
                 p = _patch(cache, book, resolve_patch_key(book, r.patch_key, store))
                 h = _ink_h(p)
                 if h:
-                    acc.setdefault((a.char, bool(r.sub)), []).append((h, p.shape[1]))
-    return {k: (statistics.median(x[0] for x in v), statistics.median(x[1] for x in v), len(v))
+                    acc.setdefault((a.char, bool(r.sub)), []).append((h, p.shape[1], _ink_w(p)))
+    return {k: (statistics.median(x[0] for x in v), statistics.median(x[1] for x in v), len(v),
+                statistics.median(x[2] for x in v))
             for k, v in acc.items()}
 
 
@@ -213,11 +295,11 @@ def _at_frame_end(r, lo: int, hi: int, c_cells, cell_h: float) -> str | None:
 
 
 def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.35,
-              refs: dict | None = None, min_edge_ink: float = 0.0) -> list[dict]:
+              refs: dict | None = None, min_edge_ink: float = 0.0, frame: bool = False) -> list[dict]:
     """一页的疑似切坏格。`refs` 是 `same_char_refs` 的同字参照；不给就不做同字对照。
     `min_edge_ink`：同字对照命中后还要列端边线压墨（`edge_line_ink`）≥ 它才标，书级参数，缺省 0＝不要求。
     史記 02/03/08（SJ 11-05）：写本字大小差异大，同字对照 117 格只约 14 格真切坏，真的边线压墨都 ≥ 0.2；
-    殿本尺子上的量数见 PR #133，殿本不开。"""
+    殿本尺子上的量数见 PR #133，殿本不开。`frame`：同字对照也查偏高／墨宽一侧（带框，归 frame_residue）。"""
     from .._cv import steps  # noqa: F401  —— 注册产物种类
     from .._cv import page_key
     from .._cv import read_view, resolve_patch_key
@@ -297,6 +379,12 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
                 ei = _edge_of(cc.col, r, end) if sc else 0.0
                 if sc and ei >= min_edge_ink:
                     hits.append(("clipped", f"{sc} 边线压墨 {ei:.2f}"))
+            if frame and refs and a is not None and a.char and c_cells is not None and ph \
+                    and (end := _at_frame_end(r, lo, hi, c_cells, ph)):
+                sf = same_char_frame(_patch(cache, book, resolve_patch_key(book, r.patch_key, store)),
+                                     refs.get((a.char, bool(r.sub))), ph, end == "bottom")
+                if sf:
+                    hits.append(("frame_residue", sf))
             if "edge_blob" in r.flags:
                 hits.append(("bleed", "edge_blob"))
             if lines:
@@ -315,36 +403,129 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
     return out
 
 
+GATE_KINDS = ("clipped", "frame_residue")
+
+
+def is_gate_row(row: dict) -> bool:
+    """出单自检要送审的一条：同字对照命中的 clipped／frame_residue（其余几类还没在尺子上量过，只列不送）。"""
+    return row["seg_kind"] in GATE_KINDS and str(row["特征"]).startswith(SAME_PREFIX)
+
+
+def book_id_of(workspace) -> str:
+    """工作区目录名 `<book-text 条目 id>-<书名>` 的 id 段（与 cv republish.text_id_of 同口径）。"""
+    return Path(workspace).resolve().name.split("-", 1)[0]
+
+
+def book_opts(book_id: str) -> dict | None:
+    """`SELFCHECK_BOOKS` 里这部书的设置；没登记＝None（不开）。"""
+    o = SELFCHECK_BOOKS.get(book_id)
+    return dict(o) if o else None
+
+
+def _pages_of(store, book: str) -> list[int]:
+    return sorted(int(p.stem[1:]) for p in store.step_dir(book, "cell_shrink").glob("p*.json"))
+
+
+def book_flags(book: str, store, cache, opts: dict | None = None, *, pages=None, gate: bool = False,
+               frame_line_max_off: float = 0.35) -> tuple[list[dict], dict]:
+    """整册切坏检测（出单自检入口）：返回 (行, meta)。`opts` 取 `SELFCHECK_BOOKS` 的一项（clip_edge_ink、frame），
+    `gate` 只留 `is_gate_row` 的。meta 记 manager 版本、参数、读过的各页 seed_admit／cell_shrink 产物指纹，
+    读表的一方对不上就判过期重算。"""
+    opts = dict(opts or {})
+    all_pages = _pages_of(store, book)
+    pages = all_pages if pages is None else list(pages)
+    refs = None if opts.get("no_same_char") else same_char_refs(book, all_pages, store, cache)
+    rows = [r for p in pages for r in scan_page(book, p, store, cache, frame_line_max_off, refs,
+                                                    float(opts.get("clip_edge_ink") or 0.0), bool(opts.get("frame")))]
+    if gate:
+        rows = [r for r in rows if is_gate_row(r)]
+    from .._cv import page_key
+    try:
+        from importlib.metadata import version
+        mv = version("guji-manager")
+    except Exception:                          # noqa: BLE001
+        mv = None
+    meta = {"tool": "guji_manager.review.seg_defect", "manager_version": mv, "book": book, "gate": gate,
+            "review_kinds": list(opts.get("review_kinds") or ["clipped"]),
+            "params": {"clip_edge_ink": float(opts.get("clip_edge_ink") or 0.0), "frame": bool(opts.get("frame")),
+                       "frame_line_max_off": frame_line_max_off,
+                       "thresholds": {k: globals()[k] for k in (
+                           "SAME_H", "SAME_H_WIDE", "SAME_ASPECT", "SAME_MIN_REF", "SAME_FLAT", "SAME_FRAME_W",
+                           "SAME_FRAME_H", "END_BAND", "FRAME_GAP", "FRAME_OVER", "INK_THR")}},
+            "products": {step: {page_key(p): store.sha(book, step, page_key(p)) for p in all_pages}
+                         for step in ("seed_admit", "cell_shrink")},
+            "n": len(rows), "by_kind": {k: sum(1 for r in rows if r["seg_kind"] == k) for k in SEG_KINDS}}
+    return rows, meta
+
+
+def meta_fresh(meta: dict, store, book: str) -> bool:
+    """旗表的 meta 和现行产物指纹对得上吗（对不上＝过期，要重算）。"""
+    from .._cv import page_key
+    want = meta.get("products") or {}
+    for step in ("seed_admit", "cell_shrink"):
+        have = {page_key(p): store.sha(book, step, page_key(p)) for p in _pages_of(store, book)}
+        if have != want.get(step):
+            return False
+    return True
+
+
+def write_table(rows: list[dict], meta: dict, out: Path) -> None:
+    """写旗表 tsv＋同名 `.meta.json`。"""
+    import json
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=FIELDS, delimiter="\t")
+        w.writeheader()
+        w.writerows(rows)
+    out.with_name(out.name + ".meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1) + "\n",
+                                                      encoding="utf-8")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("book")
     ap.add_argument("--pages", default="")
     ap.add_argument("-w", "--workspace", required=True)
-    ap.add_argument("--out", default="")
-    ap.add_argument("--clip-edge-ink", type=float, default=0.0,
-                    help="同字对照还要列端边线压墨 ≥ 它（书级；史記建议 0.2，殿本不用）")
+    ap.add_argument("--products", default="", help="产物根，缺省 <工作区>/products（或 GUJI_PRODUCTS_DIR）")
+    ap.add_argument("--out", default="", help="旗表路径；--gate 缺省 <工作区>/reports/<册>/seg_selfcheck.tsv，否则 stdout")
+    ap.add_argument("--gate", action="store_true",
+                    help="出单自检：只出同字对照命中的 clipped／frame_residue，书级参数取 SELFCHECK_BOOKS，写 tsv＋.meta.json")
+    ap.add_argument("--force", action="store_true", help="--gate 时书没在 SELFCHECK_BOOKS 里开也照跑（试跑用）")
+    ap.add_argument("--clip-edge-ink", type=float, default=None,
+                    help="同字对照还要列端边线压墨 ≥ 它（书级；史記 0.2，殿本不用）；给了就盖过书级表")
+    ap.add_argument("--frame", action="store_true", default=None, help="同字对照也查偏高／墨宽一侧（带框）")
     ap.add_argument("--no-same-char", action="store_true", help="不做同字对照（省读全册字块）")
     ap.add_argument("--frame-line-max-off", type=float, default=0.35, help="同册配置 cell_shrink.frame_line_max_off")
     a = ap.parse_args(argv)
+    import os
     from .._cv import ImageCache
     from .._cv import ProductStore
     ws = Path(a.workspace)
-    store, cache = ProductStore(ws / "products"), ImageCache(ws / "cache")
-    if a.pages:
-        pages = [int(x) for x in a.pages.split(",") if x.strip()]
+    prod = Path(a.products or os.environ.get("GUJI_PRODUCTS_DIR") or ws / "products")
+    store, cache = ProductStore(prod), ImageCache(ws / "cache")
+    bid = book_id_of(ws)
+    opts = book_opts(bid) or {}
+    if a.gate and not opts.get("enabled") and not a.force:
+        print(f"{a.book}: 书 {bid} 没在 SELFCHECK_BOOKS 里开出单自检，不出表（试跑加 --force）", file=sys.stderr)
+        return 0
+    if a.clip_edge_ink is not None:
+        opts["clip_edge_ink"] = a.clip_edge_ink
+    if a.frame:
+        opts["frame"] = True
+    if a.no_same_char:
+        opts["no_same_char"] = True
+    pages = [int(x) for x in a.pages.split(",") if x.strip()] if a.pages else None
+    rows, meta = book_flags(a.book, store, cache, opts, pages=pages, gate=a.gate,
+                            frame_line_max_off=a.frame_line_max_off)
+    out = a.out or (str(ws / "reports" / a.book / "seg_selfcheck.tsv") if a.gate else "")
+    if out:
+        write_table(rows, meta, Path(out))
     else:
-        pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
-    all_pages = sorted(int(p.stem[1:]) for p in store.step_dir(a.book, "cell_shrink").glob("p*.json"))
-    refs = None if a.no_same_char else same_char_refs(a.book, all_pages, store, cache)
-    rows = [r for p in pages for r in scan_page(a.book, p, store, cache, a.frame_line_max_off, refs,
-                                                    a.clip_edge_ink)]
-    import contextlib
-    with (open(a.out, "w", encoding="utf-8", newline="") if a.out else contextlib.nullcontext(sys.stdout)) as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS, delimiter="\t")
+        w = csv.DictWriter(sys.stdout, fieldnames=FIELDS, delimiter="\t")
         w.writeheader()
         w.writerows(rows)
-    by = {k: sum(1 for r in rows if r["seg_kind"] == k) for k in SEG_KINDS}
-    print(f"{a.book}: {len(pages)} 页，{len(rows)} 条 {by}", file=sys.stderr)
+    print(f"{a.book}: {len(pages) if pages else len(_pages_of(store, a.book))} 页，{len(rows)} 条 {meta['by_kind']}"
+          + (f" → {out}" if out else ""), file=sys.stderr)
     return 0
 
 

@@ -15,7 +15,7 @@ def test_layout_borrowed_and_symbol():
     assert sg["版式／切分为主"]["tier"] == "A–B"
     assert sg["借来的字形不像这本书"]["n"] == 22
     assert 'symbol_ref_blank: "○"' in sg["整理本空位、图上是符号"]["todo"]
-    assert sg["极难形近（日曰、己已巳）"]["tier"] == "C"
+    assert sg["其他极难形近"]["tier"] == "B"   # 11-05 起己已巳、日曰折叠，不再 C 档单列
 
 
 def test_rare_chars_and_pairs():

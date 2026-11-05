@@ -6,6 +6,29 @@
 
 - 新增 `guji swap run`：换单 driver（MINOR，A32，用户 11-05「讲一下换单…做得自动」）。每批 N 册（缺省 6）：`auto_cycle --no-publish` → `sync_workspace(no_glyph)` → 对这批 `proofing-sync only=` 发布并等跑完 → 逐册取线上 `NNN.pending.json` 核版本 → 核过的清掉本地产物包。开跑前、每批之间核字形库账本不空且不比基准少一成、磁盘 ≥3GB；全程 `GUJI_DB_NO_GLYPH=1`。状态写 `<工作区>/reports/_swap/state.json`，同一条命令断点续跑。need-A33／blocked 的册只记入状态并在最后列出。
 
+- 局部改号表第二版（cv #1081）：认「新sub」列（夹注 a/b 可改）；多个旧格对上同一新格（多对一）表里放行，库里真有两个实例落到同一新 id 才拒（PATCH）。
+
+- 评测注册表守卫登记 cv 新脚本 `eval_font_family`（PATCH，只动测试，A23；cv #1093）。
+
+- `review-pages build char_card --no-rest-ok`（PATCH，QTW 提 #158）：难认字页没有「本页其余都对」，没点的格不算对，只存点过、改过的格；char_card 升 1.3.1。
+
+## [0.4.3] - 2026-11-05
+
+- 人审页 `near_pair` 1.0.1、`lib_audit` 1.0.1：字块图改用共用定框放大件 `glyphBox`（PATCH，A23；A22 #163 共用件）。
+
+- 人审页新增两个页型（PATCH，A23，A31 11-05 同意；sheldon 11-05 定按 PATCH 发）：`near_pair` 1.0.0 形近字对比卡（两字各摆库里人裁刻例、待审格居中、A/B/都不是/看不清/切分有问题、可带 near_shape 差异区图）与 `lib_audit` 1.0.0 库内刻例审阅卡（按字头列刻例，改成/撤库/形近没错），都用 `_store.js` 逐项存档；`review-pages pair-events` 把结果转成 `glyph_audit` relabel／evict／near_form 与 `confirm` 事件（缺省只写说明文件，`--apply --batch` 才追加本机事件日志）。`build --exclude` 对这两个页型按组内的格/刻例撤。
+
+- `review/seg_defect` 出单同字对照自检（PATCH，A22 长期计划 B1③，A20／A31 11-05 定方案）：加整册入口 `book_flags()`、CLI `--gate`（只出同字对照命中的 clipped／frame_residue，写 `<工作区>/reports/<册>/seg_selfcheck.tsv`＋`.meta.json`，meta 记参数与各页 seed_admit／cell_shrink 产物指纹，`meta_fresh()` 判过期）；补「偏高／墨宽＝带框」一侧 `same_char_frame`（归 frame_residue）；书级小表 `SELFCHECK_BOOKS`（按 book-text 条目 id，殿本、史記两项，缺省都不开，`review_kinds` 缺省只送 clipped）。`review/reasons.py`：单上 `src="seg_selfcheck"` 的格归 seg_defect，detail 写「同字对照自检：<seg_kind>」。不进任何 Step 的 code_deps。
+- 修：`_cv` 里 RulingLog 等六个名字（feedback.rulings）误登记进了 `_LOCAL`（本包模块表），实际在 cv，导致 final-review 报「需要装 open-guji-cv」（PATCH，A31）；`test_cv_surface` 加守卫：`_LOCAL` 的名字必须有对应本包模块。
+
+- 评测注册表守卫（tests/from_cv/test_eval_v2.py）登记 cv 的 `eval_fold`（折叠表辅助模块）与 `eval_ref_verify`（5b 验证整理本字，A23），修 dev CI 自 #157 起因这两个脚本没登记而红（PATCH，只动测试）。
+- 人审页：字组抽样与私用码字形图（MINOR，A24，sheldon 11-05）：`pair_whitelist` 1.2.0——新增 `pair.py` 与命令 `pair-items`（每组按格号哈希稳定抽 30 格，带前后文、整理本字标【】）、`pair-apply`（结果→每组同字率＋可入白名单的组，门槛默认 30 格全同字）；模板逐格点同字/不同字/看不清、每组页尾显示同字率，结果文档加 marks/same/diff/unclear/judged/rate。`codepoint` 2.2.0——字体缺字（私用码）时候选可带字形图（组 `glyphs` 或 `rows[字].img`），标题、行首、「统一作 X」按钮都显示图；`cp-items` 认 groups.json 的 `glyphs`。
+
+- 人审页补齐必备功能（PATCH，A31，sheldon 11-05；原记 MINOR，sheldon 定按 PATCH 发）：逐项存档通用件 `_store.js`（点一下就存、读回、how=click/page_ok、未确认项标出），`gold_sample` 1.1.0（切分错/看不清/库里无此字、整理本字入上下文、邻格条、按 kind 筛选、核对模式）、`codepoint` 2.1.0、`pair_whitelist` 1.1.0、`seg_cause` 1.1.0、`char_grid` 1.2.0 改点即存；新增 `closeout` 1.0.0 收口单；`expand` 带 kind；新增 `unconfirmed`、`closeout-sum`，`cp-apply --items`；下游（cp-apply、ledger、char pull）只认已确认。
+- 人审页模板库新页型 `glyph_quality` 1.0.0（PATCH，新增页型与命令，A22，A31 11-05 转）：字块质量看图，单块或同格新旧两版同倍放大并排，点干净/带框/切笔/看不清，存档用 `_store.js`（项 id＝格号|sha，点即存、读回、how=click/page_ok）；`build glyph_quality` 直接吃 dataset 金标信封（`--root`、`--all-crops`、`--box`），新命令 `gq-apply` 出标签 jsonl 或回写信封；`--exclude` 认带 sha 的行（按块撤）。`_common` 加共用放大组件 `glyphBox`/`glyphPair`（固定框放大、多块同倍并排）。
+
+- 后台「迭代轮次」（PATCH，A31，sheldon 11-05）：`iterate push-rounds`（回填）、`round-report --push-progress`（验收后写一轮）、`iterate auto-round`（从各册★main 包口径汇总一轮）；标 main 的钩子在包口径写完后自动接 `auto-round`，每标一册更新一次该轮（包标签无 `-rN` 段的不自动收）。人审页 `char_card` 1.3.0：每格多路候选＋来源；`_common.js` saveDoc 把文档 id 编成 ASCII。
+
 - `guji db push`／`guji db sync` 加 `--no-glyph`（或环境变量 `GUJI_DB_NO_GLYPH=1`）（PATCH，A32，用户 11-05 同意）：这次不碰字形库——不导出 glyph.db、`output/glyph_store/` 下的文件不推、基准里的记录原样留、sync 也不落库。换单、批量发布这类只改待审单的流程用它，字形库账本就绝不会被它写到（11-04 字形账本被清空事故的根治，配合导入侧「账本被清空」拒推）。`workcopy.push`／`sync` 新增 `skip_prefixes`。
 
 - `guji rekey-cells glyph-db` 认 A22 局部改号表（`册 页 列 旧格 sub 新格`，只列动了的格；加 `--shift-book <册>`，可选 `--rekey-note`）：表里没列的格不动，`?` 的停放，改键批次名与换图源那次分开判幂等。用于殿本抬头漏认（cv #1076）改格号（PATCH，新增可选项，旧用法不变）。

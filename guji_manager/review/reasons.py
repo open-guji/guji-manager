@@ -53,6 +53,7 @@ class Cell:
     note: str = ""
     cls: str | None = None                             # 待审单上的旧卡片类别（老单的 seg_defect 只有这里有；11-04 起不出单）
     seg_kind: str | None = None                        # 切坏细分（单上同名字段；产物里在 evidence.seg_kind），见 SEG_KINDS
+    src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
 
     @property
     def codes(self) -> set[str]:
@@ -143,7 +144,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.VISION_FLAGGED: lambda c, x: "vision_flag" in c.codes,
     R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE),
     R.RECHECK: lambda c, x: c.recheck,
-    R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
+    R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
+        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
     R.SEG_PAGE_UNALIGNED: lambda c, x: (not c.has_ref and x.page_noref[_page(c.id)] >= PAGE_MIN)
@@ -179,6 +181,10 @@ def _ordered() -> list[R]:
 #: jiazhu_uneven（史記雙行小注逐步切 cv#1011，11-04 A31 定）：夹注两行分法不是 ⌈N/2⌉／⌊N/2⌋、按整理本切的格，要人核；
 #: 格上带 doubt 码 `jiazhu_uneven`（或 seg_kind=jiazhu_uneven）即归 seg_defect，细分记 jiazhu_uneven。
 JIAZHU_UNEVEN = "jiazhu_uneven"
+#: 出单同字对照自检（B1③，A20／A31 11-05 定）：单上 `src` 为它的格是自检从已放行格里挑出来改送人审的，
+#: 原因归 seg_defect，pending_reason_detail 写 `SELFCHECK_DETAIL + seg_kind`（统计按这个前缀单独数）。
+SELFCHECK_SRC = "seg_selfcheck"
+SELFCHECK_DETAIL = "同字对照自检："
 SEG_KINDS = ("merged", "clipped", "bleed", "frame_residue", JIAZHU_UNEVEN)
 
 
@@ -213,7 +219,7 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     """给人看的一点细节（字对、组 id、页号），不是判定依据。"""
     if reason is R.SEG_DEFECT:
-        return seg_kind_of(c)
+        return SELFCHECK_DETAIL + seg_kind_of(c) if c.src == SELFCHECK_SRC else seg_kind_of(c)
     if reason is R.LIB_MISSING:
         k = lib_missing_kind(c, ctx)
         return f"{k}:{c.ref or ''}" if k else (c.ref or "")
@@ -340,6 +346,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         c.recheck, c.note, c.cls = bool(x.get("recheck")), str(x.get("note") or ""), x.get("cls")
         if x.get("seg_kind"):
             c.seg_kind = str(x["seg_kind"])
+        if x.get("src"):
+            c.src = str(x["src"])
         cells.append(c)
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None)
