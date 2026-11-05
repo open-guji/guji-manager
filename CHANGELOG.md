@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- `guji db push`／`guji db sync` 加 `--no-glyph`（或环境变量 `GUJI_DB_NO_GLYPH=1`）（PATCH，A32，用户 11-05 同意）：这次不碰字形库——不导出 glyph.db、`output/glyph_store/` 下的文件不推、基准里的记录原样留、sync 也不落库。换单、批量发布这类只改待审单的流程用它，字形库账本就绝不会被它写到（11-04 字形账本被清空事故的根治，配合导入侧「账本被清空」拒推）。`workcopy.push`／`sync` 新增 `skip_prefixes`。
+
 - `guji rekey-cells glyph-db` 认 A22 局部改号表（`册 页 列 旧格 sub 新格`，只列动了的格；加 `--shift-book <册>`，可选 `--rekey-note`）：表里没列的格不动，`?` 的停放，改键批次名与换图源那次分开判幂等。用于殿本抬头漏认（cv #1076）改格号（PATCH，新增可选项，旧用法不变）。
 
 ## [0.4.2] - 2026-11-05

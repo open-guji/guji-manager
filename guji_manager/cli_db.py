@@ -86,7 +86,24 @@ def require_actor(dry_run: bool = False) -> str | None:
     return actor
 
 
-def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = False) -> dict:
+NO_GLYPH_ENV = "GUJI_DB_NO_GLYPH"
+
+
+def no_glyph_wanted(flag: bool = False) -> bool:
+    """``--no-glyph`` 或环境变量 ``GUJI_DB_NO_GLYPH=1``：这次 push／sync 一概不碰字形库账本。"""
+    return bool(flag) or os.environ.get(NO_GLYPH_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _glyph_args(ws_dir: Path, no_glyph: bool) -> dict:
+    """不碰字形库时：不导出 glyph.db，字形库目录下的文件不推、基准也不动（换单、批量发布等只改待审单的流程用）。"""
+    if not no_glyph:
+        return {"glyph": glyph_hooks(ws_dir)}
+    from .datastore.scope import GS
+    return {"glyph": None, "skip_prefixes": (GS,)}
+
+
+def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = False,
+                   no_glyph: bool = False) -> dict:
     """``guji db push`` 的实现（``guji store commit`` 在已迁移的工作区上也走这里）。"""
     from ._cv import upload_files
     from ._cv import workcopy_push as push
@@ -96,7 +113,7 @@ def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = 
     with _pg_conn(branch) as conn:
         return push(conn, ws_dir, actor=actor, dry_run=dry_run, allow_delete=allow_delete,
                     uploader=lambda imgs, ext="png": upload_files(imgs, bucket=_bucket(branch), ext=ext),
-                    glyph=glyph_hooks(ws_dir))
+                    **_glyph_args(ws_dir, no_glyph_wanted(no_glyph)))
 
 
 def _ensure_glyph_pins(ws_dir: Path, res: dict) -> None:
@@ -111,11 +128,14 @@ def _ensure_glyph_pins(ws_dir: Path, res: dict) -> None:
         res["glyph_pins_built"] = [r["pin"] for r in built]
 
 
-def sync_workspace(ws_dir: Path, *, dry_run: bool = False, src=None, admit: bool = True) -> dict:
+def sync_workspace(ws_dir: Path, *, dry_run: bool = False, src=None, admit: bool = True,
+                   no_glyph: bool = False) -> dict:
     """``guji db sync`` 一轮：库里有新改动先合进来（只追加台账两边的新行都留），再推本地的。
 
     合完之后把还没落库的人裁落进字形库（``feedback/auto_admit.py``，``admit=False`` 或 ``GUJI_AUTO_ADMIT=0`` 关），
-    落了就再推一次，结果记在 ``glyph_admit``／``after_admit``。"""
+    落了就再推一次，结果记在 ``glyph_admit``／``after_admit``。
+
+    ``no_glyph``（或 ``GUJI_DB_NO_GLYPH=1``）：不碰字形库——不导出 glyph.db、字形库账本不推、不落库（换单用）。"""
     from ._cv import BlobCache, WorkerSource
     from ._cv import upload_files
     from ._cv import workcopy_sync as sync
@@ -124,12 +144,15 @@ def sync_workspace(ws_dir: Path, *, dry_run: bool = False, src=None, admit: bool
     branch = _branch()
     _check_write_branch(branch)
     src = src or WorkerSource(branch=branch)
+    no_glyph = no_glyph_wanted(no_glyph)
+    if no_glyph:
+        admit = False
 
     def once() -> dict:
         with _pg_conn(branch) as conn:
             return sync(src, conn, ws_dir, actor=actor, cache=BlobCache(), dry_run=dry_run,
                         uploader=lambda imgs, ext="png": upload_files(imgs, bucket=_bucket(branch), ext=ext),
-                        glyph=glyph_hooks(ws_dir), replay=lambda ids: _reconsume(ws_dir, ids))
+                        replay=lambda ids: _reconsume(ws_dir, ids), **_glyph_args(ws_dir, no_glyph))
 
     res = once()
     if admit and auto_admit.enabled():
@@ -241,13 +264,14 @@ def cmd_db(args) -> None:
         os.environ["GUJI_DATA_BRANCH"] = args.branch
 
     if args.action == "push":
-        _print(push_workspace(ws_dir, dry_run=args.dry_run, allow_delete=args.allow_delete))
+        _print(push_workspace(ws_dir, dry_run=args.dry_run, allow_delete=args.allow_delete,
+                                   no_glyph=args.no_glyph))
         return
 
     if args.action == "sync":
         if args.watch:
             _watch(ws_dir, args.watch, args.dry_run)
-        res = sync_workspace(ws_dir, dry_run=args.dry_run, admit=not args.no_admit)
+        res = sync_workspace(ws_dir, dry_run=args.dry_run, admit=not args.no_admit, no_glyph=args.no_glyph)
         if not args.dry_run:
             _ensure_glyph_pins(ws_dir, res)
         _print(res)
@@ -361,6 +385,8 @@ def add_parser(sub) -> None:
                    help="import：导完不在本机副本上跑消费者（缺省会拉下来、只对导入的事件 route、再推）")
     p.add_argument("--dry-run", action="store_true", help="migrate/push/sync/import：只列计划不写")
     p.add_argument("--watch", type=int, default=None, metavar="秒", help="sync：每隔这么多秒做一轮，不退出")
+    p.add_argument("--no-glyph", action="store_true",
+                   help="push／sync：不碰字形库——不导出 glyph.db、字形库账本不推（也可设 GUJI_DB_NO_GLYPH=1）；换单用这个")
     p.add_argument("--no-admit", action="store_true",
                    help="sync：不顺带把待落库的人裁落进字形库（缺省落；也可设 GUJI_AUTO_ADMIT=0）")
 

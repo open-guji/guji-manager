@@ -85,6 +85,29 @@ def test_glyph_db_changes_are_exported_before_push(repo, conn, tmp_path):  # noq
     assert (data_dir(ws) / "output" / "glyph_store" / "meta.jsonl").read_text().count("v2")
 
 
+def test_push_skip_prefixes_leaves_glyph_store_alone(repo, conn, tmp_path):  # noqa: F811
+    """换单用 skip_prefixes=(GS,)：字形库账本本地改了（甚至清空）也不推，基准里的记录也原样留着。"""
+    from guji_manager.datastore.workcopy import data_dir, local_changes, push, read_state
+    from guji_manager.datastore.scope import GS
+    src, files, cache, _ = _setup(repo, conn, tmp_path)
+    ws = _fresh(files, tmp_path / "ws", src, cache)
+    data = data_dir(ws)
+    store = data / GS.rstrip("/")
+    store.mkdir(parents=True, exist_ok=True)
+    (store / "meta.jsonl").write_text('{"key": "k", "value": "local"}\n')
+    base_before = dict(read_state(data)["base"])
+    out = push(conn, ws, actor="t", skip_prefixes=(GS,))
+    assert out["rev_to"] >= out["rev_from"]
+    # 字形库文件没进库：库里没有这个 src_path
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM files WHERE src_path = %s", (GS + "meta.jsonl",))
+        assert cur.fetchone() is None
+    # 基准里也没记它，所以它还是本地待推改动，不带前缀时推得上
+    assert GS + "meta.jsonl" in local_changes(ws, None)
+    assert {k: v for k, v in read_state(data)["base"].items() if k.startswith(GS)} == \
+        {k: v for k, v in base_before.items() if k.startswith(GS)}
+
+
 def test_not_migrated_workspace_is_refused(tmp_path):
     from guji_manager.datastore.workcopy import data_dir
     (tmp_path / "workspace.yaml").write_text("id: x\n")
