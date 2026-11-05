@@ -308,3 +308,38 @@ def test_manifest_dump_roundtrips():
     text = _dump(man)
     assert json.loads(text) == man
     assert sum(1 for ln in text.splitlines() if "sha256" in ln) == len(man["items"])   # 一行一条
+
+
+def _lender_store(tmp_path):
+    """被借库（路径写法）：一例人裁、一例机器入库，edition 与本书分开。"""
+    from open_guji_cv.clustering.glyph_db import GlyphDB, export_store
+    root = tmp_path / "lend" / "output"
+    root.mkdir(parents=True)
+    db = GlyphDB(root / "glyph.db")
+    for ch, prov, i in [("子", "human", 11), ("丑", "match", 12)]:
+        assert db.admit_instance(f"v2:v009:1:{i}:1", ch, _png(i), provenance=prov, edition_tag="ted2",
+                                 page="1", col=i, idx=1)
+    db.conn.commit()
+    export_store(db, root / "glyph_store")
+    db.close()
+    return root / "glyph_store"
+
+
+def test_snapshot_records_borrow_scope_and_pinned_build_honors_it(ws, tmp_path):
+    """借库条目 scope: human（借库参照方案缺口 1）：快照清单记借法、内容指纹带借法，钉版库只借人裁，指纹带 #human。"""
+    from open_guji_cv.core.glyph_pin import load_manifest, pinned_db_path
+    from guji_manager.ops.glyph_snapshot import snapshot
+    store = _lender_store(tmp_path)
+    (ws / "workspace.yaml").write_text(f"id: tws\nglyph_lib:\n  borrow:\n    - {{from: '{store}', scope: human}}\n",
+                                       encoding="utf-8")
+    out = snapshot(ws, note="借人裁")
+    man = load_manifest(ws, out["pin"])
+    assert man["borrow"] == ["lend"] and man["borrow_how"] == {"lend": {"scope": "human"}}
+    assert out["fingerprints"]["borrow_fingerprint"] == "lend#human"
+    with sqlite3.connect(f"file:{pinned_db_path(out['pin'])}?mode=ro", uri=True) as c:
+        assert {r[0] for r in c.execute("SELECT instance_id FROM borrowed")} == {"v2:v009:1:11:1"}
+    # 同一批文件、改回借全部：内容指纹不同，不算空升
+    (ws / "workspace.yaml").write_text(f"id: tws\nglyph_lib:\n  borrow: ['{store}']\n", encoding="utf-8")
+    out2 = snapshot(ws, note="借全部")
+    assert out2["digest"] != out["digest"] and "borrow_how" not in load_manifest(ws, out2["pin"])
+    assert out2["fingerprints"]["borrow_fingerprint"] == "lend"

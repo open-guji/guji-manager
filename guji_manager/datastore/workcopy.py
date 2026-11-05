@@ -279,12 +279,69 @@ def _install(tmp: Path, ws_dir: Path, data: Path) -> tuple[int, int]:
 
 # ---- 借库（共享方案 S4）----
 
-def borrow_entries(ws_dir: Path) -> list[str]:
-    """``workspace.yaml`` 的 ``glyph_lib.borrow``（没配返回空表）。"""
+@dataclass(frozen=True)
+class BorrowSpec:
+    """``glyph_lib.borrow`` 的一条（借库参照方案缺口 1、2，2026-11-05）。
+
+    旧写法是一个字符串（被借工作区名或路径）＝借全部、不钉；新写法是对象
+    ``{from: <名>, scope: human, pin: <N>}``：``scope`` 缺省 ``all``，``human`` 只借被借库的人裁刻例；
+    ``pin`` 钉被借工作区的字形库快照 g<N>（读那一版的内容，不读最新），只对中心库工作区名有意义。
+    """
+    name: str
+    scope: str = "all"
+    pin: int | None = None
+
+    @property
+    def dir_name(self) -> str:
+        """被借库在本机的目录名（借库名取这一级，``borrow_fingerprint`` 认它）；钉了号的另放一份，不碰最新副本。"""
+        return f"{self.name}@g{self.pin}" if self.pin else self.name
+
+
+def parse_borrow(x) -> BorrowSpec:
+    if isinstance(x, dict):
+        extra = set(x) - {"from", "scope", "pin"}
+        if "from" not in x or extra:
+            raise SystemExit(f"glyph_lib.borrow 的对象写法只认 from、scope、pin，不认 {sorted(extra) or '（缺 from）'}：{x}")
+        name, scope, pin = str(x["from"]), str(x.get("scope") or "all"), x.get("pin")
+    else:
+        name, scope, pin = str(x), "all", None
+    if scope not in ("all", "human"):
+        raise SystemExit(f"glyph_lib.borrow {name}：scope 只能是 all 或 human，不是 {scope!r}")
+    if pin is not None:
+        if isinstance(pin, bool) or not isinstance(pin, int) or pin < 1:
+            raise SystemExit(f"glyph_lib.borrow {name}：pin 要写被借库的字形库快照号（正整数），不是 {pin!r}")
+        if not _CENTRAL_NAME.match(name):
+            raise SystemExit(f"glyph_lib.borrow {name}：pin 只对中心库工作区名有意义，路径写法不能钉")
+    return BorrowSpec(name, scope, pin)
+
+
+def borrow_specs(ws_dir: Path) -> list[BorrowSpec]:
+    """``workspace.yaml`` 的 ``glyph_lib.borrow``，每条解析成 ``BorrowSpec``（没配返回空表）。"""
     import yaml
     y = Path(ws_dir) / WS_YAML
     cfg = (yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}
-    return [str(x) for x in ((cfg.get("glyph_lib") or {}).get("borrow") or [])]
+    return [parse_borrow(x) for x in ((cfg.get("glyph_lib") or {}).get("borrow") or [])]
+
+
+def borrow_entries(ws_dir: Path) -> list[str]:
+    """``workspace.yaml`` 的 ``glyph_lib.borrow`` 各条的被借工作区名／路径（没配返回空表；不含借法，借法用 ``borrow_specs``）。"""
+    return [b.name for b in borrow_specs(ws_dir)]
+
+
+def borrow_dir(spec: BorrowSpec, ws_dir: Path) -> Path:
+    """一条借库在本机的字形库目录。钉了号的是 ``.borrowed/<名>@g<N>/output/glyph_store``，其余同 ``resolve_borrow``。"""
+    if spec.pin:
+        m = central_marker(Path(ws_dir)) or {}
+        return borrowed_root(spec.dir_name, str(m.get("branch") or "main")) / "output" / "glyph_store"
+    return resolve_borrow(spec.name, ws_dir)
+
+
+def borrow_dir_of_root(root_name: str, ws_dir: Path) -> Path:
+    """字形库快照清单里 ``borrow:<名>`` 的目录名 → 本机目录（名里带 ``@g<N>`` 的是钉过号的被借库）。"""
+    base, _, g = root_name.partition("@g")
+    if g.isdigit():
+        return borrow_dir(BorrowSpec(base, pin=int(g)), ws_dir)
+    return resolve_borrow(root_name, ws_dir)
 
 
 def readonly_copy(src, name: str, branch: str, prefixes: tuple[str, ...], *, cache=None,
@@ -314,28 +371,135 @@ def readonly_copy(src, name: str, branch: str, prefixes: tuple[str, ...], *, cac
     return rev, True
 
 
+PINNED_LENDER = ".pinned-lender.json"
+
+
+def pinned_tag(spec: BorrowSpec, ws_dir: Path) -> str:
+    """钉了号的借库，本机副本记的快照 digest（没钉是空串）。没拼过就报错让先 pull。"""
+    if not spec.pin:
+        return ""
+    mark = borrow_dir(spec, ws_dir).parent.parent / PINNED_LENDER
+    try:
+        return str(json.loads(mark.read_text(encoding="utf-8"))["digest"])
+    except (OSError, ValueError, KeyError) as e:
+        raise SystemExit(f"借库 {spec.dir_name} 没有钉号记录（{mark}）；先 guji db pull -w {ws_dir}") from e
+
+
+def local_borrow_stores(ws_dir: Path, specs: "list[BorrowSpec] | None" = None) -> list[Path]:
+    """不连网：按 ``workspace.yaml``（或给定的条目）认本机已有的借库副本，返回 ``rebuild_from_store`` 要的目录。
+    副本不在就报错让先 ``guji db pull``。缺省借法给普通路径，非缺省给 ``BorrowedStore``。"""
+    from .._cv import borrowed_store
+    out: list[Path] = []
+    for b in (borrow_specs(ws_dir) if specs is None else specs):
+        d = borrow_dir(b, ws_dir)
+        if ".borrowed" in d.parts and not d.is_dir():
+            raise SystemExit(f"借库不存在：{d}（写中心库工作区名的，先 guji db pull 拉一次）")
+        tag = pinned_tag(b, ws_dir)
+        out.append(borrowed_store(d, b.scope, tag) if (b.scope != "all" or tag) else d)
+    return out
+_PACK_MAN = "config/glyph-pack/g{n}/manifest.json"
+
+
+def pinned_lender_copy(src, name: str, n: int, branch: str, *, cache=None, bucket: str = "main") -> str:
+    """把被借工作区 ``name`` 的字形库快照 g<n> 拼成本机只读副本 ``.borrowed/<名>@g<n>/output/glyph_store``，返回快照 digest。
+
+    快照清单（``config/glyph-pack/g<n>/manifest.json``）一个号只写一次、不会变，所以拼好一次后（``.pinned-lender.json``
+    记号与 digest）以后不再连网。只拼清单里 ``root == gs`` 的条目（被借库自己的真源）；被借库自己借的（``borrow:``）不传递。
+    刻例图与文本都按 sha 从 R2 取，sha 不符或取不到就报错，不留半个目录。"""
+    from .._cv import BlobCache
+    from .materialize import materialize
+    root = borrowed_root(f"{name}@g{n}", branch)
+    mark = root / PINNED_LENDER
+    if mark.is_file() and (root / "output" / "glyph_store").is_dir():
+        try:
+            st = json.loads(mark.read_text(encoding="utf-8"))
+            if st.get("name") == name and st.get("n") == n and st.get("digest"):
+                return str(st["digest"])
+        except (OSError, ValueError):
+            pass
+    cache = cache or BlobCache()
+    tmp = root.parent / f".{name}@g{n}.pin.tmp"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    rel = _PACK_MAN.format(n=n)
+    try:
+        materialize(src, name, tmp / "man", (rel,), cache=cache, bucket=bucket, with_images=False)
+        man = json.loads((tmp / "man" / rel).read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001 — MaterializeError、文件不在、坏 JSON 都是同一句人话
+        raise SystemExit(f"借库 {name} 钉了字形库快照 g{n}，但中心库里没有这一版的清单（{rel}）：{e}；"
+                         f"让 {name} 那边先 guji glyph-db snapshot 出这个号并 guji db push") from e
+    digest = str(man.get("digest") or "")
+    if not digest:
+        raise SystemExit(f"借库 {name} 的 g{n} 清单没有 digest")
+    items = [it for it in man.get("items", []) if it.get("root") == "gs"]
+    if not items:
+        raise SystemExit(f"借库 {name} 的 g{n} 清单里没有本书真源条目（root=gs）")
+    store = tmp / "output" / "glyph_store"
+    store.mkdir(parents=True)
+    by_ext: dict[str, list[dict]] = {"txt": [], "png": []}
+    for it in items:
+        by_ext[it.get("type", "txt")].append(it)
+    missing: list[str] = []
+    for ext, its in by_ext.items():
+        if not its:
+            continue
+        got = cache.ensure(src, [it["sha256"] for it in its], bucket=bucket, ext=ext)
+        missing += got.get("missing", [])
+        for it in its:
+            if cache.has(it["sha256"]):
+                out = store / it["path"]
+                out.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cache.path(it["sha256"]), out)
+    if missing:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise SystemExit(f"借库 {name} 的 g{n} 有 {len(missing)} 个条目 R2 里取不到（如 {missing[:3]}）；"
+                         f"{name} 那边先 guji glyph-db snapshot-upload --pin {n} --execute")
+    shutil.rmtree(tmp / "man", ignore_errors=True)
+    (tmp / PINNED_LENDER).write_text(json.dumps({"name": name, "n": n, "digest": digest}) + "\n", encoding="utf-8")
+    if root.exists():
+        shutil.rmtree(root)
+    root.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(tmp, root)
+    return digest
+
+
 def borrow_stores(src, ws_dir: Path, *, cache=None, bucket: str = "main") -> tuple[list[Path], list[str]]:
     """借来的字形库 → (目录列表, 签名)。签名变了才要重建 glyph.db。
 
     写中心库工作区名的条目：拉那个工作区的 ``output/glyph_store/`` 到 ``core.workspace.borrowed_root``
-    （只读副本，见 ``readonly_copy``）。写路径的条目照旧当本地目录。"""
+    （只读副本，见 ``readonly_copy``）。写路径的条目照旧当本地目录。
+
+    条目写成对象时（``BorrowSpec``）：``scope: human`` 只借人裁，签名带 ``#human``；``pin: N`` 钉被借库的快照 g<N>
+    （``pinned_lender_copy``，读那一版、不随被借库更新），签名是 ``名@gN:digest``。返回的目录是
+    ``BorrowedStore``（带 scope、tag，给 ``rebuild_from_store``）；缺省借法时与旧版同样是普通路径、同样的签名。"""
+    from .._cv import borrowed_store
     ws_dir = Path(ws_dir)
     m = central_marker(ws_dir) or {}
     own, branch = str(m.get("ws") or ""), str(m.get("branch") or "main")
     dirs: list[Path] = []
     sig: list[str] = []
-    for e in borrow_entries(ws_dir):
-        d = resolve_borrow(e, ws_dir)
+    for b in borrow_specs(ws_dir):
+        e = b.name
+        d = borrow_dir(b, ws_dir)
+        tag = ""
         if m and _CENTRAL_NAME.match(e) and not (ws_dir / e).exists():
             if e == own:
                 raise SystemExit(f"workspace.yaml 的 glyph_lib.borrow 写了自己（{e}）")
-            rev, _ = readonly_copy(src, e, branch, (GS,), cache=cache, bucket=bucket)
-            sig.append(f"{e}@{rev}")
+            if b.pin:
+                tag = pinned_lender_copy(src, e, b.pin, branch, cache=cache, bucket=bucket)
+                sig.append(f"{b.dir_name}:{tag}")
+            else:
+                rev, _ = readonly_copy(src, e, branch, (GS,), cache=cache, bucket=bucket)
+                sig.append(f"{e}@{rev}")
         else:
+            if b.pin:
+                raise SystemExit(f"glyph_lib.borrow {e}：钉号要被借库是中心库工作区（本工作区没迁到中心库，或 {e} 是本地路径）")
             if not d.is_dir():
                 raise SystemExit(f"借库 {e} 不存在（{d}）；迁到中心库的工作区请写被借工作区的名字")
             sig.append(f"path:{d}")
-        dirs.append(d)
+        if b.scope != "all":
+            sig[-1] += f"#{b.scope}"
+        dirs.append(borrowed_store(d, b.scope, tag) if (b.scope != "all" or tag) else d)
     return dirs, sig
 
 
@@ -485,7 +649,7 @@ def glyph_pack_blobs(ws_dir: Path, data: Path, base: dict[str, str], rows) -> di
             if root == "gs":
                 p = data / GS / it["path"]
             elif root.startswith("borrow:"):
-                p = resolve_borrow(root[len("borrow:"):], ws_dir) / it["path"]
+                p = borrow_dir_of_root(root[len("borrow:"):], ws_dir) / it["path"]
             else:
                 bad.append(f"{root}:{it['path']}")
                 continue

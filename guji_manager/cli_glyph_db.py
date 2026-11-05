@@ -65,12 +65,13 @@ def cmd_glyph_db(args):
                 import yaml
                 wcfg = yaml.safe_load((base / "workspace.yaml").read_text(encoding="utf-8")) or {}
                 borrow = list(((wcfg.get("glyph_lib") or {}).get("borrow")) or [])
-            # 迁到中心库的工作区可写被借工作区的名字，解析到 db pull 拉好的只读副本（共享方案 S4）
-            from ._cv import resolve_borrow
-            extras = [resolve_borrow(str(x), base) for x in ([] if no_borrow else borrow)]
-            missing = [str(p) for p in extras if ".borrowed" in p.parts and not p.is_dir()]
-            if missing:
-                print(f"借库不存在：{missing}（写中心库工作区名的，先 guji db pull 拉一次）"); sys.exit(1)
+            # 迁到中心库的工作区可写被借工作区的名字，解析到 db pull 拉好的只读副本（共享方案 S4）；
+            # 条目可写对象 {from, scope, pin}（只借人裁、钉被借库快照），见 workcopy.BorrowSpec
+            from .datastore.workcopy import local_borrow_stores, parse_borrow
+            try:
+                extras = [] if no_borrow else local_borrow_stores(base, [parse_borrow(x) for x in borrow])
+            except SystemExit as e:
+                print(e); sys.exit(1)
             import os
             jobs = getattr(args, "jobs", None) or (os.cpu_count() or 1)
             if extras:
