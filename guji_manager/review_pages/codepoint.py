@@ -14,6 +14,8 @@
 出页输入（items，每组一项）：
   {key, chars:[字…], pre?, hint?, rows:{字: {adm?, kr?, tiles:[[格号, 图]…]}}}
   adm＝本书已按这个码位放行的格数，kr＝参校本全书用这个码位的处数，图＝文件路径或 data URI。
+  字体缺字（私用码、僻字）时每个候选可带字形图：组里 `glyphs:{字: 图}`（或 rows[字].img），页上用图代替文字，
+  标题、行首、「统一作 X」按钮都显示图；码位 U+ 照旧标。
 `items_from_groups` 把 `tools/开书/按组看图/find_groups.py` 的 groups.json（＋render.py 渲好的字块）转成这个格式。
 """
 from __future__ import annotations
@@ -51,7 +53,8 @@ def items_from_groups(groups: list[dict], cache: str | Path) -> list[dict]:
                      if patch_path(cache, i).exists()]
             rows[ch] = {"adm": g.get("adm", {}).get(ch, 0), "kr": g.get("kr", {}).get(ch, 0), "tiles": tiles}
         s = g.get("suggest")
-        out.append({"key": g["id"], "chars": g["chars"], "pre": f"unify:{s}" if s else None,
+        gl = {c: str(p) for c, p in (g.get("glyphs") or {}).items() if Path(p).exists()}
+        out.append({**({"glyphs": gl} if gl else {}), "key": g["id"], "chars": g["chars"], "pre": f"unify:{s}" if s else None,
                     "hint": "建议同参考表" if s else None, "rows": rows})
     return out
 

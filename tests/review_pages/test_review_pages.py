@@ -543,3 +543,54 @@ def test_glyph_quality_template_contract():
     assert "glyphPair(" in tpl
     js = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/_common.js").read_text(encoding="utf-8")
     assert "function glyphBox(" in js and "function glyphPair(" in js
+def test_pair_sample_groups_stable_and_ctx():
+    from guji_manager.review_pages import pair
+    cells = [{"id": f"1:{i}:1:1", "group": "王/玉" if i % 2 else "己/已", "left": "甲", "right": "乙", "ref_char": "王"}
+             for i in range(100)]
+    a = pair.sample_groups(cells, 30)
+    b = pair.sample_groups(list(reversed(cells)), 30)
+    assert a == b and [g["key"] for g in a] == ["己/已", "王/玉"]          # 稳定，和输入顺序无关
+    assert all(len(g["tiles"]) == 30 and g["n"] == 50 for g in a)
+    assert a[0]["tiles"][0][3] == {"left": "甲", "right": "乙", "ref_char": "王"}
+    assert len(pair.sample_groups(cells[:5], 30)[0]["tiles"]) == 3
+    assert pair.sample_groups(cells[:5], 30, min_cells=10) == []
+
+
+def test_pair_rates_and_whitelist(tmp_path, capsys):
+    from guji_manager.review_pages import pair
+    from guji_manager.review_pages.__main__ import main
+    mk = lambda n_same, n_diff: {f"c{i}": "same" if i < n_same else "diff" for i in range(n_same + n_diff)}
+    docs = [{"key": "A", "pick": "同字", "marks": mk(30, 0), "how": "click", "t": 1, "n_tiles": 30},
+            {"key": "B", "pick": "同字", "marks": mk(28, 2), "how": "click", "t": 1, "n_tiles": 30},
+            {"key": "C", "pick": "同字", "marks": mk(10, 0), "how": "click", "t": 1, "n_tiles": 30},
+            {"key": "D", "pick": "不同字", "marks": mk(0, 30), "how": "click", "t": 1, "n_tiles": 30}]
+    rows = pair.rates(docs)
+    assert rows[1]["same"] == 28 and abs(rows[1]["rate"] - 28 / 30) < 1e-9
+    wl = pair.whitelist(rows)
+    assert wl["ok"] == ["A"] and {k for k, _ in wl["hold"]} == {"B", "C", "D"}
+    assert pair.whitelist(rows, min_rate=0.9)["ok"] == ["A", "B"]
+    res = tmp_path / "res"; res.mkdir()
+    (res / "x.json").write_text(json.dumps({"items": docs}), encoding="utf-8")
+    main(["pair-apply", "--results", str(res)])
+    assert "# 可入白名单：A" in capsys.readouterr().out
+
+
+def test_pair_page_with_ctx_and_cli(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    cells = tmp_path / "c.jsonl"
+    cells.write_text("".join(json.dumps({"id": f"1:{i}:1:1", "group": "王/玉", "img": str(img), "left": "左", "right": "右"}) + "\n"
+                             for i in range(40)), encoding="utf-8")
+    main(["pair-items", "--cells", str(cells), "--out", str(tmp_path / "i.jsonl"), "-n", "30"])
+    main(["build", "pair_whitelist", "--items", str(tmp_path / "i.jsonl"), "--book", "b1", "--out", str(tmp_path / "p.html")])
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert '"left": "左"' in html and "1.2.0" in html and "data:image/png;base64," in html
+
+
+def test_codepoint_glyph_images_embedded(tmp_path):
+    img = tmp_path / "g.png"; img.write_bytes(PNG)
+    its = [dict(key="g1", chars=["", "突"], glyphs={"": str(img)},
+                rows={"": {"adm": 1}, "突": {"img": str(img)}})]
+    B.build("codepoint", its, "b1", tmp_path / "p.html")
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert html.count("data:image/png;base64,") >= 2 and "2.2.0" in html and str(img) not in html

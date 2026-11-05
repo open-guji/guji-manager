@@ -167,3 +167,33 @@ def test_glyph_quality_click_saves_restores_and_page_ok(browser, tmp_path):
     assert sorted(v["how"] for v in items) == ["click", "page_ok", "page_ok", "page_ok"]
     assert all(v["label"] == "clean" for v in items if v["how"] == "page_ok")
     assert not errs and not errs2
+def test_pair_tile_marks_rate_and_restore(browser, tmp_path):
+    from tests.review_pages.test_review_pages import PNG
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    tiles = [[f"1:{i}:1:1", str(img), "王", {"left": "左", "right": "右", "ref_char": "王"}] for i in range(4)]
+    out = tmp_path / "pw.html"
+    B.build("pair_whitelist", [dict(key="王/玉", n=50, tiles=tiles)], "b1", out)
+    page, errs = _open(browser, str(out))
+    assert "【王】" in page.inner_text(".ctxl")
+    for i, k in enumerate(["same", "same", "same", "diff"]):
+        page.locator(".tile").nth(i).locator(f"button.{k}").click()
+    assert "75%" in page.inner_text(".rate") and "同字 3 / 已判 4" in page.inner_text(".rate")
+    page.wait_for_timeout(1500)
+    db = page.evaluate("window.__db")
+    d = [v for k, v in db.items() if "/i_" in k]
+    assert len(d) == 1 and d[0]["same"] == 3 and d[0]["diff"] == 1 and d[0]["judged"] == 4 and d[0]["how"] == "click"
+    page2, errs2 = _open(browser, str(out), db=db)
+    assert "75%" in page2.inner_text(".rate")
+    assert not errs and not errs2, (errs, errs2)
+
+
+def test_codepoint_glyph_img_shown(browser, tmp_path):
+    from tests.review_pages.test_review_pages import PNG
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    out = tmp_path / "cp.html"
+    B.build("codepoint", [dict(key="g1", chars=["", "突"], glyphs={"": str(img)},
+                               rows={"": {"tiles": [["1:1:1:1", str(img)]]}, "突": {}})], "b1", out)
+    page, errs = _open(browser, str(out))
+    assert page.locator(".pt img.gi").count() == 1 and page.locator(".lab .g img.gi").count() == 1
+    assert page.locator(".opt .s img.gi").count() == 1
+    assert not errs, errs

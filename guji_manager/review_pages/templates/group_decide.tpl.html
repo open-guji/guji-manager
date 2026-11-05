@@ -5,23 +5,48 @@
 .opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.opts label{border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;min-height:36px}
 .opts label.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.opts label.pre::after{content:" 预选";font-size:10px;opacity:.8}.opts input[type=radio]{margin-right:4px}
 .gk{font:600 24px/1.2 var(--font-glyph)}
+.tiles.ctx{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.ctxl{font:13px/1.35 var(--font-glyph);text-align:center;word-break:break-all;min-height:2.7em}.ctxl b{background:var(--accent);color:var(--accent-fg);border-radius:3px;padding:0 2px}
+.mk{display:flex;gap:3px;width:100%}.mk button{flex:1;padding:3px 0;font-size:12px;min-height:30px}
+.mk button.on.same{background:var(--ok);border-color:var(--ok);color:#fff}.mk button.on.diff{background:var(--bad);border-color:var(--bad);color:#fff}.mk button.on.unclear{background:var(--muted);border-color:var(--muted);color:#fff}
+.tile.m-same{border-color:var(--ok)}.tile.m-diff{border-color:var(--bad)}
+.rate{margin-top:8px;padding:6px 10px;border-radius:6px;background:var(--bg);font-size:13px;font-variant-numeric:tabular-nums}.rate b{font-size:16px}
 </style>
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
 /*COMMON_JS*//*STORE_JS*//*PAGER_JS*/
 makePager({key:"group-"+D.page_type,prefix:"g",all:D.groups.map(g=>Object.assign({id:g.key},g)),per:D.per_page,
-  hintText:D.hint||"每组看图后选一个结论；预选的带「预选」标，不同意就改。每点一下就存；不点的组要翻页点「本页其余都对」才算确认。",
+  hintText:D.hint||"每组看图（有前后文的格逐格点同字／不同字／看不清，页尾显示同字率）后选一个组结论；预选的带「预选」标，不同意就改。每点一下就存；不点的组要翻页点「本页其余都对」才算确认。",
   legacy:[["group-"+D.page_type+"-"+D.book+"-1.0.0",o=>({v:Object.fromEntries(Object.keys(Object.assign({},o.pick,o.note)).map(id=>[id,{raw:{pick:o.pick&&o.pick[id],note:o.note&&o.note[id]},how:"click",t:Date.now()}])),seen:o.seen||0,page:o.page||0})]],
   stats:(done,V)=>`改判 ${done.filter(g=>(V(g.id).pick??g.pre)!==g.pre).length}`,
   draw(g,box,v,save){
     const cur=()=>v.pick??g.pre;
     const hd=document.createElement("div");hd.className="gk";hd.textContent=g.label||g.key;
     const meta=document.createElement("div");meta.className="stat";meta.textContent=(g.hint||"")+(g.n?`　共 ${g.n} 格，抽 ${g.tiles.length} 格`:"");
-    const tl=document.createElement("div");tl.className="tiles";
-    for(const [id,img,cap] of g.tiles){const t=document.createElement("div");t.className="tile";t.style.cursor="default";t.title=id;
-      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=img;im.alt=cap||"";w.appendChild(im);
-      const m=document.createElement("div");m.className="m";m.textContent=cap||"";t.append(w,m);tl.appendChild(t)}
+    const hasCtx=g.tiles.some(t=>t[3]);
+    const tl=document.createElement("div");tl.className="tiles"+(hasCtx?" ctx":"");
+    v.marks=v.marks||{};
+    const rate=document.createElement("div");rate.className="rate";
+    const MK=[["same","同字"],["diff","不同字"],["unclear","看不清"]];
+    function drawRate(){
+      const c={same:0,diff:0,unclear:0};for(const [id] of g.tiles){const m=v.marks[id];if(m)c[m]++}
+      const j=c.same+c.diff,left=g.tiles.length-j-c.unclear;
+      rate.textContent="";const b=document.createElement("b");b.textContent=j?Math.round(c.same/j*100)+"%":"—";
+      rate.append("本组同字率 ",b,`（同字 ${c.same} / 已判 ${j}；不同字 ${c.diff}，看不清 ${c.unclear}，未判 ${left}，共抽 ${g.tiles.length} 格`+(g.n?`／全组 ${g.n} 格`:"")+"）")}
+    for(const [id,img,cap,ctx] of g.tiles){const t=document.createElement("div");t.className="tile";t.style.cursor="default";t.title=id;
+      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=img;im.alt=cap||"";im.loading="lazy";w.appendChild(im);
+      t.appendChild(w);
+      if(ctx&&typeof ctx==="object"){const c=document.createElement("div");c.className="ctxl";
+        c.append(ctx.left||"");const b=document.createElement("b");b.textContent=ctx.ref_char?"【"+ctx.ref_char+"】":"〔　〕";c.append(b,ctx.right||"");t.appendChild(c)}
+      else{const m=document.createElement("div");m.className="m";m.textContent=cap||"";t.appendChild(m)}
+      if(hasCtx){const mk=document.createElement("div");mk.className="mk";
+        const paint=()=>{t.className="tile"+(v.marks[id]?" m-"+v.marks[id]:"");for(const x of mk.children)x.classList.toggle("on",v.marks[id]===x.dataset.m)};
+        for(const [k,lab] of MK){const bt=document.createElement("button");bt.type="button";bt.dataset.m=k;bt.className=k;bt.textContent=lab;
+          bt.onclick=()=>{if(v.marks[id]===k)delete v.marks[id];else v.marks[id]=k;save();paint();drawRate()};mk.appendChild(bt)}
+        paint();t.appendChild(mk)}
+      tl.appendChild(t)}
+    drawRate();
     const op=document.createElement("div");op.className="opts";
     for(const o of D.options){
       const lb=document.createElement("label");const r=document.createElement("input");r.type="radio";r.name="g_"+g.key;r.checked=cur()===o;
@@ -30,7 +55,9 @@ makePager({key:"group-"+D.page_type,prefix:"g",all:D.groups.map(g=>Object.assign
       op.appendChild(lb);
     }
     const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=v.note||"";nt.oninput=()=>{v.note=nt.value;save()};op.appendChild(nt);
-    box.append(hd,meta,tl,op);
+    box.append(hd,meta,tl,rate,op);
   },
-  doc(g,v){return {key:g.key,pre:g.pre??null,pick:v.pick??g.pre??null,note:v.note||"",kind:g.kind||null}}});
+  doc(g,v){const mk=v.marks||{},cnt=k=>Object.values(mk).filter(x=>x===k).length,s=cnt("same"),f=cnt("diff");
+    return {key:g.key,pre:g.pre??null,pick:v.pick??g.pre??null,note:v.note||"",kind:g.kind||null,
+      marks:mk,same:s,diff:f,unclear:cnt("unclear"),judged:s+f,n_tiles:g.tiles.length,rate:s+f?s/(s+f):null}}});
 </script>
