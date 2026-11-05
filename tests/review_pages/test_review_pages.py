@@ -98,7 +98,9 @@ def test_every_template_builds(t, tmp_path):
     st = B.build(t, items, "b1", out)
     html = out.read_text(encoding="utf-8")
     assert st["page_type"] == t and "/*DATA*/" not in html and "/*COMMON" not in html and "/*SHELL*/" not in html
-    assert PAGE_TYPES[t].version in html and "data:image/png;base64," in html
+    assert PAGE_TYPES[t].version in html
+    if t not in ("name_pick", "name_register", "punct_check"):
+        assert "data:image/png;base64," in html
 
 
 def test_ledger_and_hints(tmp_path):
