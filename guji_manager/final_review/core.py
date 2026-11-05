@@ -113,3 +113,15 @@ def gold_check(rows: list[dict], gold: dict[str, str]) -> dict:
     adm = [r for r in rows if r["admit_ok"] and r["id"] in gold]
     wrong = [r["id"] for r in adm if r["A"]["char"] != gold[r["id"]]]
     return {"gold": len(gold), "covered": sum(1 for r in rows if r["id"] in gold), "checked": len(adm), "wrong": wrong}
+
+
+def override_groups_from_yaml(text: str) -> set[str] | None:
+    """册/书 yaml 的 `params.seed_admit.ruling_override_groups`（cv #1064）→ 组名集合；没写返回 None（缺省不核）。
+    写法可以是列表或空格/逗号分隔的字符串；空列表＝一律不许越过参校本（返回空集）。"""
+    import yaml
+    v = ((((yaml.safe_load(text) or {}).get("params") or {}).get("seed_admit") or {}).get("ruling_override_groups"))
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = re.split(r"[\s,]+", v.strip())
+    return {str(x) for x in v if str(x)}

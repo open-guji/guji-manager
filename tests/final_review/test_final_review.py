@@ -88,3 +88,11 @@ def test_ref_falls_back_to_cells_ref(tmp_path):
     sel = [{"id": "vol20:1:1:2", "cls": "N", "reason": "near_form_guard", "group": "", "ref": "予"}]
     c = pack.build_cells(pkg, sel, lambda recs: sorted(recs, key=lambda r: r.slot), {}, 2)
     assert c[0]["ref_char"] == "予" and "参校本" in c[0]["cands"]["予"][0]
+
+
+def test_override_groups_from_yaml():
+    f = core.override_groups_from_yaml
+    assert f("id: 1\n") is None
+    assert f("params:\n  seed_admit:\n    ruling_override_groups: []\n") == set()
+    assert f("params:\n  seed_admit:\n    ruling_override_groups: [ly, dt]\n") == {"ly", "dt"}
+    assert f("params:\n  seed_admit:\n    ruling_override_groups: ly dt,wm\n") == {"ly", "dt", "wm"}
