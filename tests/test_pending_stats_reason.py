@@ -30,12 +30,12 @@ def test_src_selfcheck_counted(tmp_path):
     doc = {"rev": "r1", "cells": [
         {"cell": "1:1:1", "pending_reason": "seg_defect", "src": "seg_selfcheck", "why": []},
         {"cell": "1:1:2", "pending_reason": "seg_defect", "why": []},
-        {"cell": "1:1:3", "pending_reason": "ref_lacuna", "pending_reason_detail": "glyph_pending:U+F1001", "why": []},
+        {"cell": "1:1:3", "pending_reason": "seg_defect", "pending_reason_detail": "同字对照自检：clipped", "why": []},
     ]}
     (d / "020.pending.json").write_text(json.dumps(doc), encoding="utf-8")
     out = tmp_path / "out"
     pending_stats._group_of = lambda ch: None
     assert pending_stats.main(["--from-dir", str(d), "--out", str(out)]) == 0
     s = json.loads((out / "summary.json").read_text(encoding="utf-8"))
-    assert s["by_src"] == {"seg_selfcheck": 1, "glyph_pending": 1}
-    assert "同字对照自检（seg_selfcheck） 1" in (out / "report.md").read_text(encoding="utf-8") and "待收字（glyph_pending） 1" in (out / "report.md").read_text(encoding="utf-8")
+    assert s["by_src"] == {"seg_selfcheck": 2}
+    assert "同字对照自检（seg_selfcheck） 2" in (out / "report.md").read_text(encoding="utf-8")
