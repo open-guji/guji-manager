@@ -37,11 +37,11 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
     PageType("seg_cause", "切分归因看图", "seg_cause.tpl.html", "1.1.0",
              "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 A22 seg_causes",
              options=("切分错", "切对了不是切分", "特殊页型", "看不出"), doc_prefix="review_seg"),
-    PageType("near_pair", "形近字对比卡（两字各摆库刻例，待审格居中）", "near_pair.tpl.html", "1.0.0",
+    PageType("near_pair", "形近字对比卡（两字各摆库刻例，待审格居中）", "near_pair.tpl.html", "1.0.1",
              "L4 同字聚合后的形近对（畫/書、全/今、文/又…）；选 A/B/都不是/看不清/切分有问题，点即存；"
              "可带 near_shape 差异区高亮；结果经 `pair_audit` 出 relabel/confirm 事件",
              options=("a", "b", "neither", "unclear", "seg"), doc_prefix="review_np"),
-    PageType("lib_audit", "库内刻例审阅卡（按字头列刻例，标错的改字或撤库）", "lib_audit.tpl.html", "1.0.0",
+    PageType("lib_audit", "库内刻例审阅卡（按字头列刻例，标错的改字或撤库）", "lib_audit.tpl.html", "1.0.1",
              "体检/形近字对比发现的库标错（官/宫、之/史…）；点刻例标「这条标错」并填应为的字；"
              "结果经 `pair_audit` 出 glyph_audit relabel/evict/near_form 事件",
              options=("relabel", "evict", "near_form"), doc_prefix="review_la"),

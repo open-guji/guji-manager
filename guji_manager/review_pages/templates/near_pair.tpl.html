@@ -7,13 +7,8 @@
 .exrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:3px 0}
 .exrow b{font:600 22px/1 var(--font-glyph);min-width:1.4em;text-align:center}
 .exrow .lab{font-size:11px;color:var(--muted);min-width:5.5em}
-.ex{background:#fff;border:1px solid var(--line);border-radius:4px;padding:2px;line-height:0}
-.ex img{height:54px;max-width:84px;object-fit:contain}
-.diff{background:#fff;border:1px solid var(--line);border-radius:4px;padding:2px;line-height:0}.diff img{height:54px}
 .cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
 .cell{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;background:var(--tile);border:2px solid var(--line);border-radius:8px}
-.cell .img{background:#fff;border-radius:4px;padding:2px;line-height:0;height:96px;display:flex;align-items:center;justify-content:center;width:100%}
-.cell .img img{max-height:90px;max-width:100%;object-fit:contain}
 .cell .m{font-size:10px;color:var(--muted);text-align:center}
 .cell .ctx{font:13px/1.4 var(--font-glyph);text-align:center;word-break:break-all}
 .cell .opts{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
@@ -43,7 +38,7 @@ function strip(label,ch,ex){
   const r=document.createElement("div");r.className="exrow";
   const l=document.createElement("span");l.className="lab";l.textContent=label+"（库里 "+ex.length+" 例）";
   const b=document.createElement("b");b.textContent=ch;r.append(b,l);
-  for(const e of ex){const w=document.createElement("span");w.className="ex";w.title=e[0];const im=document.createElement("img");im.src=e[1];im.alt=ch;w.appendChild(im);r.appendChild(w)}
+  for(const e of ex){const g=glyphBox(e[1],{size:64,dims:false,alt:ch});g.title=e[0];r.appendChild(g)}
   return r;
 }
 function paint(box,c){
@@ -60,12 +55,12 @@ function render(){
     const pa=document.createElement("div");pa.className="pair";pa.append(document.createTextNode(pr.a),(()=>{const i=document.createElement("i");i.textContent="对";return i})(),document.createTextNode(pr.b));
     const mt=document.createElement("div");mt.className="stat";mt.textContent=`待审 ${pr.cells.length} 格`+(pr.note?" · "+pr.note:"");
     hd.append(pa,mt);
-    if(pr.diff){const d=document.createElement("span");d.className="diff";d.title="两字刻例差异最大的区域";const im=document.createElement("img");im.src=pr.diff;im.alt="差异区";d.appendChild(im);hd.appendChild(d)}
+    if(pr.diff){const d=glyphBox(pr.diff,{size:64,label:"差异区",dims:false});d.title="两字刻例差异最大的区域";hd.appendChild(d)}
     box.append(hd,strip("A",pr.a,pr.ex_a||[]),strip("B",pr.b,pr.ex_b||[]));
     const g=document.createElement("div");g.className="cells";
     for(const c of pr.cells){
       const b=document.createElement("div");b.title=c.id;
-      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=c.img||"";im.alt="待审格";w.appendChild(im);
+      const w=glyphBox(c.img||"",{size:112,alt:"待审格"});
       const m=document.createElement("div");m.className="m";
       m.textContent=[c.cur?"库里标："+c.cur:"",(c.sa!=null?pr.a+" "+c.sa.toFixed(3):""),(c.sb!=null?pr.b+" "+c.sb.toFixed(3):"")].filter(Boolean).join(" · ");
       const o=document.createElement("div");o.className="opts";
