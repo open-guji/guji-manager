@@ -46,6 +46,8 @@ def from_result_docs(docs: list[dict], page_type: str, tpl_version: str, book: s
     """把页面存回 db 的结果文档（每页一份，带 secs、items 或 ok/bad）折成台账行。"""
     rows = []
     for d in docs:
+        if "id" in d and "v" in d and "items" not in d:   # 逐格文档（char_card 1.1 起每点即存），按页入账
+            continue
         if "items" in d:
             items = d["items"]
             cells = len(items)

@@ -5,22 +5,56 @@
 .big{font:600 40px/1 var(--font-glyph);min-width:1.3em;text-align:center}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
 .cardhead input{width:3.2em;font:600 22px/1 var(--font-glyph);text-align:center}
+.tile .sug{font:600 30px/1 var(--font-glyph)}
+.tile .m b{font-weight:600}
+.tile.v-seg{border-color:#b7791f}.tile.v-unclear{border-color:var(--muted);border-style:dashed}
+.tile.v-other{border-color:var(--bad);background:var(--bad-bg)}.tile.v-ok{border-color:var(--ok)}
+.tile .pk{width:3em;font:600 20px/1 var(--font-glyph);text-align:center}
 </style>
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
 /*COMMON_JS*/
-// 每页 per_page 张卡；卡默认全对：样例点「不对」变红；预选字不对就在框里改字（整卡改）
-const KEY="char-card-"+D.book+"-"+D.tpl_version, P=D.per_page, NP=Math.ceil(D.cards.length/P);
-let st=lsGet(KEY,{bad:{},pick:{},seen:0,page:0});
+// 每页 per_page 张卡。逐格点击循环：1 切分有问题 → 2 改字（格下出输入框，不预填）→ 3 看不清 → 4 对 → 5 取消。
+// 每点一下只把这一格写进 db（集合 D.coll，文档 c_<格号>），不整页重发布；「本页其余都对」时没点的样例记对。
+// 已录入的格出页前由 build --exclude 撤掉，页面上不再出现。
+const KEY="char-card-"+D.book+"-"+D.tpl_version, P=D.per_page, NP=Math.max(1,Math.ceil(D.cards.length/P));
+const CYC=["seg","other","unclear","ok"], VN={seg:"切分有问题",other:"改字",unclear:"看不清",ok:"对"};
+let st=lsGet(KEY,{v:{},pick:{},seen:0,page:0});
+const savedT={};
+const cellVal=(c,id)=>{const x=st.v[id];if(!x)return null;return x.v==="other"?(x.pk?"pick:"+x.pk:"other"):x.v==="ok"?"pick:"+(st.pick[c.char]||c.char):x.v};
+function setCell(c,id,v,pk){
+  if(v)st.v[id]={v,pk:pk||"",t:Date.now()};else delete st.v[id];
+  lsSet(KEY,st);queueSave();
+}
+let timer=null,inflight=false;
+function queueSave(){if(!DB){setSync("未联网存档（只存在本浏览器）");return}clearTimeout(timer);timer=setTimeout(flush,1200)}
+async function flush(){
+  if(!DB||inflight)return;inflight=true;
+  try{
+    for(const c of D.cards)for(const s of c.samples){
+      const id=s.id,x=st.v[id],had=savedT[id]||0,ref=DB.doc(D.coll+"/c_"+id);
+      if(x&&x.t!==had){await ref.set({page_type:TPL.type,tpl_version:TPL.version,book:D.book,id,card:c.char,v:cellVal(c,id),t:x.t});savedT[id]=x.t}
+      else if(!x&&had){await ref.delete();delete savedT[id]}
+    }
+    setSync("已存后台");
+  }catch(e){setSync("后台存档失败，重试中："+(e.code||e.message));timer=setTimeout(flush,8000)}
+  finally{inflight=false}
+}
+addEventListener("visibilitychange",()=>{if(document.hidden)flush()});addEventListener("pagehide",flush);
 function pageDoc(pi){
   const cs=D.cards.slice(pi*P,(pi+1)*P), items=[], cards=[];
   for(const c of cs){
-    const pick=st.pick[c.char]||c.char, bad=c.samples.filter(s=>st.bad[s.id]).map(s=>s.id);
-    cards.push({char:c.char,pick,bad,n:c.n});
-    for(const s of c.samples)items.push({id:s.id,pre:c.char,pick:st.bad[s.id]?"":pick,kind:s.kind||null,pre_conf:s.pre_conf||null});
+    const pick=st.pick[c.char]||c.char, bad=c.samples.filter(s=>{const v=cellVal(c,s.id);return v&&v!=="pick:"+pick}).map(s=>s.id);
+    cards.push({char:c.char,pick,bad,n:c.n,cells:Object.fromEntries(c.samples.map(s=>[s.id,cellVal(c,s.id)||"pick:"+pick]))});
+    for(const s of c.samples){const v=cellVal(c,s.id)||"pick:"+pick;items.push({id:s.id,pre:c.char,pick:v.startsWith("pick:")?v.slice(5):"",v,kind:s.kind||null,pre_conf:s.pre_conf||null})}
   }
   return {page:pi,cards,items,secs:takeSecs()};
+}
+function paint(b,c,s){
+  const x=st.v[s.id];b.className="tile"+(x?" v-"+x.v:"");
+  b.querySelector(".m").textContent=x?(x.v==="other"?"改字"+(x.pk?"："+x.pk:""):VN[x.v]):((s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):""));
+  const inp=b.querySelector(".pk");inp.hidden=!(x&&x.v==="other");if(!inp.hidden&&document.activeElement!==inp)inp.value=x.pk||"";
 }
 function render(){
   st.page=Math.min(Math.max(0,st.page),NP-1);
@@ -29,31 +63,52 @@ function render(){
     const box=document.createElement("div");box.className="card";
     const hd=document.createElement("div");hd.className="cardhead";
     const big=document.createElement("div");big.className="big";big.textContent=c.char;
-    const inp=document.createElement("input");inp.type="text";inp.maxLength=2;inp.value=st.pick[c.char]||"";inp.placeholder="改字";inp.title="预选字不对就在这里改成对的字";inp.setAttribute("aria-label","改字");
+    const inp=document.createElement("input");inp.type="text";inp.maxLength=2;inp.value=st.pick[c.char]||"";inp.placeholder="改字";inp.title="整卡的建议字都不对就在这里改成对的字";inp.setAttribute("aria-label","整卡改字");
     inp.oninput=()=>{if(inp.value)st.pick[c.char]=inp.value;else delete st.pick[c.char];lsSet(KEY,st)};
     const meta=document.createElement("div");meta.className="stat";meta.textContent=`共 ${c.n} 格，看 ${c.samples.length} 格，其余 ${c.followers.length} 格跟随`;
     const tg=document.createElement("div");tg.className="tags";for(const k of c.kinds){const t=document.createElement("span");t.className="tag";t.textContent=D.kind_names[k]||k;tg.appendChild(t)}
     hd.append(big,inp,meta,tg);
     const g=document.createElement("div");g.className="tiles";
     for(const s of c.samples){
-      const b=document.createElement("button");b.className="tile"+(st.bad[s.id]?" bad":"");b.title=s.id;
+      const b=document.createElement("div");b.setAttribute("role","button");b.tabIndex=0;b.title=s.id;
+      const sg=document.createElement("div");sg.className="sug";sg.textContent=c.char;
       const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=s.img||"";im.alt=c.char;w.appendChild(im);
-      const m=document.createElement("div");m.className="m";m.textContent=(s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):"");
-      b.append(w,m);b.onclick=()=>{if(st.bad[s.id])delete st.bad[s.id];else st.bad[s.id]=1;lsSet(KEY,st);b.classList.toggle("bad")};g.appendChild(b);
+      const m=document.createElement("div");m.className="m";
+      const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.placeholder="这格是";pk.setAttribute("aria-label","这格是什么字");
+      pk.onclick=e=>e.stopPropagation();pk.onkeydown=e=>e.stopPropagation();
+      pk.oninput=()=>{setCell(c,s.id,"other",pk.value.trim());paint(b,c,s)};
+      b.append(sg,w,m,pk);
+      const cyc=()=>{const x=st.v[s.id],i=x?CYC.indexOf(x.v):-1,nv=CYC[i+1]||null;setCell(c,s.id,nv,nv==="other"?(x&&x.pk)||"":"");paint(b,c,s);if(nv==="other")pk.focus()};
+      b.onclick=cyc;b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();cyc()}};
+      paint(b,c,s);g.appendChild(b);
     }
     box.append(hd,g);L.appendChild(box);
   }
   $("pg").textContent=`第 ${st.page+1} / ${NP} 页`;
-  $("sub").textContent=`册 ${D.book} · ${D.cards.length} 张卡 · ${D.n_cells} 格 · 模板 ${D.tpl_version}`;
+  $("sub").textContent=`册 ${D.book} · ${D.cards.length} 张卡 · ${D.n_cells} 格 · 模板 ${D.tpl_version}`+(D.n_excluded?` · 已录入撤出 ${D.n_excluded} 格`:"");
   $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
-  $("hint").textContent="每张卡是同一个预选字的几个样例，默认全对。样例里有不对的点它（变红）；字整体不对就在卡头框里改字。样例里有红格的卡，其余跟随格不放，退回逐格审。";
+  $("hint").textContent="每张卡是同一个建议字的几个样例。点格子循环：1 切分有问题 → 2 改字（在格下填这格是什么字）→ 3 看不清 → 4 对 → 再点取消。每点一下就存后台。点「本页其余都对」时没点的样例记对；整卡都不是这个字就在卡头框里改字。样例有不对的卡，其余跟随格不放，退回逐格审。";
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
-  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页没问题，完成":"本页没问题，下一页";
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页其余都对，完成":"本页其余都对，下一页";
   lsSet(KEY,st);
 }
-function next(){saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,bad:Object.keys(st.bad)});render();scrollTo(0,0)}
+function next(){saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});render();scrollTo(0,0)}
 for(const id of ["next","next2"])$(id).onclick=next;
 for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
-$("export").onclick=()=>showOut({book:D.book,pages_seen:st.seen,pick:st.pick,bad:Object.keys(st.bad)});
-wireDlg();render();initDB();
+$("export").onclick=()=>showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});
+wireDlg();render();
+initDB(async()=>{
+  // 从后台恢复逐格结果（换设备、清缓存后不丢）
+  const snap=await DB.collection(D.coll).get();let ch=false;
+  for(const d of snap.docs){
+    const x=d.data();if(!x||!d.id.startsWith("c_")||!x.id||!x.v)continue;
+    savedT[x.id]=x.t||0;
+    if(st.v[x.id]&&(st.v[x.id].t||0)>=(x.t||0))continue;
+    const v=x.v.startsWith("pick:")?(x.v.slice(5)===x.card?"ok":"other"):x.v;
+    st.v[x.id]={v,pk:v==="other"&&x.v.startsWith("pick:")?x.v.slice(5):"",t:x.t||0};ch=true;
+  }
+  if(ch){lsSet(KEY,st);render()}
+  setSync("已连后台");
+  if(Object.keys(st.v).some(id=>st.v[id].t!==(savedT[id]||0)))queueSave();
+});
 </script>
