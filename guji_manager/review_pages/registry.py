@@ -27,9 +27,10 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
     PageType("pair_whitelist", "字对白名单抽样", "group_decide.tpl.html", "1.0.0",
              "N01、V01、越过参校本；每个字对抽样看图，定同字/不同字",
              options=("同字", "不同字", "不确定"), doc_prefix="review_pair"),
-    PageType("codepoint", "码位定夺", "group_decide.tpl.html", "1.0.0",
-             "Z06、V01；按码位组看图，定归一到哪个或分开",
-             options=("归一到前者", "归一到后者", "分开", "不确定"), doc_prefix="review_cp"),
+    PageType("codepoint", "码位定夺", "codepoint.tpl.html", "2.0.0",
+             "Z06、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
+             "／分开·不同字／合并到别的字（全唐文码位页 11-01–11-04 并入，见 codepoint.py）",
+             options=("unify", "other", "split_follow", "split_distinct"), doc_prefix="review_cp"),
     PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.0.0",
              "新放行类别上线前（R3）；终审标注页的通用版，保留 cell/pick/other/note/review 字段",
              doc_prefix="labels"),

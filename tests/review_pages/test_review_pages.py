@@ -88,7 +88,8 @@ def test_every_template_builds(t, tmp_path):
         "char_card": [dict(id=f"1:{i}:1:1", pre="以", pre_conf="low", img=str(img)) for i in range(6)],
         "char_grid": [dict(id="1:1:1:1", pre="以", cov=0.9, img=str(img))],
         "pair_whitelist": [dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])],
-        "codepoint": [dict(key="A/B", pre="归一到前者", tiles=[["1:1:1:1", str(img)]])],
+        "codepoint": [dict(key="g1", chars=["為", "爲"], pre="unify:爲",
+                           rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "name_pick": [dict(id="n1", type="人", span="孔安國", left="漢", right="傳", pre="P1", cands=[{"id":"P1","name":"孔安國","brief":"西漢"}])],
         "name_register": [dict(key="某某", pre="建档", type="人", lines=["見於某某傳"], cands=[{"id":"P9","name":"某","brief":"x"}])],
         "punct_check": [dict(key="p1", pre="对", vol="01", para=3, anchor=4, text="學而時習之，不亦說乎？")],
@@ -144,6 +145,48 @@ def test_char_review_pull_and_patch_name(tmp_path):
     cr.main(["pull", str(src), str(out)])
     d = json.loads(out.read_text(encoding="utf-8"))
     assert d["pages_seen"] == 2 and d["ok"][0][1] == "天" and d["bad"] == ["1:1:1:2"]
+
+
+def test_codepoint_apply():
+    from guji_manager.review_pages import codepoint as cp
+    res = cp.apply([
+        {"id": "a", "chars": ["為", "爲"], "pick": "unify:爲"},
+        {"id": "b", "chars": ["變", "𠮓"], "pick": "other:𬽠"},
+        {"id": "c", "chars": ["獵", "𤢪"], "pick": "split_follow"},
+        {"id": "d", "chars": ["嚴", "巖"], "pick": "split_distinct"},
+        {"id": "e", "chars": ["祕", "秘"], "pick": None},
+    ])
+    assert res["codepoints"] == {"為": "爲", "變": "𬽠", "𠮓": "𬽠"}
+    assert res["follow_ref"] == ["獵=𤢪", "𤢪=獵"]
+    assert res["distinct"] == [["嚴", "巖"]] and res["undecided"] == [["祕", "秘"]]
+    y = cp.to_yaml(res, "S", "2026-11-05")
+    assert "  為: 爲" in y and "follow_ref" in y and "嚴/巖" in y and "未定：祕/秘" in y
+    with pytest.raises(ValueError):
+        cp.apply([{"chars": ["甲", "乙"], "pick": "unify:甲"}, {"chars": ["乙", "丙"], "pick": "unify:丙"}])
+    with pytest.raises(ValueError):
+        cp.parse_pick("unify")
+    with pytest.raises(ValueError):
+        cp.parse_pick("归一到前者")
+
+
+def test_codepoint_items_from_groups_and_cli(tmp_path, capsys):
+    from guji_manager.review_pages import codepoint as cp
+    from guji_manager.review_pages.__main__ import main
+    pp = cp.patch_path(tmp_path / "cache", "005:12:3:4")
+    pp.parent.mkdir(parents=True); pp.write_bytes(PNG)
+    groups = [{"id": "g1", "chars": ["為", "爲"], "adm": {"為": 5}, "kr": {"爲": 7}, "suggest": "爲",
+               "sample": {"為": ["005:12:3:4", "005:1:1:1"], "爲": []}}]
+    its = cp.items_from_groups(groups, tmp_path / "cache")
+    assert its[0]["pre"] == "unify:爲" and len(its[0]["rows"]["為"]["tiles"]) == 1   # 缺图的格跳过
+    assert its[0]["rows"]["爲"]["kr"] == 7
+    st = B.build("codepoint", its, "b1", tmp_path / "p.html")
+    assert st["tiles"] == 1 and "data:image/png;base64," in (tmp_path / "p.html").read_text(encoding="utf-8")
+    res = tmp_path / "res"; res.mkdir()
+    (res / "p0.json").write_text(json.dumps({"items": [{"id": "g1", "chars": ["為", "爲"], "pre": "unify:爲",
+                                                        "pick": "split_follow"}]}), encoding="utf-8")
+    main(["cp-apply", "--results", str(res), "--who", "S"])
+    out = capsys.readouterr().out
+    assert "為=爲,爲=為" in out
 
 
 def test_seg_cause_cards(tmp_path):
