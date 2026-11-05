@@ -58,13 +58,13 @@ def _read(name: str) -> str:
     return _TPL.joinpath("templates", name).read_text(encoding="utf-8")
 
 
-def render(pt: PageType, data: dict) -> str:
+def render(pt: PageType, data: dict, title: str | None = None) -> str:
     if pt.template is None:
         raise SystemExit(f"页型 {pt.key} 还没有模板")
     data = {"page_type": pt.key, "tpl_version": pt.version, "coll": pt.doc_prefix,
             "kind_names": KIND_NAMES, **data}
     html = _read(pt.template)
-    html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", pt.title)) if "/*SHELL*/" in html else html
+    html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", title or pt.title)) if "/*SHELL*/" in html else html
     html = html.replace("/*PAGER_JS*/", _read("_pager.js")).replace("/*STORE_JS*/", _read("_store.js"))
     html = html.replace("/*COMMON_CSS*/", _read("_common.css")).replace("/*COMMON_JS*/", _read("_common.js"))
     return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
@@ -90,9 +90,11 @@ def read_ids(paths) -> set[str]:
 
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
           hint: str | None = None, exclude: set[str] | None = None, mode: str | None = None, root=None,
-          include_labeled: bool = False, box: int | None = None, rest_ok: bool = True) -> dict:
+          include_labeled: bool = False, box: int | None = None, rest_ok: bool = True,
+          title: str | None = None) -> dict:
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。
-    rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。"""
+    rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。
+    title：页头标题，缺省用页型名；char_card 难认字页缺省「一字一卡（疑难格审定）」。"""
     pt = get(page_type)
     n0 = len(items)
     excluded_n = None
@@ -186,7 +188,9 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"items": len(items), "pages": -(-len(items) // pp)}
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
-    Path(out).write_text(render(pt, data), encoding="utf-8")
+    if title is None and pt.key == "char_card" and not rest_ok:
+        title = "一字一卡（疑难格审定）"
+    Path(out).write_text(render(pt, data, title), encoding="utf-8")
     stat["excluded"] = excluded_n if excluded_n is not None else n0 - len(items)
     stat["bytes"] = Path(out).stat().st_size
     stat["page_type"], stat["tpl_version"] = pt.key, pt.version
