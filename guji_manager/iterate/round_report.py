@@ -109,7 +109,7 @@ def compare(cur_dir: Path, prev_dir: Path, released: set | None = None) -> dict:
         elif ratio >= REGRESS_YELLOW:
             yellow.append(f"回退格 {len(regress)} 占上一轮待审 {ratio * 100:.1f}% ≥{REGRESS_YELLOW * 100:.0f}%：看回退清单是否集中在少数列")
     if drift:
-        yellow.append(f"待审格号与上一轮重合率 <{GRID_OVERLAP_MIN * 100:.0f}% 的册：{','.join(drift)}（可能变列；S 轮标 main 前须逐册比格号，通知 A33/A23/A30/A20）")
+        yellow.append(f"待审格号与上一轮重合率 <{GRID_OVERLAP_MIN * 100:.0f}% 的册：{','.join(drift)}（可能变列；S 轮标 main 前须逐册比格号，通知 A23/A30/A20）")
     if cs.get("n_nonbody", 0) != ps.get("n_nonbody", 0):
         yellow.append(f"非正文页待审格数变了（{ps.get('n_nonbody', 0)}→{cs.get('n_nonbody', 0)}）：核页型配置")
     if n > pn:
@@ -119,28 +119,16 @@ def compare(cur_dir: Path, prev_dir: Path, released: set | None = None) -> dict:
             "reasons": reasons, "drift": drift, "red": red, "yellow": yellow}
 
 
-#: 收口单归宿（框架第九节）：人审底／留后／点校待办／精校待办
-CLOSING = {"occluded_no_ref": "人审底", "hard_pair": "留后（交点校 A33 出裁定表）", "seg_defect": "人审底（断烂图源）"}
+#: 收口单归宿（框架第九节）：人审底／留后（v0.1 交接单列极难字清单）／精校待办
+CLOSING = {"occluded_no_ref": "人审底", "hard_pair": "留后（v0.1 交接单：极难字清单）", "seg_defect": "人审底（断烂图源）"}
 
 
 def closing_rows(res: dict) -> list[dict]:
     out = []
     for r in res["reasons"]:
         dest = CLOSING.get(r["reason"], "精校待办")
-        out.append({"reason": r["reason"], "n": r["cur"], "dest": dest, "dianjiao": r["cur"] if r["reason"] == "hard_pair" else 0})
+        out.append({"reason": r["reason"], "n": r["cur"], "dest": dest, "handover": r["cur"] if r["reason"] == "hard_pair" else 0})
     return out
-
-
-def notify_a33(res: dict, label: str, kind: str, packs: dict) -> str:
-    """通知点校的消息（ai-team 通用/重跑轮次规矩.md「通知点校」）：S 轮标 main 前，D 轮标 main 后。"""
-    L = [f"【A31→A33】{kind}轮 {label} 出口（{'标 main 前，请先 auto_remap 并回执' if kind == 'S' else '标 main 后，请批量 punct_redo'}）"]
-    for r in sorted(res["by_vol"], key=lambda r: r["vol"]):
-        old, new = packs.get(r["vol"], (r["prev_rev"] or "?", r["rev"] or "?"))
-        drift = "变" if (kind == "S" and r["vol"].zfill(3) in {v.zfill(3) for v in res["drift"]}) else ("不变" if kind == "D" or r["vol"] not in res["drift"] else "变")
-        L.append(f"{r['vol']} {old} → {new} 格号:{drift}")
-    if kind == "S":
-        L.append("注：格号「变」由待审格号重合率 <90% 推断，只是线索；以 auto_remap 实比为准，重合率高也可能列数变了。")
-    return "\n".join(L) + "\n"
 
 
 def render(res: dict, label: str, prev_label: str, top: int = 15) -> str:
@@ -177,9 +165,9 @@ def render(res: dict, label: str, prev_label: str, top: int = 15) -> str:
         L.append(f"| {r['vol']} | {r['cell']} | `{r['pending_reason']}` |")
     if not res["regress"]:
         L.append("| （无） | | |")
-    L += ["", "## 六、收口单草稿（含「点校待办」栏）", "", "| pending_reason | 格数 | 归宿 | 点校待办 |", "|---|---|---|---|"]
+    L += ["", "## 六、收口单草稿（含 v0.1 交接单「极难字清单」栏）", "", "| pending_reason | 格数 | 归宿 | 交接单·极难字 |", "|---|---|---|---|"]
     for c in closing_rows(res):
-        L.append(f"| `{c['reason']}` | {c['n']} | {c['dest']} | {c['dianjiao'] or ''} |")
+        L.append(f"| `{c['reason']}` | {c['n']} | {c['dest']} | {c['handover'] or ''} |")
     L += ["", "> 回退只说明「本轮新进待审」，不等于错：先看是不是集中在少数列/页（切分变了），再看对应修复的预期影响。"
           "放行字变（上一轮放行、本轮改字）与人裁丢失须另用 A/B 回归核（框架 8.2 步 3、验收标准），本表不含。", ""]
     return "\n".join(L)
@@ -192,8 +180,6 @@ def main(argv=None) -> int:
     ap.add_argument("--label", default="本轮")
     ap.add_argument("--prev-label", default="上一轮")
     ap.add_argument("--released", type=Path, help="tsv（vol,cell）：本轮已放行、不排给人的格，用来算净队列")
-    ap.add_argument("--round-kind", choices=("S", "D"), help="给了就同时生成通知 A33 的消息 notify_A33.txt（S 轮标 main 前发，D 轮标 main 后发）")
-    ap.add_argument("--packs", type=Path, help="tsv（vol,old_pack,new_pack）：通知里写包标签；缺省写 summary 里的 rev")
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
@@ -205,9 +191,6 @@ def main(argv=None) -> int:
     write_tsv(a.out / "by_col.tsv", ["vol", "col", "prev", "cur", "delta"], res["by_col"])
     write_tsv(a.out / "by_reason.tsv", ["reason", "prev", "cur", "delta"], res["reasons"])
     write_tsv(a.out / "regress.tsv", ["vol", "cell", "pending_reason", "big", "sub", "owner"], res["regress"])
-    if a.round_kind:
-        packs = {cell_key(x)[0]: (x["old_pack"], x["new_pack"]) for x in read_tsv(a.packs)} if a.packs else {}
-        (a.out / "notify_A33.txt").write_text(notify_a33(res, a.label, a.round_kind, packs), encoding="utf-8")
     print(f"待审 {res['prev_n']}→{res['n']}，净队列 {res['net']}，回退 {len(res['regress'])}，清掉 {res['fixed_n']} → {a.out}/report.md"
           + ("  🔴" if res["red"] else "  🟡" if res["yellow"] else "  🟢"))
     return 2 if res["red"] else 0

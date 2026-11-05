@@ -31,16 +31,15 @@ def test_round_report(tmp_path):
     assert "回退清单" in (tmp_path / "o" / "report.md").read_text(encoding="utf-8")
 
 
-def test_notify_and_closing(tmp_path):
+def test_closing(tmp_path):
     prev = [{"vol": "020", "cell": "1:1:1", "pending_reason": "hard_pair"}, {"vol": "021", "cell": "1:1:1", "pending_reason": "lib_missing"}]
     mk_round(tmp_path / "p", prev, {"020": 100, "021": 100})
     mk_round(tmp_path / "c", prev, {"020": 100, "021": 100})
     out = tmp_path / "o"
-    round_report.main(["--cur", str(tmp_path / "c"), "--prev", str(tmp_path / "p"), "--label", "r5", "--round-kind", "S", "--out", str(out)])
-    msg = (out / "notify_A33.txt").read_text(encoding="utf-8")
-    assert msg.startswith("【A31→A33】S轮 r5 出口") and "020" in msg and "格号:不变" in msg
+    round_report.main(["--cur", str(tmp_path / "c"), "--prev", str(tmp_path / "p"), "--label", "r5", "--out", str(out)])
+    assert not (out / "notify_A33.txt").exists()
     rep = (out / "report.md").read_text(encoding="utf-8")
-    assert "点校待办" in rep
+    assert "交接单·极难字" in rep
 
 
 def test_binom_and_sample():
@@ -116,7 +115,7 @@ def test_freeze(tmp_path):
     freeze.main(["add", "--file", str(f), "--book", "dianben", "--from", "2026-11-05 10:00", "--to", "2026-11-05 20:00"])
     fr = freeze.load(f)
     at = freeze.parse_t("2026-11-05 12:00")
-    assert "A33" in fr[0]["notify"]
+    assert "A33" not in fr[0]["notify"]
     assert freeze.conflicts(fr, ["dianben"], ["row_segment"], at)
     assert not freeze.conflicts(fr, ["dianben"], ["seed_admit"], at)      # D 轮不冻结
     assert not freeze.conflicts(fr, ["shiji"], ["row_segment"], at)
