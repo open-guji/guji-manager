@@ -243,3 +243,12 @@ def test_crop_cells(tmp_path):
     r = crop_cells(["001:3:1:1", "001:3:1:2"], str(tmp_path / "sh"), str(tmp_path / "pg"), tmp_path / "o")
     assert len(r["ok"]) == 1 and r["missing"] == ["001:3:1:2"]
     assert PIL.open(r["ok"][0]).size == (10, 21)
+
+
+def test_cli_build_exclude(tmp_path, capsys):
+    from guji_manager.review_pages.__main__ import main
+    items = tmp_path / "i.jsonl"
+    items.write_text("".join(json.dumps(dict(id=f"1:{i}:1:1", pre="以")) + "\n" for i in range(3)), encoding="utf-8")
+    ex = tmp_path / "x.txt"; ex.write_text("1:0:1:1\n", encoding="utf-8")
+    main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(tmp_path / "p.html"), "--exclude", str(ex)])
+    assert '"excluded": 1' in capsys.readouterr().out
