@@ -71,16 +71,35 @@ def _store_dir(ws: Path) -> Path:
 
 
 def _borrows(ws: Path) -> list[tuple[str, Path]]:
-    """借来的字形库：[(名字, 本机目录)]。名字取法同 `glyph_match._borrow_name`（`borrow_fingerprint` 认它）。"""
-    from .._cv import resolve_borrow
-    from .._cv import borrow_entries
+    """借来的字形库：[(名字, 本机目录)]。名字取法同 `glyph_match._borrow_name`（`borrow_fingerprint` 认它）；
+    钉了被借库快照号的，名字是 ``<名>@g<N>``（另放一份副本，见 `workcopy.pinned_lender_copy`）。"""
     from .._cv import _borrow_name
+    from ..datastore.workcopy import borrow_dir, borrow_specs
     out = []
-    for e in borrow_entries(ws):
-        d = resolve_borrow(e, ws)
+    for b in borrow_specs(ws):
+        d = borrow_dir(b, ws)
         if not d.is_dir():
-            raise SystemExit(f"借库 {e} 本机没有（{d}）；先 guji db pull -w {ws}")
+            raise SystemExit(f"借库 {b.dir_name} 本机没有（{d}）；先 guji db pull -w {ws}")
         out.append((_borrow_name(str(d)), d))
+    return out
+
+
+def borrow_how(ws: Path) -> dict:
+    """非缺省借法（只借人裁、钉了被借库快照）→ ``{借库名: {scope, tag}}``；全是缺省借法时是空表（清单不多写一个字段）。
+    ``tag`` 是被借库快照的 digest（没钉就没有），记进清单后钉版库建库时照样借，``borrow_fingerprint`` 与现行库一致。"""
+    from .._cv import _borrow_name
+    from ..datastore.workcopy import borrow_dir, borrow_specs, pinned_tag
+    out = {}
+    for b in borrow_specs(ws):
+        if b.scope == "all" and not b.pin:
+            continue
+        d = borrow_dir(b, ws)
+        h: dict = {}
+        if b.scope != "all":
+            h["scope"] = b.scope
+        if b.pin:
+            h["tag"] = pinned_tag(b, ws)
+        out[_borrow_name(str(d))] = h
     return out
 
 
@@ -239,7 +258,11 @@ def _build_pinned_db_locked(ws: Path, version: int, *, force: bool = False, loca
         return {"pin": version, "db": str(db_path), "reused": True}
     info = assemble(ws, man, tmp, local=local, src=src)
     own = _dest_dir(tmp, OWN_ROOT)
-    extras = sorted(p for p in (tmp / ".borrowed").glob("*/output/glyph_store")) if (tmp / ".borrowed").is_dir() else []
+    from .._cv import borrowed_store
+    how = man.get("borrow_how") or {}
+    extras = [borrowed_store(p, (how.get(p.parent.parent.name) or {}).get("scope", "all"),
+                             (how.get(p.parent.parent.name) or {}).get("tag", ""))
+              for p in sorted((tmp / ".borrowed").glob("*/output/glyph_store"))] if (tmp / ".borrowed").is_dir() else []
     part = db_path.with_name(f".{db_path.name}.tmp{os.getpid()}")
     part.unlink(missing_ok=True)
     jobs = os.cpu_count() or 1
@@ -318,7 +341,11 @@ def snapshot(ws: Path, *, note: str = "", require_clean: bool = True, build: boo
                                  f"快照要与中心库的某个 rev 对得上")
         rev = (read_state(data_dir(ws)) or {}).get("rev")
     items, borrow = collect(ws)
+    how = borrow_how(ws)
     digest = items_digest(items)
+    if how:         # 借法（只借人裁、钉号）不改文件、改结果：进内容指纹，同一批文件换借法不算「空升」
+        import hashlib
+        digest = "glyph-" + hashlib.sha256((digest + json.dumps(how, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()[:16]
     have = versions(ws)
     if have:
         last = load_manifest(ws, have[-1])
@@ -328,6 +355,8 @@ def snapshot(ws: Path, *, note: str = "", require_clean: bool = True, build: boo
     man = {"version": 1, "n": n, "ws": str((m or {}).get("ws") or ws.name), "rev": rev,
            "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "note": note, "digest": digest, "borrow": borrow, "build": build_key(), "items": items}
+    if how:
+        man["borrow_how"] = how
     _keep_local(ws, items)
     mp = manifest_path(ws, n)
     mp.parent.mkdir(parents=True, exist_ok=True)
