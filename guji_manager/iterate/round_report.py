@@ -182,6 +182,15 @@ def main(argv=None) -> int:
     ap.add_argument("--released", type=Path, help="tsv（vol,cell）：本轮已放行、不排给人的格，用来算净队列")
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--out", type=Path, required=True)
+    g = ap.add_argument_group("写后台「迭代轮次」（open-guji.com/admin/text，见 progress_rounds.py）")
+    g.add_argument("--push-progress", metavar="BOOK_ID", help="把这一轮写进后台（套书 id，如殿本 96mid1ogzk）")
+    g.add_argument("--kind", choices=["S", "D"], help="S 结构层轮／D 决策层轮")
+    g.add_argument("--cv"); g.add_argument("--pack"); g.add_argument("--date", help="YYYY-MM-DD（洛杉矶）")
+    g.add_argument("--verdict", choices=["main", "rejected", "pending"], default="pending")
+    g.add_argument("--released-by-layer", help='json，如 {"L1":180,"L2":420}')
+    g.add_argument("--audit", help='json，如 {"n":100,"err":1}')
+    g.add_argument("--human-min", type=float, help="用户本轮审阅用时（分钟）")
+    g.add_argument("--note")
     a = ap.parse_args(argv)
     released = {cell_key(r) for r in read_tsv(a.released)} if a.released else None
     res = compare(a.cur, a.prev, released)
@@ -193,6 +202,13 @@ def main(argv=None) -> int:
     write_tsv(a.out / "regress.tsv", ["vol", "cell", "pending_reason", "big", "sub", "owner"], res["regress"])
     print(f"待审 {res['prev_n']}→{res['n']}，净队列 {res['net']}，回退 {len(res['regress'])}，清掉 {res['fixed_n']} → {a.out}/report.md"
           + ("  🔴" if res["red"] else "  🟡" if res["yellow"] else "  🟢"))
+    if a.push_progress:
+        from . import progress_rounds as pr
+        rec = pr.from_report(res, a.label, kind=a.kind, cv=a.cv, pack=a.pack, date=a.date, verdict=a.verdict,
+                             released=json.loads(a.released_by_layer) if a.released_by_layer else None,
+                             audit=json.loads(a.audit) if a.audit else None, human_min=a.human_min, note=a.note)
+        n = pr.write(pr.rows(a.push_progress, [rec]))
+        print(f"已写后台迭代轮次 {a.push_progress} {rec['key']}（{n} 条）")
     return 2 if res["red"] else 0
 
 
