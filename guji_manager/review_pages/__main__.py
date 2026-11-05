@@ -6,6 +6,8 @@
   expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/bad/follow/audit）
   char sheet|pull|ingest ...                冷启动快审页的生成与落库（char_grid；原 ai-team 冷启动快审流程模板）
   ledger     add|summary                    用时与改判台账（--from-results DIR 从结果文档入账）
+  cp-items   --groups groups.json --cache DIR --out items.jsonl   按组看图的 groups.json → 码位定夺页 items
+  cp-apply   --results DIR [--who 名]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
 """
 from __future__ import annotations
 
@@ -41,6 +43,9 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p = sub.add_parser("ledger"); p.add_argument("action", choices=["add", "summary"])
     p.add_argument("--ledger"); p.add_argument("--from-results"); p.add_argument("--type"); p.add_argument("--book")
+    p = sub.add_parser("cp-items"); p.add_argument("--groups", required=True); p.add_argument("--cache", required=True)
+    p.add_argument("--out", required=True)
+    p = sub.add_parser("cp-apply"); p.add_argument("--results", required=True); p.add_argument("--who", default="用户")
     a = ap.parse_args(argv)
 
     from . import build as build_mod, cards, ledger, preselect
@@ -68,6 +73,15 @@ def main(argv=None):
         _write_jsonl(a.out, rows)
         from collections import Counter
         print(dict(Counter(r["status"] for r in rows)))
+    elif a.cmd == "cp-items":
+        from . import codepoint as cp
+        its = cp.items_from_groups(json.loads(Path(a.groups).read_text(encoding="utf-8")), a.cache)
+        _write_jsonl(a.out, its)
+        print(f"{len(its)} 组，{sum(len(r['tiles']) for g in its for r in g['rows'].values())} 格图 → {a.out}")
+    elif a.cmd == "cp-apply":
+        import datetime
+        from . import codepoint as cp
+        print(cp.to_yaml(cp.apply(cp.decisions_from_docs(_docs(a.results))), a.who, str(datetime.date.today())), end="")
     elif a.cmd == "ledger":
         path = Path(a.ledger) if a.ledger else ledger.default_path()
         if a.action == "add":

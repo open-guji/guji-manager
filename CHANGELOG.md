@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 人审页模板库页型 `codepoint` 升 2.0.0（PATCH，全唐文码位线，总览 11-05 转 A31）：换专用模板 `codepoint.tpl.html`（按组看图定夺：每字一行原书字块＋码位、已认/整理本数；统一作某字／分开·互认／分开·不同字／合并到别的字，未选的组挡住下一页）；新增 `review_pages/codepoint.py` 与命令 `review-pages cp-items`（groups.json → items）、`cp-apply`（结果 → codepoints 片段＋双向 follow_ref＋不同字/未定清单）。
 - 新增 `guji-manager iterate` 子命令组（PATCH，A31，用户 11-05 定降人审迭代框架）：`round-report` 轮报告、`gold` 金标登记与校验、`audit` 滚动抽检台账、`leverage` 杠杆排序、`freeze` 三书冻结日历；`pending-stats` 的 cells.tsv 末尾追加 `ref`、`top` 两列。文档 `doc/02-粗校/轮报告与验收工具.md`。
 
 ## [0.4.1] - 2026-11-05

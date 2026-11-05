@@ -2,7 +2,9 @@
 
 输入统一用 items（jsonl 或 json 列表），每项字段按页型：
   char_card / char_grid：{id, pre(预选字), pre_conf?, kind?, img(图文件路径或 data URI), cov?}
-  pair_whitelist / codepoint：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
+  pair_whitelist：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
+  codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
+             rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
   name_register / punct_check：同上，tiles 可省；lines:[文字行…] 放出处语句/带标点段落
   gold_sample / name_pick：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?, fact?, pilot?}
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
@@ -16,6 +18,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import cards as cards_mod
+from . import codepoint as cp_mod
 from .preselect import KINDS
 from .registry import PageType, get
 
@@ -73,7 +76,19 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "n_chars": len(chars),
                 "n_cells": sum(t[4] for t in tiles), "tiles": tiles}
         stat = {"tiles": len(tiles), "chars": len(chars), "pages": -(-len(tiles) // pp)}
-    elif page_type in ("pair_whitelist", "codepoint", "name_register", "punct_check"):
+    elif page_type == "codepoint":
+        pp = per_page or 8
+        gs = []
+        for g in items:
+            if g.get("pre"):
+                cp_mod.parse_pick(g["pre"])
+            rows = {c: dict(r, tiles=[[t[0], embed(t[1])] for t in r.get("tiles", [])])
+                    for c, r in (g.get("rows") or {}).items()}
+            gs.append(dict(g, rows=rows))
+        data = {"book": book, "per_page": pp, "groups": gs, "hint": hint}
+        stat = {"groups": len(gs), "pages": -(-len(gs) // pp),
+                "tiles": sum(len(r["tiles"]) for g in gs for r in g["rows"].values())}
+    elif page_type in ("pair_whitelist", "name_register", "punct_check"):
         pp = per_page or 6
         gs = [dict(g, tiles=[[t[0], embed(t[1]), *t[2:]] for t in g.get("tiles", [])]) for g in items]
         data = {"book": book, "per_page": pp, "groups": gs, "options": list(pt.options), "hint": hint}
