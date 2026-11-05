@@ -7,6 +7,8 @@
   codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
              rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
+  near_pair：{key, a, b, ex_a:[[实例号, 图]…], ex_b:[…], diff?(差异区高亮图), cells:[{id, img, ctx?, sa?, sb?, inst?(是库里的刻例), cur?(现标的字)}]}
+  lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?}]}（id 是库里的实例号）
   gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
                ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
   closeout：{id, label, n, rate?, examples?[…], pre?(人审底|留后|精校待办|再处理)}
@@ -23,6 +25,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import cards as cards_mod
+from . import pair_audit
 from . import codepoint as cp_mod
 from . import glyph_quality as gq_mod
 from .preselect import KINDS
@@ -89,6 +92,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。"""
     pt = get(page_type)
     n0 = len(items)
+    excluded_n = None
     if page_type == "glyph_quality":
         items = gq_mod.normalize(items, root, include_labeled)
         n0 = len(items)
@@ -96,6 +100,14 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
             items = [dict(r, crops=[c for c in r["crops"] if c["sha"] not in exclude])
                      for r in items if r["id"] not in exclude]
             items = [r for r in items if r["crops"]]
+    elif exclude and page_type in ("near_pair", "lib_audit"):
+        # 这两个页型的「格」在组里面：撤掉已录入的格/刻例，组空了整组撤
+        sub = "cells" if page_type == "near_pair" else "tiles"
+        before = sum(len(g.get(sub, [])) for g in items)
+        items = [dict(g, **{sub: [x for x in g.get(sub, []) if (x["id"] if isinstance(x, dict) else x[0]) not in exclude]})
+                 for g in items]
+        items = [g for g in items if g[sub]]
+        excluded_n = before - sum(len(g[sub]) for g in items)
     elif exclude:
         items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
@@ -132,6 +144,24 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
                    **({"cells": [dict(c, img=embed(c.get("img"))) for c in g["cells"]]} if "cells" in g else {})) for g in items]
         data = {"book": book, "per_page": pp, "groups": gs, "options": list(pt.options), "hint": hint}
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp)}
+    elif page_type == "near_pair":
+        pp = per_page or 4
+        gs = [dict(g, ex_a=[[t[0], embed(t[1])] for t in g.get("ex_a", [])],
+                   ex_b=[[t[0], embed(t[1])] for t in g.get("ex_b", [])], diff=embed(g.get("diff")),
+                   cells=[dict(c, img=embed(c.get("img"))) for c in g.get("cells", [])]) for g in items]
+        data = {"book": book, "per_page": pp, "pairs": gs, "hint": hint,
+                "n_cells": sum(len(g["cells"]) for g in gs)}
+        stat = {"pairs": len(gs), "cells": data["n_cells"], "pages": -(-len(gs) // pp)}
+        Path(out).with_suffix(".items.json").write_text(
+            json.dumps(pair_audit.strip_images(items), ensure_ascii=False), encoding="utf-8")
+    elif page_type == "lib_audit":
+        pp = per_page or 6
+        gs = [dict(g, tiles=[dict(t, img=embed(t.get("img"))) for t in g.get("tiles", [])]) for g in items]
+        data = {"book": book, "per_page": pp, "groups": gs, "hint": hint,
+                "n_tiles": sum(len(g["tiles"]) for g in gs)}
+        stat = {"groups": len(gs), "tiles": data["n_tiles"], "pages": -(-len(gs) // pp)}
+        Path(out).with_suffix(".items.json").write_text(
+            json.dumps(pair_audit.strip_images(items), ensure_ascii=False), encoding="utf-8")
     elif page_type == "glyph_quality":
         pp = per_page or 24
         its = [dict(r, ctx=embed(r["ctx"]), ref=embed(r["ref"]),
@@ -152,7 +182,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
     Path(out).write_text(render(pt, data), encoding="utf-8")
-    stat["excluded"] = n0 - len(items)
+    stat["excluded"] = excluded_n if excluded_n is not None else n0 - len(items)
     stat["bytes"] = Path(out).stat().st_size
     stat["page_type"], stat["tpl_version"] = pt.key, pt.version
     return stat
