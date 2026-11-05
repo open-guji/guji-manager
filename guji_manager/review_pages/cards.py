@@ -26,8 +26,13 @@ def pick_samples(items: list[dict], k: int = 5) -> list[dict]:
     return out
 
 
-def build_cards(rows: list[dict], k: int = 5) -> list[dict]:
-    """rows: 每格 {id, pre, pre_conf, img?, kind?}。返回卡片列表，大卡在前。"""
+def build_cards(rows: list[dict], k: int = 5, solo: bool = False) -> list[dict]:
+    """rows: 每格 {id, pre, pre_conf, img?, kind?}。返回卡片列表，大卡在前。
+    solo=True（难认字页）：一格一卡、不合卡、照 rows 顺序，没有跟随格。"""
+    if solo:
+        return [{"char": r.get("pre") or "？", "n": 1, "samples": [r], "followers": [],
+                 "kinds": [r["kind"]] if r.get("kind") else [], "kind_of": {r["id"]: r["kind"]} if r.get("kind") else {}}
+                for r in rows]
     groups: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         if r.get("pre"):
@@ -46,6 +51,10 @@ def build_cards(rows: list[dict], k: int = 5) -> list[dict]:
 
 def _cell_status(v: str | None, ch: str) -> tuple[str, str]:
     """逐格结果 → (status, char)。v：seg|unclear|other|pick:<字>|None。"""
+    if v and v.startswith("unknown"):          # 难认字页：认不出（冒号后的部件由 expand 另记 parts）
+        return "unknown", ch
+    if v == "notchar":
+        return "notchar", ch
     if not v or v == "ok":
         return "ok", ch
     if v.startswith("pick:"):
@@ -60,6 +69,7 @@ def expand_card_result(card: dict, doc: dict | None, cells: dict[str, str] | Non
 
     返回每格决定 {id, char, status}：
       ok（样例对）、pick（这格改成 char）、seg（切分有问题）、unclear（看不清）、bad（不对，没填字）、
+      notchar（不是字）、unknown（认不出，能看出的部件记在 parts）、
       follow（跟随格，样例全对时放）、audit（样例有不对，跟随格退回逐格审）。
     doc 为 None 时只出点过的样例格，跟随格不出（这张卡还没审完）。"""
     ch = (doc or {}).get("pick") or card["char"]
@@ -72,7 +82,10 @@ def expand_card_result(card: dict, doc: dict | None, cells: dict[str, str] | Non
         if doc is None and s["id"] not in per:
             continue
         st_, c = _cell_status(per.get(s["id"]), ch)
-        out.append({"id": s["id"], "char": c, "status": st_, "kind": s.get("kind")})
+        row = {"id": s["id"], "char": c, "status": st_, "kind": s.get("kind")}
+        if st_ == "unknown" and per.get(s["id"], "")[8:]:
+            row["parts"] = per[s["id"]][8:]
+        out.append(row)
     if doc is not None:
         status = "follow" if all(r["status"] == "ok" for r in out) else "audit"
         ko = card.get("kind_of") or {}
