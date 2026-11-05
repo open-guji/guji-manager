@@ -142,7 +142,7 @@ def load_cell_map(path: str | Path) -> CellMap:
 def load_shift_table(path: str | Path, book: str) -> CellMap:
     """读 A22 出的局部改号表（如殿本抬头漏认 `格号旧到新.tsv`，列 `册 页 列 旧格 sub 新格`，只列动了的格）。
 
-    只取 `book` 这一册；新格是 `?` 的（顺移后挤出列尾、没有对应格）记为 `删`。
+    只取 `book` 这一册；新格是 `?` 或 `删` 的（顺移后挤出列尾、没有对应格）记为 `删`。
     `partial=True`：表里没列的格不动，不会停放。旧格、新格都必须一对一。"""
     p = Path(path)
     cm = CellMap(book=book, source=p.name, partial=True)
@@ -158,7 +158,7 @@ def load_shift_table(path: str | Path, book: str) -> CellMap:
             raise ValueError(f"{p.name}:{i}: 格键 {old!r} 解析不了")
         if old in cm.move or old in cm.deleted:
             raise ValueError(f"{p.name}:{i}: 旧格 {old} 出现两次")
-        if new == "?":
+        if new in ("?", "删"):
             cm.deleted[old] = "挤出列尾，无对应新格"
             continue
         nk = pre + new + sub
