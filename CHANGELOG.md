@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+## [0.5.0] - 测试中
+
 - `review/seg_defect` 出单同字对照自检（PATCH，A22 长期计划 B1③，A20／A31 11-05 定方案）：加整册入口 `book_flags()`、CLI `--gate`（只出同字对照命中的 clipped／frame_residue，写 `<工作区>/reports/<册>/seg_selfcheck.tsv`＋`.meta.json`，meta 记参数与各页 seed_admit／cell_shrink 产物指纹，`meta_fresh()` 判过期）；补「偏高／墨宽＝带框」一侧 `same_char_frame`（归 frame_residue）；书级小表 `SELFCHECK_BOOKS`（按 book-text 条目 id，殿本、史記两项，缺省都不开，`review_kinds` 缺省只送 clipped）。`review/reasons.py`：单上 `src="seg_selfcheck"` 的格归 seg_defect，detail 写「同字对照自检：<seg_kind>」。不进任何 Step 的 code_deps。
 
 - 评测注册表守卫（tests/from_cv/test_eval_v2.py）登记 cv 的 `eval_fold`（折叠表辅助模块）与 `eval_ref_verify`（5b 验证整理本字，A23），修 dev CI 自 #157 起因这两个脚本没登记而红（PATCH，只动测试）。
