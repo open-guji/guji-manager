@@ -43,6 +43,7 @@ def main(argv=None):
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
     p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
     p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
+    p.add_argument("--no-rest-ok", action="store_true", help="char_card：不要「本页其余都对」，没点的格不算对（难认字页）")
     p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
     p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
     p = sub.add_parser("expand"); p.add_argument("--cards", required=True); p.add_argument("--results", required=True)
@@ -75,7 +76,7 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
-                                         build_mod.read_ids(a.exclude)), ensure_ascii=False))
+                                         build_mod.read_ids(a.exclude), rest_ok=not a.no_rest_ok), ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
         cs = seg_causes.build_cards(a.per_page, a.per_cell)

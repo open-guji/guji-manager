@@ -115,10 +115,13 @@ function render(){
   $("stat").textContent=`已审 ${st.seen}/${NP} 页`;$("bar").style.width=(st.seen/NP*100)+"%";
   $("hint").textContent="每张卡是同一个建议字的几个样例。点格子循环：1 切分有问题 → 2 改字（在格下填这格是什么字）→ 3 看不清 → 4 对 → 再点取消。每点一下就存后台。点「本页其余都对」时没点的样例记对；整卡都不是这个字就在卡头框里改字。样例有不对的卡，其余跟随格不放，退回逐格审。";
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
-  for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页其余都对，完成":"本页其余都对，下一页";
+  if(D.rest_ok===false){
+    for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"保存已改的格":"保存已改，下一页";
+    $("hint").textContent="难认字页：没点的格不算对，只存你点过、改过的格。点格子循环：1 切分有问题 → 2 改字（点候选或在格下填字）→ 3 看不清 → 4 对 → 再点取消；整卡都不是这个字就在卡头框里改字。每改一下就存后台，页顶显示「已存后台」即可；按钮只是再存一遍、翻页。";
+  }else for(const id of ["next","next2"])$(id).textContent=st.page===NP-1?"本页其余都对，完成":"本页其余都对，下一页";
   lsSet(KEY,st);
 }
-function next(){saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});render();scrollTo(0,0)}
+function next(){if(D.rest_ok===false){clearTimeout(timer);flush();st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;render();scrollTo(0,0);return}saveDoc("c_b"+D.book+"_p"+st.page,pageDoc(st.page));st.seen=Math.max(st.seen,st.page+1);if(st.page<NP-1)st.page++;else showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});render();scrollTo(0,0)}
 for(const id of ["next","next2"])$(id).onclick=next;
 for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
 $("export").onclick=()=>showOut({book:D.book,pages_seen:st.seen,pick:st.pick,cells:st.v});

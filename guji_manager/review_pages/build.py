@@ -78,8 +78,9 @@ def read_ids(paths) -> set[str]:
 
 
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
-          hint: str | None = None, exclude: set[str] | None = None) -> dict:
-    """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。"""
+          hint: str | None = None, exclude: set[str] | None = None, rest_ok: bool = True) -> dict:
+    """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。
+    rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。"""
     pt = get(page_type)
     n0 = len(items)
     if exclude:
@@ -88,7 +89,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         rows = [dict(r, img=embed(r.get("img"))) for r in items]
         cs = cards_mod.build_cards(rows, k)
         pp = per_page or 8
-        data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs),
+        data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
                 "n_excluded": n0 - len(items)}
         stat = {"cards": len(cs), "cells": data["n_cells"], "shown": sum(len(c["samples"]) for c in cs),
                 "pages": -(-len(cs) // pp)}
