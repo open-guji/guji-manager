@@ -103,7 +103,10 @@ def test_same_char_frame():
     hit = same_char_frame(_framed(), ref, 80.0, True)
     assert hit and hit.startswith(SAME_PREFIX)
     assert same_char_frame(_framed(), ref, 80.0, False) is None        # 看错了一头
-    assert same_char_frame(_framed(wide=False), ref, 80.0, True) is None
+    stroke = _framed(wide=False)
+    stroke[70:78, 30:50] = 0                            # 字自己的末横（「三」「旦」）：厚 8 行、不伸出字身
+    assert same_char_frame(stroke, ref, 80.0, True) is None
+    assert "端区碎线" in same_char_frame(_framed(wide=False), ref, 80.0, True)   # 字下一截细线：磨断框线
     assert same_char_frame(_framed(), (60.0, 30.0, 4, 25.0), 80.0, True) is None   # 参照不到 5 个
     assert same_char_frame(_framed(), (60.0, 30.0, 20), 80.0, True) is None       # 老参照没墨宽
     assert same_char_frame(_framed(), (90.0, 30.0, 20, 25.0), 80.0, True) is None  # 比同字矮
@@ -123,3 +126,22 @@ def test_gate_rows_and_book_table(tmp_path):
     o = book_opts("96mid1ogzk")
     assert o["frame"] and o["review_kinds"] == ["clipped"]
     assert book_opts("nosuchbook") is None
+
+
+def test_end_debris_and_thin_rows():
+    """端区碎线：端头几截细碎线；贴字细端条：从端头起 1–5 行墨占宽 ≥ 0.3。"""
+    from guji_manager.review.seg_defect import end_debris, end_thin_rows
+    img = np.full((80, 80), 255, np.uint8)
+    img[5:70, 30:50] = 0                                # 字身
+    img[76:78, 2:12] = 0
+    img[76:78, 60:75] = 0                               # 两截磨断的框线
+    ds, k = end_debris(img, True)
+    assert k == 2 and abs(ds - 25 / 80) < 1e-6
+    assert end_debris(img, False) == (0.0, 0)           # 上头没有
+    glued = np.full((80, 80), 255, np.uint8)
+    glued[5:70, 30:50] = 0
+    glued[70:72, 5:75] = 0                              # 贴着字脚的细线
+    assert end_thin_rows(glued, True) == 2
+    clean = np.full((80, 80), 255, np.uint8)
+    clean[5:70, 30:50] = 0
+    assert end_thin_rows(clean, True) == 0              # 字身窄于 0.3 宽
