@@ -71,3 +71,55 @@ def test_edge_line_ink():
     img[98:103, 10:90] = 0                              # 截口一片
     assert edge_line_ink(img, box, False) > 0.7
     assert edge_line_ink(None, box, False) == 0.0
+
+
+def _framed(line_gap=True, wide=True):
+    """列尾字块：60 高的竖笔字身，下面一道细横线（框线）。"""
+    img = np.full((80, 80), 255, np.uint8)
+    img[5:60, 30:50] = 0                                # 字身
+    img[60:62, 30:50] = 0
+    if not line_gap:
+        img[62:75, 30:50] = 0
+    x0, x1 = (5, 78) if wide else (30, 50)
+    img[75:78, x0:x1] = 0                               # 框线
+    return img
+
+
+def test_end_band():
+    """端条：最外 3 行和字身隔开（gap 小）、伸出字身左右（overhang 大）。"""
+    from guji_manager.review.seg_defect import end_band
+    gap, over = end_band(_framed(), True)
+    assert gap == 0.0 and over > 0.6
+    gap, over = end_band(_framed(line_gap=False), True)
+    assert 0.2 < gap < 0.3                              # 线贴着字脚：往里的行墨＝字身宽÷线宽
+    assert end_band(_framed(wide=False), True)[1] == 0.0
+    assert end_band(np.full((10, 10), 255, np.uint8), True) is None
+
+
+def test_same_char_frame():
+    """同字对照偏高／墨宽一侧：比同字宽、不矮、端头一道隔开又伸出的横条才算带框。"""
+    from guji_manager.review.seg_defect import SAME_PREFIX, same_char_frame
+    ref = (60.0, 30.0, 20, 25.0)                        # 墨高中位 60、宽 30、20 个、墨宽 25
+    hit = same_char_frame(_framed(), ref, 80.0, True)
+    assert hit and hit.startswith(SAME_PREFIX)
+    assert same_char_frame(_framed(), ref, 80.0, False) is None        # 看错了一头
+    assert same_char_frame(_framed(wide=False), ref, 80.0, True) is None
+    assert same_char_frame(_framed(), (60.0, 30.0, 4, 25.0), 80.0, True) is None   # 参照不到 5 个
+    assert same_char_frame(_framed(), (60.0, 30.0, 20), 80.0, True) is None       # 老参照没墨宽
+    assert same_char_frame(_framed(), (90.0, 30.0, 20, 25.0), 80.0, True) is None  # 比同字矮
+
+
+def test_gate_rows_and_book_table(tmp_path):
+    """--gate 只出同字对照命中的 clipped／frame_residue；书级表按工作区目录名的 id 段查。"""
+    from guji_manager.review.seg_defect import book_id_of, book_opts, is_gate_row
+    assert is_gate_row({"seg_kind": "clipped", "特征": "同字墨高 0.70 宽 1.00（参照 9 个）"})
+    assert is_gate_row({"seg_kind": "frame_residue", "特征": "同字墨宽 1.20 高 1.05（参照 9 个）端条隔开 0.00 伸出 0.40"})
+    assert not is_gate_row({"seg_kind": "clipped", "特征": "seam_ink=40"})
+    assert not is_gate_row({"seg_kind": "frame_residue", "特征": "下线 30px"})
+    assert not is_gate_row({"seg_kind": "bleed", "特征": "同字…"})
+    ws = tmp_path / "96mid1ogzk-欽定四庫全書總目武英殿刻本"
+    ws.mkdir()
+    assert book_id_of(ws) == "96mid1ogzk"
+    o = book_opts("96mid1ogzk")
+    assert o["frame"] and o["review_kinds"] == ["clipped"]
+    assert book_opts("nosuchbook") is None
