@@ -89,7 +89,8 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
             def add(ch, s):
                 if ch:
                     cands.setdefault(ch, []).append(s)
-            add(a.get("align_char"), "参校本")
+            ref_char = a.get("align_char") or r.get("ref") or None   # 坐标对位给的格没有 align_char，退回 cells.tsv 的 ref 列
+            add(ref_char, "参校本")
             add(c.get("char"), "机器识别")
             for x in g.get("candidates", [])[:5]:
                 ch, sc = (x.get("char"), x.get("score", x.get("sim"))) if isinstance(x, dict) else (x[0], x[1])
@@ -106,7 +107,7 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
                     if ch in cands:
                         cands[ch].append("护栏对")
             out.append({"id": cid, "cls": r["cls"], "reason": r["reason"], "group": r["group"] or None, "left": left, "right": right,
-                        "ref_char": a.get("align_char"), "machine_char": c.get("char"), "cands": cands,
+                        "ref_char": ref_char, "machine_char": c.get("char"), "cands": cands,
                         "group_members": members, "guard": gd, "doubts": c.get("doubts")})
     return out
 
