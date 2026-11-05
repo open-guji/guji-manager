@@ -130,7 +130,7 @@ def gate_ex(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.
 
     1 两路同字且都 high、字在候选里；2 越过参校本只许本书白名单组（Z 类），N/L/P/D 一律只收与参校本同字，
     但 P 类本意就是「取参校本字」，同样只收与参校本同字；3 字形分够或 ≥2 个独立来源；
-    4 L 类若给了 lib_n，选中的字库样本须 >2；5 选中的字必须是汉字（整理本缺字占位 ခ／〓／○、私用区码不放行，`not_ideograph`）。
+    4 L 类若给了 lib_n，选中的字库样本须 >2；5 选中的字必须是汉字；整理本缺字占位（ခ／〓）不放行，本书造字（私用区码、○）只在本书库里已有 >2 个样本（需 lib_n）且图一致证人成立时才放行，否则 `not_ideograph`。
     `glyph`＝(ruling_glyph_min_score, ruling_glyph_min_margin)，来自册 yaml，给了就按「首位、≥t、领先 ≥ margin」判图一致证人
     （不给：命令行 min_score 加前五分，旧口径）。
     `ref_lead`＝{"unseen": 阈值|None, "oov": 阈值|None}（册 yaml `ruling_ref_lead_min_*`）：选中字就是整理本字、且在稀见层
@@ -140,14 +140,14 @@ def gate_ex(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.
     ch = a["char"]
     if not (a["char"] == b["char"] and a["conf"] == "high" and b["conf"] == "high" and ch in x["cands"]):
         return {"ok": False, "why": "no_double_high"}
-    if not is_ideograph(ch):
-        return {"ok": False, "why": "not_ideograph"}
     ref = x.get("ref_char")
     if ch != ref:
         if not (x["cls"] == "Z" and x.get("group") in over_ref):
             return {"ok": False, "why": "over_ref_not_allowed"}
     gs, gm_ = glyph if glyph else (None, None)
     gw = glyph_witness(x, ch, gs if glyph else min_score, gm_) if glyph else (score(x, ch) >= min_score)
+    if not is_ideograph(ch) and not (lib_n is not None and lib_n(ch) > 2 and gw):
+        return {"ok": False, "why": "not_ideograph"}     # 本书造字（私用区、○ 等）只在库里已有 >2 个样本且图一致证人成立时才放行
     if not (gw or nsrc(x, ch) >= min_src):
         return {"ok": False, "why": "weak_evidence"}
     if x["cls"] == "L" and lib_n is not None and lib_n(ch) <= 2:
