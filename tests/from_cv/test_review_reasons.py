@@ -211,3 +211,14 @@ def test_glyph_pending_only_for_registered_codes():
     assert classify(a, build_context([a])) is R.REF_LACUNA            # 没给登记表＝一个都不算
     s = R.GLYPH_PENDING.spec
     assert (s.code, s.route.value, s.reviewer.value, s.priority) == ("R03", "deferred", "none", 49)
+
+
+def test_glyph_pending_flows_through_pending_sheet(tmp_path):
+    """单上的 pua_code ＋ 登记表 → reasons_for_pending 记 glyph_pending；不给登记表仍是 ref_lacuna。"""
+    from guji_manager.review.reasons import reasons_for_pending
+    doc = {"cells": [{"cell": "bk:1:1:1:1", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E123"},
+                     {"cell": "bk:1:1:1:2", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E124"}]}
+    r = reasons_for_pending(doc, tmp_path, "bk", glyph_pending={"daizhige:U+E123"})
+    assert r["bk:1:1:1:1"] == (R.GLYPH_PENDING, "daizhige:U+E123")
+    assert r["bk:1:1:1:2"][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, "bk")["bk:1:1:1:1"][0] is R.REF_LACUNA

@@ -283,7 +283,8 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                 cid = ch["id"]
                 r, op = ref.get(cid, (None, None))
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
-                                                 doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}))
+                                                 doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
+                                                 pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"))
     return out
 
 
@@ -338,7 +339,7 @@ def _default_are_variants():
         return None
 
 
-def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None) -> dict[str, tuple[R, str]]:
+def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=()) -> dict[str, tuple[R, str]]:
     """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。"""
     if are_variants is None:
         are_variants = _default_are_variants()
@@ -353,9 +354,11 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
             c.seg_kind = str(x["seg_kind"])
         if x.get("src"):
             c.src = str(x["src"])
+        if x.get("pua_code"):
+            c.pua_code = str(x["pua_code"])
         cells.append(c)
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
@@ -377,14 +380,14 @@ def stamp(doc: dict, reasons: dict[str, tuple[R, str]]) -> Counter:
     return n
 
 
-def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_variants=None) -> None:
+def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_variants=None, glyph_pending=()) -> None:
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
     if are_variants is None:
         are_variants = _default_are_variants()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value
