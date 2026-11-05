@@ -20,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("triage", help="参校字快审分流（skip/pass/withdraw/review）；见 guji_manager.review_triage", add_help=False)
     sub.add_parser("review-pages", help="人审页模板库（预选、一字一卡、版本、台账）；见 guji_manager.review_pages", add_help=False)
     sub.add_parser("iterate", help="降人审迭代的轮报告、金标、抽检台账、杠杆排序、冻结日历；见 guji_manager.iterate", add_help=False)
+    sub.add_parser("suggest", help="诊断信号→A 档开关建议，点头后写册 yaml；见 guji_manager.suggest", add_help=False)
+    sub.add_parser("final-review", help="大模型只读文意终审跨书一键流水线；见 guji_manager.final_review", add_help=False)
     a, rest = ap.parse_known_args(argv)
     if a.cmd == "review-pages":
         from .review_pages.__main__ import main as rp_main
@@ -27,6 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "iterate":
         from .iterate.__main__ import main as iterate_main
         return iterate_main(rest)
+    if a.cmd == "suggest":
+        from .suggest import main as suggest_main
+        return suggest_main(rest)
+    if a.cmd == "final-review":
+        from .final_review.__main__ import main as fr_main
+        return fr_main(rest)
     if a.cmd == "triage":
         from .review_triage.__main__ import main as triage_main
         return triage_main(rest)
