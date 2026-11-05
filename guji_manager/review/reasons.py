@@ -365,15 +365,28 @@ def load_glyph_pending(corpus: Path | str | None = None) -> frozenset[str]:
         return frozenset()
 
 
+_RESOLVERS: dict[str, Callable[[str, str], str | None] | None] = {}
+
+
 def pua_resolver(corpus: Path | str | None = None) -> Callable[[str, str], str | None] | None:
     """出单时用的私用码回查函数 `(整理本前文, 后文) -> "daizhige:U+XXXX" | None`；
     cv 没有 `utils.pua_lookup`（旧 cv）或源文件读不到时返回 None，调用方退回 `ref_lacuna`。"""
     try:
-        from open_guji_cv.utils.pua_lookup import PuaIndex, resolve_pua_code
         if corpus is None:
             from .._cv import corpus_dir
             corpus = corpus_dir()
-        files = sorted((Path(corpus) / "daizhige").glob("[0-9]*.jsonl"))
+        key = str(Path(corpus).resolve())
+    except Exception:  # noqa: BLE001
+        return None
+    if key not in _RESOLVERS:            # 五个源 jsonl 约 29 MB，建一次索引，同一语料目录只建一次
+        _RESOLVERS[key] = _build_resolver(Path(corpus))
+    return _RESOLVERS[key]
+
+
+def _build_resolver(corpus: Path) -> Callable[[str, str], str | None] | None:
+    try:
+        from open_guji_cv.utils.pua_lookup import PuaIndex, resolve_pua_code
+        files = sorted((corpus / "daizhige").glob("[0-9]*.jsonl"))
         if not files:
             return None
         idx = PuaIndex.from_source(files)
@@ -383,8 +396,11 @@ def pua_resolver(corpus: Path | str | None = None) -> Callable[[str, str], str |
 
 
 def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=None,
-                        pua_resolve=None) -> dict[str, tuple[R, str]]:
-    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。"""
+                        pua_resolve=None, stats=None) -> dict[str, tuple[R, str]]:
+    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。
+
+    `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
+    回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
     if are_variants is None:
         are_variants = _default_are_variants()
     prod = book_cells(products_dir, book)
@@ -409,6 +425,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         for c in cells:
             if pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right):
                 c.pua_code = pua_resolve(c.ref_left, c.ref_right)
+                if c.pua_code and c.pua_code in glyph_pending and stats is not None:
+                    stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     out = {}

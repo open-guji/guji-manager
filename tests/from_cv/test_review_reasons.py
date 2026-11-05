@@ -244,9 +244,25 @@ def test_glyph_pending_resolved_from_ref_window(tmp_path):
     def resolve(left, right):
         seen.append((left, right))
         return "daizhige:U+EA96"
-    r = reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=resolve)
+    from collections import Counter
+    st = Counter()
+    r = reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=resolve, stats=st)
+    assert st["glyph_pending_by_window"] == 1
     assert seen == [("天地玄", "黄宇宙洪")]
     assert r[ids[3]] == (R.GLYPH_PENDING, "daizhige:U+EA96")
     assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EB10"}, pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
     assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=lambda a, b: None)[ids[3]][0] is R.REF_LACUNA
     assert reasons_for_pending(doc, tmp_path, book, glyph_pending=frozenset(), pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+
+
+def test_pua_resolver_cached_per_corpus(tmp_path, monkeypatch):
+    """同一语料目录只建一次索引（约 29 MB 源文件），不能每出一张单就读一遍。"""
+    from guji_manager.review import reasons
+    calls = []
+    monkeypatch.setattr(reasons, "_build_resolver", lambda corpus: calls.append(corpus) or (lambda a, b: None))
+    monkeypatch.setattr(reasons, "_RESOLVERS", {})
+    a = reasons.pua_resolver(tmp_path)
+    b = reasons.pua_resolver(tmp_path)
+    assert a is b and len(calls) == 1
+    reasons.pua_resolver(tmp_path / "other")
+    assert len(calls) == 2
