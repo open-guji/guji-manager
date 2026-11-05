@@ -43,12 +43,36 @@ def build_cards(rows: list[dict], k: int = 5) -> list[dict]:
     return cards
 
 
-def expand_card_result(card: dict, doc: dict) -> list[dict]:
-    """card: build_cards 的一张卡；doc: 页面存回的 {char, pick, bad:[样例格号], secs}。
-    返回每格决定 {id, char, status: ok|bad|follow|audit}；pick 可能改了字（人把预选字改成别的）。"""
-    ch = doc.get("pick") or card["char"]
-    bad = set(doc.get("bad", []))
-    out = [{"id": s["id"], "char": ch, "status": "bad" if s["id"] in bad else "ok"} for s in card["samples"]]
-    status = "follow" if not bad else "audit"      # 有错样例：跟随格不放，退回逐格审
-    out += [{"id": i, "char": ch, "status": status} for i in card["followers"]]
+def _cell_status(v: str | None, ch: str) -> tuple[str, str]:
+    """逐格结果 → (status, char)。v：seg|unclear|other|pick:<字>|None。"""
+    if not v or v == "ok":
+        return "ok", ch
+    if v.startswith("pick:"):
+        x = v[5:]
+        return ("ok", ch) if x == ch else ("pick", x)
+    return {"seg": "seg", "unclear": "unclear", "other": "bad"}.get(v, "bad"), ch
+
+
+def expand_card_result(card: dict, doc: dict | None, cells: dict[str, str] | None = None) -> list[dict]:
+    """card: build_cards 的一张卡；doc: 页面「本页其余都对」时存回的 {char, pick, bad:[样例格号], cells?}，
+    没点下一页时为 None；cells: 逐格文档 {格号: v}（模板 1.1 起每点一下就存，比页文档新）。
+
+    返回每格决定 {id, char, status}：
+      ok（样例对）、pick（这格改成 char）、seg（切分有问题）、unclear（看不清）、bad（不对，没填字）、
+      follow（跟随格，样例全对时放）、audit（样例有不对，跟随格退回逐格审）。
+    doc 为 None 时只出点过的样例格，跟随格不出（这张卡还没审完）。"""
+    ch = (doc or {}).get("pick") or card["char"]
+    per = dict((doc or {}).get("cells") or {})
+    for i in (doc or {}).get("bad", []):
+        per.setdefault(i, "other")
+    per.update(cells or {})
+    out = []
+    for s in card["samples"]:
+        if doc is None and s["id"] not in per:
+            continue
+        st_, c = _cell_status(per.get(s["id"]), ch)
+        out.append({"id": s["id"], "char": c, "status": st_})
+    if doc is not None:
+        status = "follow" if all(r["status"] == "ok" for r in out) else "audit"
+        out += [{"id": i, "char": ch, "status": status} for i in card["followers"]]
     return out
