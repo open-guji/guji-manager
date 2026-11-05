@@ -115,7 +115,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
         rows = [dict(r, img=embed(r.get("img"))) for r in items]
-        cs = cards_mod.build_cards(rows, k)
+        cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
         pp = per_page or 8
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
                 "n_excluded": n0 - len(items)}
