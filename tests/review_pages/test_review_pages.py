@@ -90,9 +90,6 @@ def test_every_template_builds(t, tmp_path):
         "pair_whitelist": [dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])],
         "codepoint": [dict(key="g1", chars=["為", "爲"], pre="unify:爲",
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
-        "name_pick": [dict(id="n1", type="人", span="孔安國", left="漢", right="傳", pre="P1", cands=[{"id":"P1","name":"孔安國","brief":"西漢"}])],
-        "name_register": [dict(key="某某", pre="建档", type="人", lines=["見於某某傳"], cands=[{"id":"P9","name":"某","brief":"x"}])],
-        "punct_check": [dict(key="p1", pre="对", vol="01", para=3, anchor=4, text="學而時習之，不亦說乎？")],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
     }[t]
@@ -101,8 +98,7 @@ def test_every_template_builds(t, tmp_path):
     html = out.read_text(encoding="utf-8")
     assert st["page_type"] == t and "/*DATA*/" not in html and "/*COMMON" not in html and "/*SHELL*/" not in html
     assert PAGE_TYPES[t].version in html
-    if t not in ("name_pick", "name_register", "punct_check"):
-        assert "data:image/png;base64," in html
+    assert "data:image/png;base64," in html
 
 
 def test_ledger_and_hints(tmp_path):
