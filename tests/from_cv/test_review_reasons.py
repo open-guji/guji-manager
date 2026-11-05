@@ -222,3 +222,71 @@ def test_glyph_pending_flows_through_pending_sheet(tmp_path):
     assert r["bk:1:1:1:1"] == (R.GLYPH_PENDING, "daizhige:U+E123")
     assert r["bk:1:1:1:2"][0] is R.REF_LACUNA
     assert reasons_for_pending(doc, tmp_path, "bk")["bk:1:1:1:1"][0] is R.REF_LACUNA
+
+
+def test_glyph_pending_resolved_from_ref_window(tmp_path):
+    """出单时：整理本缺字格按前后文窗口回查私用码，码在登记表里记 glyph_pending；回查不到／没登记仍 ref_lacuna。"""
+    import json as _j
+    from guji_manager.review.reasons import reasons_for_pending
+    book, pg = "bk", tmp_path / "bk"
+    for d in ("seed_admit", "align_ref"):
+        (pg / d).mkdir(parents=True)
+    ids = [f"bk:1:1:{i}:{i}" for i in range(1, 9)]
+    ids = [f"bk:1:1:{i}" for i in range(1, 9)]
+    refs = list("天地玄〓黄宇宙洪")
+    seed = {"seed_admit": {"columns": [{"chars": [{"id": i, "char": "丁", "admit": False, "doubts": []} for i in ids]}]}}
+    align = {"align_ref": {"chars": [{"id": i, "align_char": c, "align_op": "equal"} for i, c in zip(ids, refs)]}}
+    (pg / "seed_admit" / "p0001.json").write_text(_j.dumps(seed), encoding="utf-8")
+    (pg / "align_ref" / "p0001.json").write_text(_j.dumps(align), encoding="utf-8")
+    doc = {"cells": [{"cell": ids[3]}]}
+    seen = []
+
+    def resolve(left, right):
+        seen.append((left, right))
+        return "daizhige:U+EA96"
+    from collections import Counter
+    st = Counter()
+    r = reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=resolve, stats=st)
+    assert st["glyph_pending_by_window"] == 1
+    assert seen == [("天地玄", "黄宇宙洪")]
+    assert r[ids[3]] == (R.GLYPH_PENDING, "daizhige:U+EA96")
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EB10"}, pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=lambda a, b: None)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending=frozenset(), pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+
+
+def test_pua_resolver_cached_per_corpus(tmp_path, monkeypatch):
+    """同一语料目录只建一次索引（约 29 MB 源文件），不能每出一张单就读一遍。"""
+    from guji_manager.review import reasons
+    calls = []
+    monkeypatch.setattr(reasons, "_build_resolver", lambda corpus: calls.append(corpus) or (lambda a, b: None))
+    monkeypatch.setattr(reasons, "_RESOLVERS", {})
+    a = reasons.pua_resolver(tmp_path)
+    b = reasons.pua_resolver(tmp_path)
+    assert a is b and len(calls) == 1
+    reasons.pua_resolver(tmp_path / "other")
+    assert len(calls) == 2
+
+
+def test_load_glyph_pending_reads_config_pua(tmp_path):
+    """登记表在数据目录 config/pua/；读不到或坏文件＝空表（全走 ref_lacuna）。"""
+    from guji_manager.review.reasons import load_glyph_pending
+    assert load_glyph_pending(tmp_path) == frozenset()
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "glyph_pending_codes.json").write_text('{"codes": ["daizhige:U+EA96"]}', encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset({"daizhige:U+EA96"})
+    (d / "glyph_pending_codes.json").write_text("{坏", encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset()
+
+
+def test_registry_missing_is_reported_in_stats(monkeypatch):
+    from collections import Counter
+    import guji_manager.review.reasons as rs
+    monkeypatch.setattr(rs, "load_glyph_pending", lambda *a, **k: frozenset())
+    st = Counter()
+    try:
+        rs.reasons_for_pending({"cells": []}, "/nonexistent", "b", stats=st)
+    except Exception:  # noqa: BLE001  空单子/路径不在都行，只看登记表缺失是否记了
+        pass
+    assert st["glyph_pending_registry_missing"] == 1

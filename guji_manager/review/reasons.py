@@ -53,6 +53,8 @@ class Cell:
     note: str = ""
     cls: str | None = None                             # 待审单上的旧卡片类别（老单的 seg_defect 只有这里有；11-04 起不出单）
     seg_kind: str | None = None                        # 切坏细分（单上同名字段；产物里在 evidence.seg_kind），见 SEG_KINDS
+    ref_left: str = ""                                 # 整理本这位前 20 字／后 20 字（只给「整理本缺字」格算，回查私用码用）
+    ref_right: str = ""
     pua_code: str | None = None                        # 整理本这位的私用码永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001），没有就空；glyph_pending 凭它判
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
 
@@ -276,6 +278,9 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
             if c.get("ref_char") and c["id"] not in ref:
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
+        seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
+               for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
+        at = {cid: i for i, (cid, _) in enumerate(seq)}
         for col in seed.get("columns", []):
             for ch in col.get("chars", []):
                 if ch.get("admit") or "excluded" in (ch.get("doubts") or []):
@@ -285,6 +290,10 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"))
+                if ref_missing(r) and cid in at:
+                    i = at[cid]
+                    out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
+                    out[cid.split(":", 1)[1]].ref_right = "".join(c for _, c in seq[i + 1:i + 21])
     return out
 
 
@@ -339,8 +348,60 @@ def _default_are_variants():
         return None
 
 
-def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=()) -> dict[str, tuple[R, str]]:
-    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。"""
+#: 待收字登记表（私用码表里「已判定待收」的永久编号，一项一个 `来源:码位`）放在数据目录 `config/pua/glyph_pending_codes.json`
+#: （`{"codes": [...]}`，随 `guji db sync` 进中心库；A31 11-05 定：不放语料版本，免得动 corpus 指纹、触发 CorpusDrift）。
+#: 读不到＝空表＝一个都不算，全走 `ref_lacuna`，和改前一样。
+GLYPH_PENDING_REL = ("config", "pua", "glyph_pending_codes.json")
+
+
+def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
+    """读待收字登记表；数据目录取不到、文件不在、读不了都返回空集（不猜）。"""
+    try:
+        if data_root is None:
+            from .._cv import data_root as _data_root     # cv 的数据目录（中心库工作区＝数据目录），不靠 corpus 路径推
+            data_root = _data_root()
+        f = Path(data_root).joinpath(*GLYPH_PENDING_REL)
+        return frozenset(json.loads(f.read_text(encoding="utf-8")).get("codes") or [])
+    except Exception:  # noqa: BLE001
+        return frozenset()
+
+
+_RESOLVERS: dict[str, Callable[[str, str], str | None] | None] = {}
+
+
+def pua_resolver(corpus: Path | str | None = None) -> Callable[[str, str], str | None] | None:
+    """出单时用的私用码回查函数 `(整理本前文, 后文) -> "daizhige:U+XXXX" | None`；
+    cv 没有 `utils.pua_lookup`（旧 cv）或源文件读不到时返回 None，调用方退回 `ref_lacuna`。"""
+    try:
+        if corpus is None:
+            from .._cv import corpus_dir
+            corpus = corpus_dir()
+        key = str(Path(corpus).resolve())
+    except Exception:  # noqa: BLE001
+        return None
+    if key not in _RESOLVERS:            # 五个源 jsonl 约 29 MB，建一次索引，同一语料目录只建一次
+        _RESOLVERS[key] = _build_resolver(Path(corpus))
+    return _RESOLVERS[key]
+
+
+def _build_resolver(corpus: Path) -> Callable[[str, str], str | None] | None:
+    try:
+        from .._cv import PuaIndex, resolve_pua_code
+        files = sorted((corpus / "daizhige").glob("[0-9]*.jsonl"))
+        if not files:
+            return None
+        idx = PuaIndex.from_source(files)
+    except Exception:  # noqa: BLE001
+        return None
+    return lambda left, right: resolve_pua_code(idx, left, right)
+
+
+def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=None,
+                        pua_resolve=None, stats=None) -> dict[str, tuple[R, str]]:
+    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。
+
+    `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
+    回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
     if are_variants is None:
         are_variants = _default_are_variants()
     prod = book_cells(products_dir, book)
@@ -357,6 +418,18 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         if x.get("pua_code"):
             c.pua_code = str(x["pua_code"])
         cells.append(c)
+    if glyph_pending is None:
+        glyph_pending = load_glyph_pending()
+        if not glyph_pending and stats is not None:
+            stats["glyph_pending_registry_missing"] = 1   # 登记表没读到：全走 ref_lacuna，出单报告要提示
+    if glyph_pending:           # 登记表是空的就不必回查（和改前一样，没有任何变化）
+        if pua_resolve is None:
+            pua_resolve = pua_resolver()
+        for c in cells:
+            if pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right):
+                c.pua_code = pua_resolve(c.ref_left, c.ref_right)
+                if c.pua_code and c.pua_code in glyph_pending and stats is not None:
+                    stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     out = {}
