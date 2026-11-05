@@ -89,13 +89,18 @@ def test_every_template_builds(t, tmp_path):
         "char_grid": [dict(id="1:1:1:1", pre="以", cov=0.9, img=str(img))],
         "pair_whitelist": [dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])],
         "codepoint": [dict(key="A/B", pre="归一到前者", tiles=[["1:1:1:1", str(img)]])],
+        "name_pick": [dict(id="1:1:1:1", pre="孔安國", left="漢", right="傳", cands={"孔安國": ["名表"], "孔安囯": ["机器"]})],
+        "name_register": [dict(key="某某", pre="建档", lines=["見於某某傳"], n=3)],
+        "punct_check": [dict(key="p1", pre="对", label="學而時習之，不亦說乎？", lines=["學而時習之，不亦說乎？"])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
     }[t]
     out = tmp_path / "p.html"
     st = B.build(t, items, "b1", out)
     html = out.read_text(encoding="utf-8")
     assert st["page_type"] == t and "/*DATA*/" not in html and "/*COMMON" not in html and "/*SHELL*/" not in html
-    assert PAGE_TYPES[t].version in html and "data:image/png;base64," in html
+    assert PAGE_TYPES[t].version in html
+    if t not in ("name_pick", "name_register", "punct_check"):
+        assert "data:image/png;base64," in html
 
 
 def test_ledger_and_hints(tmp_path):
