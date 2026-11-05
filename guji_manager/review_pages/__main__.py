@@ -10,7 +10,9 @@
   char sheet|pull|ingest ...                冷启动快审页的生成与落库（char_grid；原 ai-team 冷启动快审流程模板）
   ledger     add|summary                    用时与改判台账（--from-results DIR 从结果文档入账）
   cp-items   --groups groups.json --cache DIR --out items.jsonl   按组看图的 groups.json → 码位定夺页 items
-  cp-apply   --results DIR [--who 名]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
+  unconfirmed --items items.jsonl --results DIR   列出还没确认的项（逐项文档里没有、也没翻过去的）
+  closeout-sum --results DIR                  收口单：各去向的格数合计
+  cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
 """
 from __future__ import annotations
 
@@ -42,6 +44,7 @@ def main(argv=None):
     p = sub.add_parser("build"); p.add_argument("type"); p.add_argument("--items", required=True)
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
     p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
+    p.add_argument("--mode", choices=["check"], help="gold_sample：check＝核对模式（显示机器答案，只点对/错填字/看不清）")
     p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
     p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
     p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
@@ -57,6 +60,9 @@ def main(argv=None):
     p = sub.add_parser("cp-items"); p.add_argument("--groups", required=True); p.add_argument("--cache", required=True)
     p.add_argument("--out", required=True)
     p = sub.add_parser("cp-apply"); p.add_argument("--results", required=True); p.add_argument("--who", default="用户")
+    p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
+    p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
+    p = sub.add_parser("closeout-sum"); p.add_argument("--results", required=True)
     a = ap.parse_args(argv)
 
     from . import build as build_mod, cards, ledger, preselect
@@ -75,7 +81,7 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
-                                         build_mod.read_ids(a.exclude)), ensure_ascii=False))
+                                         build_mod.read_ids(a.exclude), a.mode), ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
         cs = seg_causes.build_cards(a.per_page, a.per_cell)
@@ -119,7 +125,25 @@ def main(argv=None):
     elif a.cmd == "cp-apply":
         import datetime
         from . import codepoint as cp
-        print(cp.to_yaml(cp.apply(cp.decisions_from_docs(_docs(a.results))), a.who, str(datetime.date.today())), end="")
+        docs = _docs(a.results)
+        print(cp.to_yaml(cp.apply(cp.decisions_from_docs(docs)), a.who, str(datetime.date.today())), end="")
+        if a.items:
+            from . import results
+            un = results.unconfirmed([g["key"] for g in build_mod.read_items(a.items)], docs)
+            print(f"# 未确认 {len(un)} 组（没点也没翻过去，不要当成全对）：" + "、".join(un[:30]) + ("…" if len(un) > 30 else ""))
+    elif a.cmd == "unconfirmed":
+        from . import results
+        its = build_mod.read_items(a.items)
+        un = results.unconfirmed([r.get("id", r.get("key")) for r in its], _docs(a.results))
+        print(f"{len(un)}/{len(its)} 项未确认")
+        for i in un:
+            print(i)
+    elif a.cmd == "closeout-sum":
+        from . import results
+        tot: dict = {}
+        for d in results.flatten(_docs(a.results)).values():
+            tot[d.get("pick")] = tot.get(d.get("pick"), 0) + (d.get("n") or 0)
+        print(json.dumps(tot, ensure_ascii=False))
     elif a.cmd == "ledger":
         path = Path(a.ledger) if a.ledger else ledger.default_path()
         if a.action == "add":
