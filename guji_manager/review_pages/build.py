@@ -2,6 +2,7 @@
 
 输入统一用 items（jsonl 或 json 列表），每项字段按页型：
   char_card / char_grid：{id, pre(预选字), pre_conf?, kind?, img(图文件路径或 data URI), cov?}
+    img 用 crop.py 按 cell_shrink 字框裁（不要按 row_segment 的 quad 裁，会带进边框线）
   pair_whitelist / codepoint：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
   name_register：{key, pre(建档|并入已有|不建|不确定), type, std_name, name?, dynasty, src_url?, n, lines[≤8 出处句], cands[{id,name,brief}], route_to?(书名/出版者→A11/A12)}
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
@@ -59,14 +60,36 @@ def render(pt: PageType, data: dict) -> str:
     return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
 
 
+def read_ids(paths) -> set[str]:
+    """已录入格号：json 列表 / jsonl（每行有 id）/ 每行一个格号的文本，可给多个文件。"""
+    ids: set[str] = set()
+    for p in paths or []:
+        t = Path(p).read_text(encoding="utf-8").strip()
+        if not t:
+            continue
+        if t.startswith("["):
+            ids |= {x if isinstance(x, str) else x["id"] for x in json.loads(t)}
+            continue
+        for l in t.splitlines():
+            l = l.strip()
+            if l:
+                ids.add(json.loads(l)["id"] if l.startswith("{") else l.split("\t")[0])
+    return ids
+
+
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
-          hint: str | None = None) -> dict:
+          hint: str | None = None, exclude: set[str] | None = None) -> dict:
+    """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。"""
     pt = get(page_type)
+    n0 = len(items)
+    if exclude:
+        items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
         rows = [dict(r, img=embed(r.get("img"))) for r in items]
         cs = cards_mod.build_cards(rows, k)
         pp = per_page or 8
-        data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs)}
+        data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs),
+                "n_excluded": n0 - len(items)}
         stat = {"cards": len(cs), "cells": data["n_cells"], "shown": sum(len(c["samples"]) for c in cs),
                 "pages": -(-len(cs) // pp)}
         (Path(out).with_suffix(".cards.json")).write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
@@ -92,6 +115,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
     Path(out).write_text(render(pt, data), encoding="utf-8")
+    stat["excluded"] = n0 - len(items)
     stat["bytes"] = Path(out).stat().st_size
     stat["page_type"], stat["tpl_version"] = pt.key, pt.version
     return stat

@@ -4,7 +4,9 @@
   preselect  --cells cells.jsonl --out DIR  预选：三方一致的格归 auto（不上页），其余出 page.jsonl 与统计
   build      TYPE --items items.jsonl --book B --out page.html   出页（一字一卡同时写 page.cards.json）
   seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   A22 seg_causes → 切分归因卡片
-  expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/bad/follow/audit）
+  build ... --exclude landed.json            撤掉已录入的格（点过即录入、不再上页；可给多个文件）
+  expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/pick/seg/unclear/bad/follow/audit）
+  crop       --cells ids.txt --shrink-dir D --pages-dir D --out DIR   按 cell_shrink 字框裁审页图
   char sheet|pull|ingest ...                冷启动快审页的生成与落库（char_grid；原 ai-team 冷启动快审流程模板）
   ledger     add|summary                    用时与改判台账（--from-results DIR 从结果文档入账）
 """
@@ -40,8 +42,14 @@ def main(argv=None):
     p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
     p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
     p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
+    p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
     p = sub.add_parser("expand"); p.add_argument("--cards", required=True); p.add_argument("--results", required=True)
     p.add_argument("--out", required=True)
+    p = sub.add_parser("crop"); p.add_argument("--cells", required=True, help="格号文件（每行一个，或 jsonl 带 id）")
+    p.add_argument("--shrink-dir", required=True, help="cell_shrink 目录（pNNNN.json）；多册用 {vol} 占位")
+    p.add_argument("--pages-dir", required=True, help="原页图目录；文件名用 --page-name 定")
+    p.add_argument("--page-name", default="{page}.png", help="页图文件名模板，可用 {vol} {page} {page4}")
+    p.add_argument("--out", required=True); p.add_argument("--pad", type=int, default=0)
     p = sub.add_parser("ledger"); p.add_argument("action", choices=["add", "summary"])
     p.add_argument("--ledger"); p.add_argument("--from-results"); p.add_argument("--type"); p.add_argument("--book")
     a = ap.parse_args(argv)
@@ -61,18 +69,31 @@ def main(argv=None):
         print(json.dumps(res["stats"], ensure_ascii=False))
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
-                                         a.per_page, a.per_card, a.hint), ensure_ascii=False))
+                                         a.per_page, a.per_card, a.hint,
+                                         build_mod.read_ids(a.exclude)), ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
         cs = seg_causes.build_cards(a.per_page, a.per_cell)
         Path(a.out).write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
         print(f"{len(cs)} 张卡 → {a.out}（img 空；按 cell_shrink 字框裁图后填进每格的 img，再 build seg_cause）")
+    elif a.cmd == "crop":
+        from . import crop
+        ids = sorted(build_mod.read_ids([a.cells]))
+        res = crop.crop_cells(ids, a.shrink_dir, a.pages_dir, a.out, a.page_name, a.pad)
+        print(json.dumps({"cropped": len(res["ok"]), "missing": len(res["missing"]),
+                          "missing_head": res["missing"][:10]}, ensure_ascii=False))
     elif a.cmd == "expand":
         cs = {c["char"]: c for c in json.loads(Path(a.cards).read_text(encoding="utf-8"))}
+        docs = _docs(a.results)
+        pages = {c["char"]: c for d in docs for c in d.get("cards", [])}
+        cells: dict[str, dict] = {}                  # 卡字 → {格号: v}（逐格文档，比页文档新）
+        for d in docs:
+            if "id" in d and "v" in d and d.get("card") in cs:
+                cells.setdefault(d["card"], {})[d["id"]] = d["v"]
         rows = []
-        for d in _docs(a.results):
-            for c in d.get("cards", []):
-                rows += cards.expand_card_result(cs[c["char"]], c)
+        for ch in pages.keys() | cells.keys():
+            if ch in cs:
+                rows += cards.expand_card_result(cs[ch], pages.get(ch), cells.get(ch))
         _write_jsonl(a.out, rows)
         from collections import Counter
         print(dict(Counter(r["status"] for r in rows)))

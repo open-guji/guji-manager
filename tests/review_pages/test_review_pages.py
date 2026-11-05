@@ -164,3 +164,43 @@ def test_seg_cause_uses_real_causes(tmp_path):
     pc.write_text("册\t格号\t页\t列\tpending_reason\nvol44\tvol44:236:1:3\t236\t1\tS02\n", encoding="utf-8")
     c = sc.build_cards(pp, pc)[0]
     assert c["cause_name"] == CAUSES["col_gate"][0] and c["advice"] == CAUSES["col_gate"][1]
+
+
+def test_expand_cells_v11():
+    c = cards.build_cards(rows(10), k=3)[0]
+    s0, s1, s2 = (s["id"] for s in c["samples"])
+    # 只点了格、没点「本页其余都对」：只出点过的格，跟随格不出
+    r = cards.expand_card_result(c, None, {s0: "seg", s1: "pick:已"})
+    assert {x["id"]: (x["status"], x["char"]) for x in r} == {s0: ("seg", "以"), s1: ("pick", "已")}
+    # 页文档＋逐格：没点的样例记对，有不对 → 跟随格 audit
+    r = cards.expand_card_result(c, {"char": "以", "pick": "以", "bad": []}, {s2: "unclear"})
+    d = {x["id"]: x["status"] for x in r}
+    assert d[s0] == "ok" and d[s2] == "unclear" and {d[i] for i in c["followers"]} == {"audit"}
+    r = cards.expand_card_result(c, {"char": "以", "pick": "以", "bad": []}, {s0: "pick:以"})
+    assert {x["status"] for x in r} == {"ok", "follow"}
+
+
+def test_build_exclude(tmp_path):
+    items = [dict(id=f"1:{i}:1:1", pre="以", pre_conf="low") for i in range(6)]
+    ex = tmp_path / "landed.json"; ex.write_text('["1:0:1:1", "1:1:1:1"]', encoding="utf-8")
+    st = B.build("char_card", items, "b1", tmp_path / "p.html", exclude=B.read_ids([ex]))
+    assert st["excluded"] == 2 and st["cells"] == 4
+    assert "1:0:1:1" not in (tmp_path / "p.html").read_text(encoding="utf-8")
+
+
+def test_crop_box_top_right_origin():
+    from guji_manager.review_pages.crop import to_image_box
+    assert to_image_box([10, 5, 19, 25], 100) == (80, 5, 90, 26)
+
+
+def test_crop_cells(tmp_path):
+    PIL = pytest.importorskip("PIL.Image")
+    import json as _j
+    (tmp_path / "sh").mkdir(); (tmp_path / "pg").mkdir()
+    PIL.new("L", (100, 50), 255).save(tmp_path / "pg" / "3.png")
+    (tmp_path / "sh" / "p0003.json").write_text(_j.dumps({"char_index": {"columns": [{"chars": [
+        {"id": "001:3:1:1", "bbox_page": [10, 5, 19, 25]}]}]}}), encoding="utf-8")
+    from guji_manager.review_pages.crop import crop_cells
+    r = crop_cells(["001:3:1:1", "001:3:1:2"], str(tmp_path / "sh"), str(tmp_path / "pg"), tmp_path / "o")
+    assert len(r["ok"]) == 1 and r["missing"] == ["001:3:1:2"]
+    assert PIL.open(r["ok"][0]).size == (10, 21)
