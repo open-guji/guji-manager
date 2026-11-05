@@ -8,6 +8,6 @@
    加裁图几何特征（边缘墨量、连通域、顶/底残留框线……）训练一个小 GBDT，预测「人会不会拦」，
    分数低于阈值的直接放行，其余出页给人审。人每审一轮，标注又能拿来重训。
 
-全流程与实测数字见 doc/01-开新书/快审减量.md。只依赖 numpy / opencv / scikit-learn / rapidocr-onnxruntime
+全流程与实测数字见 doc/02-粗校/开书/快审减量.md。只依赖 numpy / opencv / scikit-learn / rapidocr-onnxruntime
 （装 `pip install -e ".[triage]"`），不 import open_guji_cv。
 """
