@@ -284,7 +284,7 @@ class BorrowSpec:
     """``glyph_lib.borrow`` 的一条（借库参照方案缺口 1、2，2026-11-05）。
 
     旧写法是一个字符串（被借工作区名或路径）＝借全部、不钉；新写法是对象
-    ``{from: <名>, scope: human, pin: <N>}``：``scope`` 缺省 ``all``，``human`` 只借被借库的人裁刻例；
+    ``{from: <名>, scope: human, pin: <N>}``：``scope`` 缺省 ``all``，``human`` 只借被借库的人裁刻例，``human+auto`` 再加看图确认过的自动刻例；
     ``pin`` 钉被借工作区的字形库快照 g<N>（读那一版的内容，不读最新），只对中心库工作区名有意义。
     """
     name: str
@@ -305,8 +305,8 @@ def parse_borrow(x) -> BorrowSpec:
         name, scope, pin = str(x["from"]), str(x.get("scope") or "all"), x.get("pin")
     else:
         name, scope, pin = str(x), "all", None
-    if scope not in ("all", "human"):
-        raise SystemExit(f"glyph_lib.borrow {name}：scope 只能是 all 或 human，不是 {scope!r}")
+    if scope not in ("all", "human", "human+auto"):
+        raise SystemExit(f"glyph_lib.borrow {name}：scope 只能是 all、human 或 human+auto，不是 {scope!r}")
     if pin is not None:
         if isinstance(pin, bool) or not isinstance(pin, int) or pin < 1:
             raise SystemExit(f"glyph_lib.borrow {name}：pin 要写被借库的字形库快照号（正整数），不是 {pin!r}")
