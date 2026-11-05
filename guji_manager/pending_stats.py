@@ -145,6 +145,17 @@ def _group_of(ch: str) -> str | None:
     return gs[0].id if gs else None
 
 
+#: 单独计数的标记：单上 `src`，或 pending_reason_detail 前缀（A24 11-05：待收字写 ref_lacuna＋detail `glyph_pending:<私用码>`）
+DETAIL_TAGS = (("glyph_pending:", "glyph_pending"), ("同字对照自检：", "seg_selfcheck"))
+
+
+def _tag_of(c: dict) -> str:
+    if c.get("src"):
+        return str(c["src"])
+    d = str(c.get("pending_reason_detail") or "")
+    return next((t for pre, t in DETAIL_TAGS if d.startswith(pre)), "")
+
+
 def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=None,
             nonbody: dict | None = None) -> list[dict]:
     """→ 每格一行 {vol, cell, big, sub, key, owner, fix, conc, cause, kind}；kind＝body 或非正文页型（见 `load_nonbody`）。"""
@@ -169,7 +180,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
                          "pending_reason": c.get("pending_reason") or "unknown",
-                         "src": str(c.get("src") or ""),
+                         "src": _tag_of(c),
                          "kind": nb.get(str(pos[0]).lstrip("0") or "0", "body"),
                          "ref": _ref(c) or "", "top": next((_c(x) for x in c.get("lib_top") or []), "") or "",
                          "tok": ",".join(sorted(_tok(c))),
@@ -236,7 +247,7 @@ def render_reasons(s: dict, prev: dict | None) -> list[str]:
 
 
 #: 单上 `src` 的中文名（review/reasons.py）
-SRC_NAMES = {"seg_selfcheck": "同字对照自检（seg_selfcheck）"}
+SRC_NAMES = {"seg_selfcheck": "同字对照自检（seg_selfcheck）", "glyph_pending": "待收字（glyph_pending）"}
 
 
 def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) -> str:
@@ -251,7 +262,7 @@ def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) 
            + "。分类规则 `open_guji_cv/review/taxonomy.py`；跟进方见 ai-team `domain/CV/质检/待审分类规范.md`。"
            + ("括号里是比上一份的增减。" if prev else ""), "",
            *render_reasons(s, prev),
-           *([f"单上来源标记（已含在上面的原因里，单独数）：" + "；".join(f"{SRC_NAMES.get(k, k)} {v}{_d(v, ((prev or {}).get('by_src') or {}).get(k, 0) if prev else None)}"
+           *([f"单独计数（已含在上面的原因里）：" + "；".join(f"{SRC_NAMES.get(k, k)} {v}{_d(v, ((prev or {}).get('by_src') or {}).get(k, 0) if prev else None)}"
                                                        for k, v in sorted(s["by_src"].items())), ""] if s.get("by_src") else []),
            *(diag or []),
            "## 一、大类／小类总账（旧分类，过渡期保留）", "",
