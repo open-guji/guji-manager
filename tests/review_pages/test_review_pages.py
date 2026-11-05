@@ -131,3 +131,15 @@ def test_cli(tmp_path, capsys):
     cells.write_text("\n".join(json.dumps(cell(str(i), "王", "玉", text="王")) for i in range(3)), encoding="utf-8")
     main(["preselect", "--cells", str(cells), "--out", str(tmp_path / "o")])
     assert (tmp_path / "o/page.jsonl").exists()
+
+
+def test_char_review_pull_and_patch_name(tmp_path):
+    from guji_manager.review_pages import char_review as cr
+    assert cr.patch_name("01:12:3:7a") == "p0012c03s7a.png"
+    rows = [{"book": "b", "page": 1, "ok": [["1:1:1:1", "王"]], "bad": ["1:1:1:2"]},
+            {"data": {"book": "b", "page": 0, "ok": [["1:0:1:1", "天"]], "bad": []}}]
+    src, out = tmp_path / "r.json", tmp_path / "o.json"
+    src.write_text(json.dumps(rows), encoding="utf-8")
+    cr.main(["pull", str(src), str(out)])
+    d = json.loads(out.read_text(encoding="utf-8"))
+    assert d["pages_seen"] == 2 and d["ok"][0][1] == "天" and d["bad"] == ["1:1:1:2"]
