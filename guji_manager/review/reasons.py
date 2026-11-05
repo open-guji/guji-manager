@@ -269,6 +269,24 @@ def _load_layer(path: Path, key: str) -> dict | None:
         return None
 
 
+def align_for_seed(seed: dict, align: dict | None) -> dict | None:
+    """史記 `alt_cut`：准入改用备选切法的列（seed_admit `alt_cols`，退回 align_ref 的），格号与 align_ref 现役
+    `chars`／`coord`（主切法）不对应，这些列改读 align_ref `alt_draft` 的坐标对位、丢掉现役对位字。
+    没有备选列就原样返回（殿本等不受影响）。"""
+    if not align:
+        return align
+    cols = set(seed.get("alt_cols") or align.get("alt_cols") or [])
+    draft = align.get("alt_draft") or {}
+    if not cols or not draft:
+        return align
+    col_of = lambda cid: int(cid.split(":")[2])
+    out = dict(align)
+    out["chars"] = [c for c in align.get("chars", []) if col_of(c["id"]) not in cols]
+    out["coord"] = [c for c in align.get("coord") or [] if col_of(c["id"]) not in cols] + \
+                   [c for c in draft.get("coord") or [] if col_of(c["id"]) in cols]
+    return out
+
+
 def book_cells(products_dir, book: str) -> dict[str, Cell]:
     """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。"""
     root = Path(products_dir) / book
@@ -277,7 +295,7 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
         seed = _load_layer(f, "seed_admit")
         if not seed:
             continue
-        align = _load_layer(root / "align_ref" / f.name, "align_ref") or {}
+        align = align_for_seed(seed, _load_layer(root / "align_ref" / f.name, "align_ref")) or {}
         gm = _load_layer(root / "glyph_match" / f.name, "glyph_match") or {}
         ref = {c["id"]: (c.get("align_char"), c.get("align_op")) for c in align.get("chars", [])}
         for c in align.get("coord") or []:

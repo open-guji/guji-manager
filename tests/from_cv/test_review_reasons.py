@@ -300,3 +300,16 @@ def test_registry_missing_is_reported_in_stats(monkeypatch):
     except Exception:  # noqa: BLE001  空单子/路径不在都行，只看登记表缺失是否记了
         pass
     assert st["glyph_pending_registry_missing"] == 1
+
+
+def test_align_for_seed_alt_cols():
+    """史記 alt_cut：准入改用备选切法的列读 alt_draft 的坐标对位，现役对位字丢掉（02:106 第 6 列错一位）。"""
+    from guji_manager.review.reasons import align_for_seed
+    align = {"chars": [{"id": "v:1:6:1", "align_char": "赤"}, {"id": "v:1:5:1", "align_char": "甲"}],
+             "coord": [{"id": "v:1:6:1", "ref_char": "赤"}],
+             "alt_draft": {"coord": [{"id": "v:1:6:-1", "ref_char": "赤"}, {"id": "v:1:6:1", "ref_char": "埴"},
+                                     {"id": "v:1:5:1", "ref_char": "乙"}]}}
+    got = align_for_seed({"alt_cols": [6]}, align)
+    assert [c["id"] for c in got["chars"]] == ["v:1:5:1"]
+    assert {c["id"]: c["ref_char"] for c in got["coord"]} == {"v:1:6:-1": "赤", "v:1:6:1": "埴"}
+    assert align_for_seed({}, align) is align
