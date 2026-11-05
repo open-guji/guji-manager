@@ -40,6 +40,7 @@ def test_parse_borrow_forms():
     assert parse_borrow("qkp") == BorrowSpec("qkp", "all", None)
     assert parse_borrow({"from": "qtw", "scope": "human", "pin": 3}) == BorrowSpec("qtw", "human", 3)
     assert parse_borrow({"from": "qtw"}) == BorrowSpec("qtw")
+    assert parse_borrow({"from": "qtw", "scope": "human+auto"}).scope == "human+auto"
     assert BorrowSpec("qtw", "human", 3).dir_name == "qtw@g3" and BorrowSpec("qtw").dir_name == "qtw"
 
 
