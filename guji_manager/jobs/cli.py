@@ -207,6 +207,11 @@ def cmd_job(a) -> None:
                   f"看结果：guji job show {row['duplicate_of']}（确要再跑加 --again）")
         else:
             print(f"已排队 #{row['id']}：{SP.summary(spec)}；看进展：guji job show {row['id']}")
+            try:        # 空闲执行方不再刷新看板，交单时补一次，新单才会出现在后台表里
+                from . import board
+                board.publish(db, force=True)
+            except Exception:       # noqa: BLE001 —— 看板写不上不影响交单
+                pass
         return
     db = S.DB()
     if act == "init":

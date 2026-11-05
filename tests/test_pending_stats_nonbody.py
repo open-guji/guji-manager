@@ -33,3 +33,11 @@ def test_analyse_marks_nonbody_by_vol_digits(monkeypatch):
     lists = {"01.": {"cells": [{"cell": "39:1:1", "why": []}, {"cell": "10:1:1", "why": []}]}}
     rows = ps.analyse(lists, {}, nonbody={"001": {"39": "roster"}})
     assert [r["kind"] for r in rows] == ["roster", "body"]
+
+
+def test_render_warns_when_l3_missing():
+    from guji_manager import pending_stats as ps
+    s = {"n": 0, "n_nonbody": 0, "vols": {}, "by_sub": {}, "by_reason": {}, "keys": {}, "l3_missing": True}
+    assert ps.L3_MISSING in ps.render(s, None, 5)
+    s.pop("l3_missing")
+    assert ps.L3_MISSING not in ps.render(s, None, 5)
