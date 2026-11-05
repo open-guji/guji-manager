@@ -554,6 +554,13 @@ _LOCAL: dict[str, tuple[str, str | None]] = {
     "describe_purity": ("datastore.packs", "describe_purity"),
     "fetch_derived": ("datastore.packs", "fetch_derived"),
     "unpacked_note": ("datastore.packs", "unpacked_note"),
+    # 大模型文意终审裁定（final_review，2026-11-05）；cv 门面登记后改走 manager_api
+    "RulingLog": ("feedback.rulings", "RulingLog"),
+    "ruling_ctx_hash": ("feedback.rulings", "ctx_hash"),
+    "RULING_WIDTH": ("feedback.rulings", "WIDTH"),
+    "RULING_KIND": ("feedback.rulings", "KIND"),
+    "RULING_SOURCE": ("feedback.rulings", "SOURCE"),
+    "RULING_OTHER": ("feedback.rulings", "OTHER"),
 }
 
 

@@ -5,8 +5,11 @@
   pair_whitelist：{key, label?, pre(选项之一), n?, hint?, tiles:[[格号, 图, 说明?]]}
   codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
              rows:{字:{adm?, kr?, tiles:[[格号, 图]…]}}}（见 codepoint.py）
-  name_register / punct_check：同上，tiles 可省；lines:[文字行…] 放出处语句/带标点段落
-  gold_sample / name_pick：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?, fact?, pilot?}
+  name_register：{key, pre(建档|并入已有|不建|不确定), type, std_name, name?, dynasty, src_url?, n, lines[≤8 出处句], cands[{id,name,brief}], route_to?(书名/出版者→A11/A12)}
+  seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
+  punct_check：{key, pre(对|错|存疑), vol, para, anchor(点号在段内下标), text(整个自然段≤450字)}
+  name_pick：{id, type, span, left, right(各 150 字按整句截), pre(实体 id), cands[{id,name,brief,src[]}]}，无图
+  gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?, fact?, pilot?}
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
 """
 from __future__ import annotations
@@ -54,6 +57,7 @@ def render(pt: PageType, data: dict) -> str:
             "kind_names": KIND_NAMES, **data}
     html = _read(pt.template)
     html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", pt.title)) if "/*SHELL*/" in html else html
+    html = html.replace("/*PAGER_JS*/", _read("_pager.js"))
     html = html.replace("/*COMMON_CSS*/", _read("_common.css")).replace("/*COMMON_JS*/", _read("_common.js"))
     return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
 
@@ -88,13 +92,15 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "groups": gs, "hint": hint}
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp),
                 "tiles": sum(len(r["tiles"]) for g in gs for r in g["rows"].values())}
-    elif page_type in ("pair_whitelist", "name_register", "punct_check"):
+    elif page_type in ("pair_whitelist", "name_register", "punct_check", "seg_cause"):
+        items = [dict(g, n=g.get("n") or len(g.get("lines") or [])) if page_type == "name_register" else g for g in items]
         pp = per_page or 6
-        gs = [dict(g, tiles=[[t[0], embed(t[1]), *t[2:]] for t in g.get("tiles", [])]) for g in items]
+        gs = [dict(g, tiles=[[t[0], embed(t[1]), *t[2:]] for t in g.get("tiles", [])],
+                   **({"cells": [dict(c, img=embed(c.get("img"))) for c in g["cells"]]} if "cells" in g else {})) for g in items]
         data = {"book": book, "per_page": pp, "groups": gs, "options": list(pt.options), "hint": hint}
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp)}
     elif page_type in ("gold_sample", "name_pick"):
-        pp = per_page or 10
+        pp = per_page or (6 if page_type == "name_pick" else 10)
         its = [dict(r, img=embed(r.get("img"))) for r in items]
         data = {"book": book, "per_page": pp, "items": its, "hint": hint}
         stat = {"items": len(its), "pages": -(-len(its) // pp)}

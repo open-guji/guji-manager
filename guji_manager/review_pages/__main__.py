@@ -3,6 +3,7 @@
   list                                      页型、版本、用途
   preselect  --cells cells.jsonl --out DIR  预选：三方一致的格归 auto（不上页），其余出 page.jsonl 与统计
   build      TYPE --items items.jsonl --book B --out page.html   出页（一字一卡同时写 page.cards.json）
+  seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   A22 seg_causes → 切分归因卡片
   expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/bad/follow/audit）
   char sheet|pull|ingest ...                冷启动快审页的生成与落库（char_grid；原 ai-team 冷启动快审流程模板）
   ledger     add|summary                    用时与改判台账（--from-results DIR 从结果文档入账）
@@ -39,6 +40,8 @@ def main(argv=None):
     p = sub.add_parser("build"); p.add_argument("type"); p.add_argument("--items", required=True)
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
     p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
+    p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
+    p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
     p = sub.add_parser("expand"); p.add_argument("--cards", required=True); p.add_argument("--results", required=True)
     p.add_argument("--out", required=True)
     p = sub.add_parser("ledger"); p.add_argument("action", choices=["add", "summary"])
@@ -64,6 +67,11 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint), ensure_ascii=False))
+    elif a.cmd == "seg-cards":
+        from . import seg_causes
+        cs = seg_causes.build_cards(a.per_page, a.per_cell)
+        Path(a.out).write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
+        print(f"{len(cs)} 张卡 → {a.out}（img 空；按 cell_shrink 字框裁图后填进每格的 img，再 build seg_cause）")
     elif a.cmd == "expand":
         cs = {c["char"]: c for c in json.loads(Path(a.cards).read_text(encoding="utf-8"))}
         rows = []

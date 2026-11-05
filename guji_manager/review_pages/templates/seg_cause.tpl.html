@@ -1,0 +1,31 @@
+<title>切分归因看图</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:8px 0}
+.opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.opts label{border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+.opts label.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.opts input[type=radio]{margin-right:4px}
+.gk{font:600 18px/1.3 var(--font-ui)}.adv{color:var(--muted);font-size:13px;margin:2px 0}
+select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*//*PAGER_JS*/
+// 按页成卡：该页全部待审格的缩略图（取自 cell_shrink 字框），选一个结论
+makePager({key:"segcause",prefix:"s",all:D.groups.map(g=>Object.assign({id:g.key},g)),per:D.per_page,filterKey:"cause_name",filters:[...new Set(D.groups.map(x=>x.cause_name).filter(Boolean))],
+  hintText:D.hint||"每张卡是一页，格子是该页待审格。看图判断：切分真的错了、切对了只是别的原因（不是切分问题）、特殊页型（表/书衣/职名/名单）、还是看不出。已按成因预选。",
+  draw(g,box,v,save){
+    const pick=()=>v.pick||g.pre;
+    const hd=document.createElement("div");hd.className="gk";hd.textContent=`册 ${g.vol} 第 ${g.page} 页 · ${g.cause_name||g.cause||""} · ${g.cells.length} 格`;
+    const ad=document.createElement("div");ad.className="adv";ad.textContent=[g.advice&&"先怎么办："+g.advice,g.detail,g.flags&&"旗："+g.flags].filter(Boolean).join("　");
+    const tl=document.createElement("div");tl.className="tiles";
+    for(const c of g.cells){const t=document.createElement("div");t.className="tile";t.style.cursor="default";t.title=c.id;const w=document.createElement("div");w.className="img";
+      if(c.img){const im=document.createElement("img");im.src=c.img;im.alt=c.id;w.appendChild(im)}const m=document.createElement("div");m.className="m";m.textContent=(c.reason||"")+" "+c.id.split(":").slice(2).join(":");t.append(w,m);tl.appendChild(t)}
+    const op=document.createElement("div");op.className="opts";
+    for(const o of D.options){const lb=document.createElement("label");const r=document.createElement("input");r.type="radio";r.name="s_"+g.key;r.checked=pick()===o;lb.className=r.checked?"sel":"";lb.append(r,o);
+      r.onchange=()=>{v.pick=o;save();for(const l of op.querySelectorAll("label"))l.className="";lb.className="sel"};op.appendChild(lb)}
+    const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=v.note||"";nt.oninput=()=>{v.note=nt.value;save()};op.appendChild(nt);
+    box.append(hd,ad,tl,op);
+  },
+  doc(g,v){return {id:g.key,key:g.key,pre:g.pre,pick:v.pick||g.pre,vol:g.vol,page:g.page,cause:g.cause||null,kind:g.cause||null,cells:g.cells.map(c=>c.id),note:v.note||""}}});
+</script>
