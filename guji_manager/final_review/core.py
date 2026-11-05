@@ -87,6 +87,16 @@ def nsrc(x: dict, ch: str) -> int:
     return len({s.split("(")[0] for s in x["cands"].get(ch, []) if not s.startswith(("组成员", "护栏对"))})
 
 
+def is_ideograph(ch: str) -> bool:
+    """放行字必须是一个汉字（基本区、扩展 A–G、兼容区、部首区、表意描述符）。整理本缺字的占位（ခ、〓、□、○）、
+    私用区码、换行都不是——它们当「整理本字」时会被两路和参校本一起「认同」而放行（2026-11-05 史記 3 格）。"""
+    if len(ch) != 1:
+        return False
+    o = ord(ch)
+    return (0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF or 0x20000 <= o <= 0x323AF or 0xF900 <= o <= 0xFAFF
+            or 0x2F800 <= o <= 0x2FA1F or 0x2E80 <= o <= 0x2FDF or 0x2FF0 <= o <= 0x2FFF)
+
+
 FOLD_GROUPS = ("己已巳", "日曰")   # 用户 11-05：折叠组内任一字算对，领先量不把组内字当竞争者
 
 
@@ -120,7 +130,7 @@ def gate_ex(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.
 
     1 两路同字且都 high、字在候选里；2 越过参校本只许本书白名单组（Z 类），N/L/P/D 一律只收与参校本同字，
     但 P 类本意就是「取参校本字」，同样只收与参校本同字；3 字形分够或 ≥2 个独立来源；
-    4 L 类若给了 lib_n，选中的字库样本须 >2。
+    4 L 类若给了 lib_n，选中的字库样本须 >2；5 选中的字必须是汉字（整理本缺字占位 ခ／〓／○、私用区码不放行，`not_ideograph`）。
     `glyph`＝(ruling_glyph_min_score, ruling_glyph_min_margin)，来自册 yaml，给了就按「首位、≥t、领先 ≥ margin」判图一致证人
     （不给：命令行 min_score 加前五分，旧口径）。
     `ref_lead`＝{"unseen": 阈值|None, "oov": 阈值|None}（册 yaml `ruling_ref_lead_min_*`）：选中字就是整理本字、且在稀见层
@@ -130,6 +140,8 @@ def gate_ex(x: dict, a: dict, b: dict, over_ref: set[str], min_score: float = 0.
     ch = a["char"]
     if not (a["char"] == b["char"] and a["conf"] == "high" and b["conf"] == "high" and ch in x["cands"]):
         return {"ok": False, "why": "no_double_high"}
+    if not is_ideograph(ch):
+        return {"ok": False, "why": "not_ideograph"}
     ref = x.get("ref_char")
     if ch != ref:
         if not (x["cls"] == "Z" and x.get("group") in over_ref):
