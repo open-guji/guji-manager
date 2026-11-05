@@ -266,3 +266,15 @@ def test_pua_resolver_cached_per_corpus(tmp_path, monkeypatch):
     assert a is b and len(calls) == 1
     reasons.pua_resolver(tmp_path / "other")
     assert len(calls) == 2
+
+
+def test_load_glyph_pending_reads_config_pua(tmp_path):
+    """登记表在数据目录 config/pua/；读不到或坏文件＝空表（全走 ref_lacuna）。"""
+    from guji_manager.review.reasons import load_glyph_pending
+    assert load_glyph_pending(tmp_path) == frozenset()
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "glyph_pending_codes.json").write_text('{"codes": ["daizhige:U+EA96"]}', encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset({"daizhige:U+EA96"})
+    (d / "glyph_pending_codes.json").write_text("{坏", encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset()

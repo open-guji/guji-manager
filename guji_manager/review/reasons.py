@@ -348,18 +348,19 @@ def _default_are_variants():
         return None
 
 
-#: 待收字登记表（私用码表里「已判定待收」的永久编号，一行一个 `来源:码位`）放在语料目录 `daizhige/glyph_pending_codes.json`
-#: （`{"codes": [...]}`）；没有这个文件＝一个都不算，和改前一样。
-GLYPH_PENDING_FILE = "glyph_pending_codes.json"
+#: 待收字登记表（私用码表里「已判定待收」的永久编号，一项一个 `来源:码位`）放在数据目录 `config/pua/glyph_pending_codes.json`
+#: （`{"codes": [...]}`，随 `guji db sync` 进中心库；A31 11-05 定：不放语料版本，免得动 corpus 指纹、触发 CorpusDrift）。
+#: 读不到＝空表＝一个都不算，全走 `ref_lacuna`，和改前一样。
+GLYPH_PENDING_REL = ("config", "pua", "glyph_pending_codes.json")
 
 
-def load_glyph_pending(corpus: Path | str | None = None) -> frozenset[str]:
-    """读待收字登记表；语料目录取不到、文件不在、读不了都返回空集（不猜）。"""
+def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
+    """读待收字登记表；数据目录取不到、文件不在、读不了都返回空集（不猜）。"""
     try:
-        if corpus is None:
+        if data_root is None:
             from .._cv import corpus_dir
-            corpus = corpus_dir()
-        f = Path(corpus) / "daizhige" / GLYPH_PENDING_FILE
+            data_root = Path(corpus_dir()).parent       # 语料目录 `<数据目录>/corpus` 的上一层
+        f = Path(data_root).joinpath(*GLYPH_PENDING_REL)
         return frozenset(json.loads(f.read_text(encoding="utf-8")).get("codes") or [])
     except Exception:  # noqa: BLE001
         return frozenset()
