@@ -8,7 +8,10 @@ function takeSecs(){tick();const s=Math.round(T.secs*10)/10;T.secs=0;return s}
 let DB=null;
 function setSync(t){const e=$("sync");if(e)e.textContent=t}
 async function initDB(onReady){try{DB=await claude.use("db");if(DB&&onReady)await onReady()}catch(e){}}
+// 后台 db 的文档 id 只认 ASCII：字母、数字、下划线原样，其余（中文书名、- 等）按 UTF-8 字节写成 -xx，一一对应不撞号
+function safeId(s){return Array.from(new TextEncoder().encode(String(s)),b=>/[A-Za-z0-9_]/.test(String.fromCharCode(b))?String.fromCharCode(b):"-"+b.toString(16).padStart(2,"0")).join("")}
 async function saveDoc(id,doc){
+  id=safeId(id);
   doc=Object.assign({page_type:TPL.type,tpl_version:TPL.version,book:D.book},doc);
   if(!DB){setSync("未联网存档（只存在本浏览器）");return}
   try{await DB.doc((D.coll||"review")+"/"+id).set(doc);setSync("已存后台 · "+id)}

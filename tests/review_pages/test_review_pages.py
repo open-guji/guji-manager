@@ -252,3 +252,18 @@ def test_cli_build_exclude(tmp_path, capsys):
     ex = tmp_path / "x.txt"; ex.write_text("1:0:1:1\n", encoding="utf-8")
     main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(tmp_path / "p.html"), "--exclude", str(ex)])
     assert '"excluded": 1' in capsys.readouterr().out
+
+
+def test_common_js_safe_id():
+    """后台 db 的 id 只认 ASCII：saveDoc 先过 safeId（中文书名 → -xx 字节）"""
+    import shutil, subprocess
+    from pathlib import Path
+    js = (Path(__file__).parents[2] / "guji_manager/review_pages/templates/_common.js").read_text(encoding="utf-8")
+    assert "id=safeId(id)" in js
+    if not shutil.which("node"):
+        return
+    fn = next(l for l in js.splitlines() if l.startswith("function safeId"))
+    out = subprocess.run(["node", "-e", fn + ';for(const s of ["c_b史記_p0","c_b988g3f0wsu_p1","a-b"])console.log(safeId(s))'],
+                         capture_output=True, text=True, check=True).stdout.split()
+    assert out[1] == "c_b988g3f0wsu_p1" and out[2] == "a-2db"
+    assert out[0].isascii() and out[0].startswith("c_b-e5-8f-b2") and out[0].endswith("_p0")
