@@ -25,8 +25,10 @@ def test_unknown_when_no_rule_hits():
 
 
 def test_review_states_first():
-    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，请核")
+    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，推翻人裁，请核")
     assert _cls([c]) == [R.MACHINE_CHANGED]
+    old = Cell(id="v:1:1:4", char="已", ref="己", recheck=True, note="机器改判「□」→「已」，无人裁，请核")
+    assert _cls([old]) == [R.RECHECK]      # 11-05 前老单的无人裁复审格不算 X03
     c2 = Cell(id="v:1:1:2", char="甲", ref="甲", recheck=True, note="旧裁 山，新票 由")
     assert _cls([c2]) == [R.RECHECK]
     assert _cls([Cell(id="v:1:1:3", char="甲", ref="甲", doubts=["src_code_conflict"])]) == [R.RULING_CONFLICT]
@@ -111,7 +113,7 @@ def test_reasons_for_pending_and_stamp(tmp_path):
            {"id": "vol9:1:1:2", "admit": True, "char": "乙"}],
           align={"chars": [{"id": "vol9:1:1:1", "align_char": "甲", "align_op": "equal"}]})
     doc = {"cells": [{"cell": "1:1:1", "why": ["occluded"]},
-                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」"},
+                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」，推翻人裁，请核"},
                      {"cell": "8:8:8", "why": []}]}
     res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False)
     n = stamp(doc, res)

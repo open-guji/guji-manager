@@ -31,6 +31,8 @@ PAGE_MIN, COL_MIN = 10, 5
 COL_AGREE_MAX = 0.5
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
+#: 11-05 起（cv #1148）只有「机器推翻最新人裁」才进复审，说明里带这几个字；老单上「机器改判…，无人裁」的复审格不算 X03，归 recheck。
+MACHINE_OVERRULE_MARK = "推翻人裁"
 
 _GARBLE = {"ctx_garble_shape", "shadow_veto", "ctx_garble_rare"}
 _NEAR = {"near_form", "solo_confusable", "iron_confusable_ref"}
@@ -151,7 +153,7 @@ def _group_kind(c: Cell) -> R | None:
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
     R.VISION_FLAGGED: lambda c, x: "vision_flag" in c.codes,
-    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE),
+    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
