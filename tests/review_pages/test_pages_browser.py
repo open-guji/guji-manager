@@ -123,7 +123,7 @@ def test_other_pages_click_save_no_errors(browser, tmp_path):
         "codepoint": ([dict(key="g1", chars=["為", "爲"], pre="unify:爲", rows={"為": {"tiles": [["1:1:1:1", str(img)]]}, "爲": {}})], ".opt:nth-of-type(3)"),
         "pair_whitelist": ([dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])], "label:has-text('同字')"),
         "seg_cause": ([dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id": "v:1:1:1", "img": str(img)}])], "label:has-text('特殊页型')"),
-        "closeout": ([dict(id="S02", label="切分", n=12, pre="再处理")], "label:has-text('人审底')"),
+        "closeout": ([dict(id="S02", label="切分", n=12, pre="算法再处理")], "label:has-text('留人审')"),
     }
     for t, (items, sel) in cases.items():
         out = tmp_path / f"{t}.html"
