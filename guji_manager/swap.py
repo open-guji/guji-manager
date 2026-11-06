@@ -147,11 +147,12 @@ def publish_batch(books: list[str], text_id: str) -> str:
         time.sleep(45)
 
 
-def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path) -> None:
+def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path, book_text: Path | None = None) -> None:
     """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
 
     全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
     from .cli_db import sync_workspace
+    audit_books(ws, done, book_text, text_id, state, sp)          # 产物包核过就清，所以在发布前出机器改字抽检数据
     sync_workspace(ws, admit=False, no_glyph=True)
     concl = publish_batch(done, text_id)
     for b in done:
@@ -162,6 +163,27 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
             for p in (ws / "_packs").glob(f"*/{b}"):
                 shutil.rmtree(p, ignore_errors=True)
     save_state(sp, state)
+
+
+def audit_books(ws: Path, books: list[str], book_text: Path | None, text_id: str, state: dict, sp: Path) -> None:
+    """机器改字抽检（A31 11-06 定，每次换单报告固定附）：数据存进 state，最后一并写 md／tsv。读不全的册记 audit=None，不挡发布。"""
+    if not book_text:
+        return
+    from .machine_audit import audit_book
+    for b in books:
+        try:
+            r = audit_book(ws, b, Path(book_text), text_id)
+        except Exception as e:  # noqa: BLE001 —— 抽检出不来不能挡换单
+            print(f"{b} 机器改字抽检失败：{e}", file=sys.stderr)
+            r = None
+        state["books"][b]["audit"] = r
+    save_state(sp, state)
+
+
+def write_audit_report(ws: Path, state: dict) -> Path | None:
+    from .machine_audit import write_report
+    res = {b: v["audit"] for b, v in state["books"].items() if v.get("audit")}
+    return write_report(ws, res, "机器改字抽检表-" + time.strftime("%Y%m%d-%H%M")) if res else None
 
 
 def cmd_run(a) -> int:
@@ -183,7 +205,7 @@ def cmd_run(a) -> int:
         return 0
     for chunk in chunks(pub_only, a.batch_size):
         precheck(ws, state)
-        publish_and_verify(ws, chunk, text_id, state, sp)
+        publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text))
     for chunk in chunks(todo, a.batch_size):
         precheck(ws, state)                                  # 每批之间再核一次账本与磁盘
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
@@ -200,7 +222,10 @@ def cmd_run(a) -> int:
         done = [b for b in chunk if state["books"][b]["status"] == "done"]
         if not done:
             continue
-        publish_and_verify(ws, done, text_id, state, sp)
+        publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text))
+    rep = write_audit_report(ws, state)
+    if rep:
+        print(f"机器改字抽检表：{rep}", file=sys.stderr)
     left = {k: v for k, v in state["books"].items() if v["status"] != "verified"}
     print(json.dumps({"verified": sorted(k for k, v in state["books"].items() if v["status"] == "verified"),
                       "left": {k: v["status"] for k, v in left.items()}}, ensure_ascii=False))
@@ -209,7 +234,7 @@ def cmd_run(a) -> int:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("swap", help="换单 driver：出新单→同步→分批发布→核线上→清盘（断点续跑）")
-    p.add_argument("action", choices=["run"])
+    p.add_argument("action", choices=["run", "audit"])
     p.add_argument("--books", required=True, help="如 vol20-vol99 或 vol23,vol24")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True)
@@ -220,8 +245,24 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--dry-run", action="store_true")
 
 
+def cmd_audit(a) -> int:
+    """只出机器改字抽检表：对已换完的册（产物包还在才读得到整理本字）。``guji swap audit --books vol20-vol30 …``"""
+    from .machine_audit import audit_book, write_report
+    ws = Path(a.workspace).resolve()
+    res = {}
+    for b in parse_books(a.books):
+        r = audit_book(ws, b, Path(a.book_text), a.text_id)
+        if r:
+            res[b] = r
+        else:
+            print(f"{b} 读不全（没有导出／产物包已清／book-text 无历史），跳过", file=sys.stderr)
+    if res:
+        print(write_report(ws, res, "机器改字抽检表-" + time.strftime("%Y%m%d-%H%M")))
+    return 0 if res else 1
+
+
 def cmd_swap(args) -> int:
-    return cmd_run(args)
+    return cmd_audit(args) if args.action == "audit" else cmd_run(args)
 
 
 COMMANDS = {"swap": (add_parser, cmd_swap)}
