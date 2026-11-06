@@ -456,3 +456,25 @@ def test_variant_pair_narrowed():
     # 不给分型（旧 cv）：T3 也照旧算
     ctx2 = build_context(cells, lib_n=lambda ch: 50, are_variants=var)
     assert classify(cells[2], ctx2) is R.VARIANT_PAIR
+
+def test_lib_unrecognized_kind_detail():
+    """L04 细分（A23 11-06）：按 ref_lib_coord 逐关看哪一关没过。"""
+    from guji_manager.review.reasons import detail_of, lib_unrecognized_kind
+    mk = lambda **kw: Cell(id="v:1:1:1", char="全", ref="全", **kw)
+    cases = {
+        "lib_other": mk(cands=[["今", 0.988], ["全", 0.969]], doubts=["ctx_guard_ref"]),
+        "human_unbound": mk(cands=[["全", 0.97]], doubts=["human_unbound"], evidence={"human_unbound": {"char": "所"}}),
+        "doubt_blocked": mk(cands=[["全", 0.97]], doubts=["库 unsure(cov=0.970)", "coord_conflict"]),
+        "low_cov": mk(cands=[["全", 0.95]], doubts=["库 unsure(cov=0.950)"]),
+        "near_rival": mk(cands=[["全", 0.97], ["仝", 0.965]]),
+        "clear": mk(cands=[["全", 0.97], ["今", 0.93]], doubts=["库 unsure(cov=0.970)", "上下文 margin 不足(0.02)", "context_page_end"]),
+    }
+    assert {k: lib_unrecognized_kind(c) for k, c in cases.items()} == {k: k for k in cases}
+    # 人裁绑丢但旧裁字就是本格字：不拦（ref_lib_coord 也放）
+    assert lib_unrecognized_kind(mk(cands=[["全", 0.97]], doubts=["human_unbound"], evidence={"human_unbound": {"char": "全"}})) == "clear"
+    assert lib_unrecognized_kind(mk()) == "lib_other"                        # 没有库候选
+    assert detail_of(R.LIB_UNRECOGNIZED, cases["low_cov"]) == "low_cov:全"
+    # 紧咬的是参校字的异体：给了异体判断就不算 near_rival
+    from guji_manager.review.reasons import Context
+    av = Context(are_variants=lambda a, b: {a, b} == {"全", "仝"})
+    assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"

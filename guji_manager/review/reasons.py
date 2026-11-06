@@ -288,6 +288,44 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
     return "own_has" if own else ("own_zero_borrow_has" if borrowed else "all_zero")
 
 
+#: 「库认不出」细分（A23，sheldon 11-06「理清 L04 流程」）：作 lib_unrecognized 的 pending_reason_detail，写成 ``<细分>:<整理本字>``，
+#: 不新增取值。L04 是兜底：有参校字、机器字＝参校字、前面各条都没中。三书看图（ai-team 待审原因深挖/L04-库认不出.md）这样的格
+#: 停下来的原因只有几种，对着 seed_admit 的 ``ref_lib_coord``（参校字＝库首位＝本格字就放）逐条看是哪一关没过，按先后取第一个：
+#:   lib_other      库首位不是参校字（多是糊墨，库认成笔画少的形近字，如 畫→書、全→今）：只能看图
+#:   human_unbound  人裁绑丢、旧裁字与本格字不同（锚点漂移）：重锚或作废那条人裁事件
+#:   doubt_blocked  带 ref_lib_coord 白名单以外的疑问码（如 coord_conflict）：看那个疑问
+#:   low_cov        库首位＝参校字，但 cov < LIB_UNREC_COV（糊墨／印淡，殿本 ref_lib_coord 门槛）
+#:   near_rival     库首位＝参校字，但另有别的字紧咬（差 < LIB_UNREC_GAP）
+#:   clear          以上都没有：按 ref_lib_coord 该放，没放是因为这本书／这版单没开它（看单子出自哪版 cv、册 yaml 开没开）
+#: 门槛与白名单取殿本 ``ref_lib_coord`` 的口径（cv seed_admit ``ref_lib_coord_cov/gap``、``_REF_LIB_COORD_DOUBTS``）；
+#: 开了 ``reference_trust`` 的书（史記）门槛更松，这里的 low_cov／near_rival 对它偏严，只作分档，不作判定。
+LIB_UNREC_KINDS = ("lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
+LIB_UNREC_COV, LIB_UNREC_GAP = 0.96, 0.01
+#: cv ``_REF_LIB_COORD_DOUBTS`` 里的码（中文说明「库 unsure」「上下文 margin 不足」等不是码，doubt_codes 本来就不取）。
+#: ``context_page_end`` 由 cv #1184 后续 PR 加入（A31 11-06 裁定），这里先认。
+REF_LIB_COORD_OK_CODES = frozenset({"ctx_guard_ref", "context_variant_form", "group_flow_abstain", "group_flow_joint",
+                                    "group_flow_ref_dissent", "group_flow_coord_dissent", "human_unbound",
+                                    "lane_coord_fallback", "near_form", "context_page_end"})
+
+
+def lib_unrecognized_kind(c: Cell, ctx: Context | None = None) -> str:
+    """lib_unrecognized 细分（见 ``LIB_UNREC_KINDS``）。给了 ``ctx.are_variants`` 时，紧咬的对手是参校字的异体不算（同 cv 按语义比）。"""
+    if not c.cands or c.top != c.ref:
+        return "lib_other"
+    h = (c.evidence or {}).get("human_unbound") or {}
+    if "human_unbound" in c.codes and h.get("char") and h.get("char") != c.char:
+        return "human_unbound"
+    if c.codes - REF_LIB_COORD_OK_CODES:
+        return "doubt_blocked"
+    top = float(c.cands[0][1])
+    if top < LIB_UNREC_COV:
+        return "low_cov"
+    same = (ctx.are_variants if ctx is not None and ctx.are_variants else (lambda a, b: False))
+    if any(x and x != c.ref and not same(c.ref, x) and top - float(v) < LIB_UNREC_GAP for x, v, *_ in c.cands[1:6]):
+        return "near_rival"
+    return "clear"
+
+
 def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     """给人看的一点细节（字对、组 id、页号），不是判定依据。"""
     if reason is R.SEG_DEFECT:
@@ -307,7 +345,9 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return f"{c.ref or ''}>{c.char or ''}"
     if reason is R.GLYPH_PENDING:
         return c.pua_code or ""
-    if reason in (R.LIB_SPARSE_AGREE, R.LIB_UNRECOGNIZED):
+    if reason is R.LIB_UNRECOGNIZED:
+        return f"{lib_unrecognized_kind(c, ctx)}:{c.ref or ''}"
+    if reason is R.LIB_SPARSE_AGREE:
         return c.ref or ""
     return ""
 
