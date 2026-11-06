@@ -64,11 +64,68 @@ def render(pt: PageType, data: dict) -> str:
         raise SystemExit(f"页型 {pt.key} 还没有模板")
     data = {"page_type": pt.key, "tpl_version": pt.version, "coll": pt.doc_prefix,
             "kind_names": KIND_NAMES, **data}
-    html = _read(pt.template)
+    html = _read(pt.template).replace("/*FONT_CSS*/", data.pop("font_css", ""))
     html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", pt.title)) if "/*SHELL*/" in html else html
     html = html.replace("/*PAGER_JS*/", _read("_pager.js")).replace("/*STORE_JS*/", _read("_store.js"))
     html = html.replace("/*COMMON_CSS*/", _read("_common.css")).replace("/*COMMON_JS*/", _read("_common.js"))
     return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
+
+
+FONT_NAMES = ["I.Ming-8.10.ttf", "Jigmo.ttf", "Jigmo2.ttf", "Jigmo3.ttf"]   # cv fonts/ 下：I.Ming(IPA)、Jigmo(CC0)，按此顺序补字
+
+
+def default_fonts(font_dir) -> list[str]:
+    out = []
+    for n in FONT_NAMES:
+        for sub in ("iming", "jigmo", ""):
+            p = Path(font_dir) / sub / n
+            if p.exists():
+                out.append(str(p)); break
+    return out
+
+
+def _strings(o):
+    if isinstance(o, str):
+        if not o.startswith("data:"):
+            yield o
+    elif isinstance(o, dict):
+        for k, v in o.items():
+            if k not in ("img", "ref_img", "strip"):
+                yield from _strings(k); yield from _strings(v)
+    elif isinstance(o, (list, tuple)):
+        for v in o:
+            yield from _strings(v)
+
+
+def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
+    """本页用到的字（候选、说明、上下文、预选字）按给定字体顺序子集化成 woff2，base64 内嵌，排在 --font-glyph 最前。
+    返回（CSS，所有字体都没有的字）；没有 fonttools/brotli 时返回空 CSS 并把缺字当作全部（页上改显码位）。"""
+    import base64, io
+    chars = sorted({c for t in _strings(data) for c in t if ord(c) >= 0x2E80 and not 0xE000 <= ord(c) <= 0xF8FF
+                    and not 0xF0000 <= ord(c) <= 0x10FFFF and not 0xFE00 <= ord(c) <= 0xFE0F})
+    try:
+        from fontTools.ttLib import TTFont
+        from fontTools import subset as ftsub
+    except ImportError:
+        return "", chars
+    left, css, fam = set(chars), [], []
+    for i, fp in enumerate(fonts):
+        if not left:
+            break
+        f = TTFont(fp, lazy=True)
+        cm = f.getBestCmap()
+        have = sorted(c for c in left if ord(c) in cm)
+        if not have:
+            continue
+        opt = ftsub.Options(); opt.flavor = "woff2"; opt.layout_features = ["*"]; opt.notdef_outline = False
+        sub = ftsub.Subsetter(opt); sub.populate(text="".join(have)); sub.subset(f)
+        buf = io.BytesIO(); f.flavor = "woff2"; f.save(buf)
+        css.append("@font-face{font-family:GujiSub%d;src:url(data:font/woff2;base64,%s) format('woff2')}" % (i, base64.b64encode(buf.getvalue()).decode()))
+        fam.append("GujiSub%d" % i)
+        left -= set(have)
+    if fam:
+        css.append(":root{--font-glyph:%s,\"Noto Serif SC\",\"Songti SC\",\"SimSun\",serif}" % ",".join(fam))
+    return "".join(css), sorted(left)
 
 
 def read_ids(paths) -> set[str]:
@@ -91,7 +148,8 @@ def read_ids(paths) -> set[str]:
 
 def build(page_type: str, items: list[dict], book: str, out, per_page: int | None = None, k: int = 5,
           hint: str | None = None, exclude: set[str] | None = None, mode: str | None = None, root=None,
-          include_labeled: bool = False, box: int | None = None, rest_ok: bool = True) -> dict:
+          include_labeled: bool = False, box: int | None = None, rest_ok: bool = True,
+          fonts: list[str] | None = None) -> dict:
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。
     rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。"""
     pt = get(page_type)
@@ -117,9 +175,12 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     if page_type == "char_card":
         rows = [dict(r, img=embed(r.get("img")), **({"ref_img": embed(r["ref_img"])} if r.get("ref_img") else {})) for r in items]
         cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
-        pp = per_page or 8
+        pp = per_page or (24 if not rest_ok else 8)
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
                 "n_excluded": n0 - len(items)}
+        if fonts:   # 本页用到的字子集化内嵌（1.5.1）；字体都没有的字页上显示码位，不留空白
+            font_css, nofont = font_subset_css({"cards": cs}, fonts)
+            data["font_css"], data["nofont"] = font_css, nofont
         stat = {"cards": len(cs), "cells": data["n_cells"], "shown": sum(len(c["samples"]) for c in cs),
                 "pages": -(-len(cs) // pp)}
         (Path(out).with_suffix(".cards.json")).write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
