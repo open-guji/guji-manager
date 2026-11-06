@@ -297,7 +297,19 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.4.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+
+
+def test_char_card_ref_img(tmp_path):
+    """1.5：ref_img（维基 SKQS 标准图）与本书切图并排；没给 ref_img 的格不受影响。"""
+    from guji_manager.review_pages.build import build
+    img = tmp_path / "a.png"; img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    ref = tmp_path / "ref.svg"; ref.write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    items = [dict(id="vol01:1:1:1", pre="卿", img=str(img), ref_img=str(ref), ref_label="维基 SKQS_2711"),
+             dict(id="vol01:1:1:2", pre="卿", img=str(img))]
+    build("char_card", items, "96mid1ogzk", tmp_path / "p.html")
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "维基 SKQS_2711" in html and "data:image/svg+xml;base64," in html and "s.ref_img" in html
 
 
 def test_cli_build_no_rest_ok(tmp_path, capsys):

@@ -5,6 +5,7 @@
 ## [未发版]
 
 - 新命令 `guji cellvotes rebase`（PATCH，A20）：页号格号不变的换图源（殿本四庫總目换文淵閣本）后，人裁事件锚里的框按页表 `from_rev.H` 换到新页、`source_rev` 改新 rev，出 `~r` 事件、待办清单和报告（只读，不写库）；旧页图 sha 与新页表 `from_rev.sha256` 对不上的不迁。逻辑 `feedback/source_rebase.py`，说明见 `doc/案例/殿本四库总目.md`。
+- 人审页 `char_card` 1.5.0（MINOR 外观，A24，私用码映射第一步）：items 可带 `ref_img`（标准字形图，如维基 SKQS 僻字图）和 `ref_label`，格上与本书切图并排显示、各带小字；不带的格不变。
 
 ## [0.4.15] - 2026-11-05
 
