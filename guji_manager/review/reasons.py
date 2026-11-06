@@ -35,7 +35,6 @@ MACHINE_CHANGED_NOTE = "机器改判"
 MACHINE_OVERRULE_MARK = "推翻人裁"
 
 _GARBLE = {"ctx_garble_shape", "shadow_veto", "ctx_garble_rare"}
-_NEAR = {"near_form", "solo_confusable", "iron_confusable_ref"}
 _VARIANT = {"ref_lib_variant", "variant_indirect", "replace_form", "channel_off"}
 
 
@@ -167,6 +166,34 @@ def _hard_pair(c: Cell, x: Context) -> bool:
     return gid in HARD_GROUPS or (len(top2) == 2 and set(top2) <= HARD_CHARS)
 
 
+def _near_pairs() -> frozenset[tuple[str, str]]:
+    """cv 手工形近表 NEVER_MATCH_FAMILIES（无序对）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
+    global _NEAR_PAIRS
+    if _NEAR_PAIRS is None:
+        try:
+            from .._cv import NEVER_MATCH_FAMILIES
+            _NEAR_PAIRS = frozenset(tuple(sorted(p)) for p in NEVER_MATCH_FAMILIES if len(p) == 2)
+        except Exception:  # noqa: BLE001 —— 没装 cv 时不挡分类
+            _NEAR_PAIRS = frozenset()
+    return _NEAR_PAIRS
+
+
+_NEAR_PAIRS: frozenset[tuple[str, str]] | None = None
+
+
+def _near_form(c: Cell, x: Context) -> bool:
+    """形近护栏（A24 N01 深挖 11-06 收窄）：库护栏 conflict／never_match，或参校字与（机器字、库候选前三）里某字
+    构成手工形近表里的一对。原先只要疑问码有 near_form（家族字碰巧排进候选前三）就算，约九成其实是库认不出，
+    现在落到后面的 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等。只改分类，不放行。"""
+    if c.evidence.get("guard") in ("conflict", "never_match"):
+        return True
+    if not c.has_ref:
+        return False
+    pairs = _near_pairs()
+    others = {c.char, *(cd[0] for cd in c.cands[:3] if cd)}
+    return any(o and o != c.ref and tuple(sorted((c.ref, o))) in pairs for o in others)
+
+
 #: 每条原因的判法；按 yaml 的 priority 依次试。没有判法的原因（如 col_width_out_of_band 还没接）永远不中。
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
@@ -195,7 +222,7 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE),
     R.REF_GAP: lambda c, x: not c.ref,
     R.VARIANT_PAIR: _variant_with_ref,
-    R.NEAR_FORM_GUARD: lambda c, x: c.evidence.get("guard") in ("conflict", "never_match") or bool(c.codes & _NEAR),
+    R.NEAR_FORM_GUARD: _near_form,
     R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
     R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
     R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
