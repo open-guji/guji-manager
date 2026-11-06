@@ -237,3 +237,26 @@ def test_carry_ids_across_known_recrop(store):
     new2 = copy.deepcopy(new)
     new2["image"].pop("region")
     assert gp.carry_ids(old, new2)["kept"] == 0
+
+
+def test_canvas_id_keeps_padded_volume():
+    """册号位数按全书册数定（11-02）：全唐文册 `005` 的 canvas 是 `/canvas/005/…`；整数仍补 2 位。"""
+    from guji_manager.formats import guji_page as gp
+    assert gp.canvas_id("995ejelvk0", "005", "0001", base="https://x/iiif").endswith("/995ejelvk0/canvas/005/0001")
+    assert gp.canvas_id("96mid1ogzk", 4, "0105c", base="https://x/iiif").endswith("/canvas/04/0105c")
+    assert gp.canvas_id("988g3f0wsu", "01", "0001", base="https://x/iiif").endswith("/canvas/01/0001")
+    page = {"volume": {"index": 5}, "canvas": {"id": "https://x/iiif/995ejelvk0/canvas/005/0001", "seq": "0001",
+                                               "width": 10, "height": 10}}
+    assert gp._check_canvas(page) == []
+    page["canvas"]["id"] = "https://x/iiif/995ejelvk0/canvas/006/0001"
+    assert gp._check_canvas(page)
+
+
+def test_cv_canvas_uses_padded_cv_book():
+    """导出器：册名是补好位的数字（全唐文 `005`）就用它当 canvas 册号段；殿本 vol04 仍是 04。"""
+    from guji_manager.formats.guji_page_cv import _canvas
+    img = {"width": 100, "height": 200}
+    for cvb, idx, want in (("005", 5, "/canvas/005/0003"), ("vol04", 4, "/canvas/04/0003"), ("01", 1, "/canvas/01/0003")):
+        meta = {"book": {"id": "bk00000001"}, "volume": {"index": idx, "cv_book": cvb}}
+        c = _canvas(meta, 3, dict(img), [], {})
+        assert c["id"].endswith(want), c["id"]
