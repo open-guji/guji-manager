@@ -69,6 +69,20 @@ def ledger_problem(now: dict[str, int], baseline: dict[str, int] | None) -> str 
     return None
 
 
+def data_problem(dd: Path) -> str | None:
+    """出单要读的两样数据在不在（A31 11-06）：待收字登记表和语料。缺了 R03 待收字会被统计成 R01
+    （出单报告 ``glyph_pending_registry_missing`` 会是 1），所以开跑前就核，缺了先 ``guji db pull``。"""
+    from .review.reasons import GLYPH_PENDING_REL
+    miss = []
+    reg = Path(dd).joinpath(*GLYPH_PENDING_REL)
+    if not reg.exists() or reg.stat().st_size == 0:
+        miss.append("config/pua/glyph_pending_codes.json（待收字登记表）")
+    corpus = Path(dd) / "corpus" / "daizhige"
+    if not corpus.is_dir() or not any(corpus.glob("*.jsonl")):
+        miss.append("corpus/daizhige/（语料）")
+    return f"数据目录 {dd} 缺：{'、'.join(miss)}。先 guji db pull" if miss else None
+
+
 def precheck(ws: Path, state: dict) -> None:
     from .datastore.workcopy import data_dir
     if not os.environ.get("GUJI_ACTOR"):
@@ -76,6 +90,9 @@ def precheck(ws: Path, state: dict) -> None:
     free = shutil.disk_usage(ws).free / 2 ** 30
     if free < MIN_FREE_GB:
         raise SystemExit(f"磁盘只剩 {free:.1f}GB（要 ≥ {MIN_FREE_GB}GB）：先清 _packs／cache／旧 exports")
+    bad = data_problem(data_dir(ws))
+    if bad:
+        raise SystemExit(bad)
     now = ledger_counts(data_dir(ws))
     bad = ledger_problem(now, state.get("ledger_baseline"))
     if bad:
