@@ -20,7 +20,7 @@ class PageType:
 
 
 PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
-    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.4.0",
+    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.5.3",
              "L01、L03 冷启动；同字头一张卡，看 3–5 个样例，其余跟随；逐格点选（切分/改字/看不清/对），每点即存"),
     PageType("char_grid", "字形快审表（全对点错）", "char_grid.tpl.html", "1.2.0",
              "参校字＝库首位的格；默认全对只点不对（史记冷启动 GUJI-750）"),
@@ -49,9 +49,9 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "切分字块验收（列端框线等）；单块或同格新旧两版同倍放大并排，按字块 sha 锚定；"
              "输入可直接用 dataset 金标信封（如 frame-end-crop），结果用 gq-apply 回写（见 glyph_quality.py）",
              options=("clean", "frame", "cut", "unsure"), doc_prefix="review_glyph"),
-    PageType("closeout", "收口单", "closeout.tpl.html", "1.0.0",
-             "判停（R5）；每类剩余格一行，定去向：人审底／留后／精校待办／再处理，合计即收口单",
-             options=("人审底", "留后", "精校待办", "再处理"), doc_prefix="review_closeout"),
+    PageType("closeout", "收口单", "closeout.tpl.html", "1.2.0",
+             "判停（R5）；每类剩余格一行，定去向：放行／留人审／算法再处理，合计即收口单；还有「算法再处理」就不出 v0.1",
+             options=("放行", "留人审", "算法再处理"), doc_prefix="review_closeout"),
 ]}
 
 

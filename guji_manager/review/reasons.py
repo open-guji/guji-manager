@@ -31,6 +31,8 @@ PAGE_MIN, COL_MIN = 10, 5
 COL_AGREE_MAX = 0.5
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
+#: 11-05 起（cv #1148）只有「机器推翻最新人裁」才进复审，说明里带这几个字；老单上「机器改判…，无人裁」的复审格不算 X03，归 recheck。
+MACHINE_OVERRULE_MARK = "推翻人裁"
 
 _GARBLE = {"ctx_garble_shape", "shadow_veto", "ctx_garble_rare"}
 _NEAR = {"near_form", "solo_confusable", "iron_confusable_ref"}
@@ -151,7 +153,7 @@ def _group_kind(c: Cell) -> R | None:
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
     R.VISION_FLAGGED: lambda c, x: "vision_flag" in c.codes,
-    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE),
+    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
@@ -177,9 +179,9 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.NEAR_FORM_GUARD: lambda c, x: c.evidence.get("guard") in ("conflict", "never_match") or bool(c.codes & _NEAR),
     R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
     R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
-    R.REF_REPLACED: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
+    R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
     R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
-    R.REF_MISMATCH: lambda c, x: c.has_ref and c.char != c.ref,
+    R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
 }
 
 
@@ -242,7 +244,7 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return str(c.group.get("id") or "")
     if reason in (R.HARD_PAIR, R.NEAR_FORM_GUARD, R.VARIANT_PAIR):
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
-    if reason in (R.REF_REPLACED, R.REF_MISMATCH, R.LIB_SPARSE_DISSENT):
+    if reason in (R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.LIB_SPARSE_DISSENT):
         return f"{c.ref or ''}>{c.char or ''}"
     if reason is R.GLYPH_PENDING:
         return c.pua_code or ""
@@ -395,6 +397,43 @@ def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
         return frozenset()
 
 
+#: 私用码码表（A24 11-06，一行一码：code「来源:码位」、verdict char/not_char/pending/open、char、orig、variant、cands…），
+#: 和登记表同在数据目录 `config/pua/`，随 `guji db sync` 进中心库，不进指纹。现在只读、只在出单统计里报数，
+#: **不参与原因判法**；登记表 `glyph_pending_codes.json` 由它导出，两份并存。
+PUA_TABLE_REL = ("config", "pua", "pua_table.jsonl")
+
+
+def load_pua_table(data_root: Path | str | None = None) -> dict[str, dict]:
+    """读私用码码表 → `{code: 行}`；数据目录取不到、文件不在返回空表，坏行跳过（不猜）。"""
+    try:
+        if data_root is None:
+            from .._cv import data_root as _data_root
+            data_root = _data_root()
+        text = Path(data_root).joinpath(*PUA_TABLE_REL).read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, dict] = {}
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("code"):
+            out[str(row["code"])] = row
+    return out
+
+
+def pua_table_stats(table: dict[str, dict], glyph_pending: frozenset[str]) -> Counter:
+    """码表的出单报数：总码数、各 verdict 数、登记表里有但码表不是 pending 的码数（两份应一致，不一致要报）。"""
+    n: Counter = Counter()
+    n["pua_table_codes"] = len(table)
+    for row in table.values():
+        n[f"pua_table_{row.get('verdict') or 'none'}"] += 1
+    if table:
+        n["pua_table_registry_mismatch"] = sum(1 for c in glyph_pending if (table.get(c) or {}).get("verdict") != "pending")
+    return n
+
+
 _RESOLVERS: dict[str, Callable[[str, str], str | None] | None] = {}
 
 
@@ -451,6 +490,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         glyph_pending = load_glyph_pending()
         if not glyph_pending and stats is not None:
             stats["glyph_pending_registry_missing"] = 1   # 登记表没读到：全走 ref_lacuna，出单报告要提示
+    if stats is not None:       # 码表只读报数，不影响判法
+        stats.update(pua_table_stats(load_pua_table(), glyph_pending))
     if glyph_pending:           # 登记表是空的就不必回查（和改前一样，没有任何变化）
         if pua_resolve is None:
             pua_resolve = pua_resolver()

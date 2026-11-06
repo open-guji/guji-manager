@@ -4,6 +4,28 @@
 
 ## [未发版]
 
+- 待审原因 P01、P02 改英文名（PATCH，QTW；Sheldon 11-06 嫌旧名看不出区别）：P01 `ref_replaced`→`ref_ocr_diff`（识别字与参校本不同：Step6 对位时识别字就≠参校字），P02 `ref_mismatch`→`ref_final_diff`（定字与参校本不同：对位相同、最后定字≠参校字），中文名、hint、说明文件夹跟着改。码不变；yaml 新增 `renamed`，`parse()` 和 `--json` 导出带旧名映射，旧单、旧事件照认。网站／控制台 `pendingReasons.ts` 副本要重新导出同步。
+
+- 人审页 `char_card` 1.5.3（PATCH，A24；Sheldon 11-06 反馈）：样本没有本书切图（`img` 为空）时不再渲染空图，改显灰框「本书无切图（没对上 v2）」，其余（维基图、上下文、输入框）照常；存档键只看前两段，已点的不丢。
+
+- 人审页 `char_card` 1.5.2（PATCH，A24；Sheldon 11-06）：难认字页每格「这格是什么字」和「认不出：部件／IDS」两个输入框常显，认不出的字可直接输入；输入即存，规则同前（填字＝改字，填部件＝认不出＋部件）。
+
+- 人审页 `char_card` 1.5.1（PATCH 外观，A24；Sheldon 11-06 反馈）：①`--font`／`--font-dir`（cv 的 fonts/）把本页用到的字按 I.Ming→Jigmo 三档子集化成 woff2 内嵌，排在 `--font-glyph` 最前，不依赖外网；字体都没有的字页上改显码位（U+XXXXX），不留空白；没装 fonttools 时不嵌字体。②难认字页（`--no-rest-ok`）卡片改网格排（列宽 ≥250px，宽屏 5 列），卡头压成一行，上下文／说明字号再小一档，`per_page` 缺省 24（原 8）；存档键只看 tpl_version 前两段，已点的不丢。
+
+- 新命令 `guji cellvotes rebase`（PATCH，A20）：页号格号不变的换图源（殿本四庫總目换文淵閣本）后，人裁事件锚里的框按页表 `from_rev.H` 换到新页、`source_rev` 改新 rev，出 `~r` 事件、待办清单和报告（只读，不写库）；旧页图 sha 与新页表 `from_rev.sha256` 对不上的不迁。逻辑 `feedback/source_rebase.py`，说明见 `doc/案例/殿本四库总目.md`。
+- 人审页 `char_card` 1.5.0（MINOR 外观，A24，私用码映射第一步）：items 可带 `ref_img`（标准字形图，如维基 SKQS 僻字图）和 `ref_label`，格上与本书切图并排显示、各带小字；不带的格不变。
+
+## [0.4.15] - 2026-11-05
+
+- 人审页 `closeout` 1.2.0（MINOR 外观，QTW 替 A31 做；Sheldon 11-06 定收口口径）：去向只留三个——放行／留人审／算法再处理，缺省预选「算法再处理」；还有任何一格是「算法再处理」时页顶提示不能出 v0.1；选项说明、registry options 同步改；旧选项名（人审底／留后／精校待办／再处理）不再出现。同步改 S3、S4、人审页模板文档与 round_report 收口归宿文字。
+
+## [0.4.14] - 2026-11-05
+
+- 人审页 `closeout` 1.1.0（PATCH，QTW 替 A31 做；Sheldon 看收口单说「看不到图、不知道怎么选」）：`examples` 元素可带字块图 `{id, img, note?}`（按 cell_shrink 字框裁，用共用 glyphBox，下方标格号）；每个去向下面加白话说明（人审底／留后／精校待办／再处理，`opt_help` 可覆盖）。老格式（examples 为格号字串）不变。
+
+## [0.4.13] - 2026-11-05
+
+- 出单自检带框一侧提查全、分轻重（PATCH，A22；Sheldon 11-05 定「只接切坏，带框先调」）：`seg_defect.same_char_frame` 加「端区碎线」（端区里和字身分开的细碎截占宽 ≥0.15）；旗表加末列 `程度`（带框格墨宽比同字 ≥ `FRAME_HEAVY_W`=1.20 记「重」，其余「轻」，别的类空），meta 加 `frame_heavy`。殿本尺子带框中 27→48/86、误标 5→11；殿本 10 册看图单 150 块：端区碎线查准 0.58，宽比 ≥1.20 的 0.70，Sheldon 点名严重的 4 格全在「重」档。10 册带框 151→577（重 193）。带框仍只记旗不送审，清框／不进字库以后只管「重」。读旗表用 DictReader 的不受影响。
 - 补回 `guji cache build-rare-index` 的命令测试（只动测试，A31）：cv #1053 搬命令时测试留在 cv，装了 torch 就红；搬到 `tests/from_cv/test_cli_build_rare_index.py`，桩改打在 `_cv` 门面上。
 
 ## [0.4.12] - 2026-11-05

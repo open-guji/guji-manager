@@ -28,6 +28,7 @@ import base64
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -156,9 +157,17 @@ def scaled_image(image: dict, width: int) -> dict:
 
 # ───────────────────────── IIIF canvas（v0.1） ─────────────────────────
 
-def canvas_id(book_id: str, volume: int, seq: str, base: str = IIIF_BASE) -> str:
-    """`<base>/<bookId>/canvas/<册2位>/<页序4位><后缀>`，如 `…/canvas/03/0105c`。"""
-    return f"{base.rstrip('/')}/{book_id}/canvas/{int(volume):02d}/{seq}"
+def canvas_vol(volume) -> str:
+    """canvas／IIIF 的册号段。整数补 2 位；已补好位的数字串（`005`、`03`）原样用——
+    册号位数按全书册数定（2026-11-02），全唐文 248 册是 3 位，网站书影 `iiif/995ejelvk0/005/`。"""
+    if isinstance(volume, str) and volume.isdigit() and len(volume) >= 2:
+        return volume
+    return f"{int(volume):02d}"
+
+
+def canvas_id(book_id: str, volume, seq: str, base: str = IIIF_BASE) -> str:
+    """`<base>/<bookId>/canvas/<册号>/<页序4位><后缀>`，如 `…/canvas/03/0105c`；册号见 `canvas_vol`。"""
+    return f"{base.rstrip('/')}/{book_id}/canvas/{canvas_vol(volume)}/{seq}"
 
 
 def ia_image_id(item: str, leaf: int) -> str:
@@ -398,7 +407,9 @@ def _check_canvas(page: dict) -> list[str]:
     seq = c.get("seq")
     if seq is not None and not (len(seq) in (4, 5) and seq[:4].isdigit() and (len(seq) == 4 or seq[4].isalpha())):
         errs.append(f"canvas.seq 应为 4 位页序 + 可选后缀 a–z，实为 {seq!r}")
-    if c.get("id") and seq and not c["id"].endswith(f"/canvas/{int(page['volume']['index']):02d}/{seq}"):
+    m = re.search(r"/canvas/(\d+)/([^/]+)$", c.get("id") or "")
+    if c.get("id") and seq and not (m and int(m[1]) == int(page['volume']['index']) and len(m[1]) >= 2
+                                    and m[2] == seq):
         errs.append(f"canvas.id 与册号/页序对不上：{c['id']}")
     sel = selector_xywh(c)
     if sel is not None and (sel[2], sel[3]) != (c["width"], c["height"]):

@@ -91,7 +91,7 @@ def test_every_template_builds(t, tmp_path):
         "codepoint": [dict(key="g1", chars=["為", "爲"], pre="unify:爲",
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],
-        "closeout": [dict(id="S02", label="切分", n=12, pre="再处理", examples=["vol1:1:1:1"])],
+        "closeout": [dict(id="S02", label="切分", n=12, pre="算法再处理", examples=["vol1:1:1:1"])],
         "near_pair": [dict(key="畫書", a="畫", b="書", ex_a=[["i1", str(img)]], ex_b=[["i2", str(img)]],
                            cells=[dict(id="1:1:1:1", img=str(img), inst=True, cur="畫")])],
         "lib_audit": [dict(char="官", tiles=[dict(id="1:1:1:1", img=str(img))])],
@@ -297,7 +297,32 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.4.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.3" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+
+
+def test_char_card_ref_img(tmp_path):
+    """1.5：ref_img（维基 SKQS 标准图）与本书切图并排；没给 ref_img 的格不受影响。"""
+    from guji_manager.review_pages.build import build
+    img = tmp_path / "a.png"; img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    ref = tmp_path / "ref.svg"; ref.write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    items = [dict(id="vol01:1:1:1", pre="卿", img=str(img), ref_img=str(ref), ref_label="维基 SKQS_2711"),
+             dict(id="vol01:1:1:2", pre="卿", img=str(img))]
+    build("char_card", items, "96mid1ogzk", tmp_path / "p.html")
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "维基 SKQS_2711" in html and "data:image/svg+xml;base64," in html and "s.ref_img" in html
+
+
+def test_char_card_font_subset(tmp_path):
+    """1.5.1：给了字体就内嵌子集；没有任何字体有的字进 nofont；没给字体不变。"""
+    from guji_manager.review_pages.build import build, font_subset_css
+    import pytest
+    pytest.importorskip("fontTools")
+    items = [dict(id="a#1", pre="卿", cands=[["卿", "v2"]], ctx="左【〓】右")]
+    st = build("char_card", items, "b", tmp_path / "p.html", rest_ok=False)
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "GujiSub" not in html and st["tpl_version"] == "1.5.3"
+    css, left = font_subset_css({"c": "卿"}, [])
+    assert css == "" and left == ["卿"]
 
 
 def test_cli_build_no_rest_ok(tmp_path, capsys):
@@ -341,12 +366,12 @@ def test_cli_unconfirmed_and_closeout_sum(tmp_path, capsys):
     items = tmp_path / "i.jsonl"
     items.write_text(json.dumps({"key": "g1"}) + "\n" + json.dumps({"key": "g2"}) + "\n", encoding="utf-8")
     res = tmp_path / "res"; res.mkdir()
-    (res / "a.json").write_text(json.dumps({"id": "g1", "how": "click", "pick": "人审底", "n": 5}), encoding="utf-8")
-    (res / "b.json").write_text(json.dumps({"id": "g3", "how": "page_ok", "pick": "留后", "n": 2}), encoding="utf-8")
+    (res / "a.json").write_text(json.dumps({"id": "g1", "how": "click", "pick": "留人审", "n": 5}), encoding="utf-8")
+    (res / "b.json").write_text(json.dumps({"id": "g3", "how": "page_ok", "pick": "放行", "n": 2}), encoding="utf-8")
     main(["unconfirmed", "--items", str(items), "--results", str(res)])
     assert "1/2 项未确认" in capsys.readouterr().out
     main(["closeout-sum", "--results", str(res)])
-    assert json.loads(capsys.readouterr().out) == {"人审底": 5, "留后": 2}
+    assert json.loads(capsys.readouterr().out) == {"留人审": 5, "放行": 2}
 
 
 def test_char_review_pull_item_docs(tmp_path):

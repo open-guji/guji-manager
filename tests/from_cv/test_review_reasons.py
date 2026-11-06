@@ -25,8 +25,10 @@ def test_unknown_when_no_rule_hits():
 
 
 def test_review_states_first():
-    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，请核")
+    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，推翻人裁，请核")
     assert _cls([c]) == [R.MACHINE_CHANGED]
+    old = Cell(id="v:1:1:4", char="已", ref="己", recheck=True, note="机器改判「□」→「已」，无人裁，请核")
+    assert _cls([old]) == [R.RECHECK]      # 11-05 前老单的无人裁复审格不算 X03
     c2 = Cell(id="v:1:1:2", char="甲", ref="甲", recheck=True, note="旧裁 山，新票 由")
     assert _cls([c2]) == [R.RECHECK]
     assert _cls([Cell(id="v:1:1:3", char="甲", ref="甲", doubts=["src_code_conflict"])]) == [R.RULING_CONFLICT]
@@ -83,7 +85,7 @@ def test_lib_and_ref_rules():
         Cell(id="v:1:1:8", char="丁", ref="甲", evidence={"guard": "conflict"}),
     ]
     assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_AGREE,
-                                      R.LIB_SPARSE_DISSENT, R.REF_REPLACED, R.REF_MISMATCH, R.NEAR_FORM_GUARD]
+                                      R.LIB_SPARSE_DISSENT, R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.NEAR_FORM_GUARD]
 
 
 def test_sparse_needs_lib_counts():
@@ -111,7 +113,7 @@ def test_reasons_for_pending_and_stamp(tmp_path):
            {"id": "vol9:1:1:2", "admit": True, "char": "乙"}],
           align={"chars": [{"id": "vol9:1:1:1", "align_char": "甲", "align_op": "equal"}]})
     doc = {"cells": [{"cell": "1:1:1", "why": ["occluded"]},
-                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」"},
+                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」，推翻人裁，请核"},
                      {"cell": "8:8:8", "why": []}]}
     res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False)
     n = stamp(doc, res)
@@ -313,3 +315,27 @@ def test_align_for_seed_alt_cols():
     assert [c["id"] for c in got["chars"]] == ["v:1:5:1"]
     assert {c["id"]: c["ref_char"] for c in got["coord"]} == {"v:1:6:-1": "赤", "v:1:6:1": "埴"}
     assert align_for_seed({}, align) is align
+
+
+def test_load_pua_table_reads_config_pua(tmp_path):
+    """码表在数据目录 config/pua/pua_table.jsonl；不在＝空表，坏行跳过；只报数，不改判法。"""
+    from guji_manager.review.reasons import load_pua_table, pua_table_stats
+    assert load_pua_table(tmp_path) == {}
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "pua_table.jsonl").write_text(
+        '{"code": "daizhige:U+EA96", "verdict": "pending"}\n{坏\n'
+        '{"code": "daizhige:U+EAA0", "verdict": "char", "char": "卿"}\n{"verdict": "open"}\n', encoding="utf-8")
+    t = load_pua_table(tmp_path)
+    assert set(t) == {"daizhige:U+EA96", "daizhige:U+EAA0"} and t["daizhige:U+EAA0"]["char"] == "卿"
+    st = pua_table_stats(t, frozenset({"daizhige:U+EA96", "daizhige:U+EAA0"}))
+    assert st["pua_table_codes"] == 2 and st["pua_table_pending"] == 1 and st["pua_table_char"] == 1
+    assert st["pua_table_registry_mismatch"] == 1
+    assert pua_table_stats({}, frozenset({"x"}))["pua_table_registry_mismatch"] == 0
+
+
+def test_renamed_reason_old_names_still_parse():
+    from guji_manager.review.pending_reason import PendingReason, parse
+    assert parse("ref_replaced") is PendingReason.REF_OCR_DIFF
+    assert parse("ref_mismatch") is PendingReason.REF_FINAL_DIFF
+    assert parse("ref_ocr_diff") is PendingReason.REF_OCR_DIFF

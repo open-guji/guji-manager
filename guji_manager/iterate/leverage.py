@@ -7,7 +7,7 @@
 一张「卡」＝一组同类格：同 pending_reason＋同一对（参校本字, 库首位字）；按下面顺序排：
   tier 0  第一次进库的字（lib_missing、lib_sparse_agree）——用户 11-03 定必须人裁，同字全书一卡；
   tier 1  其他会走人审的原因（route=human，或 llm 被大模型留回的）按分数；
-  tier 2  单列/底线（hard_pair 留后、occluded_no_ref 人审底、unknown）放最后，不出点选页，只在报告里列。
+  tier 2  单列/底线（hard_pair、occluded_no_ref 归留人审、unknown）放最后，不出点选页，只在报告里列。
 分数 score＝同对格数 ＋ 2×(涉及册数−1)（一次确认能放掉多册）＋ 同字头在全书的总格数×0.1。
 输出：leverage.tsv（rank,tier,reason,ref,top,n_cells,n_vols,score,sample_cells）、cards.tsv（每格归哪张卡，人审页按卡取格）、report.md。
 """
