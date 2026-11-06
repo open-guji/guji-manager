@@ -177,9 +177,9 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.NEAR_FORM_GUARD: lambda c, x: c.evidence.get("guard") in ("conflict", "never_match") or bool(c.codes & _NEAR),
     R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
     R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
-    R.REF_REPLACED: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
+    R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
     R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
-    R.REF_MISMATCH: lambda c, x: c.has_ref and c.char != c.ref,
+    R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
 }
 
 
@@ -242,7 +242,7 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return str(c.group.get("id") or "")
     if reason in (R.HARD_PAIR, R.NEAR_FORM_GUARD, R.VARIANT_PAIR):
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
-    if reason in (R.REF_REPLACED, R.REF_MISMATCH, R.LIB_SPARSE_DISSENT):
+    if reason in (R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.LIB_SPARSE_DISSENT):
         return f"{c.ref or ''}>{c.char or ''}"
     if reason is R.GLYPH_PENDING:
         return c.pua_code or ""

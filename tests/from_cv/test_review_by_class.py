@@ -226,4 +226,4 @@ def test_cards_carry_pending_reason(env):
         by = {c["id"]: c["pending_reason"] for c in d["cards"]}
         assert len(by) == 7 and all(PendingReason(v) for v in by.values())
         assert by["keben:1:1:4"] == "occluded_no_ref"           # 这格没有整理本对位
-        assert by["keben:1:1:2"] == "ref_replaced"            # 整理本这位来自 replace 段
+        assert by["keben:1:1:2"] == "ref_ocr_diff"            # 整理本这位来自 replace 段

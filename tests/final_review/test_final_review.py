@@ -10,7 +10,7 @@ def test_select_and_batches():
     rows = [{"vol": "020", "cell": "10:3:10", "pending_reason": "group_abstain", "key": "zy", "ref": "予"},
             {"vol": "020", "cell": "10:3:11a", "pending_reason": "group_abstain", "key": "zy"},
             {"vol": "020", "cell": "11:1:1", "pending_reason": "hard_pair"},
-            {"vol": "021", "cell": "1:1:1", "pending_reason": "ref_mismatch", "ref": "x"}]
+            {"vol": "021", "cell": "1:1:1", "pending_reason": "ref_final_diff", "ref": "x"}]
     sel, sk = core.select(rows)
     assert [(s["id"], s["cls"]) for s in sel] == [("vol20:10:3:10", "Z"), ("vol21:1:1:1", "P")]
     assert sk["a/b 半格（归 S）"] == 1 and sk["不属判读类：hard_pair"] == 1

@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 待审原因 P01、P02 改英文名（PATCH，QTW；Sheldon 11-06 嫌旧名看不出区别）：P01 `ref_replaced`→`ref_ocr_diff`（识别字与参校本不同：Step6 对位时识别字就≠参校字），P02 `ref_mismatch`→`ref_final_diff`（定字与参校本不同：对位相同、最后定字≠参校字），中文名、hint、说明文件夹跟着改。码不变；yaml 新增 `renamed`，`parse()` 和 `--json` 导出带旧名映射，旧单、旧事件照认。网站／控制台 `pendingReasons.ts` 副本要重新导出同步。
+
 - 人审页 `char_card` 1.5.2（PATCH，A24；Sheldon 11-06）：难认字页每格「这格是什么字」和「认不出：部件／IDS」两个输入框常显，认不出的字可直接输入；输入即存，规则同前（填字＝改字，填部件＝认不出＋部件）。
 
 - 人审页 `char_card` 1.5.1（PATCH 外观，A24；Sheldon 11-06 反馈）：①`--font`／`--font-dir`（cv 的 fonts/）把本页用到的字按 I.Ming→Jigmo 三档子集化成 woff2 内嵌，排在 `--font-glyph` 最前，不依赖外网；字体都没有的字页上改显码位（U+XXXXX），不留空白；没装 fonttools 时不嵌字体。②难认字页（`--no-rest-ok`）卡片改网格排（列宽 ≥250px，宽屏 5 列），卡头压成一行，上下文／说明字号再小一档，`per_page` 缺省 24（原 8）；存档键只看 tpl_version 前两段，已点的不丢。
