@@ -115,7 +115,7 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
     for reason, sig, todo, tier, who in (
         ("group_form_open", "同义写法待定", "出码位看图页请 sheldon 定码位结局（暂归一／照录／按参校本取字）", "A", "书项目"),
         ("ref_lacuna", "整理本缺字（〓／私用码）", "新图源文本层取字、私用码统一码表；剩下的人审", "A–B", "A24"),
-        ("lib_sparse_agree", "刻例太少但与整理本一致", "第一次进库原则上人裁：走成批审页", "C", "人审"),
+        ("lib_sparse_agree", "刻例太少但与整理本一致（本书库 1～2 例）", "人裁：同字全书一卡，走成批审页；放行规则待 L03 benchmark", "C", "人审"),
     ):
         if by.get(reason):
             add(sig, by[reason], f"`{reason}`", todo, tier, who)
