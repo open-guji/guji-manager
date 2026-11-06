@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+- 新增 `guji swap run`／`guji swap audit`：换单 driver（MINOR，A32，用户 11-05「讲一下换单…做得自动」）。每批 N 册（缺省 6）：`auto_cycle --no-publish` → `sync_workspace(no_glyph)` → 对这批 `proofing-sync only=` 发布并等跑完 → 逐册取线上 `NNN.pending.json` 核版本 → 核过的清掉本地产物包；开跑前、每批之间核字形库账本不空且不比基准少一成、磁盘 ≥3GB；全程 `GUJI_DB_NO_GLYPH=1`；状态写 `<工作区>/reports/_swap/state.json`，同一条命令断点续跑；need-A33／blocked 的册只记入状态并最后列出。
+- 换单报告固定附「机器改字抽检表」（`machine_audit.py`，A32，A31 11-06 要求）：换单时机器无票改字（新字≠book-text 现文）按新字≠整理本字分 A（己已巳、日曰折叠组）／B（形近误读）／C（其它不同字，多为异体表漏）／D（整理本无字）四档，新字＝整理本与异体只计数；人裁定的格不算。每册在发布前（产物包清掉前）出数据，全批跑完写 `reports/_swap/机器改字抽检表-<时间>.md` 与同名 tsv；单独出用 `guji swap audit --books … -w … --book-text …`。
+
 - 待审原因 P01、P02 改英文名（PATCH，QTW；Sheldon 11-06 嫌旧名看不出区别）：P01 `ref_replaced`→`ref_ocr_diff`（识别字与参校本不同：Step6 对位时识别字就≠参校字），P02 `ref_mismatch`→`ref_final_diff`（定字与参校本不同：对位相同、最后定字≠参校字），中文名、hint、说明文件夹跟着改。码不变；yaml 新增 `renamed`，`parse()` 和 `--json` 导出带旧名映射，旧单、旧事件照认。网站／控制台 `pendingReasons.ts` 副本要重新导出同步。
 
 - 人审页 `char_card` 1.5.3（PATCH，A24；Sheldon 11-06 反馈）：样本没有本书切图（`img` 为空）时不再渲染空图，改显灰框「本书无切图（没对上 v2）」，其余（维基图、上下文、输入框）照常；存档键只看前两段，已点的不丢。
