@@ -287,7 +287,7 @@ reasons:
     label: 库认不出
     hint: 库里有这个字，但这一格认不出，多半是印淡或压了框线
     ui: pick
-    detect: 库样本 >2，上下文＝整理本，库不认（成因 H）
+    detect: 兜底——有参校字、机器字（seed_admit char）＝参校字、前面各条都没中（不看刻例数、不看库认不认；不接字形库时 L02/L03 的格也落这里）。细分见 pending_reason_detail（reasons.lib_unrecognized_kind）
     legacy: {cause: [H, I], taxonomy: [L2, L3], v2: "L 库样本够·上下文=整理本·库不认"}
   garble_gate:
     code: L05
@@ -375,7 +375,7 @@ reasons:
     code: X01
     category: review
     route: human
-    owner: A31
+    owner: A24
     reviewer: human
     priority: 5
     label: 裁定有冲突
