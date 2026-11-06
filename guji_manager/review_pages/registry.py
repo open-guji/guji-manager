@@ -31,8 +31,12 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "Z06、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
              "／分开·不同字／合并到别的字（全唐文码位页 11-01–11-04 并入，见 codepoint.py）；2.2 起字体缺字的候选可带字形图 glyphs",
              options=("unify", "other", "split_follow", "split_distinct"), doc_prefix="review_cp"),
-    PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.1.0",
+    PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.2.0",
              "新放行类别上线前（R3）；终审标注页的通用版，保留 cell/pick/other/note/review 字段；点即存、读回、切分错/看不清/库里无此字、整理本字入上下文、横向邻格条、按 kind 筛选",
+             doc_prefix="labels"),
+    PageType("ref_check", "整理本真错复核（快速确认整理本字，疑整理本错置顶）", "cell_pick.tpl.html", "1.0.0",
+             "待审里「整理本字对不对」：D01 库否决、L02、X01 等；预选整理本字，库首位并排一键改作；按 ref_suspect 排序（ref 最前）；"
+             "横向邻格条＋整理本前后文；结果 `ref-check-apply` 出改字 tsv，喂 book-text 改字流程",
              doc_prefix="labels"),
     PageType("seg_cause", "切分归因看图", "seg_cause.tpl.html", "1.1.0",
              "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 A22 seg_causes",

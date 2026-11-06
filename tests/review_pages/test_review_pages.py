@@ -96,6 +96,7 @@ def test_every_template_builds(t, tmp_path):
                            cells=[dict(id="1:1:1:1", img=str(img), inst=True, cur="畫")])],
         "lib_audit": [dict(char="官", tiles=[dict(id="1:1:1:1", img=str(img))])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
+        "ref_check": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["库首位"]}, lib="白", img=str(img))],
         "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
                                                                    dict(key="on", sha="bb", img=str(img))])],
     }[t]
@@ -648,3 +649,32 @@ def test_cli_build_hard_page_is_solo(tmp_path):
     main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(out), "--no-rest-ok", "--per-card", "3"])
     cs = json.loads(out.with_suffix(".cards.json").read_text(encoding="utf-8"))
     assert len(cs) == 3 and "認不出" not in out.read_text(encoding="utf-8") and "认不出" in out.read_text(encoding="utf-8")
+
+
+# ── ref_check 整理本真错复核（A32 11-06）─────────────────────────────────────
+def _rc_fixture(tmp_path):
+    from PIL import Image
+    shrink = tmp_path / "shrink" / "vol08"; shrink.mkdir(parents=True)
+    pages = tmp_path / "pages" / "vol08"; pages.mkdir(parents=True)
+    Image.new("L", (100, 100), 255).save(pages / "3.png")
+    chars = [{"id": f"vol08:3:1:{i}", "bbox_page": [10 + 15 * i, 10, 22 + 15 * i, 30]} for i in range(1, 6)]
+    (shrink / "p0003.json").write_text(json.dumps({"char_index": {"columns": [{"chars": chars}]}}), encoding="utf-8")
+    return str(tmp_path / "shrink" / "{vol}"), str(tmp_path / "pages" / "{vol}")
+
+
+def test_ref_check_items_order_and_apply(tmp_path):
+    from guji_manager.review_pages import ref_check as RC
+    sd, pd = _rc_fixture(tmp_path)
+    cells = [dict(id="vol08:3:1:2", ref="話", lib="詁"), dict(id="8:3:1:3", ref="新", lib="浙", ref_suspect="ref"),
+             dict(id="vol08:3:1:4", ref="王", lib="玉", ref_suspect="lib"), dict(id="vol08:3:1:9", ref="x")]
+    items, miss = RC.build_items(cells, sd, pd, tmp_path / "img")
+    assert miss == ["vol08:3:1:9"]
+    assert [i["id"] for i in items] == ["vol08:3:1:3", "vol08:3:1:2", "vol08:3:1:4"]     # ref 最前、lib 最后
+    assert items[0]["cands"] == {"新": ["整理本"], "浙": ["库首位"]} and items[0]["strip_at"] == 2 and len(items[0]["strip"]) == 5
+    B.build("ref_check", items, "96mid1ogzk", tmp_path / "rc.html")
+    h = (tmp_path / "rc.html").read_text(encoding="utf-8")
+    assert '"mode": "check"' in h and "ref_check" in h and "改作" in h
+    docs = [dict(id="vol08:3:1:3", how="click", pre="新", pick="浙", verdict="char", t=1),
+            dict(id="vol08:3:1:2", how="click", pre="話", pick="話", verdict="char", t=1),
+            dict(id="vol08:3:1:4", how="click", pre="王", pick="", verdict="unclear", t=1)]
+    assert RC.apply_results(docs) == [{"cell": "vol08:3:1:3", "old": "新", "new": "浙", "note": ""}]
