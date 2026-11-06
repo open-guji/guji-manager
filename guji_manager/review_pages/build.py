@@ -13,7 +13,7 @@
   lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?}]}（id 是库里的实例号）
   gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
                ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
-  closeout：{id, label, n, rate?, examples?[…], pre?(人审底|留后|精校待办|再处理)}
+  closeout：{id, label, n, rate?, examples?[格号 或 {id, img, note?}…], pre?(人审底|留后|精校待办|再处理)}；img 按 cell_shrink 字框裁
   glyph_quality：{id, book?, char?, end?, ctx?, ref?, crops:[{key, sha, img}]}，或 dataset 金标信封（expected.crops.{off,on}，
              图路径相对 root）；--exclude 里的格号撤整格、sha 撤单块（见 glyph_quality.py）
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
@@ -182,7 +182,10 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"items": len(its), "pages": -(-len(its) // pp)}
     elif page_type == "closeout":
         pp = per_page or 12
-        data = {"book": book, "per_page": pp, "items": list(items), "options": list(pt.options), "hint": hint}
+        # examples 的元素可以是格号字串，也可以是 {id, img(路径或 data URI), note?}（img 按 cell_shrink 字框裁）
+        its = [dict(r, examples=[dict(e, img=embed(e.get("img"))) if isinstance(e, dict) else e
+                                 for e in r.get("examples", [])]) for r in items]
+        data = {"book": book, "per_page": pp, "items": its, "options": list(pt.options), "hint": hint}
         stat = {"items": len(items), "pages": -(-len(items) // pp)}
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
