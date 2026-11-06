@@ -180,6 +180,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
                          "pending_reason": c.get("pending_reason") or "unknown",
+                         "detail": str(c.get("pending_reason_detail") or ""),
                          "src": _tag_of(c),
                          "kind": nb.get(str(pos[0]).lstrip("0") or "0", "body"),
                          "ref": _ref(c) or "", "top": next((_c(x) for x in c.get("lib_top") or []), "") or "",
@@ -361,7 +362,7 @@ def main(argv=None) -> int:
     (a.out / "report.md").write_text(render(s, prev, a.top, diagnose.render(body_rows, lib_n)), encoding="utf-8")
     s["signals"] = diagnose.signals(body_rows, lib_n)
     (a.out / "summary.json").write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
-    cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause", "kind", "ref", "top", "tok"]
+    cols = ["vol", "cell", "pending_reason", "big", "sub", "key", "owner", "fix", "conc", "cause", "kind", "ref", "top", "tok", "detail"]
     (a.out / "cells.tsv").write_text("\n".join(["\t".join(cols)] + ["\t".join(str(r[c]) for c in cols) for r in rows]) + "\n", encoding="utf-8")
     print(f"待审 {s['n']} 格（另非正文 {s['n_nonbody']} 格），{len(lists)} 册 → {a.out}/report.md、cells.tsv、summary.json")
     return 0

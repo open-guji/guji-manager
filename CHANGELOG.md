@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 待审原因 L04 `lib_unrecognized` 理流程（PATCH，A23；Sheldon 11-06「理清整个流程、定 benchmark、下一本书能快速做」）：`pending_reason_detail` 改写成 `<细分>:<参校字>`，细分按 `ref_lib_coord` 逐关看哪一关没过（`lib_other`／`human_unbound`／`doubt_blocked`／`low_cov`／`near_rival`／`clear`，`reasons.lib_unrecognized_kind`）；yaml detect 文案改成与代码一致（兜底，不看刻例数与库认不认）；`pending-stats` 的 cells.tsv 末尾加 `detail` 列；新增 `review/vis_review.py`（看图裁定导出对照图与窗口、答案写成 vis-o1 裁定）。只改分类细节与统计，不放行、不改原因取值。说明见 `doc/01-粗校/待审原因/lib_unrecognized/`。
+
 ## [0.4.16] - 2026-11-06
 
 - 待审原因 V01 `variant_pair` 收窄（PATCH，A31；A24 V01 深挖 11-06，#261）：只看整理本字与库首位或机器字的异体边，不再看前五里其它候选；边分型（cv `variants.edge_tier`）只认 T1／T2，T3（通假、形近、简繁）不算。只改分类，不放行；V01 预计 388→约 172，其余落 P01／P02／N01／L04。
