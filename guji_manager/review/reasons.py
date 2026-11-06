@@ -232,7 +232,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GLYPH_PENDING: lambda c, x: bool(c.pua_code) and c.pua_code in x.glyph_pending,
     R.REF_LACUNA: lambda c, x: ref_missing(c.ref),
     R.LIB_MISSING: lambda c, x: c.lib_miss,
-    R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE),
+    # 要有整理本字才算 L05（A24 L05 深挖 11-06，sheldon 同意）：无对位的糊格（框线碎片、并格、圈点）不是「库首位错」，落到后面的 R02
+    R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE) and c.has_ref,
     R.REF_GAP: lambda c, x: not c.ref,
     R.VARIANT_PAIR: _variant_with_ref,
     R.NEAR_FORM_GUARD: _near_form,
