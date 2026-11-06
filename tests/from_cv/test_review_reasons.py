@@ -339,3 +339,24 @@ def test_renamed_reason_old_names_still_parse():
     assert parse("ref_replaced") is PendingReason.REF_OCR_DIFF
     assert parse("ref_mismatch") is PendingReason.REF_FINAL_DIFF
     assert parse("ref_ocr_diff") is PendingReason.REF_OCR_DIFF
+
+
+def test_hard_pair_same_char_in_jys_or_top2():
+    """Z01 深挖（A24 11-06）：参校字＝机器字＝首位同是己已巳日曰之一时，字组 jys/ry 或库前两名都在组内 → H01，不落 Z01。"""
+    g = {"id": "jys", "solvers": [], "why": "abstain"}
+    a = Cell(id="v:1:1:1", char="已", ref="已", cands=[["已", 0.97], ["己", 0.96]], evidence={"group": g})
+    b = Cell(id="v:1:2:1", char="已", ref="已", cands=[["已", 0.97], ["乙", 0.5]], evidence={"group": {**g, "id": "zz"}})
+    c = Cell(id="v:1:3:1", char="日", ref="日", cands=[["日", 0.97], ["曰", 0.96]], evidence={"group": {**g, "id": "zz"}})
+    assert _cls([a]) == [R.HARD_PAIR]
+    assert _cls([b]) == [R.GROUP_ABSTAIN]
+    assert _cls([c]) == [R.HARD_PAIR]
+
+
+def test_s01_skips_lacuna_and_nonbody():
+    """S01 深挖（A22 11-06）：〓 不算页无对位（同列一支）；非正文页（page_kind）不判 S01。"""
+    lac = [Cell(id=f"v:7:1:{i}", char="甲", ref="〓") for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(lac))
+    noref = [Cell(id=f"v:8:{i % 3 + 1}:{i}", char="甲", ref=None) for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED in set(_cls(noref))
+    roster = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None, page_kind="roster") for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(roster))

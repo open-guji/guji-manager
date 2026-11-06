@@ -62,6 +62,7 @@ class Cell:
     ref_right: str = ""
     pua_code: str | None = None                        # 整理本这位的私用码永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001），没有就空；glyph_pending 凭它判
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
+    page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
 
     @property
@@ -109,8 +110,8 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
     ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending))
     for c in cells:
         if not c.has_ref:
-            ctx.page_noref[_page(c.id)] += 1
-            if c.ref is None or not ref_missing(c.ref):
+            if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
+                ctx.page_noref[_page(c.id)] += 1
                 ctx.col_noref[_col(c.id)] += 1
         elif c.char != c.ref and not c.group and "occluded" not in c.codes \
                 and (c.col_agree is None or c.col_agree < COL_AGREE_MAX):
@@ -149,6 +150,23 @@ def _group_kind(c: Cell) -> R | None:
     return R.GROUP_WEAK
 
 
+#: 己已巳、日曰两个字组（cv groups 的组 id）。
+HARD_GROUPS = frozenset({"jys", "ry"})
+
+
+def _hard_pair(c: Cell, x: Context) -> bool:
+    """极难形近：参校字／机器字／库首位全在己已巳日曰内，且①三者至少两个不同，或②（A24 Z01 深挖 11-06）三者同字但字组是 jys/ry、
+    或库候选前两名都在己已巳日曰内——字形分不开，按 11-05 口径归 H01 按文意定，不再落 Z01。只改分类，不放行。"""
+    s = {v for v in (c.ref, c.char, c.top) if v}
+    if not s or not s <= HARD_CHARS:
+        return False
+    if len(s) >= 2:
+        return True
+    gid = (c.group or {}).get("id")
+    top2 = [cd[0] for cd in c.cands[:2] if cd]
+    return gid in HARD_GROUPS or (len(top2) == 2 and set(top2) <= HARD_CHARS)
+
+
 #: 每条原因的判法；按 yaml 的 priority 依次试。没有判法的原因（如 col_width_out_of_band 还没接）永远不中。
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
@@ -159,11 +177,12 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
-    R.SEG_PAGE_UNALIGNED: lambda c, x: (not c.has_ref and x.page_noref[_page(c.id)] >= PAGE_MIN)
+    R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
+        (not c.has_ref and not ref_missing(c.ref) and x.page_noref[_page(c.id)] >= PAGE_MIN)
         or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
-            and x.page_weak[_page(c.id)] >= PAGE_MIN),
+            and x.page_weak[_page(c.id)] >= PAGE_MIN)),
     R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
-    R.HARD_PAIR: lambda c, x: (lambda s: len(s) >= 2 and s <= HARD_CHARS)({v for v in (c.ref, c.char, c.top) if v}),
+    R.HARD_PAIR: _hard_pair,
     R.GROUP_ABSTAIN: lambda c, x: _group_kind(c) is R.GROUP_ABSTAIN,
     R.GROUP_CONFLICT: lambda c, x: _group_kind(c) is R.GROUP_CONFLICT,
     R.GROUP_DEMOTED: lambda c, x: _group_kind(c) is R.GROUP_DEMOTED,
@@ -289,6 +308,17 @@ def align_for_seed(seed: dict, align: dict | None) -> dict | None:
     return out
 
 
+def _page_kind(root: Path, name: str) -> str | None:
+    """本页非正文页型：border_detect_gate 的 page_type 不是 body，或 row_segment 有列打了 roster（职名页分支）；正文页 None。"""
+    bg = _load_layer(root / "border_detect_gate" / name, "border_detect_gate_manifest") or {}
+    if bg.get("page_type") and bg["page_type"] != "body":
+        return str(bg["page_type"])
+    rs = _load_layer(root / "row_segment" / name, "cells") or {}
+    if any("roster" in (c.get("flags") or []) for c in rs.get("columns") or []):
+        return "roster"
+    return None
+
+
 def book_cells(products_dir, book: str) -> dict[str, Cell]:
     """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。"""
     root = Path(products_dir) / book
@@ -304,6 +334,7 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
             if c.get("ref_char") and c["id"] not in ref:
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
+        kind = _page_kind(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -320,7 +351,7 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree)
+                                                 col_agree=agree, page_kind=kind)
                 if ref_missing(r) and cid in at:
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
