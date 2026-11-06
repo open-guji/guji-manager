@@ -13,7 +13,7 @@
   lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?}]}（id 是库里的实例号）
   gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
                ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
-  closeout：{id, label, n, rate?, examples?[格号 或 {id, img, note?}…], pre?(人审底|留后|精校待办|再处理)}；img 按 cell_shrink 字框裁
+  closeout：{id, label, n, rate?, examples?[格号 或 {id, img, note?}…], pre?(放行|留人审|算法再处理)}；img 按 cell_shrink 字框裁
   glyph_quality：{id, book?, char?, end?, ctx?, ref?, crops:[{key, sha, img}]}，或 dataset 金标信封（expected.crops.{off,on}，
              图路径相对 root）；--exclude 里的格号撤整格、sha 撤单块（见 glyph_quality.py）
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。

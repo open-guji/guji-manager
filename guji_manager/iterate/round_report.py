@@ -10,7 +10,7 @@
 
 口径：
   首审人审率＝待审÷全册格（正文格，沿用 pending-stats，非正文页另列）；
-  净人审队列＝待审 − 单列项（hard_pair、occluded_no_ref，留后/人审底）− --released 给的已放行格。
+  净人审队列＝待审 − 单列项（hard_pair、occluded_no_ref，留人审）− --released 给的已放行格。
 「回退」＝本轮待审、上一轮不在待审的格（格号一致的才能比；格号变了的册标 ⚠️ 变列，须逐册人工比，S 轮用）。
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .common import cell_key, col_of, read_tsv, write_tsv
 
-#: 不排给人、单列的原因（框架第二节：hard_pair 留后，occluded_no_ref 人审底）
+#: 不排给人、单列的原因（框架第二节：hard_pair、occluded_no_ref 都归留人审）
 SEPARATE = ("hard_pair", "occluded_no_ref")
 #: 红灯阈值：回退格占上一轮待审的比例；册内格号集合重合率
 REGRESS_RED, REGRESS_YELLOW = 0.05, 0.02
@@ -119,14 +119,14 @@ def compare(cur_dir: Path, prev_dir: Path, released: set | None = None) -> dict:
             "reasons": reasons, "drift": drift, "red": red, "yellow": yellow}
 
 
-#: 收口单归宿（框架第九节）：人审底／留后（v0.1 交接单列极难字清单）／精校待办
-CLOSING = {"occluded_no_ref": "人审底", "hard_pair": "留后（v0.1 交接单：极难字清单）", "seg_defect": "人审底（断烂图源）"}
+#: 收口单归宿（框架第九节；Sheldon 11-06 定只有三个）：放行／留人审（v0.1 交接单列极难字清单）／算法再处理（还有就不出 v0.1）
+CLOSING = {"occluded_no_ref": "留人审", "hard_pair": "留人审（v0.1 交接单：极难字清单）", "seg_defect": "留人审（断烂图源）"}
 
 
 def closing_rows(res: dict) -> list[dict]:
     out = []
     for r in res["reasons"]:
-        dest = CLOSING.get(r["reason"], "精校待办")
+        dest = CLOSING.get(r["reason"], "待定（收口单选 放行／留人审／算法再处理）")
         out.append({"reason": r["reason"], "n": r["cur"], "dest": dest, "handover": r["cur"] if r["reason"] == "hard_pair" else 0})
     return out
 

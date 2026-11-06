@@ -13,27 +13,28 @@
 <script>
 const D=/*DATA*/null;
 /*COMMON_JS*//*STORE_JS*//*PAGER_JS*/
-// 收口单：每类剩余格一行（类别、格数、占比、例子），定去向：人审底／留后／精校待办／再处理；合计显示各去向格数。
+// 收口单：每类剩余格一行（类别、格数、占比、例子），定去向：放行／留人审／算法再处理；合计显示各去向格数。
 // 每个去向的白话说明（页上选项下方显示）；D.opt_help 可按书覆盖。
 const HELP=Object.assign({
-  "人审底":"机器判不了，终须人看书影才能定（参照缺字、闕文、遮挡等）。",
-  "留后":"这一阶段不处理，随标点、专名阶段再看；极难字（己已巳之类）单列进交接单。",
-  "精校待办":"v0.1 照机器结果出，精校阶段再核。",
-  "再处理":"出 v0.1 前再跑一轮，还能压下去。"},D.opt_help||{});
+  "放行":"就这样出 v0.1，放行之后精校不再看这类格。",
+  "留人审":"机器判不了，终须人看书影才能定（参照缺字、闕文、遮挡、极难字等）；v0.1 交接单列给精校，由人看。",
+  "算法再处理":"还能让算法压下去，出 v0.1 前再跑一轮。只要还有任何一格选这个，就不出 v0.1。"},D.opt_help||{});
 const items=D.items.map(x=>Object.assign({id:x.id||x.key},x));
 let R;
 function sum(){
   const by={};let tot=0;for(const o of D.options)by[o]=0;by["未定"]=0;
   for(const it of items){const h=R.S.how(it.id);const raw=R.S.raw(it.id)||{};const k=h?(raw.pick??it.pre??"未定"):"未定";by[k]=(by[k]||0)+(it.n||0);tot+=it.n||0}
   const el=$("sum");el.textContent="";
+  const todo=by["算法再处理"]||0;
+  if(todo>0){const w=document.createElement("div");w.className="card";w.style.cssText="flex:1 1 100%;border-color:var(--bad);color:var(--bad)";w.textContent=`还有 ${todo} 格是「算法再处理」，现在不能出 v0.1。`;el.appendChild(w)}
   for(const [k,n] of Object.entries(by)){const c=document.createElement("div");c.className="card";const b=document.createElement("b");b.textContent=n;c.append(b,`${k}（${tot?(n/tot*100).toFixed(1):"0"}%）`);el.appendChild(c)}
 }
 R=makePager({key:"closeout",prefix:"c",all:items,per:D.per_page,
-  hintText:D.hint||"每类剩余格定去向：人审底（真异文、断烂图源等，永远要人）／留后（随标点、专名阶段）／精校待办／再处理（还能压，再跑一轮）。每个选项下面有白话说明，例子带字块图的直接看图。预选带标，不同意就改；每点一下就存。全部确认后合计即是收口单。",
+  hintText:D.hint||"每类剩余格定去向：放行（就这样出 v0.1，精校不再看）／留人审（机器判不了，要人看书影）／算法再处理（还能压，出 v0.1 前再跑一轮）。每个选项下面有白话说明，例子带字块图的直接看图。预选带标，不同意就改；每点一下就存。只要还有一格是「算法再处理」就不出 v0.1。",
   legacy:[],
   gate:null,
   draw(it,box,v,save){
-    const cur=()=>v.pick??it.pre??"再处理";
+    const cur=()=>v.pick??it.pre??"算法再处理";
     const hd=document.createElement("div");hd.className="gk";hd.textContent=`${it.label||it.id}　${it.n||0} 格${it.rate!=null?"（"+(it.rate*100).toFixed(2)+"%）":""}`;
     const exs=it.examples||[],ex=document.createElement("div");ex.className="ex";
     const txt=exs.filter(e=>typeof e==="string"),pics=exs.filter(e=>e&&typeof e==="object"&&e.img);
@@ -50,6 +51,6 @@ R=makePager({key:"closeout",prefix:"c",all:items,per:D.per_page,
     const nt=document.createElement("input");nt.type="text";nt.placeholder="备注";nt.value=v.note||"";nt.oninput=()=>{v.note=nt.value;save()};op.appendChild(nt);
     box.append(hd,ex);if(eg)box.appendChild(eg);box.append(op,hp);
   },
-  doc(it,v){return {key:it.id,pre:it.pre??null,pick:v.pick??it.pre??"再处理",n:it.n||0,label:it.label||null,note:v.note||""}}});
+  doc(it,v){return {key:it.id,pre:it.pre??null,pick:v.pick??it.pre??"算法再处理",n:it.n||0,label:it.label||null,note:v.note||""}}});
 sum();setInterval(sum,1500);
 </script>
