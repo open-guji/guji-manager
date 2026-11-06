@@ -299,11 +299,22 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     return ""
 
 
+def _first_entry(c: Cell, ctx: Context) -> bool:
+    """参校字在本书库里一例都没有（`lib_n`＝0，含借库）：这一格是它第一次进库。"""
+    return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) == 0)
+
+
 def classify(c: Cell, ctx: Context) -> R:
-    """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。"""
+    """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。
+
+    L02 刻例太少·不一致里参校字库里 0 例的格归 L01 少见的字（A23 L02 深挖，sheldon 11-06 定）：坐标对位的格产物上
+    没有 `lib_miss` 码，原先落进 L02；它们判的其实是第一次进库。只动 L02，前面的原因不动；L03 的同类格（0 例、
+    机器字＝参校字）另议（L03 深挖 R1，暂缓），照旧 L03。"""
     for r in _ordered():
         rule = RULES.get(r)
         if rule and rule(c, ctx):
+            if r is R.LIB_SPARSE_DISSENT and _first_entry(c, ctx):
+                return R.LIB_MISSING
             return r
     return R.UNKNOWN
 

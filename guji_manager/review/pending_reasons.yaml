@@ -251,7 +251,7 @@ reasons:
     label: 少见的字
     hint: 字形库里还没有这个字，这一格就是它第一次进库，请确认图上是不是参校本的字
     ui: pick
-    detect: 整理本字不在字形库（why 含 lib_miss / 「库里没有」）
+    detect: 整理本字不在字形库（why 含 lib_miss / 「库里没有」）；或本该判 L02、而整理本字库样本＝0（坐标对位格没有 lib_miss 码，A23 11-06）
     legacy: {cause: [F], cls: [lib_miss], taxonomy: [L1], v2: "L 库里没有这个字"}
   lib_sparse_dissent:
     code: L02
@@ -263,7 +263,7 @@ reasons:
     label: 刻例太少·不一致
     hint: 库里这个字刻例很少，机器字和参校本不一致
     ui: pick
-    detect: 整理本字库样本 ≤2，机器字≠整理本；大模型选中的若是这个少样本字 → 回人审
+    detect: 整理本字库样本 1～2，机器字≠整理本（0 例的归 L01）；大模型选中的若是这个少样本字 → 回人审
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·机器字≠整理本"}
   lib_sparse_agree:
     code: L03
