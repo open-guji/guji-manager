@@ -298,7 +298,7 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.5.3" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.4" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
 
 
 def test_char_card_ref_img(tmp_path):
@@ -321,7 +321,7 @@ def test_char_card_font_subset(tmp_path):
     items = [dict(id="a#1", pre="卿", cands=[["卿", "v2"]], ctx="左【〓】右")]
     st = build("char_card", items, "b", tmp_path / "p.html", rest_ok=False)
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert "GujiSub" not in html and st["tpl_version"] == "1.5.3"
+    assert "GujiSub" not in html and st["tpl_version"] == "1.5.4"
     css, left = font_subset_css({"c": "卿"}, [])
     assert css == "" and left == ["卿"]
 
@@ -678,3 +678,13 @@ def test_ref_check_items_order_and_apply(tmp_path):
             dict(id="vol08:3:1:2", how="click", pre="話", pick="話", verdict="char", t=1),
             dict(id="vol08:3:1:4", how="click", pre="王", pick="", verdict="unclear", t=1)]
     assert RC.apply_results(docs) == [{"cell": "vol08:3:1:3", "old": "新", "new": "浙", "note": ""}]
+
+
+def test_char_card_doc_id_is_safe_for_db(tmp_path):
+    """逐格文档 id 必须过 safeId：格号里的 # : + 后台库不收（11-06 Sheldon 报后台存档失败）。"""
+    from guji_manager.review_pages import registry
+    tpl = (registry.TEMPLATE_DIR / "char_card.tpl.html").read_text(encoding="utf-8") if hasattr(registry, "TEMPLATE_DIR") else None
+    if tpl is None:
+        import pathlib
+        tpl = (pathlib.Path(registry.__file__).parent / "templates" / "char_card.tpl.html").read_text(encoding="utf-8")
+    assert 'D.coll+"/c_"+safeId(id)' in tpl and 'D.coll+"/c_"+id' not in tpl
