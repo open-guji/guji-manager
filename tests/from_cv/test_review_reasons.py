@@ -422,3 +422,20 @@ def test_ref_suspect_stamped_on_pending(tmp_path):
     res2 = reasons_for_pending(doc2, tmp_path, "vol9", are_variants=lambda a, b: False, suspect=False)
     assert "ref_suspect" not in doc2["cells"][0]
     assert res2["1:1:2"] == res["1:1:2"]                     # 原因不受标记影响
+
+
+def test_sparse_zero_goes_lib_missing():
+    """L02 里参校字库里 0 例的归 L01（A23 L02 深挖，sheldon 11-06）；1～2 例照旧 L02；L03 不动；前面的原因不受影响。"""
+    lib_n = {"乙": 1, "丁": 2, "甲": 50}.get
+    n = lambda ch: lib_n(ch) or 0
+    cells = [
+        Cell(id="v:1:1:1", char="甲", ref="丙", ref_op="coord"),     # 不同、0 例 → L01（原先 L02）
+        Cell(id="v:1:1:2", char="丙", ref="丙", ref_op="coord"),     # 相同、0 例 → 照旧 L03（另议）
+        Cell(id="v:1:1:3", char="甲", ref="乙"),                     # 1 例 → L02
+        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L03
+        Cell(id="v:1:1:5", char="甲", ref="丙", doubts=["ctx_garble_shape"]),   # 乱码闸先判，不动
+    ]
+    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_SPARSE_AGREE, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE, R.GARBLE_GATE]
+    from guji_manager.review.reasons import build_context, detail_of
+    ctx = build_context(cells, lib_n=n, lib_split=lambda ch: (n(ch), 0))
+    assert detail_of(R.LIB_MISSING, cells[0], ctx) == "all_zero:丙"
