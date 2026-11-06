@@ -52,8 +52,8 @@ class PendingReason(str, Enum):
     GLYPH_PENDING = "glyph_pending"
     REF_LACUNA = "ref_lacuna"
     REF_GAP = "ref_gap"
-    REF_DIFF_ALIGN = "ref_diff_align"
-    REF_DIFF_FINAL = "ref_diff_final"
+    REF_OCR_DIFF = "ref_ocr_diff"        # P01 Step6 对位时识别字（字形库首位）就≠参校字（replace 段）；旧名 ref_replaced
+    REF_FINAL_DIFF = "ref_final_diff"    # P02 对位时相同（或坐标对位），最后定字（seed_admit）≠参校字；旧名 ref_mismatch
     RULING_CONFLICT = "ruling_conflict"
     VISION_FLAGGED = "vision_flagged"
     MACHINE_CHANGED = "machine_changed"

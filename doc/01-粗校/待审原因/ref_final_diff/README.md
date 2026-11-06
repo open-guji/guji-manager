@@ -1,12 +1,14 @@
-# P02 `ref_diff_final`：定字后与参校本不同
+# P02 `ref_final_diff`：定字与参校本不同
 
 > 2026-11-06 由 `ref_mismatch`（和参校本不一致）改名，旧名数据照认。
 
 > [待审原因总览](../README.md)
 
-**一句话**：对位时和参校本一致（或按坐标对位），后面定字改成了别的字，可能是真异文
+**一句话**：对位时和参校本一致（或按坐标对位），最后定字成了别的字，可能是真异文。
 
-和 P01 的区别见 [P01](../ref_diff_align/README.md)。
+**在哪一步判出来**：先在 Step6 `align_ref` 不是 replace 段（是 `equal`，或走坐标对位），然后看最后定字：`context_decide`（文意）→ `seed_admit`（各放行通道、字组、护栏）定出的字≠参校字，就是 P02。常见疑问码 `context_vs_ref`、`iron_vs_ref`、`signal_conflict`。
+
+**和 P01 的区别**：P01 是识别字在对位时就不同；P02 是对位时相同、后面定字才不同，见 [P01](../ref_ocr_diff/README.md)。
 
 ## 定义与判定
 
@@ -18,7 +20,7 @@
 
 ## 常见成因
 
-其余机器字≠参校本（context_vs_ref、iron_vs_ref 等），可能是真异文。
+对位相同，但文意、字组等后面的步骤把字定成了别的（context_vs_ref、iron_vs_ref 等），可能是真异文，也可能是后面的步骤改错了。
 
 ## 怎么处理
 

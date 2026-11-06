@@ -9,7 +9,7 @@ CLASS_OF = {
     "group_abstain": "Z", "group_conflict": "Z", "group_demoted": "Z", "group_ref_dissent": "Z", "group_weak": "Z",
     "near_form_guard": "N",
     "lib_sparse_dissent": "L",
-    "ref_diff_final": "P", "ref_diff_align": "P",
+    "ref_final_diff": "P", "ref_ocr_diff": "P",
     "ref_mismatch": "P", "ref_replaced": "P",   # 2026-11-06 改名前的旧名，旧单照认
     "occluded_with_ref": "D",
 }
