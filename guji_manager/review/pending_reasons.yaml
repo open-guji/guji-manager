@@ -343,7 +343,7 @@ reasons:
   # ── P 与整理本不一致 ──────────────────────────────────
   # P01 与 P02 的区别在「哪一步和参校本不同」：
   #   P01 ref_ocr_diff   Step6 对位（align_ref）时：机器识别的字（字形库首位）和参校本按文本对位，这格落在 replace 段，识别字≠参校字。
-  #   P02 ref_final_diff 对位时相同（equal 段）或按坐标对位，到最后定字（context_decide → seed_admit）才和参校字不同。
+  #   P02 ref_final_diff 文本对位没给这格标签（所在段被 label_page 丢掉），整理本字只来自坐标对位，机器字≠它（P01/P02 兜底）。
   #   两条都中时按 priority 记 P01。
   ref_ocr_diff:               # 2026-11-06 由 ref_replaced 改名（Sheldon），旧名见 renamed
     code: P01
@@ -365,9 +365,9 @@ reasons:
     reviewer: llm_then_human
     priority: 62
     label: 定字与参校本不同
-    hint: 对位时和参校本一致（或按坐标对位），最后定字成了别的字，可能是真异文
+    hint: 文本对位没给这格标签、整理本字只来自坐标对位，机器字和它不同；实测多半是机器字错（cov 低），不是真异文
     ui: pick
-    detect: 不是 P01（对位 equal 段或坐标对位），但 seed_admit 最后定的字≠参校字（context_vs_ref / iron_vs_ref / signal_conflict 等）
+    detect: 不是 P01（没有 replace 标签；align_op 落在 coord），有整理本字、机器字≠整理本字、没被任何通道放行（reasons.py：has_ref and char != ref）
     legacy: {cause: [E, I], cls: [ref_conflict, other], taxonomy: [R1], v2: "P 机器字≠整理本"}
 
   # ── X 复审与其他 ──────────────────────────────────────

@@ -11,7 +11,7 @@
 
 - `review/reasons.py`：`RULES[R.REF_OCR_DIFF] = c.ref_op == "replace" or "replace_align" in c.codes`，priority 60，前面 V01（55）、N01（56）、L03/L02（57/58）都没中才落到这里；去向 `llm`（大模型文意终审，只收 high，其余回人）。
 - 来源：cv Step6 `align_ref`。每格的识别字（库判 same 的字，没有取库首位）连成串，和整理本按 8 字锚定页、difflib 逐字对位；落在 `replace` 段的格就是 P01。
-- 和 P02 的区别：P01 是识别字在对位时就不同；P02 是对位时相同、最后定字才不同。两条都中记 P01。
+- 和 P02 的区别：P01 是识别字在对位时就不同；P02 是文本对位没给这格标签（所在段被丢），整理本字只来自坐标对位。两条都中记 P01（见 [P02](../ref_final_diff/README.md)）。
 - 一个格进 P01 的前提：它**没被放行**。现役放行里能碰它的只有 `p_ref_admit`（缺省关）、`match_ref`/`follow_ref*`（要库认得）、`rare_ref*`（要整理本字是 5-b 首位）。
 
 ## 二、现状（2026-11-06，★main 包现算，正文页）
