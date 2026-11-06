@@ -236,7 +236,11 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "items": its, "hint": hint, "box": box,
                 "options": [[o, gq_mod.LABEL_NAMES[o]] for o in pt.options], "n_excluded": n0 - len(items)}
         stat = {"items": len(its), "crops": sum(len(r["crops"]) for r in its), "pages": -(-len(its) // pp)}
-    elif page_type == "gold_sample":
+    elif page_type in ("gold_sample", "ref_check"):
+        if page_type == "ref_check":
+            mode = "check"
+            hint = hint or ("看图和上下文（专名、书名、套语最快）判整理本字对不对：对→点「对」；库首位对→点「改作 X」；都不对→点「错（填字）」；"
+                            "看不准→「看不清」，不要硬改。疑整理本错的格排在最前。每点一下就存。")
         pp = per_page or 10
         its = [dict(r, img=embed(r.get("img")), **({"strip": [embed(x) for x in r["strip"]]} if r.get("strip") else {}))
                for r in items]

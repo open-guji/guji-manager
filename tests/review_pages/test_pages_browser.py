@@ -60,7 +60,7 @@ def test_gold_click_saves_and_restores(browser, tmp_path):
     db = page.evaluate("window.__db")
     docs = [v for k, v in db.items() if "/i_" in k]
     assert len(docs) == 1 and docs[0]["pick"] == "白" and docs[0]["how"] == "click" and docs[0]["verdict"] == "char"
-    assert docs[0]["tpl_version"] == "1.1.0" and docs[0]["page_type"] == "gold_sample"
+    assert docs[0]["tpl_version"] == "1.2.0" and docs[0]["page_type"] == "gold_sample"
     assert "【百】" in page.inner_text(".ctx")                      # 整理本字进上下文
     # 清掉本机暂存，只靠后台读回
     page2, errs2 = _open(browser, html, db=db)

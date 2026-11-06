@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- review-pages 新页型 `ref_check`（整理本真错复核，A32 11-06，A31 定）：`ref-check-items`（待审格 → 带邻格条与裁图的 items，按 `ref_suspect` 排序 ref 最前）、`ref-check-apply`（结果 → 改字 tsv）；cell_pick 模板核对模式加「改作 库首位」按钮（`cell_pick` 1.2.0）。只读，不放行。
 - 待审单加只读标记 `ref_suspect`（PATCH，A31；A32 D01 深挖 11-06 提）：出单时在本册整理本里比库首位字与整理本字放进这一格上下文（前一字＋X、X＋后一字）的相邻二字次数（整理本这一格自己不算），库首位明显更通顺写 `ref`（疑整理本错，人审页置顶），整理本更通顺写 `lib`（疑库错），分不出不写；出单统计记 `ref_suspect_ref`／`ref_suspect_lib`。只排序用，不放行、不改字、不改原因。
 
 - 待审原因 N01 `near_form_guard` 收窄（PATCH，A31；A24 N01 深挖 11-06）：只留库护栏 conflict／never_match，或参校字与机器字／库候选前三构成 cv 手工形近表 `NEVER_MATCH_FAMILIES` 里一对的格；仅疑问码 near_form（家族字碰巧在候选前三）的格改落 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等后续原因。只改分类，不放行；殿本 N01 预计约 273→24，L02、P01、P02 相应增加。
