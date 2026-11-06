@@ -71,6 +71,20 @@ def test_group_kinds():
     assert _cls([g(solvers=[{"char": "傅"}])]) == [R.GROUP_WEAK]
 
 
+def test_group_settled_is_not_weak():
+    """字组已放／保持／暂归一的格还在待审，是后面的闸拦的：不落 Z05，按后面的原因落（A24 Z05 深挖 11-06）。"""
+    g = lambda dec, **k: Cell(id="v:1:1:1", char="宫", ref="宮", evidence={"group": {
+        "id": "guan", "decision": dec, "why": "agree", "solvers": [{"char": "宫"}]}}, **k)
+    # 影子闸 shadow_veto → L05 乱码闸
+    assert _cls([g("admit", doubts=["shadow_veto"])]) == [R.GARBLE_GATE]
+    # 其余：字组放了字、整理本是另一写法，库认不出等后面的原因
+    assert _cls([g("keep")])[0] is not R.GROUP_WEAK
+    assert _cls([g("provisional")])[0] is not R.GROUP_WEAK
+    # 复核降审、没定字的照旧
+    assert _cls([g("demote")]) == [R.GROUP_DEMOTED]
+    assert _cls([g("review")]) == [R.GROUP_WEAK]
+
+
 def test_lib_and_ref_rules():
     lib = {"乙": 1, "甲": 50}.get
     lib_n = lambda ch: lib(ch) or 0
