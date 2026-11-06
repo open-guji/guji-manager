@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import cli_perf, cli_products, cli_runs
+from . import cli_perf, cli_products, cli_runs, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
@@ -41,6 +41,7 @@ COMMANDS: dict = {
     **cli_products.COMMANDS,   # products（拆分 P4）
     **cli_perf.COMMANDS,       # perf（拆分 P4）
     **cli_runs.COMMANDS,       # rerun、pagekinds、cache、product（拆分 P4）
+    **swap.COMMANDS,           # swap（换单 driver，A32 11-05）
 }
 
 
