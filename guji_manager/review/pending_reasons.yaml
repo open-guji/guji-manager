@@ -375,7 +375,7 @@ reasons:
     code: X01
     category: review
     route: human
-    owner: A31
+    owner: A24
     reviewer: human
     priority: 5
     label: 裁定有冲突
