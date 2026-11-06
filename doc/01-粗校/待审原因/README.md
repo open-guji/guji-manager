@@ -52,7 +52,7 @@
 | L02 | [`lib_sparse_dissent`](lib_sparse_dissent/README.md) | 刻例太少·不一致 | 大模型统一过一遍 | A23 | 84\* | 10\* | 0\* |
 | L03 | [`lib_sparse_agree`](lib_sparse_agree/README.md) | 刻例太少 | 一定人审 | A23 | 293\* | 0\* | 1\* |
 | L04 | [`lib_unrecognized`](lib_unrecognized/README.md) | 库认不出 | 先改算法，改完剩下的并入 llm | A23 | 392 | 9 | 3 |
-| L05 | [`garble_gate`](garble_gate/README.md) | 像框线或墨点 | 先改算法，改完剩下的并入 llm | A24 | 184 | 57 | 2 |
+| L05 | [`garble_gate`](garble_gate/README.md) | 像框线或墨点 | 先改算法，改完剩下的并入 llm | A24 | 184 | 52 | 2 |
 | N01 | [`near_form_guard`](near_form_guard/README.md) | 形近字 | 大模型统一过一遍 | A24 | 273 | 40 | 6 |
 | P01 | [`ref_ocr_diff`](ref_ocr_diff/README.md) | 识别字与参校本不同 | 大模型统一过一遍 | A24 | 174 | 77 | 30 |
 | P02 | [`ref_final_diff`](ref_final_diff/README.md) | 定字与参校本不同 | 大模型统一过一遍 | A24 | 374 | 68 | 0 |
