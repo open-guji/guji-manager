@@ -54,7 +54,7 @@ reasons:
     label: 整页对不上
     hint: 这一页很多格都对不上参校本，多半是切分或对位错了，请看整页
     ui: page
-    detect: 本格无整理本对位，且同页无对位格 ≥10（或弱证据格 ≥10）；已钉页直接人审
+    detect: 本格无整理本对位，且同页无对位格 ≥10；或本格是弱证据格（有对位、机器字不同）且本列一致率 <0.5、同页这样的格 ≥10；已钉页直接人审
     legacy: {cause: [A1, A3, A4, A5, A9], taxonomy: [S2, S3, S4, S5, S6], v2: "S 成片页"}
   seg_col_unaligned:
     code: S02
@@ -298,6 +298,18 @@ reasons:
     legacy: {cause: [A6], taxonomy: [S1], v2: "L 乱码闸／影子闸拦下"}
 
   # ── R 整理本缺位 ──────────────────────────────────────
+  glyph_pending:
+    code: R03
+    category: reference
+    route: deferred
+    owner: A24
+    reviewer: none
+    priority: 49
+    label: 待收字
+    hint: 整理本这里是没收进 Unicode 的僻字，暂时找不到合适异体字；已判过，页面先显示字图不留字，将来找到字按码位统一回填（不同于真图／小篆的留图不留字）
+    ui: confirm
+    detect: 整理本这位是私用码，且该码位在私用码表里登记为「已判定待收」（sheldon 11-05）；没登记过的仍记 ref_lacuna。detail 只写永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001；两套码不一一对应，必须带来源；占位码 U+1001 等以图代字属真图，不进待收字）
+    legacy: {v2: "R 整理本缺字·待收字"}
   ref_lacuna:
     code: R01
     category: reference
@@ -382,9 +394,9 @@ reasons:
     reviewer: human
     priority: 7
     label: 机器改了字
-    hint: 这一轮机器把这个字改了（和已发布的文本不同），请确认
+    hint: 这一轮机器改了人工审定过的字，请确认
     ui: pick
-    detect: 未冻结册机器改判（相对 book-text 现文变字）进复审；单上 recheck=true 且 note 为改判
+    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 为改判。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
     legacy: {}
   recheck:
     code: X04

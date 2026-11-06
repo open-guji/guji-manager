@@ -6,6 +6,44 @@
 
 - 人审页 `closeout` 1.1.0（PATCH，QTW 替 A31 做；Sheldon 看收口单说「看不到图、不知道怎么选」）：`examples` 元素可带字块图 `{id, img, note?}`（按 cell_shrink 字框裁，用共用 glyphBox，下方标格号）；每个去向下面加白话说明（人审底／留后／精校待办／再处理，`opt_help` 可覆盖）。老格式（examples 为格号字串）不变。
 
+## [0.4.13] - 2026-11-05
+
+- 出单自检带框一侧提查全、分轻重（PATCH，A22；Sheldon 11-05 定「只接切坏，带框先调」）：`seg_defect.same_char_frame` 加「端区碎线」（端区里和字身分开的细碎截占宽 ≥0.15）；旗表加末列 `程度`（带框格墨宽比同字 ≥ `FRAME_HEAVY_W`=1.20 记「重」，其余「轻」，别的类空），meta 加 `frame_heavy`。殿本尺子带框中 27→48/86、误标 5→11；殿本 10 册看图单 150 块：端区碎线查准 0.58，宽比 ≥1.20 的 0.70，Sheldon 点名严重的 4 格全在「重」档。10 册带框 151→577（重 193）。带框仍只记旗不送审，清框／不进字库以后只管「重」。读旗表用 DictReader 的不受影响。
+- 补回 `guji cache build-rare-index` 的命令测试（只动测试，A31）：cv #1053 搬命令时测试留在 cv，装了 torch 就红；搬到 `tests/from_cv/test_cli_build_rare_index.py`，桩改打在 `_cv` 门面上。
+
+## [0.4.12] - 2026-11-05
+
+- 待审原因、成因读产物认史記 `alt_cut` 备选列（PATCH，A22）：seed_admit `alt_cols` 里的列（读不到退回 align_ref 的）格号是备选切法的，`book_cells`／`book_causes` 原先照主切法的 align_ref `chars`／`coord` 按格号挂参校字，整列错位（如 02:106 第 6 列，备选多一个 -1 格，参校字全错一位）。新 `align_for_seed`：这些列丢掉现役对位字、改读 `alt_draft.coord`。史記 01–10 r12 main 包：参校字变 27 格（03:10 第 2 列 9、06:93 第 6 列 7、04:119 第 1 列 6、02:106 第 6 列 3 等），原因变 24 格。殿本没有备选列，不变。不动 Step、不改指纹。
+- 终审 `is_ideograph` 补 Unicode 17 Ext J（U+323B0–3347F，殿本 r5 有真 Ext J 字），区段对齐 cv #1135 的 `vis_ruling`；部首区与表意描述符不算汉字（PATCH，A23；A31 要）。
+
+## [0.4.11] - 2026-11-05
+
+- 整页对不上 S01 的「弱证据格」一支要本列大多对不上（PATCH，A22；A31／SJ／A20 11-05 报史記 02:106、03:10 半色调页误归）：有参校字、机器字不同的格，只在本列一致率（本列含已放行格、有参校字的格里机器字＝参校字的比例）<0.5 时才算弱证据，同页这样的格 ≥10 才判 S01。`Cell` 加 `col_agree`，`book_cells` 按产物算；单上补的格没有列一致率，照旧。史記 01–10＋殿本 6 册现行 main 包模拟：S01 384→306 格，变的 78 格在 02:106、03:10、02:50、02:66（列一致率 0.6–1，对位对、只是认不准）和 vol86:152 第 2 列 1 格，改落 ref_replaced 35、lib_missing 21、ref_mismatch 11、garble_gate 7、near_form_guard 4；vol86:152 第 1 列（1/16 一致）仍是 S01。不动 Step、不改指纹；已出的单用 backfill_pending_reason.py。
+
+## [0.4.10] - 2026-11-05
+
+- 终审放行门槛加「选中的字必须是汉字」（PATCH，A23；史記 3 格放行了整理本缺字占位 ခ）：`core.gate_ex` 判 `is_ideograph`：ခ／〓／换行一律 `not_ideograph`；本书造字（私用区码如史記 U+EF6E、○）只在库里已有 >2 个样本（需 `--glyph-db`）且图一致证人成立时才放行，不再因「与参校本同字」放行。
+
+## [0.4.9] - 2026-11-05
+
+- 任务库去重认中心库 rev（PATCH，A31；11-05 史記 #831/#833 撞上，A30 查明）：spec 新字段 `db_rev`（进指纹），`guji job submit` 提交时自动填中心库当前 rev（连不上就不填并提示加 --again）。册 yaml 改了、spec 没变的单不再被判成重复。不给 db_rev 的老任务指纹不变。
+- 待收字出单接线（PATCH，A24；承接 #192，A31 同意「窗口回查」方案）：`book_cells` 给整理本缺字格算前后各 20 字的整理本窗口；`reasons_for_pending` 加 `glyph_pending`（登记表，缺省读数据目录 `config/pua/glyph_pending_codes.json`（A31 定，不放语料版本以免动 corpus 指纹；读不到＝空表＝全走 `ref_lacuna`，和改前一样））与 `pua_resolve`（缺省用 cv `utils.pua_lookup.resolve_pua_code` 按窗口回查殆知阁源文件里的原码位 `daizhige:U+XXXX`；旧 cv 没有这个模块或源文件读不到则不回查），回查到的码在登记表里才记 `glyph_pending`，回查不到／没登记仍 `ref_lacuna`。不动 Step、不改指纹；登记表文件由 A31 推中心库。控制台待审卡（`stamp_cards`）暂不接。回查索引按语料目录缓存（同一目录只读一遍源文件）。**眼下只有殆知阁码（`daizhige:U+Exxx`）能经窗口回查落到格上，登记表里 114 个 `siku-qiefen-v2:U+F1xxx` 的图源码暂不起作用**（没有对应的回查途径）。风险：判成 `glyph_pending` 的格不派人审，回查错了会把格悄悄藏起来；`reasons_for_pending(stats=Counter())` 记 `glyph_pending_by_window`（按窗口回查判成待收字的格数），出单报告要单列，第一次上线抽 20 格看图。
+
+## [0.4.8] - 2026-11-05
+
+- 待审原因新增 `glyph_pending`「待收字」R03（PATCH，缺省关的新功能，A24；sheldon 11-05 定、A20 审）：整理本这位是私用码、且码位在私用码表里登记为「已判定待收」（没收进 Unicode、暂找不到合适异体）。登记表缺省空＝都不算，所以不登记就没有任何变化。待收字格**仍上单**（book-text 靠单写 `pending_reason`，网站凭它显示字图）；不派人审、不进大模型，靠下游按 `reviewer: none`、`route: deferred` 跳过，随 web／console 副本同步做（现在只有 iterate／leverage 认 route，出单、pending_route 都不看）。priority 49（先于 ref_lacuna）。`Cell` 加 `pua_code`（单上同名字段、产物 evidence.pua_code 都读），`build_context`／`reasons_for_pending`／`stamp_cards` 加 `glyph_pending` 登记表参数；登记表从哪读、产物里的 pua_code 由 cv fix_pua 那边接。detail 只写永久编号「来源:码位」（`daizhige:U+E123`、`siku-qiefen-v2:U+F1001`，两套码不一一对应，必须带来源）。占位码（以图代字，U+1001 等）属真图，不进待收字。`--json` 导出后 web、console、book-text 三份副本要同步，已出的单用 backfill_pending_reason.py。
+
+## [0.4.7] - 2026-11-05
+
+- 标 main 后先在后台看板「迭代轮次」占上这一轮（PATCH，A31）：包口径统计在标 main 的机器上跑不成（缺 ai-team 检出等）时，也写一条 `verdict=pending`、人审率待统计的记录，不再静默漏轮；统计跑成后 `auto-round` 照旧补全。与 `GUJI_AUTO_ONLINE_LISTS` 无关。
+- `pending-stats` 按单上 `src` 单独计数（PATCH，A31）：`summary.json` 加 `by_src`，报告在原因表后列「同字对照自检（seg_selfcheck）N」（格已含在 seg_defect 里），单上没 src 的按 detail 前缀「同字对照自检：」认。待收字改走新取值 glyph_pending（A20 11-05），按原因计数。
+## [0.4.6] - 2026-11-05
+
+- 终审 `final-review finalize` 接册 yaml 的 `params.seed_admit.ruling_glyph_min_score/margin` 与 `ruling_ref_lead_min_unseen/oov`（PATCH，A24；A31 要，依赖 cv #1110）：图一致证人改判「首位、分 ≥ t、领先次优异字 ≥ margin」（折叠组 己已巳／日曰内不当竞争者；`cells.json` 新增 `glyph_cands` 前五按名次；没写 yaml 键＝旧口径，命令行 `--min-score`）。ref_lead 证人：选中字＝整理本字、且在 unseen（需 `--glyph-db`，库样本 ≤2）或 oov（需 `--cnn-classes`）层时，整理本字须首位且领先 ≥ 该层阈值，并与图一致证人同时成立才放行，否则 `ref_lead_fail`；不单独放行；逐格结果多「证据」列（`ref_lead:层:领先量`），裁定 payload 带 `via`、`ref_lead`。
+- 连中心库（Neon）时带 `application_name=guji/<谁>/<命令>`（PATCH，11-05 查「Neon 一直不休眠」用）：`pg_stat_activity` 里直接看出是哪个执行方／会话在连，不改任何行为。
+
+## [0.4.5] - 2026-11-05
+
 - 借库 `scope: human+auto`（PATCH，缺省关的新选项，A23；全唐文线提议）：人裁加看图确认过的自动刻例。依赖 cv 同名 PR（`BORROW_SCOPES`）。实测见 `doc/01-开新书/借库写法.md`。
 
 ## [0.4.4] - 2026-11-05

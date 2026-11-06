@@ -1,8 +1,8 @@
 # 按组看图定夺（脚本＋页面模板）
 
-> 2026-11-05 起出页与落配置改用模板库：`guji-manager review-pages cp-items` → `build codepoint` → `cp-apply`（见 `doc/02-粗校/人审页模板.md` 第四节）。本目录的 `find_groups.py`、`render.py` 照旧用来找组、渲图；`build_page.py`、`tpl.html`、`to_codepoints.py` 是旧版，留着对照。
+> 2026-11-05 起出页与落配置改用模板库：`guji-manager review-pages cp-items` → `build codepoint` → `cp-apply`（见 `doc/01-粗校/人审页模板.md` 第四节）。本目录的 `find_groups.py`、`render.py` 照旧用来找组、渲图；`build_page.py`、`tpl.html`、`to_codepoints.py` 是旧版，留着对照。
 
-方案文档：[doc/01-开新书/按组看图定夺.md](../../../doc/01-开新书/按组看图定夺.md)。全唐文码位对照页（2026-11-01，33 组）就是用这套出的。
+方案文档：[doc/01-粗校/开书/按组看图定夺.md](../../../doc/01-粗校/开书/按组看图定夺.md)。全唐文码位对照页（2026-11-01，33 组）就是用这套出的。
 
 ```bash
 D=out/cp-批1

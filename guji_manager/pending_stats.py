@@ -145,6 +145,17 @@ def _group_of(ch: str) -> str | None:
     return gs[0].id if gs else None
 
 
+#: 单独计数的标记：单上 `src`，或 pending_reason_detail 前缀。（待收字 11-05 定加取值 glyph_pending，按原因计数，不在这里）
+DETAIL_TAGS = (("同字对照自检：", "seg_selfcheck"),)
+
+
+def _tag_of(c: dict) -> str:
+    if c.get("src"):
+        return str(c["src"])
+    d = str(c.get("pending_reason_detail") or "")
+    return next((t for pre, t in DETAIL_TAGS if d.startswith(pre)), "")
+
+
 def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=None,
             nonbody: dict | None = None) -> list[dict]:
     """→ 每格一行 {vol, cell, big, sub, key, owner, fix, conc, cause, kind}；kind＝body 或非正文页型（见 `load_nonbody`）。"""
@@ -169,6 +180,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
                          "pending_reason": c.get("pending_reason") or "unknown",
+                         "src": _tag_of(c),
                          "kind": nb.get(str(pos[0]).lstrip("0") or "0", "body"),
                          "ref": _ref(c) or "", "top": next((_c(x) for x in c.get("lib_top") or []), "") or "",
                          "tok": ",".join(sorted(_tok(c))),
@@ -182,6 +194,7 @@ def summarize(rows: list[dict], lists: dict, total: dict) -> dict:
     rows = [r for r in rows if r.get("kind", "body") == "body"]
     by_sub, by_vol, keys, conc = Counter(), defaultdict(Counter), defaultdict(Counter), defaultdict(Counter)
     by_reason = Counter(r["pending_reason"] for r in rows)
+    by_src = Counter(r["src"] for r in rows if r.get("src"))   # 单上来源标记，如 seg_selfcheck（出单同字对照自检）
     for r in rows:
         by_sub[r["sub"]] += 1
         by_vol[r["vol"]][r["big"]] += 1
@@ -195,7 +208,7 @@ def summarize(rows: list[dict], lists: dict, total: dict) -> dict:
                    "by_big": {b: by_vol[v][b] for b in BIG if by_vol[v][b]},
                    "rev": doc.get("rev"), "cv": doc.get("cv_version"), "at": doc.get("routed_as_of"),
                    "slim": sum(1 for r in rows if r["vol"] == v and r["slim"]), "n_nonbody": nonbody[v]}
-    return {"n": len(rows), "n_nonbody": sum(nonbody.values()), "by_reason": dict(by_reason), "by_sub": dict(by_sub), "keys": {k: dict(v) for k, v in keys.items()},
+    return {"n": len(rows), "n_nonbody": sum(nonbody.values()), "by_reason": dict(by_reason), "by_src": dict(by_src), "by_sub": dict(by_sub), "keys": {k: dict(v) for k, v in keys.items()},
             "conc": {k: dict(v) for k, v in conc.items()}, "vols": vols}
 
 
@@ -233,6 +246,10 @@ def render_reasons(s: dict, prev: dict | None) -> list[str]:
     return out + [""]
 
 
+#: 单上 `src` 的中文名（review/reasons.py）
+SRC_NAMES = {"seg_selfcheck": "同字对照自检（seg_selfcheck）"}
+
+
 def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) -> str:
     n = s["n"]
     ps = (prev or {}).get("by_sub", {})
@@ -245,6 +262,8 @@ def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) 
            + "。分类规则 `open_guji_cv/review/taxonomy.py`；跟进方见 ai-team `domain/CV/质检/待审分类规范.md`。"
            + ("括号里是比上一份的增减。" if prev else ""), "",
            *render_reasons(s, prev),
+           *([f"单独计数（已含在上面的原因里）：" + "；".join(f"{SRC_NAMES.get(k, k)} {v}{_d(v, ((prev or {}).get('by_src') or {}).get(k, 0) if prev else None)}"
+                                                       for k, v in sorted(s["by_src"].items())), ""] if s.get("by_src") else []),
            *(diag or []),
            "## 一、大类／小类总账（旧分类，过渡期保留）", "",
            "| 小类 | 名 | 格数 | 占比 | 跟进方 | 处理方式 | 集中度（整页／整列／零散） |", "|---|---|---|---|---|---|---|"]

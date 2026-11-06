@@ -32,6 +32,16 @@ def test_review_states_first():
     assert _cls([Cell(id="v:1:1:3", char="甲", ref="甲", doubts=["src_code_conflict"])]) == [R.RULING_CONFLICT]
 
 
+def test_weak_page_needs_low_column_agreement():
+    """弱证据格只在本列大多对不上时算整页对不上（史記 02:106 半色调页：列一致率 0.7–1，对位对、只是认不准）。"""
+    halftone = [Cell(id=f"v:5:{i % 8 + 1}:{i}", char="甲", ref="乙", col_agree=0.8) for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(halftone))
+    shifted = [Cell(id=f"v:6:1:{i}", char="甲", ref="乙", col_agree=0.1) for i in range(12)]
+    assert set(_cls(shifted)) == {R.SEG_PAGE_UNALIGNED}
+    unknown = [Cell(id=f"v:7:1:{i}", char="甲", ref="乙") for i in range(12)]   # 没有列一致率（单上补的格）照旧
+    assert set(_cls(unknown)) == {R.SEG_PAGE_UNALIGNED}
+
+
 def test_occluded_split_by_ref():
     a = Cell(id="v:1:1:1", char="甲", ref="甲", doubts=["occluded"])
     b = Cell(id="v:1:1:2", char="甲", ref="〓", doubts=["occluded"])
@@ -195,3 +205,111 @@ def test_lib_split_counts_own_vs_borrowed(tmp_path):
     f = lib_split_counts(p)
     assert f("以") == (1, 2) and f("人") == (0, 1) and f("松") == (0, 0)
     assert lib_split_counts(tmp_path / "none.db") is None
+
+
+def test_glyph_pending_only_for_registered_codes():
+    """待收字：只有私用码表登记为「已判定待收」的码位才记 glyph_pending；没登记的仍是 ref_lacuna；detail 只写「来源:码位」。"""
+    from guji_manager.review.reasons import build_context, classify, detail_of
+    reg = {"siku-qiefen-v2:U+F1001"}
+    a = Cell(id="v:1:1:1", char="丁", ref="〓", pua_code="siku-qiefen-v2:U+F1001")
+    b = Cell(id="v:1:1:2", char="丁", ref="〓", pua_code="siku-qiefen-v2:U+F1002")
+    c = Cell(id="v:1:1:3", char="丁", ref="〓", pua_code="daizhige:U+F1001")   # 同码位别的来源不算
+    d = Cell(id="v:1:1:4", char="丁", ref="〓")
+    ctx = build_context([a, b, c, d], glyph_pending=reg)
+    assert [classify(x, ctx) for x in (a, b, c, d)] == [R.GLYPH_PENDING, R.REF_LACUNA, R.REF_LACUNA, R.REF_LACUNA]
+    assert detail_of(R.GLYPH_PENDING, a, ctx) == "siku-qiefen-v2:U+F1001"
+    assert classify(a, build_context([a])) is R.REF_LACUNA            # 没给登记表＝一个都不算
+    s = R.GLYPH_PENDING.spec
+    assert (s.code, s.route.value, s.reviewer.value, s.priority) == ("R03", "deferred", "none", 49)
+
+
+def test_glyph_pending_flows_through_pending_sheet(tmp_path):
+    """单上的 pua_code ＋ 登记表 → reasons_for_pending 记 glyph_pending；不给登记表仍是 ref_lacuna。"""
+    from guji_manager.review.reasons import reasons_for_pending
+    doc = {"cells": [{"cell": "bk:1:1:1:1", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E123"},
+                     {"cell": "bk:1:1:1:2", "ref": {"c": "〓"}, "pua_code": "daizhige:U+E124"}]}
+    r = reasons_for_pending(doc, tmp_path, "bk", glyph_pending={"daizhige:U+E123"})
+    assert r["bk:1:1:1:1"] == (R.GLYPH_PENDING, "daizhige:U+E123")
+    assert r["bk:1:1:1:2"][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, "bk")["bk:1:1:1:1"][0] is R.REF_LACUNA
+
+
+def test_glyph_pending_resolved_from_ref_window(tmp_path):
+    """出单时：整理本缺字格按前后文窗口回查私用码，码在登记表里记 glyph_pending；回查不到／没登记仍 ref_lacuna。"""
+    import json as _j
+    from guji_manager.review.reasons import reasons_for_pending
+    book, pg = "bk", tmp_path / "bk"
+    for d in ("seed_admit", "align_ref"):
+        (pg / d).mkdir(parents=True)
+    ids = [f"bk:1:1:{i}:{i}" for i in range(1, 9)]
+    ids = [f"bk:1:1:{i}" for i in range(1, 9)]
+    refs = list("天地玄〓黄宇宙洪")
+    seed = {"seed_admit": {"columns": [{"chars": [{"id": i, "char": "丁", "admit": False, "doubts": []} for i in ids]}]}}
+    align = {"align_ref": {"chars": [{"id": i, "align_char": c, "align_op": "equal"} for i, c in zip(ids, refs)]}}
+    (pg / "seed_admit" / "p0001.json").write_text(_j.dumps(seed), encoding="utf-8")
+    (pg / "align_ref" / "p0001.json").write_text(_j.dumps(align), encoding="utf-8")
+    doc = {"cells": [{"cell": ids[3]}]}
+    seen = []
+
+    def resolve(left, right):
+        seen.append((left, right))
+        return "daizhige:U+EA96"
+    from collections import Counter
+    st = Counter()
+    r = reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=resolve, stats=st)
+    assert st["glyph_pending_by_window"] == 1
+    assert seen == [("天地玄", "黄宇宙洪")]
+    assert r[ids[3]] == (R.GLYPH_PENDING, "daizhige:U+EA96")
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EB10"}, pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending={"daizhige:U+EA96"}, pua_resolve=lambda a, b: None)[ids[3]][0] is R.REF_LACUNA
+    assert reasons_for_pending(doc, tmp_path, book, glyph_pending=frozenset(), pua_resolve=resolve)[ids[3]][0] is R.REF_LACUNA
+
+
+def test_pua_resolver_cached_per_corpus(tmp_path, monkeypatch):
+    """同一语料目录只建一次索引（约 29 MB 源文件），不能每出一张单就读一遍。"""
+    from guji_manager.review import reasons
+    calls = []
+    monkeypatch.setattr(reasons, "_build_resolver", lambda corpus: calls.append(corpus) or (lambda a, b: None))
+    monkeypatch.setattr(reasons, "_RESOLVERS", {})
+    a = reasons.pua_resolver(tmp_path)
+    b = reasons.pua_resolver(tmp_path)
+    assert a is b and len(calls) == 1
+    reasons.pua_resolver(tmp_path / "other")
+    assert len(calls) == 2
+
+
+def test_load_glyph_pending_reads_config_pua(tmp_path):
+    """登记表在数据目录 config/pua/；读不到或坏文件＝空表（全走 ref_lacuna）。"""
+    from guji_manager.review.reasons import load_glyph_pending
+    assert load_glyph_pending(tmp_path) == frozenset()
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "glyph_pending_codes.json").write_text('{"codes": ["daizhige:U+EA96"]}', encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset({"daizhige:U+EA96"})
+    (d / "glyph_pending_codes.json").write_text("{坏", encoding="utf-8")
+    assert load_glyph_pending(tmp_path) == frozenset()
+
+
+def test_registry_missing_is_reported_in_stats(monkeypatch):
+    from collections import Counter
+    import guji_manager.review.reasons as rs
+    monkeypatch.setattr(rs, "load_glyph_pending", lambda *a, **k: frozenset())
+    st = Counter()
+    try:
+        rs.reasons_for_pending({"cells": []}, "/nonexistent", "b", stats=st)
+    except Exception:  # noqa: BLE001  空单子/路径不在都行，只看登记表缺失是否记了
+        pass
+    assert st["glyph_pending_registry_missing"] == 1
+
+
+def test_align_for_seed_alt_cols():
+    """史記 alt_cut：准入改用备选切法的列读 alt_draft 的坐标对位，现役对位字丢掉（02:106 第 6 列错一位）。"""
+    from guji_manager.review.reasons import align_for_seed
+    align = {"chars": [{"id": "v:1:6:1", "align_char": "赤"}, {"id": "v:1:5:1", "align_char": "甲"}],
+             "coord": [{"id": "v:1:6:1", "ref_char": "赤"}],
+             "alt_draft": {"coord": [{"id": "v:1:6:-1", "ref_char": "赤"}, {"id": "v:1:6:1", "ref_char": "埴"},
+                                     {"id": "v:1:5:1", "ref_char": "乙"}]}}
+    got = align_for_seed({"alt_cols": [6]}, align)
+    assert [c["id"] for c in got["chars"]] == ["v:1:5:1"]
+    assert {c["id"]: c["ref_char"] for c in got["coord"]} == {"v:1:6:-1": "赤", "v:1:6:1": "埴"}
+    assert align_for_seed({}, align) is align

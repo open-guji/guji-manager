@@ -26,6 +26,9 @@ HARD_CHARS = frozenset("日曰己已巳")
 LIB_SPARSE = 2
 #: 同页无对位（或弱证据）格 ≥ PAGE_MIN 算整页对不上；同列无对位 ≥ COL_MIN 算整列对不上
 PAGE_MIN, COL_MIN = 10, 5
+#: 弱证据格（有参校字、机器字不同）只在「本列大多对不上」时才算进整页对不上：本列有参校字的格里机器字＝参校字的比例
+#: 低于这个数。真错位的列几乎全不一致；半色调／褪色页对位是对的、只是认不准，列一致率多在 0.6 以上，不归 S01（A22 11-05）
+COL_AGREE_MAX = 0.5
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
 
@@ -53,7 +56,11 @@ class Cell:
     note: str = ""
     cls: str | None = None                             # 待审单上的旧卡片类别（老单的 seg_defect 只有这里有；11-04 起不出单）
     seg_kind: str | None = None                        # 切坏细分（单上同名字段；产物里在 evidence.seg_kind），见 SEG_KINDS
+    ref_left: str = ""                                 # 整理本这位前 20 字／后 20 字（只给「整理本缺字」格算，回查私用码用）
+    ref_right: str = ""
+    pua_code: str | None = None                        # 整理本这位的私用码永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001），没有就空；glyph_pending 凭它判
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
+    col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
 
     @property
     def codes(self) -> set[str]:
@@ -85,6 +92,7 @@ class Context:
     lib_n: Callable[[str], int] | None = None
     are_variants: Callable[[str, str], bool] | None = None
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
+    glyph_pending: frozenset[str] = frozenset()                 # 私用码表里登记为「已判定待收」的永久编号；没给＝一个都不算
 
 
 def _page(cid: str) -> str:
@@ -95,14 +103,15 @@ def _col(cid: str) -> str:
     return ":".join(cid.split(":")[:-1])
 
 
-def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None) -> Context:
-    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split)
+def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=()) -> Context:
+    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending))
     for c in cells:
         if not c.has_ref:
             ctx.page_noref[_page(c.id)] += 1
             if c.ref is None or not ref_missing(c.ref):
                 ctx.col_noref[_col(c.id)] += 1
-        elif c.char != c.ref and not c.group and "occluded" not in c.codes:
+        elif c.char != c.ref and not c.group and "occluded" not in c.codes \
+                and (c.col_agree is None or c.col_agree < COL_AGREE_MAX):
             ctx.page_weak[_page(c.id)] += 1
     return ctx
 
@@ -149,7 +158,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
     R.SEG_PAGE_UNALIGNED: lambda c, x: (not c.has_ref and x.page_noref[_page(c.id)] >= PAGE_MIN)
-        or (c.has_ref and c.char != c.ref and not c.group and x.page_weak[_page(c.id)] >= PAGE_MIN),
+        or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
+            and x.page_weak[_page(c.id)] >= PAGE_MIN),
     R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
     R.HARD_PAIR: lambda c, x: (lambda s: len(s) >= 2 and s <= HARD_CHARS)({v for v in (c.ref, c.char, c.top) if v}),
     R.GROUP_ABSTAIN: lambda c, x: _group_kind(c) is R.GROUP_ABSTAIN,
@@ -158,6 +168,7 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GROUP_REF_DISSENT: lambda c, x: _group_kind(c) is R.GROUP_REF_DISSENT,
     R.GROUP_WEAK: lambda c, x: _group_kind(c) is R.GROUP_WEAK,
     R.GROUP_FORM_OPEN: lambda c, x: _group_kind(c) is R.GROUP_FORM_OPEN or "form_open" in c.codes,
+    R.GLYPH_PENDING: lambda c, x: bool(c.pua_code) and c.pua_code in x.glyph_pending,
     R.REF_LACUNA: lambda c, x: ref_missing(c.ref),
     R.LIB_MISSING: lambda c, x: c.lib_miss,
     R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE),
@@ -233,6 +244,8 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
     if reason in (R.REF_REPLACED, R.REF_MISMATCH, R.LIB_SPARSE_DISSENT):
         return f"{c.ref or ''}>{c.char or ''}"
+    if reason is R.GLYPH_PENDING:
+        return c.pua_code or ""
     if reason in (R.LIB_SPARSE_AGREE, R.LIB_UNRECOGNIZED):
         return c.ref or ""
     return ""
@@ -256,6 +269,24 @@ def _load_layer(path: Path, key: str) -> dict | None:
         return None
 
 
+def align_for_seed(seed: dict, align: dict | None) -> dict | None:
+    """史記 `alt_cut`：准入改用备选切法的列（seed_admit `alt_cols`，退回 align_ref 的），格号与 align_ref 现役
+    `chars`／`coord`（主切法）不对应，这些列改读 align_ref `alt_draft` 的坐标对位、丢掉现役对位字。
+    没有备选列就原样返回（殿本等不受影响）。"""
+    if not align:
+        return align
+    cols = set(seed.get("alt_cols") or align.get("alt_cols") or [])
+    draft = align.get("alt_draft") or {}
+    if not cols or not draft:
+        return align
+    col_of = lambda cid: int(cid.split(":")[2])
+    out = dict(align)
+    out["chars"] = [c for c in align.get("chars", []) if col_of(c["id"]) not in cols]
+    out["coord"] = [c for c in align.get("coord") or [] if col_of(c["id"]) not in cols] + \
+                   [c for c in draft.get("coord") or [] if col_of(c["id"]) in cols]
+    return out
+
+
 def book_cells(products_dir, book: str) -> dict[str, Cell]:
     """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。"""
     root = Path(products_dir) / book
@@ -264,21 +295,34 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
         seed = _load_layer(f, "seed_admit")
         if not seed:
             continue
-        align = _load_layer(root / "align_ref" / f.name, "align_ref") or {}
+        align = align_for_seed(seed, _load_layer(root / "align_ref" / f.name, "align_ref")) or {}
         gm = _load_layer(root / "glyph_match" / f.name, "glyph_match") or {}
         ref = {c["id"]: (c.get("align_char"), c.get("align_op")) for c in align.get("chars", [])}
         for c in align.get("coord") or []:
             if c.get("ref_char") and c["id"] not in ref:
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
+        seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
+               for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
+        at = {cid: i for i, (cid, _) in enumerate(seq)}
         for col in seed.get("columns", []):
+            hit = [ch.get("char") == ref[ch["id"]][0] for ch in col.get("chars", [])
+                   if "excluded" not in (ch.get("doubts") or []) and ref.get(ch["id"], (None,))[0]
+                   and not ref_missing(ref[ch["id"]][0])]
+            agree = sum(hit) / len(hit) if hit else None
             for ch in col.get("chars", []):
                 if ch.get("admit") or "excluded" in (ch.get("doubts") or []):
                     continue
                 cid = ch["id"]
                 r, op = ref.get(cid, (None, None))
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
-                                                 doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}))
+                                                 doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
+                                                 pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
+                                                 col_agree=agree)
+                if ref_missing(r) and cid in at:
+                    i = at[cid]
+                    out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
+                    out[cid.split(":", 1)[1]].ref_right = "".join(c for _, c in seq[i + 1:i + 21])
     return out
 
 
@@ -333,8 +377,60 @@ def _default_are_variants():
         return None
 
 
-def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None) -> dict[str, tuple[R, str]]:
-    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。"""
+#: 待收字登记表（私用码表里「已判定待收」的永久编号，一项一个 `来源:码位`）放在数据目录 `config/pua/glyph_pending_codes.json`
+#: （`{"codes": [...]}`，随 `guji db sync` 进中心库；A31 11-05 定：不放语料版本，免得动 corpus 指纹、触发 CorpusDrift）。
+#: 读不到＝空表＝一个都不算，全走 `ref_lacuna`，和改前一样。
+GLYPH_PENDING_REL = ("config", "pua", "glyph_pending_codes.json")
+
+
+def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
+    """读待收字登记表；数据目录取不到、文件不在、读不了都返回空集（不猜）。"""
+    try:
+        if data_root is None:
+            from .._cv import data_root as _data_root     # cv 的数据目录（中心库工作区＝数据目录），不靠 corpus 路径推
+            data_root = _data_root()
+        f = Path(data_root).joinpath(*GLYPH_PENDING_REL)
+        return frozenset(json.loads(f.read_text(encoding="utf-8")).get("codes") or [])
+    except Exception:  # noqa: BLE001
+        return frozenset()
+
+
+_RESOLVERS: dict[str, Callable[[str, str], str | None] | None] = {}
+
+
+def pua_resolver(corpus: Path | str | None = None) -> Callable[[str, str], str | None] | None:
+    """出单时用的私用码回查函数 `(整理本前文, 后文) -> "daizhige:U+XXXX" | None`；
+    cv 没有 `utils.pua_lookup`（旧 cv）或源文件读不到时返回 None，调用方退回 `ref_lacuna`。"""
+    try:
+        if corpus is None:
+            from .._cv import corpus_dir
+            corpus = corpus_dir()
+        key = str(Path(corpus).resolve())
+    except Exception:  # noqa: BLE001
+        return None
+    if key not in _RESOLVERS:            # 五个源 jsonl 约 29 MB，建一次索引，同一语料目录只建一次
+        _RESOLVERS[key] = _build_resolver(Path(corpus))
+    return _RESOLVERS[key]
+
+
+def _build_resolver(corpus: Path) -> Callable[[str, str], str | None] | None:
+    try:
+        from .._cv import PuaIndex, resolve_pua_code
+        files = sorted((corpus / "daizhige").glob("[0-9]*.jsonl"))
+        if not files:
+            return None
+        idx = PuaIndex.from_source(files)
+    except Exception:  # noqa: BLE001
+        return None
+    return lambda left, right: resolve_pua_code(idx, left, right)
+
+
+def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=None,
+                        pua_resolve=None, stats=None) -> dict[str, tuple[R, str]]:
+    """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。
+
+    `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
+    回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
     if are_variants is None:
         are_variants = _default_are_variants()
     prod = book_cells(products_dir, book)
@@ -348,9 +444,23 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
             c.seg_kind = str(x["seg_kind"])
         if x.get("src"):
             c.src = str(x["src"])
+        if x.get("pua_code"):
+            c.pua_code = str(x["pua_code"])
         cells.append(c)
+    if glyph_pending is None:
+        glyph_pending = load_glyph_pending()
+        if not glyph_pending and stats is not None:
+            stats["glyph_pending_registry_missing"] = 1   # 登记表没读到：全走 ref_lacuna，出单报告要提示
+    if glyph_pending:           # 登记表是空的就不必回查（和改前一样，没有任何变化）
+        if pua_resolve is None:
+            pua_resolve = pua_resolver()
+        for c in cells:
+            if pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right):
+                c.pua_code = pua_resolve(c.ref_left, c.ref_right)
+                if c.pua_code and c.pua_code in glyph_pending and stats is not None:
+                    stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
@@ -372,14 +482,14 @@ def stamp(doc: dict, reasons: dict[str, tuple[R, str]]) -> Counter:
     return n
 
 
-def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_variants=None) -> None:
+def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_variants=None, glyph_pending=()) -> None:
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
     if are_variants is None:
         are_variants = _default_are_variants()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value

@@ -96,3 +96,66 @@ def test_override_groups_from_yaml():
     assert f("params:\n  seed_admit:\n    ruling_override_groups: []\n") == set()
     assert f("params:\n  seed_admit:\n    ruling_override_groups: [ly, dt]\n") == {"ly", "dt"}
     assert f("params:\n  seed_admit:\n    ruling_override_groups: ly dt,wm\n") == {"ly", "dt", "wm"}
+
+
+def test_gate_glyph_witness_and_ref_lead():
+    hi = lambda c: {"char": c, "conf": "high"}   # noqa: E731
+    def cell(gc, cls="P"):
+        return {"cands": {"予": ["参校本", "机器识别"]}, "cls": cls, "group": None, "ref_char": "予", "glyph_cands": gc}
+    # 图一致证人：首位、≥t、领先 ≥ margin
+    ok = cell([("予", 0.99), ("子", 0.95)])
+    assert core.gate_ex(ok, hi("予"), hi("予"), set(), glyph=(0.98, 0.02))["ok"]
+    assert core.gate_ex(cell([("予", 0.99), ("子", 0.985)]), hi("予"), hi("予"), set(), glyph=(0.98, 0.02), min_src=3)["why"] == "weak_evidence"
+    assert core.gate_ex(cell([("子", 0.99), ("予", 0.98)]), hi("予"), hi("予"), set(), glyph=(0.98, 0.02), min_src=3)["why"] == "weak_evidence"  # 非首位
+    # 折叠组内字不算竞争者
+    f = {"cands": {"己": ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": "己", "glyph_cands": [("己", 0.99), ("已", 0.989), ("巳", 0.98), ("乙", 0.5)]}
+    assert core.lead_of(f, "己")[1] > 0.4
+    # ref_lead：稀见层要求领先 ≥ 阈值且图一致证人成立；其余层不适用
+    rl = {"unseen": 0.01, "oov": 0.02}
+    lib_n = lambda ch: 1   # noqa: E731
+    g = core.gate_ex(ok, hi("予"), hi("予"), set(), glyph=(0.98, 0.02), ref_lead=rl, lib_n=lib_n)
+    assert g["ok"] and g["via"] == "ref_lead" and g["layer"] == "unseen" and abs(g["lead"] - 0.04) < 1e-9
+    thin = cell([("予", 0.99), ("子", 0.985)])
+    thin["cands"]["予"].append("解法:x")   # nsrc≥2 本来能放
+    assert core.gate_ex(thin, hi("予"), hi("予"), set(), glyph=(0.98, 0.02), ref_lead={"unseen": 0.003}, lib_n=lib_n)["ok"] is False  # 图一致证人不成立，不单独放
+    assert core.gate_ex(thin, hi("予"), hi("予"), set(), glyph=(0.98, 0.02), ref_lead=rl, lib_n=lambda ch: 9)["ok"]   # 非稀见层不适用
+    assert core.gate_ex(ok, hi("予"), hi("予"), set(), glyph=(0.98, 0.02), ref_lead={"oov": 0.05}, oov=lambda ch: True)["why"] == "ref_lead_fail"
+
+
+def test_seed_admit_params_from_yaml():
+    y = "params:\n  seed_admit:\n    ruling_glyph_min_score: 0.98\n    ruling_glyph_min_margin: 0.02\n    ruling_ref_lead_min_unseen: 0.01\n"
+    p = core.seed_admit_params_from_yaml(y)
+    assert p["ruling_glyph_min_score"] == 0.98 and p["ruling_ref_lead_min_unseen"] == 0.01 and p["ruling_ref_lead_min_oov"] is None
+    assert core.seed_admit_params_from_yaml("a: 1")["ruling_glyph_min_score"] is None
+
+
+def test_gate_refuses_ref_placeholder_and_non_ideograph():
+    hi = lambda c: {"char": c, "conf": "high"}   # noqa: E731
+    for ph in ("ခ", "〓", "○", "\ue000", "\n", "ab"):
+        x = {"cands": {ph: ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": ph}
+        assert core.gate_ex(x, hi(ph), hi(ph), set())["why"] == "not_ideograph", ph
+    ok = {"cands": {"予": ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": "予"}
+    assert core.gate_ex(ok, hi("予"), hi("予"), set())["ok"]
+    assert core.is_ideograph("𠀀") and not core.is_ideograph("ခ") and not core.is_ideograph("⿰")
+    # Unicode 17 Ext J（U+323B0–3347F）是真汉字；区段两端与相邻区
+    for cp in (0x32BC1, 0x32773, 0x326E8, 0x323B0, 0x3347F, 0x323AF, 0x3134F, 0x2F800, 0xF900):
+        assert core.is_ideograph(chr(cp)), hex(cp)
+    for cp in (0x33480, 0x4DC0, 0xE000, 0x2E80, 0x2FF0):
+        assert not core.is_ideograph(chr(cp)), hex(cp)
+
+
+def test_gate_allows_own_book_pua_glyph_only_with_library_and_image_witness():
+    """本书造字（史記 U+EF6E）：库里已有 >2 样本且图一致证人成立才放行；占位 ခ 库里没有，永远不放。"""
+    hi = lambda c: {"char": c, "conf": "high"}   # noqa: E731
+    pua = "\uef6e"
+    def cell(ch, gc):
+        return {"cands": {ch: ["参校本", "机器识别"]}, "cls": "P", "group": None, "ref_char": ch, "glyph_cands": gc}
+    good = cell(pua, [(pua, 0.99), ("三", 0.90)])
+    lib = lambda c: 6 if c == pua else 0   # noqa: E731
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lib)["ok"]
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02))["why"] == "not_ideograph"          # 没给库
+    assert core.gate_ex(good, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lambda c: 2)["why"] == "not_ideograph"   # 样本太少
+    weak = cell(pua, [(pua, 0.90), ("三", 0.89)])
+    assert core.gate_ex(weak, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lib)["why"] == "not_ideograph"   # 图不一致，两个来源不够
+    bur = cell("ခ", [("三", 0.99)])
+    assert core.gate_ex(bur, hi("ခ"), hi("ခ"), set(), glyph=(0.95, 0.02), lib_n=lambda c: 9)["why"] == "not_ideograph"

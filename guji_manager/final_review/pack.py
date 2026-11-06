@@ -108,7 +108,9 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
                         cands[ch].append("护栏对")
             out.append({"id": cid, "cls": r["cls"], "reason": r["reason"], "group": r["group"] or None, "left": left, "right": right,
                         "ref_char": ref_char, "machine_char": c.get("char"), "cands": cands,
-                        "group_members": members, "guard": gd, "doubts": c.get("doubts")})
+                        "group_members": members, "guard": gd, "doubts": c.get("doubts"),
+                        "glyph_cands": [(x.get("char"), x.get("score", x.get("sim"))) if isinstance(x, dict) else (x[0], x[1])
+                                        for x in g.get("candidates", [])[:5]]})
     return out
 
 
