@@ -50,7 +50,10 @@ def main(argv=None):
     p.add_argument("--gate", type=float, default=0.95)
     p = sub.add_parser("build"); p.add_argument("type"); p.add_argument("--items", required=True)
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
-    p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
+    p.add_argument("--per-page", type=int)
+    p.add_argument("--font", action="append", help="（char_card）子集化内嵌的字体文件，可重复，按顺序补字")
+    p.add_argument("--font-dir", help="（char_card）cv 的 fonts/ 目录：自动用 I.Ming、Jigmo 三档补字")
+    p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
     p.add_argument("--mode", choices=["check"], help="gold_sample：check＝核对模式（显示机器答案，只点对/错填字/看不清）")
     p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
     p.add_argument("--no-rest-ok", action="store_true", help="char_card：不要「本页其余都对」，没点的格不算对（难认字页）")
@@ -105,7 +108,8 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
-                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok),
+                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok,
+                                         fonts=list(a.font or []) + (build_mod.default_fonts(a.font_dir) if a.font_dir else [])),
                          ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes

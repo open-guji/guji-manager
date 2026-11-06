@@ -297,7 +297,7 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.5.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.1" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
 
 
 def test_char_card_ref_img(tmp_path):
@@ -310,6 +310,19 @@ def test_char_card_ref_img(tmp_path):
     build("char_card", items, "96mid1ogzk", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
     assert "维基 SKQS_2711" in html and "data:image/svg+xml;base64," in html and "s.ref_img" in html
+
+
+def test_char_card_font_subset(tmp_path):
+    """1.5.1：给了字体就内嵌子集；没有任何字体有的字进 nofont；没给字体不变。"""
+    from guji_manager.review_pages.build import build, font_subset_css
+    import pytest
+    pytest.importorskip("fontTools")
+    items = [dict(id="a#1", pre="卿", cands=[["卿", "v2"]], ctx="左【〓】右")]
+    st = build("char_card", items, "b", tmp_path / "p.html", rest_ok=False)
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "GujiSub" not in html and st["tpl_version"] == "1.5.1"
+    css, left = font_subset_css({"c": "卿"}, [])
+    assert css == "" and left == ["卿"]
 
 
 def test_cli_build_no_rest_ok(tmp_path, capsys):
