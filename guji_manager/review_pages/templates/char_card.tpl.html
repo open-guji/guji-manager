@@ -20,6 +20,7 @@
 .tile .acts button.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}
 .tile .ids{width:8em;font:16px/1 var(--font-glyph);text-align:center}
 .tile .flag{font-size:11px;color:var(--bad);border:1px solid var(--bad);border-radius:4px;padding:1px 4px}
+.tile .img.pair{gap:4px}.tile .img.pair figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.1}.tile .img.pair figcaption{font:10px var(--font-ui);color:var(--muted)}.tile .img.pair .refimg{border:1px dashed var(--muted);border-radius:3px;padding:1px}
 .tile.v-notchar{border-color:#b7791f;border-style:dashed}.tile.v-unknown{border-color:var(--muted)}
 </style>
 /*SHELL*/
@@ -99,7 +100,12 @@ function render(){
     for(const s of c.samples){
       const b=document.createElement("div");b.setAttribute("role","button");b.tabIndex=0;b.title=s.id;
       const sg=document.createElement("div");sg.className="sug";sg.textContent=c.char;
-      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=s.img||"";im.alt=c.char;w.appendChild(im);
+      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=s.img||"";im.alt=c.char;
+      if(s.ref_img){ // 1.5：标准字形图（如维基 SKQS）与本书切图并排，各带一行小字
+        w.classList.add("pair");const fb=document.createElement("figure"),fr=document.createElement("figure");
+        const rm=document.createElement("img");rm.src=s.ref_img;rm.alt="标准字形";rm.className="refimg";
+        const cb=document.createElement("figcaption");cb.textContent="本书";const cr=document.createElement("figcaption");cr.textContent=s.ref_label||"标准";
+        fb.append(im,cb);fr.append(rm,cr);w.append(fb,fr)}else w.appendChild(im);
       const m=document.createElement("div");m.className="m";
       const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.placeholder="这格是";pk.setAttribute("aria-label","这格是什么字");
       pk.onclick=e=>e.stopPropagation();pk.onkeydown=e=>e.stopPropagation();

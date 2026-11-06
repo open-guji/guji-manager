@@ -3,6 +3,7 @@
 输入统一用 items（jsonl 或 json 列表），每项字段按页型：
   char_card / char_grid：{id, pre(预选字), pre_conf?, kind?, img(图文件路径或 data URI), cov?}
     img 用 crop.py 按 cell_shrink 字框裁（不要按 row_segment 的 quad 裁，会带进边框线）
+    ref_img?/ref_label?（char_card 1.5）：标准字形图（如维基 SKQS 僻字图）与本书切图并排，label 默认「标准」
   pair_whitelist：{key, label?, pre?(选项之一), n?(全组格数), hint?, tiles:[[格号, 图, 说明?, {left,right,ref_char}?]]}
     tile 带上下文时逐格点同字/不同字/看不清，每组页尾显示同字率（pair.py 的 sample_groups 按组各抽 30 格出这个格式）
   codepoint：{key, chars:[字…], pre?(unify:X|other:X|split_follow|split_distinct), hint?,
@@ -114,7 +115,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     elif exclude:
         items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
-        rows = [dict(r, img=embed(r.get("img"))) for r in items]
+        rows = [dict(r, img=embed(r.get("img")), **({"ref_img": embed(r["ref_img"])} if r.get("ref_img") else {})) for r in items]
         cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
         pp = per_page or 8
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
