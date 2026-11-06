@@ -71,7 +71,7 @@
 | X99 | [`unknown`](unknown/README.md) | 原因不明 | 一定人审 | A31 | 0 | 0 | 0 |
 | Z01 | [`group_abstain`](group_abstain/README.md) | 形近字·没把握 | 大模型统一过一遍 | A24 | 525 | 103 | 11 |
 | Z02 | [`group_conflict`](group_conflict/README.md) | 形近字·判法打架 | 大模型统一过一遍 | A24 | 149 | 16 | 23 |
-| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 214 | 41 | 2 |
+| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 153 | 29 | 2 |
 | Z04 | [`group_ref_dissent`](group_ref_dissent/README.md) | 形近字·与参校本不同 | 大模型统一过一遍 | A24 | 277 | 10 | 5 |
 | Z05 | [`group_weak`](group_weak/README.md) | 形近字·证据弱 | 大模型统一过一遍 | A24 | 35 | 5 | 3 |
 | Z06 | [`group_form_open`](group_form_open/README.md) | 写法待定 | 先改算法，改完剩下的并入 llm | A24 | 5 | 0 | 0 |
