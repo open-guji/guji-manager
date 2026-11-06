@@ -83,7 +83,7 @@ def test_lib_and_ref_rules():
         Cell(id="v:1:1:8", char="丁", ref="甲", evidence={"guard": "conflict"}),
     ]
     assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_AGREE,
-                                      R.LIB_SPARSE_DISSENT, R.REF_REPLACED, R.REF_MISMATCH, R.NEAR_FORM_GUARD]
+                                      R.LIB_SPARSE_DISSENT, R.REF_DIFF_ALIGN, R.REF_DIFF_FINAL, R.NEAR_FORM_GUARD]
 
 
 def test_sparse_needs_lib_counts():
@@ -330,3 +330,10 @@ def test_load_pua_table_reads_config_pua(tmp_path):
     assert st["pua_table_codes"] == 2 and st["pua_table_pending"] == 1 and st["pua_table_char"] == 1
     assert st["pua_table_registry_mismatch"] == 1
     assert pua_table_stats({}, frozenset({"x"}))["pua_table_registry_mismatch"] == 0
+
+
+def test_renamed_reason_old_names_still_parse():
+    from guji_manager.review.pending_reason import PendingReason, parse
+    assert parse("ref_replaced") is PendingReason.REF_DIFF_ALIGN
+    assert parse("ref_mismatch") is PendingReason.REF_DIFF_FINAL
+    assert parse("ref_diff_align") is PendingReason.REF_DIFF_ALIGN

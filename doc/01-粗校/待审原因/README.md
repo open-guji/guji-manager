@@ -10,7 +10,7 @@
 - 它**不是判定依据**，只说为什么停在这里；判定依据是 `why[]`、`evidence`。
 - 判不出的一律写 `unknown`（X99），出现就要补规则。
 - 所有数据（待审单、人裁事件、裁定库、网站票、book-text）字段名一律 `pending_reason`，值只写英文名，不写中文、不写码（sheldon 11-03 定）。
-- 改名走弃用流程（`deprecated_by`），码永不复用。
+- 改名走弃用流程：yaml `renamed` 记旧名→新名，`parse()` 照认旧名；码永不复用。2026-11-06 P01 `ref_replaced`→`ref_diff_align`、P02 `ref_mismatch`→`ref_diff_final`。
 
 每个原因带这些配置：大类、去向 `route`（human 一定人审／llm 大模型统一过一遍／algo 先改算法／deferred 留后）、负责人 `owner`、最终谁看 `reviewer`、网页卡片形态 `ui`、卡片说明 `hint`、判定依据 `detect`。
 
@@ -54,8 +54,8 @@
 | L04 | [`lib_unrecognized`](lib_unrecognized/README.md) | 库认不出 | 先改算法，改完剩下的并入 llm | A23 | 392 | 9 | 3 |
 | L05 | [`garble_gate`](garble_gate/README.md) | 像框线或墨点 | 先改算法，改完剩下的并入 llm | A24 | 184 | 57 | 2 |
 | N01 | [`near_form_guard`](near_form_guard/README.md) | 形近字 | 大模型统一过一遍 | A24 | 273 | 40 | 6 |
-| P01 | [`ref_replaced`](ref_replaced/README.md) | 参校本改过字 | 大模型统一过一遍 | A24 | 174 | 77 | 30 |
-| P02 | [`ref_mismatch`](ref_mismatch/README.md) | 和参校本不一致 | 大模型统一过一遍 | A24 | 374 | 68 | 0 |
+| P01 | [`ref_diff_align`](ref_diff_align/README.md) | 对位时就与参校本不同 | 大模型统一过一遍 | A24 | 174 | 77 | 30 |
+| P02 | [`ref_diff_final`](ref_diff_final/README.md) | 定字后与参校本不同 | 大模型统一过一遍 | A24 | 374 | 68 | 0 |
 | R01 | [`ref_lacuna`](ref_lacuna/README.md) | 参校本缺字 | 先改算法，改完剩下的并入 llm | A24 | 287 | 12 | 2 |
 | R02 | [`ref_gap`](ref_gap/README.md) | 参校本这里没字 | 大模型统一过一遍 | A24 | 145 | 76 | 9 |
 | R03 | [`glyph_pending`](glyph_pending/README.md) | 待收字 | 留到标点、专名阶段 | A24 | 0 | 0 | 0 |
