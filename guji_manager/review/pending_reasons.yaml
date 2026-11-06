@@ -405,7 +405,7 @@ reasons:
     label: 机器改了字
     hint: 这一轮机器改了人工审定过的字，请确认
     ui: pick
-    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 为改判。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
+    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 以「机器改判」开头、含「推翻人裁」（老单「无人裁」复审格归 recheck）。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
     legacy: {}
   recheck:
     code: X04
