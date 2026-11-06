@@ -20,7 +20,7 @@
 .tile .acts button.sel{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}
 .tile .ids{width:8em;font:16px/1 var(--font-glyph);text-align:center}
 .tile .flag{font-size:11px;color:var(--bad);border:1px solid var(--bad);border-radius:4px;padding:1px 4px}
-.tile .img.pair{gap:4px}.tile .img.pair figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.1}.tile .img.pair figcaption{font:10px var(--font-ui);color:var(--muted)}.tile .img.pair .refimg{border:1px dashed var(--muted);border-radius:3px;padding:1px}
+.tile .img .noimg{display:flex;align-items:center;justify-content:center;width:96px;height:96px;box-sizing:border-box;padding:4px;text-align:center;background:#eee;color:#777;border:1px solid #ccc;border-radius:3px;font:11px/1.3 var(--font-ui)}.tile .img.pair{gap:4px}.tile .img.pair figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.1}.tile .img.pair figcaption{font:10px var(--font-ui);color:var(--muted)}.tile .img.pair .refimg{border:1px dashed var(--muted);border-radius:3px;padding:1px}
 .hard main,.hard .hint{max-width:1500px}
 .hard #list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;align-items:start}
 .hard #list .card{margin:0;padding:6px 8px;min-width:0}
@@ -110,7 +110,7 @@ function render(){
     for(const s of c.samples){
       const b=document.createElement("div");b.setAttribute("role","button");b.tabIndex=0;b.title=s.id;
       const sg=document.createElement("div");sg.className="sug";sg.textContent=gl(c.char);if(NOF.has(c.char))sg.classList.add("nofont");
-      const w=document.createElement("div");w.className="img";const im=document.createElement("img");im.src=s.img||"";im.alt=c.char;
+      const w=document.createElement("div");w.className="img";let im;if(s.img){im=document.createElement("img");im.src=s.img;im.alt=c.char}else{im=document.createElement("div");im.className="noimg";im.textContent="本书无切图（没对上 v2）"}
       if(s.ref_img){ // 1.5：标准字形图（如维基 SKQS）与本书切图并排，各带一行小字
         w.classList.add("pair");const fb=document.createElement("figure"),fr=document.createElement("figure");
         const rm=document.createElement("img");rm.src=s.ref_img;rm.alt="标准字形";rm.className="refimg";
