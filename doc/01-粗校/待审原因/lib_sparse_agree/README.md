@@ -2,7 +2,9 @@
 
 > [待审原因总览](../README.md)
 
-**一句话**：这个字在本书字形库里只有 0～2 个刻例，库对它没有判力。机器最后给的字和整理本一样，但没有独立的字形证据，所以留人确认。
+**一句话**：这个字在本书字形库里只有 1～2 个刻例（只算本书版本），库对它还认不准。机器最后给的字和整理本一样，但没有独立的字形证据，所以留人确认。
+
+> **2026-11-06 边界调整（Sheldon 同意，A23）**：①刻例只算本书版本的人裁刻例，借来的不算；②本书库 **0 例**的格一律归 L01（第一次进库），不再留在 L03。L03 从殿本 302 格降到 105 格，197 格挪去 L01。只改归类，不放行任何格，不动 cv。
 
 ## 定义与判定
 
@@ -16,18 +18,32 @@
 一格同时满足以下各条，就判为 L03：
 
 1. **前面 priority 更小的原因都没命中**。实际起作用的主要是这几条：没有遮挡、页／列对得上、不在字组、不是 H01 那几个字、整理本不是〓、**没有 `lib_miss` 疑问码**（L01）、没有乱码闸（L05）、整理本这一位有字（R02）、不是组外异体对（V01）、没有形近护栏码（N01）。
-2. **整理本字在本书字形库的刻例数 ≤ 2（含 0）**：`lib_n(ref) <= LIB_SPARSE`。
+2. **整理本字在本书字形库的刻例数是 1 或 2**：`1 <= lib_own_n(ref) <= LIB_SPARSE`。0 例的格在 `classify()` 里改判 L01。
 3. **机器字＝整理本字**：`c.char == c.ref`。这里的机器字是 seed_admit 产物里该格的 `char`。
 
 ```python
 # guji_manager/review/reasons.py
 LIB_SPARSE = 2                                                     # 第 26 行
-def _sparse(c, ctx):                                               # 第 130 行
-    return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) <= LIB_SPARSE)
-R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,   # 第 199 行
+def _sparse(c, ctx):
+    n = lib_own_n(c, ctx); return n is not None and n <= LIB_SPARSE
+R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
+def classify(c, ctx):   # L02／L03 命中、而本书库 0 例 → L01
+    ...
+        if r in (R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE) and _first_entry(c, ctx):
+            return R.LIB_MISSING
 ```
 
-`lib_n` 由 `lib_counts(glyph_db)`（第 362 行）给出：`select char, sum(n_confirmed) from glyphs group by char`。**不给字形库时 `lib_n` 是 None，这条永远不中**，这些格会落到后面的 P01／L04／P02。
+刻例数 `lib_own_n` 由 `lib_own_counts(glyph_db)` 给出：`glyphs.n_confirmed` 求和，**只算 `meta.book_edition` 那个版本**（本书），借来的版本不算；库里没记版本时退回全部求和。**不给字形库时这条永远不中**，这些格会落到后面的 P01／L04／P02。
+
+#### L01／L02／L03 边界一览（11-06 起）
+
+| 参校字在本书库的刻例数 n | 机器字＝参校字 | 机器字≠参校字 |
+|---|---|---|
+| 0 | L01 少见的字 | L01 少见的字 |
+| 1～2 | **L03 刻例太少** | L02 刻例太少·不一致 |
+| ≥3 | 往后判（L04／P01／P02，L04 不动） | 往后判 |
+
+另外，带 `lib_miss` 码（5a 判 diff）的格不论 n，仍按 priority 51 先归 L01。
 
 ### 实际是怎么走到这一步的
 
@@ -51,11 +67,11 @@ R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,   # 第 199 
 | 出单写原因 | cv `scripts/zhengli/republish.py` `add_causes`；回填 `scripts/zhengli/backfill_pending_reason.py` |
 | 分档 | `guji_manager/iterate/leverage.py` `FIRST_ENTRY` |
 
-### 结构上不够清楚的地方（2026-11-06 调研，先记下，没改）
+### 结构上不够清楚的地方（2026-11-06 调研；1–3 条已在 11-06 边界调整里处理）
 
-1. **detect 文案和代码不一致**。yaml 写的是「上下文＝整理本」，代码判的却是 seed_admit 的 `char`＝整理本。实际上 L03 的格大多是上下文选了**别的字**，被护栏改回整理本字（见上面第 3 步）。卡片 hint「第一次正式进库」也不准：≤2 包括已经有 1～2 个人裁刻例的字（殿本 293 格里 102 格是这样）。
-2. **和 L01 的界线不是按刻例数分的**。L01 看的是疑问码 `lib_miss`（glyph_match verdict=diff，意思是「库里没有像这一格的刻例」），不看刻例数。所以库里 0 例、但库判 unsure 的格落在 L03 而不是 L01（殿本 191 格）。L01 文档里的「字形库里还没有这个字」也因此不准。
-3. **「刻例数」有三种算法**：
+1. **（已改）detect 文案和代码不一致**。yaml 写的是「上下文＝整理本」，代码判的却是 seed_admit 的 `char`＝整理本。实际上 L03 的格大多是上下文选了**别的字**，被护栏改回整理本字（见上面第 3 步）。卡片 hint「第一次正式进库」也不准：≤2 包括已经有 1～2 个人裁刻例的字（殿本 293 格里 102 格是这样）。
+2. **（已改：0 例一律 L01）和 L01 的界线不是按刻例数分的**。L01 看的是疑问码 `lib_miss`（glyph_match verdict=diff，意思是「库里没有像这一格的刻例」），不看刻例数。所以库里 0 例、但库判 unsure 的格落在 L03 而不是 L01（殿本 191 格）。L01 文档里的「字形库里还没有这个字」也因此不准。
+3. **（L01–L03 已统一用本书版本 n_confirmed）「刻例数」有三种算法**：
    - `reasons.lib_counts`：按 `glyphs.n_confirmed` 求和，**含借来的版本**。史記库借了全唐文，借来的刻例也算进去。
    - `reasons.lib_split_counts`（L01 细分用）：按 exemplars 数，本书与借来分开。
    - seed_admit 的 `_keben_counts`：按 exemplars 数。
@@ -63,6 +79,8 @@ R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,   # 第 199 
 5. 判定本身很短，一个阈值加一个等式，不难读。难的是要读懂上面 seed_admit 那条链，才知道一格**为什么**会走到这里，而 reasons.py 里看不到这条链。
 
 ## 现状（2026-11-06）
+
+> 下表是**边界调整前**的口径。调整后同一批包、同一份库现算：殿本 302→**105** 格（84 字；本书 1 例 73 格、2 例 32 格；197 格 0 例挪去 L01），史記 0→**1**（01:19:1:3 牘，本书 1 例，借来的不再算），全唐文 1→1（簋）。最多的字：丸 𭧂 𤦺 紅 溪 各 3。
 
 按各册 ★main 包现算，正文页，接各书中心库当天的 glyph.db：
 
@@ -89,7 +107,7 @@ R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,   # 第 199 
 ## 怎么处理（现行）
 
 1. 人审点选（`char_card`），同字全书一卡，确认即进库成刻例。
-2. 刻例到 3 例以上，下一轮同字自然不再进 L03。但按现行阈值，一个字从 0 例开始要被确认 3 次才出 L03。
+2. 刻例到 3 例以上，下一轮同字自然不再进 L03。0 例的字现在归 L01，审一次进库后变成 1 例，同字后面的格才会进 L03。
 
 ## 回流与防再犯
 

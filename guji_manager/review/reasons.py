@@ -91,10 +91,11 @@ class Context:
     page_noref: Counter = field(default_factory=Counter)
     page_weak: Counter = field(default_factory=Counter)
     col_noref: Counter = field(default_factory=Counter)
-    lib_n: Callable[[str], int] | None = None
+    lib_n: Callable[[str], int] | None = None            # 老口径刻例数（含借来的）；只在没给 lib_split 时兜底
     are_variants: Callable[[str, str], bool] | None = None
     edge_tier: Callable[[str, str], str | None] | None = None   # 异体边分型 T1／T2／T3；给了就只认 T1、T2 算异体（V01 收窄）
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
+    lib_own: Callable[[str], int] | None = None         # 字 → 本书版本的刻例数（n_confirmed）；L01–L03 边界用它
     glyph_pending: frozenset[str] = frozenset()                 # 私用码表里登记为「已判定待收」的永久编号；没给＝一个都不算
 
 
@@ -106,9 +107,10 @@ def _col(cid: str) -> str:
     return ":".join(cid.split(":")[:-1])
 
 
-def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None) -> Context:
+def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None,
+                  lib_own=None) -> Context:
     ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
-                  edge_tier=edge_tier)
+                  edge_tier=edge_tier, lib_own=lib_own)
     for c in cells:
         if not c.has_ref:
             if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
@@ -139,8 +141,26 @@ def _variant_with_ref(c: Cell, ctx: Context) -> bool:
     return False
 
 
+def lib_own_n(c: Cell, ctx: Context) -> int | None:
+    """参校字在**本书**字形库里的刻例数（L01／L02／L03 边界唯一用的数）。
+
+    优先 `ctx.lib_own`（`lib_own_counts`：本书版本 `glyphs.n_confirmed`，不含借来的版本）；没给就退回 `ctx.lib_n`
+    （老口径，所有版本求和、含借来的）。不用 `lib_split`（exemplars 数）：11-06 实测史記、全唐文库里有大批
+    exemplars 指向缺失的 instances，按它数会把「一」这类常用字数成 0 例。两个都没给、或这一格没有参校字 → None（不猜，L02／L03 都不中）。
+    A23 L03 深挖（sheldon 11-06 同意调 L01–L03 边界）：史記库借了全唐文，按老口径借来的刻例也算，少刻例字被算成 >2。"""
+    if not c.has_ref:
+        return None
+    if ctx.lib_own is not None:
+        return ctx.lib_own(c.ref)
+    if ctx.lib_n is not None:
+        return ctx.lib_n(c.ref)
+    return None
+
+
 def _sparse(c: Cell, ctx: Context) -> bool:
-    return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) <= LIB_SPARSE)
+    """刻例太少：参校字本书库里 0～`LIB_SPARSE` 例。0 例的在 `classify` 里改归 L01（第一次进库）。"""
+    n = lib_own_n(c, ctx)
+    return n is not None and n <= LIB_SPARSE
 
 
 def _group_kind(c: Cell) -> R | None:
@@ -353,20 +373,26 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
 
 
 def _first_entry(c: Cell, ctx: Context) -> bool:
-    """参校字在本书库里一例都没有（`lib_n`＝0，含借库）：这一格是它第一次进库。"""
-    return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) == 0)
+    """参校字在本书库里一例都没有（`lib_own_n`＝0）：这一格是它第一次进库。"""
+    return lib_own_n(c, ctx) == 0
 
 
 def classify(c: Cell, ctx: Context) -> R:
     """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。
 
-    L02 刻例太少·不一致里参校字库里 0 例的格归 L01 少见的字（A23 L02 深挖，sheldon 11-06 定）：坐标对位的格产物上
-    没有 `lib_miss` 码，原先落进 L02；它们判的其实是第一次进库。只动 L02，前面的原因不动；L03 的同类格（0 例、
-    机器字＝参校字）另议（L03 深挖 R1，暂缓），照旧 L03。"""
+    字形库类 L01–L03 的边界（A23 L03 深挖，sheldon 11-06 同意调整）只看参校字在本书库里的刻例数 n（`lib_own_n`）
+    和机器字是否＝参校字：
+
+        n = 0          → L01 lib_missing        第一次进库（不论机器字）
+        1 ≤ n ≤ 2      → 机器字＝参校字 L03 lib_sparse_agree；≠ L02 lib_sparse_dissent
+        n ≥ 3          → 不进 L02／L03，落到后面（多半 L04 库认不出、P01／P02）
+
+    带 `lib_miss` 码（5a 判 diff）的格照旧在 priority 51 先归 L01。n＝0 的改归只发生在 L02／L03 这一位上，
+    前面的原因（乱码闸、异体、形近护栏等）不受影响。"""
     for r in _ordered():
         rule = RULES.get(r)
         if rule and rule(c, ctx):
-            if r is R.LIB_SPARSE_DISSENT and _first_entry(c, ctx):
+            if r in (R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE) and _first_entry(c, ctx):
                 return R.LIB_MISSING
             return r
     return R.UNKNOWN
@@ -465,6 +491,32 @@ def lib_counts(glyph_db) -> Callable[[str], int] | None:
     con = sqlite3.connect(str(p))
     try:
         for ch, k in con.execute("select char, sum(n_confirmed) from glyphs group by char"):
+            n[ch] += k or 0
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    return lambda ch: n.get(ch, 0)
+
+
+def lib_own_counts(glyph_db) -> Callable[[str], int] | None:
+    """字形库 SQLite → 每字**本书版本**的刻例数（`glyphs.n_confirmed`，`edition_tag`＝`meta.book_edition`）。
+    没有 `book_edition`（老库）就退回所有版本求和，同 `lib_counts`。库不在或读不了返回 None（不猜）。"""
+    import sqlite3
+    p = Path(glyph_db)
+    if not p.exists() or p.stat().st_size == 0:
+        return None
+    n: Counter = Counter()
+    con = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    try:
+        row = None
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").fetchone():
+            row = con.execute("SELECT value FROM meta WHERE key='book_edition'").fetchone()
+        if row and row[0]:
+            q = con.execute("select char, sum(n_confirmed) from glyphs where edition_tag=? group by char", (row[0],))
+        else:
+            q = con.execute("select char, sum(n_confirmed) from glyphs group by char")
+        for ch, k in q:
             n[ch] += k or 0
     except sqlite3.Error:
         return None
@@ -674,6 +726,7 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
                     stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        lib_own=lib_own_counts(glyph_db) if glyph_db else None,
                         edge_tier=tier)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
@@ -713,6 +766,7 @@ def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_vari
         are_variants, tier = _default_are_variants(), _default_edge_tier()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        lib_own=lib_own_counts(glyph_db) if glyph_db else None,
                         edge_tier=tier)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
