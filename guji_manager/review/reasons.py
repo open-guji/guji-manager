@@ -93,6 +93,7 @@ class Context:
     col_noref: Counter = field(default_factory=Counter)
     lib_n: Callable[[str], int] | None = None
     are_variants: Callable[[str, str], bool] | None = None
+    edge_tier: Callable[[str, str], str | None] | None = None   # 异体边分型 T1／T2／T3；给了就只认 T1、T2 算异体（V01 收窄）
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
     glyph_pending: frozenset[str] = frozenset()                 # 私用码表里登记为「已判定待收」的永久编号；没给＝一个都不算
 
@@ -105,8 +106,9 @@ def _col(cid: str) -> str:
     return ":".join(cid.split(":")[:-1])
 
 
-def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=()) -> Context:
-    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending))
+def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None) -> Context:
+    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
+                  edge_tier=edge_tier)
     for c in cells:
         if not c.has_ref:
             if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
@@ -118,12 +120,23 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
     return ctx
 
 
+#: 算异体的边分型（A24 V01 深挖 11-06）：T3（只有通假、形近、简繁来源）不是异体。
+VARIANT_TIERS = frozenset({"T1", "T2"})
+
+
 def _variant_with_ref(c: Cell, ctx: Context) -> bool:
+    """异体：带异体疑问码；或整理本字与**库首位或机器字**在异体表里有边（A24 V01 深挖 11-06 收窄：不再看前五里其它候选，
+    那些多是陪衬字碰巧与整理本有边；给了 `ctx.edge_tier` 时只认 T1／T2，通假、简繁的 T3 不算）。只改分类，不放行。"""
     if c.codes & _VARIANT:
         return True
     if not (ctx.are_variants and c.has_ref and c.top and c.top != c.ref):
         return False
-    return any(x and x != c.ref and ctx.are_variants(c.ref, x) for x, *_ in c.cands[:5])
+    for x in {c.top, c.char}:
+        if not x or x == c.ref or not ctx.are_variants(c.ref, x):
+            continue
+        if ctx.edge_tier is None or ctx.edge_tier(c.ref, x) in VARIANT_TIERS:
+            return True
+    return False
 
 
 def _sparse(c: Cell, ctx: Context) -> bool:
@@ -453,6 +466,15 @@ def _default_are_variants():
         return None
 
 
+def _default_edge_tier():
+    """cv 异体边分型；旧 cv 没有就返回 None（V01 退回只看有没有边）。"""
+    try:
+        from .._cv import edge_tier as _et
+        return _et
+    except Exception:  # noqa: BLE001
+        return None
+
+
 #: 待收字登记表（私用码表里「已判定待收」的永久编号，一项一个 `来源:码位`）放在数据目录 `config/pua/glyph_pending_codes.json`
 #: （`{"codes": [...]}`，随 `guji db sync` 进中心库；A31 11-05 定：不放语料版本，免得动 corpus 指纹、触发 CorpusDrift）。
 #: 读不到＝空表＝一个都不算，全走 `ref_lacuna`，和改前一样。
@@ -578,8 +600,9 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
 
     `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
     回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
+    tier = None
     if are_variants is None:
-        are_variants = _default_are_variants()
+        are_variants, tier = _default_are_variants(), _default_edge_tier()
     bigrams: Counter | None = Counter() if suspect else None
     prod = book_cells(products_dir, book, bigrams=bigrams)
     cells: list[Cell] = []
@@ -610,7 +633,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
                 if c.pua_code and c.pua_code in glyph_pending and stats is not None:
                     stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        edge_tier=tier)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
@@ -644,10 +668,12 @@ def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_vari
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
+    tier = None
     if are_variants is None:
-        are_variants = _default_are_variants()
+        are_variants, tier = _default_are_variants(), _default_edge_tier()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        edge_tier=tier)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value
