@@ -168,7 +168,12 @@ def _group_kind(c: Cell) -> R | None:
         return R.GROUP_CONFLICT
     if dec == "demote":
         return R.GROUP_DEMOTED
-    return R.GROUP_WEAK
+    if why in ("ref_missing", "solo_weak"):
+        # 整理本缺位被部首族门／solo_margin 挡下：字组没有「证据弱」这回事，是整理本缺字，按后面的原因落（R 整理本缺字／缺位）。
+        return None
+    # 其余（why=weak：给字的解法不许单独补放；有文意给字但字形拆不开等）：字形单路没把握，并入 Z01。
+    # Z05 group_weak 2026-11-06 停用（A24 深挖，sheldon 定），枚举与 yaml 保留，旧数据读得出，不再产出。
+    return R.GROUP_ABSTAIN
 
 
 #: 己已巳、日曰两个字组（cv groups 的组 id）。
