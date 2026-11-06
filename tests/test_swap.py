@@ -72,3 +72,13 @@ def test_resume_skips_issued_books(tmp_path, monkeypatch):
     out = json.loads(buf.getvalue().strip().splitlines()[-1])
     assert out["publish_only"] == ["vol20", "vol21"]
     assert out["todo"] == ["vol23", "vol24"]
+
+
+def test_data_problem(tmp_path):
+    assert "待收字登记表" in swap.data_problem(tmp_path) and "语料" in swap.data_problem(tmp_path)
+    (tmp_path / "config" / "pua").mkdir(parents=True)
+    (tmp_path / "config" / "pua" / "glyph_pending_codes.json").write_text("[]")
+    assert "待收字登记表" not in swap.data_problem(tmp_path)
+    (tmp_path / "corpus" / "daizhige").mkdir(parents=True)
+    (tmp_path / "corpus" / "daizhige" / "0001.jsonl").write_text("{}\n")
+    assert swap.data_problem(tmp_path) is None
