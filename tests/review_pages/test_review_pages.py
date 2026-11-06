@@ -297,7 +297,7 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.5.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.1" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
 
 
 def test_char_card_ref_img(tmp_path):

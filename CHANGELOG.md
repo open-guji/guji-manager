@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 人审页 `char_card` 1.5.1（外观 PATCH，A20；用户 11-06 反馈生僻字显示成空白、要滚太多）：①新 `review_pages/fontsub.py`：build 时把页面用到的、GB2312/Big5 以外的字从 Jigmo（CC0，Jigmo.ttf／Jigmo2.ttf／Jigmo3.ttf 合起来覆盖 Ext A–J）子集化成 woff2 内嵌，家族名 GujiGlyph 接在 `--font-glyph` 的 SimSun 之后，所有页型通用；字体文件放 `GUJI_GLYPH_FONTS` 或 `~/.cache/guji/fonts/`，`python -m guji_manager.review_pages.fontsub fetch` 一键下载；没字体或没装 fonttools（`pip install 'guji-manager[fonts]'`）不报错，只在 stderr 报三个字体都没有的字，stat 带 `font`。②难认字页（`--no-rest-ok`）一格一卡改网格排，宽屏一行 3–4 张，卡头压成一行，默认每页 24 张（原 8）。
+
 - 新命令 `guji cellvotes rebase`（PATCH，A20）：页号格号不变的换图源（殿本四庫總目换文淵閣本）后，人裁事件锚里的框按页表 `from_rev.H` 换到新页、`source_rev` 改新 rev，出 `~r` 事件、待办清单和报告（只读，不写库）；旧页图 sha 与新页表 `from_rev.sha256` 对不上的不迁。逻辑 `feedback/source_rebase.py`，说明见 `doc/案例/殿本四库总目.md`。
 - 人审页 `char_card` 1.5.0（MINOR 外观，A24，私用码映射第一步）：items 可带 `ref_img`（标准字形图，如维基 SKQS 僻字图）和 `ref_label`，格上与本书切图并排显示、各带小字；不带的格不变。
 

@@ -24,12 +24,14 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import sys
 from importlib import resources
 from pathlib import Path
 
 from . import cards as cards_mod
 from . import pair_audit
 from . import codepoint as cp_mod
+from . import fontsub
 from . import glyph_quality as gq_mod
 from .preselect import KINDS
 from .registry import PageType, get
@@ -59,7 +61,11 @@ def _read(name: str) -> str:
     return _TPL.joinpath("templates", name).read_text(encoding="utf-8")
 
 
-def render(pt: PageType, data: dict) -> str:
+def render(pt: PageType, data: dict, embed_font: bool = True) -> str:
+    return render_info(pt, data, embed_font)[0]
+
+
+def render_info(pt: PageType, data: dict, embed_font: bool = True) -> tuple[str, dict]:
     if pt.template is None:
         raise SystemExit(f"页型 {pt.key} 还没有模板")
     data = {"page_type": pt.key, "tpl_version": pt.version, "coll": pt.doc_prefix,
@@ -68,7 +74,15 @@ def render(pt: PageType, data: dict) -> str:
     html = html.replace("/*SHELL*/", _read("_shell.html").replace("/*TITLE*/", pt.title)) if "/*SHELL*/" in html else html
     html = html.replace("/*PAGER_JS*/", _read("_pager.js")).replace("/*STORE_JS*/", _read("_store.js"))
     html = html.replace("/*COMMON_CSS*/", _read("_common.css")).replace("/*COMMON_JS*/", _read("_common.js"))
-    return html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
+    html = html.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False))
+    info: dict = {}
+    if embed_font:
+        html, info = fontsub.embed(html)
+        rare = [c for c in info["missing"] if not 0x4E00 <= ord(c) <= 0x9FFF]   # 常用区的字本机字体基本都有，不为它们报警
+        if rare:
+            print(f"字体：内嵌 {info['embedded']} 字；{info['note']}" + (f"；三个字体都没有的 {len(info['missing'])} 字：{''.join(info['missing'][:40])}" if info["missing"] else ""),
+                  file=sys.stderr)
+    return html, info
 
 
 def read_ids(paths) -> set[str]:
@@ -117,7 +131,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     if page_type == "char_card":
         rows = [dict(r, img=embed(r.get("img")), **({"ref_img": embed(r["ref_img"])} if r.get("ref_img") else {})) for r in items]
         cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
-        pp = per_page or 8
+        pp = per_page or (24 if not rest_ok else 8)   # 难认字页一格一卡、网格排，每页放多些
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
                 "n_excluded": n0 - len(items)}
         stat = {"cards": len(cs), "cells": data["n_cells"], "shown": sum(len(c["samples"]) for c in cs),
@@ -190,7 +204,10 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"items": len(items), "pages": -(-len(items) // pp)}
     else:
         raise SystemExit(f"页型 {page_type} 还没有模板")
-    Path(out).write_text(render(pt, data), encoding="utf-8")
+    html, finfo = render_info(pt, data)
+    Path(out).write_text(html, encoding="utf-8")
+    if finfo:
+        stat["font"] = {"embedded": finfo["embedded"], "missing": "".join(finfo["missing"]), "bytes": finfo["bytes"]}
     stat["excluded"] = excluded_n if excluded_n is not None else n0 - len(items)
     stat["bytes"] = Path(out).stat().st_size
     stat["page_type"], stat["tpl_version"] = pt.key, pt.version
