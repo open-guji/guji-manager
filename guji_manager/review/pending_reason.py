@@ -53,7 +53,7 @@ class PendingReason(str, Enum):
     REF_LACUNA = "ref_lacuna"
     REF_GAP = "ref_gap"
     REF_OCR_DIFF = "ref_ocr_diff"        # P01 Step6 对位时识别字（字形库首位）就≠参校字（replace 段）；旧名 ref_replaced
-    REF_FINAL_DIFF = "ref_final_diff"    # P02 对位时相同（或坐标对位），最后定字（seed_admit）≠参校字；旧名 ref_mismatch
+    REF_FINAL_DIFF = "ref_final_diff"    # P02 文本对位没给标签、整理本字只来自坐标对位，机器字≠参校字；旧名 ref_mismatch
     RULING_CONFLICT = "ruling_conflict"
     VISION_FLAGGED = "vision_flagged"
     MACHINE_CHANGED = "machine_changed"
