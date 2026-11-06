@@ -26,6 +26,7 @@
 .hard #list .card{margin:0;padding:6px 8px;min-width:0}
 .hard .cardhead{margin-bottom:4px;gap:6px}.hard .big{font-size:24px;min-width:1.1em}
 .hard .cardhead .stat{font-size:10px;word-break:break-all;flex:1 1 100px}.hard .cardhead .tags{flex-basis:100%}
+.hard .tile .pk,.hard .tile .ids{width:92%;box-sizing:border-box;font-size:18px;text-align:center}.hard .tile input::placeholder{font-size:12px}
 .hard .tile .ctx{font-size:12px}.hard .tile .note{font-size:10px}.hard .tile .sug{font-size:22px}
 .nofont{font:600 10px/1.2 var(--font-ui);color:var(--muted)}
 /*FONT_CSS*/
@@ -87,10 +88,10 @@ function pageDoc(pi){
 function paint(b,c,s){
   const x=st.v[s.id];b.className="tile"+(x?" v-"+x.v:"");
   for(const e of b.querySelectorAll(".acts button"))e.classList.toggle("sel",!!(x&&x.v===e.dataset.v));
-  const ids=b.querySelector(".ids");if(ids){ids.hidden=!(x&&x.v==="unknown");if(!ids.hidden&&document.activeElement!==ids)ids.value=x.pk||""}
+  const ids=b.querySelector(".ids");if(ids){ids.hidden=HARD?false:!(x&&x.v==="unknown");if(!ids.hidden&&document.activeElement!==ids)ids.value=(x&&x.v==="unknown"&&x.pk)||""}
   b.querySelector(".m").textContent=x?(x.v==="other"?"改字"+(x.pk?"："+x.pk:""):x.v==="unknown"?"认不出"+(x.pk?"："+x.pk:""):VN[x.v]):((s.pre_conf||"")+(s.kind?" · "+(D.kind_names[s.kind]||s.kind):""));
   for(const e of b.querySelectorAll(".cand"))e.classList.toggle("sel",!!(x&&x.v==="other"&&x.pk===e.dataset.ch));
-  const inp=b.querySelector(".pk");inp.hidden=!(x&&x.v==="other");if(!inp.hidden&&document.activeElement!==inp)inp.value=x.pk||"";
+  const inp=b.querySelector(".pk");inp.hidden=HARD?false:!(x&&x.v==="other");if(!inp.hidden&&document.activeElement!==inp)inp.value=(x&&x.v==="other"&&x.pk)||"";
 }
 const s0=c=>c.samples[0]||{id:""};
 function render(){
@@ -116,7 +117,7 @@ function render(){
         const cb=document.createElement("figcaption");cb.textContent="本书";const cr=document.createElement("figcaption");cr.textContent=s.ref_label||"标准";
         fb.append(im,cb);fr.append(rm,cr);w.append(fb,fr)}else w.appendChild(im);
       const m=document.createElement("div");m.className="m";
-      const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.placeholder="这格是";pk.setAttribute("aria-label","这格是什么字");
+      const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.placeholder=HARD?"这格是（直接输入字）":"这格是";pk.setAttribute("aria-label","这格是什么字");
       pk.onclick=e=>e.stopPropagation();pk.onkeydown=e=>e.stopPropagation();
       pk.oninput=()=>{setCell(c,s.id,"other",pk.value.trim());paint(b,c,s)};
       const cx=document.createElement("div");cx.className="ctx";cx.textContent=s.ctx||"";
@@ -143,7 +144,7 @@ function render(){
           const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=t;bt.onkeydown=e=>e.stopPropagation();
           bt.onclick=e=>{e.stopPropagation();const x=st.v[s.id];if(x&&x.v===v)setCell(c,s.id,null);else setCell(c,s.id,v,"");paint(b,c,s);if(v==="unknown")ids.focus()};
           ac.appendChild(bt)}
-        const ids=document.createElement("input");ids.type="text";ids.className="ids";ids.placeholder="能看出的部件";ids.hidden=true;ids.setAttribute("aria-label","认不出：能看出的部件");
+        const ids=document.createElement("input");ids.type="text";ids.className="ids";ids.placeholder="认不出：写部件或 IDS";ids.hidden=true;ids.setAttribute("aria-label","认不出：能看出的部件");
         ids.onclick=e=>e.stopPropagation();ids.onkeydown=e=>e.stopPropagation();
         ids.oninput=()=>{setCell(c,s.id,"unknown",ids.value.trim());paint(b,c,s)};
         b.append(ac,ids)}
