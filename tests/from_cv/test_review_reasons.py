@@ -313,3 +313,20 @@ def test_align_for_seed_alt_cols():
     assert [c["id"] for c in got["chars"]] == ["v:1:5:1"]
     assert {c["id"]: c["ref_char"] for c in got["coord"]} == {"v:1:6:-1": "赤", "v:1:6:1": "埴"}
     assert align_for_seed({}, align) is align
+
+
+def test_load_pua_table_reads_config_pua(tmp_path):
+    """码表在数据目录 config/pua/pua_table.jsonl；不在＝空表，坏行跳过；只报数，不改判法。"""
+    from guji_manager.review.reasons import load_pua_table, pua_table_stats
+    assert load_pua_table(tmp_path) == {}
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "pua_table.jsonl").write_text(
+        '{"code": "daizhige:U+EA96", "verdict": "pending"}\n{坏\n'
+        '{"code": "daizhige:U+EAA0", "verdict": "char", "char": "卿"}\n{"verdict": "open"}\n', encoding="utf-8")
+    t = load_pua_table(tmp_path)
+    assert set(t) == {"daizhige:U+EA96", "daizhige:U+EAA0"} and t["daizhige:U+EAA0"]["char"] == "卿"
+    st = pua_table_stats(t, frozenset({"daizhige:U+EA96", "daizhige:U+EAA0"}))
+    assert st["pua_table_codes"] == 2 and st["pua_table_pending"] == 1 and st["pua_table_char"] == 1
+    assert st["pua_table_registry_mismatch"] == 1
+    assert pua_table_stats({}, frozenset({"x"}))["pua_table_registry_mismatch"] == 0
