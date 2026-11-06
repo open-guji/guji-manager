@@ -383,3 +383,42 @@ def test_near_form_narrowed(monkeypatch):
                                       R.NEAR_FORM_GUARD, R.REF_FINAL_DIFF]
     # 刻例 ≤2 → lib_sparse_dissent
     assert _cls([cells[0]], lib=lambda ch: 1) == [R.LIB_SPARSE_DISSENT]
+
+
+def test_ref_suspect_unit():
+    """ref_suspect（A32 D01 11-06）：只比库首位与整理本字在整理本上下文里的相邻二字次数，整理本这一格自己不算。"""
+    from collections import Counter
+    from guji_manager.review.reasons import ref_suspect
+    bg = Counter({"之曰": 1, "曰子": 1, "之日": 5, "日子": 3})
+    # 整理本「曰」只有自己这一处 → 库首位「日」更通顺 → 疑整理本错
+    a = Cell(id="v:1:1:1", char="日", ref="曰", cands=[["日", .99]], ref_left="…之", ref_right="子…")
+    assert ref_suspect(a, bg) == "ref"
+    # 反过来：整理本「日」常见、库首位「曰」少见 → 疑库错
+    b = Cell(id="v:1:1:2", char="曰", ref="日", cands=[["曰", .99]], ref_left="之", ref_right="子")
+    assert ref_suspect(b, bg) == "lib"
+    # 库首位＝整理本、没上下文、没语料 → 不标
+    assert ref_suspect(Cell(id="v:1:1:3", char="日", ref="日", cands=[["日", .9]], ref_left="之"), bg) == ""
+    assert ref_suspect(Cell(id="v:1:1:4", char="日", ref="曰", cands=[["日", .9]]), bg) == ""
+    assert ref_suspect(a, Counter()) == ""
+
+
+def test_ref_suspect_stamped_on_pending(tmp_path):
+    """reasons_for_pending 顺手在单上写 ref_suspect，不改原因；分不出的格把旧值删掉。"""
+    from collections import Counter
+    chars = [{"id": f"vol9:1:1:{i}", "admit": True, "char": ch} for i, ch in enumerate("子曰學而時習之子曰", 1)]
+    chars[1] = {"id": "vol9:1:1:2", "admit": False, "char": "日", "doubts": []}
+    chars += [{"id": f"vol9:1:2:{i}", "admit": True, "char": ch} for i, ch in enumerate("子曰有朋", 1)]
+    align = {"chars": [{"id": c["id"], "align_char": ch, "align_op": "equal"}
+                       for c, ch in zip(chars, "子日學而時習之子曰子曰有朋")]}
+    gm = {"columns": [{"chars": [{"id": "vol9:1:1:2", "candidates": [["曰", .99], ["日", .9]]}]}]}
+    _page(tmp_path, "vol9", 1, chars, align=align, gm=gm)
+    doc = {"cells": [{"cell": "1:1:2", "why": []}, {"cell": "8:8:8", "why": [], "ref_suspect": "lib"}]}
+    st = Counter()
+    res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False, stats=st)
+    assert doc["cells"][0]["ref_suspect"] == "ref"         # 整理本「子日學」，全册「子曰」3 次 → 疑整理本错
+    assert "ref_suspect" not in doc["cells"][1]
+    assert st["ref_suspect_ref"] == 1
+    doc2 = {"cells": [{"cell": "1:1:2", "why": []}]}
+    res2 = reasons_for_pending(doc2, tmp_path, "vol9", are_variants=lambda a, b: False, suspect=False)
+    assert "ref_suspect" not in doc2["cells"][0]
+    assert res2["1:1:2"] == res["1:1:2"]                     # 原因不受标记影响
