@@ -164,10 +164,11 @@ def main() -> int:
     ap.add_argument("--vols")
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--crops", action="store_true")
+    ap.add_argument("--db", help="字形库 glyph.db 路径（缺省用 <ws>/output/glyph.db＝最新库；要与线上口径一致请给册钉库的 db，如 殿本 g19）")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    gdb = str(Path(a.ws) / "output" / "glyph.db")
+    gdb = a.db or str(Path(a.ws) / "output" / "glyph.db")
     if not Path(gdb).exists():
         sys.exit(f"没有 {gdb}：先 `guji db pull -w {a.ws}`")
     with connect() as con:
