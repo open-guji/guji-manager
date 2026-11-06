@@ -230,6 +230,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "edition_for": ("core.ledger_edition", "edition_for"),
     "ledger_path": ("variant_ledger", "ledger_path"),
     "are_variants": ("variants", "are_variants"),
+    "edge_tier": ("variants", "edge_tier"),
     "NotFound": ("errors", "NotFound"),
     "colgeom_stamp": ("eval.colgeom", "stamp"),
     "enrich_events": ("feedback.anchor", "enrich_events"),

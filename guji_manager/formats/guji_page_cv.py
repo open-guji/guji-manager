@@ -320,7 +320,11 @@ def _canvas(meta: dict, page: int, image: dict, warnings: list, page_obj: dict) 
       拆块页 canvas = 裁剪框（`source.selector`），其余 canvas = 整张原叶 = 本页图；
     - CV 跑批那张图的帧（`image.region`）与 canvas 帧不同 → `remap_geometry` 搬过去并记一条 warning。
     """
-    book_id, vol = meta["book"]["id"], int(meta["volume"]["index"])
+    book_id = meta["book"]["id"]
+    # 册号段：册名本身是补好位的数字（全唐文 `005`）就照它，否则按册序补 2 位（殿本 vol04 → 04）
+    cvb = str(meta["volume"].get("cv_book") or "")
+    vol = cvb if cvb.isdigit() and len(cvb) >= 2 and int(cvb) == int(meta["volume"]["index"]) \
+        else int(meta["volume"]["index"])
     item = meta["volume"].get("ia_item")
     W, H = image["width"], image["height"]
     if meta.get("canvas"):

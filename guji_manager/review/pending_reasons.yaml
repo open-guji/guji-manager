@@ -24,6 +24,11 @@
 
 version: 1
 
+# 改名（deprecated_by 流程）：旧名 → 新名。数据里读到旧名时 parse() 换成新名；code 不变、永不复用。
+renamed:
+  ref_replaced: ref_ocr_diff      # 2026-11-06 Sheldon：P01/P02 旧名看不出区别
+  ref_mismatch: ref_final_diff
+
 categories:
   segmentation: {code: S, label: 切分位置}
   occlusion:    {code: D, label: 遮挡}
@@ -54,7 +59,7 @@ reasons:
     label: 整页对不上
     hint: 这一页很多格都对不上参校本，多半是切分或对位错了，请看整页
     ui: page
-    detect: 本格无整理本对位，且同页无对位格 ≥10；或本格是弱证据格（有对位、机器字不同）且本列一致率 <0.5、同页这样的格 ≥10；已钉页直接人审
+    detect: 正文页（非职名等页型）上本格无整理本对位（〓 不算），且同页无对位格 ≥10；或本格是弱证据格（有对位、机器字不同）且本列一致率 <0.5、同页这样的格 ≥10；已钉页直接人审
     legacy: {cause: [A1, A3, A4, A5, A9], taxonomy: [S2, S3, S4, S5, S6], v2: "S 成片页"}
   seg_col_unaligned:
     code: S02
@@ -130,7 +135,7 @@ reasons:
     label: 极难形近
     hint: 日曰、己已巳这类刻法几乎不分的字，留到加标点、识专名时一起按文意定
     ui: choose3
-    detect: 本格机器字、整理本字、库首选里出现的字全在 {日 曰 己 已 巳} 内，且至少两个不同
+    detect: 本格机器字、整理本字、库首选里出现的字全在 {日 曰 己 已 巳} 内，且至少两个不同；或三者同字而字组是 jys/ry、或库前两名都在组内（A24 Z01 深挖 11-06）
     legacy: {cls: [ji_yi_si], cause: [C], v2: "H 极难形近"}
 
   # ── Z 形近字组 ─────────────────────────────────────────
@@ -218,7 +223,7 @@ reasons:
     label: 形近字
     hint: 有长得很像的字（十士、西酉…），要结合前后文看
     ui: pick
-    detect: guard=conflict/never_match，或 why 含 near_form/solo_confusable/iron_confusable_ref，且不在字组
+    detect: guard=conflict/never_match，或参校字与机器字／库候选前三构成手工形近表（cv NEVER_MATCH_FAMILIES）里的一对；仅疑问码 near_form（家族字碰巧在候选里）不算（A24 N01 深挖 11-06）
     legacy: {cls: [near_form], cause: [C], taxonomy: [Z4], v2: "N 形近护栏拦下"}
 
   # ── V 异体 ────────────────────────────────────────────
@@ -232,7 +237,7 @@ reasons:
     label: 异体字
     hint: 两个字是异体，要确认本书刻的是哪个
     ui: pick
-    detect: 整理本字与库首选（或前五）是异体对，但不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
+    detect: 整理本字与库首选或机器字是异体对（边分型 T1／T2；T3 通假、简繁不算；前五里其它候选不看，A24 V01 深挖 11-06），且不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
     legacy: {cause: [B], cls: [variant], taxonomy: [M1, M2], v2: "V 组外异体对"}
 
   # ── L 字形库 ──────────────────────────────────────────
@@ -246,7 +251,7 @@ reasons:
     label: 少见的字
     hint: 字形库里还没有这个字，这一格就是它第一次进库，请确认图上是不是参校本的字
     ui: pick
-    detect: 整理本字不在字形库（why 含 lib_miss / 「库里没有」）
+    detect: 整理本字不在字形库（why 含 lib_miss / 「库里没有」）；或本该判 L02、而整理本字库样本＝0（坐标对位格没有 lib_miss 码，A23 11-06）
     legacy: {cause: [F], cls: [lib_miss], taxonomy: [L1], v2: "L 库里没有这个字"}
   lib_sparse_dissent:
     code: L02
@@ -258,7 +263,7 @@ reasons:
     label: 刻例太少·不一致
     hint: 库里这个字刻例很少，机器字和参校本不一致
     ui: pick
-    detect: 整理本字库样本 ≤2，机器字≠整理本；大模型选中的若是这个少样本字 → 回人审
+    detect: 整理本字库样本 1～2，机器字≠整理本（0 例的归 L01）；大模型选中的若是这个少样本字 → 回人审
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·机器字≠整理本"}
   lib_sparse_agree:
     code: L03
@@ -336,29 +341,33 @@ reasons:
     legacy: {cause: [A9, A1], v2: "R 整理本这位没字·上下文不足"}
 
   # ── P 与整理本不一致 ──────────────────────────────────
-  ref_replaced:
+  # P01 与 P02 的区别在「哪一步和参校本不同」：
+  #   P01 ref_ocr_diff   Step6 对位（align_ref）时：机器识别的字（字形库首位）和参校本按文本对位，这格落在 replace 段，识别字≠参校字。
+  #   P02 ref_final_diff 对位时相同（equal 段）或按坐标对位，到最后定字（context_decide → seed_admit）才和参校字不同。
+  #   两条都中时按 priority 记 P01。
+  ref_ocr_diff:               # 2026-11-06 由 ref_replaced 改名（Sheldon），旧名见 renamed
     code: P01
     category: mismatch
     route: llm
     owner: A24
     reviewer: llm_then_human
     priority: 60
-    label: 参校本改过字
-    hint: 参校本这一段改过字，位置可能差一两格
+    label: 识别字与参校本不同
+    hint: 机器识别的字和参校本对位时就不同（对位的 replace 段），位置可能差一两格
     ui: pick
-    detect: 对位来自 replace 段（align_op=replace / why=replace_align）
+    detect: Step6 align_ref 文本对位：识别字（字形库首位）与参校本 difflib 对位落在 replace 段（align_op=replace / why=replace_align）
     legacy: {cause: [G], cls: [replace_align], taxonomy: [R2], v2: "P 整理本改字层"}
-  ref_mismatch:
+  ref_final_diff:               # 2026-11-06 由 ref_mismatch 改名（Sheldon），旧名见 renamed
     code: P02
     category: mismatch
     route: llm
     owner: A24
     reviewer: llm_then_human
     priority: 62
-    label: 和参校本不一致
-    hint: 机器的判断和参校本这里的字不一样，可能是真异文
+    label: 定字与参校本不同
+    hint: 对位时和参校本一致（或按坐标对位），最后定字成了别的字，可能是真异文
     ui: pick
-    detect: 其余机器字≠整理本（context_vs_ref / iron_vs_ref / signal_conflict 等）
+    detect: 不是 P01（对位 equal 段或坐标对位），但 seed_admit 最后定的字≠参校字（context_vs_ref / iron_vs_ref / signal_conflict 等）
     legacy: {cause: [E, I], cls: [ref_conflict, other], taxonomy: [R1], v2: "P 机器字≠整理本"}
 
   # ── X 复审与其他 ──────────────────────────────────────
@@ -396,7 +405,7 @@ reasons:
     label: 机器改了字
     hint: 这一轮机器改了人工审定过的字，请确认
     ui: pick
-    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 为改判。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
+    detect: 机器推翻最新人裁（book-text 现文是人裁的字、本轮机器改了）进复审；单上 recheck=true 且 note 以「机器改判」开头、含「推翻人裁」（老单「无人裁」复审格归 recheck）。11-05 起机器改字默认按最新结果进文本，不再复审（cv #1148）
     legacy: {}
   recheck:
     code: X04

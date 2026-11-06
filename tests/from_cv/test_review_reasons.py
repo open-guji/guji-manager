@@ -25,8 +25,10 @@ def test_unknown_when_no_rule_hits():
 
 
 def test_review_states_first():
-    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，请核")
+    c = Cell(id="v:1:1:1", char="已", ref="己", doubts=["occluded"], recheck=True, note="机器改判「□」→「已」，推翻人裁，请核")
     assert _cls([c]) == [R.MACHINE_CHANGED]
+    old = Cell(id="v:1:1:4", char="已", ref="己", recheck=True, note="机器改判「□」→「已」，无人裁，请核")
+    assert _cls([old]) == [R.RECHECK]      # 11-05 前老单的无人裁复审格不算 X03
     c2 = Cell(id="v:1:1:2", char="甲", ref="甲", recheck=True, note="旧裁 山，新票 由")
     assert _cls([c2]) == [R.RECHECK]
     assert _cls([Cell(id="v:1:1:3", char="甲", ref="甲", doubts=["src_code_conflict"])]) == [R.RULING_CONFLICT]
@@ -83,7 +85,7 @@ def test_lib_and_ref_rules():
         Cell(id="v:1:1:8", char="丁", ref="甲", evidence={"guard": "conflict"}),
     ]
     assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_AGREE,
-                                      R.LIB_SPARSE_DISSENT, R.REF_REPLACED, R.REF_MISMATCH, R.NEAR_FORM_GUARD]
+                                      R.LIB_SPARSE_DISSENT, R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.NEAR_FORM_GUARD]
 
 
 def test_sparse_needs_lib_counts():
@@ -111,7 +113,7 @@ def test_reasons_for_pending_and_stamp(tmp_path):
            {"id": "vol9:1:1:2", "admit": True, "char": "乙"}],
           align={"chars": [{"id": "vol9:1:1:1", "align_char": "甲", "align_op": "equal"}]})
     doc = {"cells": [{"cell": "1:1:1", "why": ["occluded"]},
-                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」"},
+                     {"cell": "7:7:7", "why": [], "recheck": True, "note": "机器改判「□」→「甲」，推翻人裁，请核"},
                      {"cell": "8:8:8", "why": []}]}
     res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False)
     n = stamp(doc, res)
@@ -313,3 +315,144 @@ def test_align_for_seed_alt_cols():
     assert [c["id"] for c in got["chars"]] == ["v:1:5:1"]
     assert {c["id"]: c["ref_char"] for c in got["coord"]} == {"v:1:6:-1": "赤", "v:1:6:1": "埴"}
     assert align_for_seed({}, align) is align
+
+
+def test_load_pua_table_reads_config_pua(tmp_path):
+    """码表在数据目录 config/pua/pua_table.jsonl；不在＝空表，坏行跳过；只报数，不改判法。"""
+    from guji_manager.review.reasons import load_pua_table, pua_table_stats
+    assert load_pua_table(tmp_path) == {}
+    d = tmp_path / "config" / "pua"
+    d.mkdir(parents=True)
+    (d / "pua_table.jsonl").write_text(
+        '{"code": "daizhige:U+EA96", "verdict": "pending"}\n{坏\n'
+        '{"code": "daizhige:U+EAA0", "verdict": "char", "char": "卿"}\n{"verdict": "open"}\n', encoding="utf-8")
+    t = load_pua_table(tmp_path)
+    assert set(t) == {"daizhige:U+EA96", "daizhige:U+EAA0"} and t["daizhige:U+EAA0"]["char"] == "卿"
+    st = pua_table_stats(t, frozenset({"daizhige:U+EA96", "daizhige:U+EAA0"}))
+    assert st["pua_table_codes"] == 2 and st["pua_table_pending"] == 1 and st["pua_table_char"] == 1
+    assert st["pua_table_registry_mismatch"] == 1
+    assert pua_table_stats({}, frozenset({"x"}))["pua_table_registry_mismatch"] == 0
+
+
+def test_renamed_reason_old_names_still_parse():
+    from guji_manager.review.pending_reason import PendingReason, parse
+    assert parse("ref_replaced") is PendingReason.REF_OCR_DIFF
+    assert parse("ref_mismatch") is PendingReason.REF_FINAL_DIFF
+    assert parse("ref_ocr_diff") is PendingReason.REF_OCR_DIFF
+
+
+def test_hard_pair_same_char_in_jys_or_top2():
+    """Z01 深挖（A24 11-06）：参校字＝机器字＝首位同是己已巳日曰之一时，字组 jys/ry 或库前两名都在组内 → H01，不落 Z01。"""
+    g = {"id": "jys", "solvers": [], "why": "abstain"}
+    a = Cell(id="v:1:1:1", char="已", ref="已", cands=[["已", 0.97], ["己", 0.96]], evidence={"group": g})
+    b = Cell(id="v:1:2:1", char="已", ref="已", cands=[["已", 0.97], ["乙", 0.5]], evidence={"group": {**g, "id": "zz"}})
+    c = Cell(id="v:1:3:1", char="日", ref="日", cands=[["日", 0.97], ["曰", 0.96]], evidence={"group": {**g, "id": "zz"}})
+    assert _cls([a]) == [R.HARD_PAIR]
+    assert _cls([b]) == [R.GROUP_ABSTAIN]
+    assert _cls([c]) == [R.HARD_PAIR]
+
+
+def test_s01_skips_lacuna_and_nonbody():
+    """S01 深挖（A22 11-06）：〓 不算页无对位（同列一支）；非正文页（page_kind）不判 S01。"""
+    lac = [Cell(id=f"v:7:1:{i}", char="甲", ref="〓") for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(lac))
+    noref = [Cell(id=f"v:8:{i % 3 + 1}:{i}", char="甲", ref=None) for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED in set(_cls(noref))
+    roster = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None, page_kind="roster") for i in range(12)]
+    assert R.SEG_PAGE_UNALIGNED not in set(_cls(roster))
+
+
+def test_near_form_narrowed(monkeypatch):
+    """N01 收窄（A24 11-06）：疑问码 near_form 只因家族字碰巧在候选里，不算形近护栏；参校字与机器字／候选前三成表内对才算。"""
+    from guji_manager.review import reasons as rs
+    monkeypatch.setattr(rs, "_NEAR_PAIRS", frozenset({("圓", "圖"), ("侯", "候")}))
+    lib_n = lambda ch: 50
+    cells = [
+        # 家族字「圖」陪衬，参校字「愒」不成对 → 落 ref_final_diff
+        Cell(id="v:1:1:1", char="闡", ref="愒", doubts=["near_form"], cands=[["闡", .96], ["圖", .95]]),
+        # 改字层 → ref_ocr_diff
+        Cell(id="v:1:1:2", char="面", ref="凶", ref_op="replace", doubts=["near_form"], cands=[["面", .95]]),
+        # 参校字「圓」与候选第二「圖」成表内对 → 形近
+        Cell(id="v:1:1:3", char="闡", ref="圓", doubts=["near_form"], cands=[["闡", .96], ["圖", .95]]),
+        # 参校字与机器字成表内对 → 形近
+        Cell(id="v:1:1:4", char="侯", ref="候", cands=[["侯", .99]]),
+        # 表内对在候选第四 → 不算
+        Cell(id="v:1:1:5", char="甲", ref="圓", cands=[["甲", .9], ["乙", .8], ["丙", .7], ["圖", .6]]),
+    ]
+    assert _cls(cells, lib=lib_n) == [R.REF_FINAL_DIFF, R.REF_OCR_DIFF, R.NEAR_FORM_GUARD,
+                                      R.NEAR_FORM_GUARD, R.REF_FINAL_DIFF]
+    # 刻例 ≤2 → lib_sparse_dissent
+    assert _cls([cells[0]], lib=lambda ch: 1) == [R.LIB_SPARSE_DISSENT]
+
+
+def test_ref_suspect_unit():
+    """ref_suspect（A32 D01 11-06）：只比库首位与整理本字在整理本上下文里的相邻二字次数，整理本这一格自己不算。"""
+    from collections import Counter
+    from guji_manager.review.reasons import ref_suspect
+    bg = Counter({"之曰": 1, "曰子": 1, "之日": 5, "日子": 3})
+    # 整理本「曰」只有自己这一处 → 库首位「日」更通顺 → 疑整理本错
+    a = Cell(id="v:1:1:1", char="日", ref="曰", cands=[["日", .99]], ref_left="…之", ref_right="子…")
+    assert ref_suspect(a, bg) == "ref"
+    # 反过来：整理本「日」常见、库首位「曰」少见 → 疑库错
+    b = Cell(id="v:1:1:2", char="曰", ref="日", cands=[["曰", .99]], ref_left="之", ref_right="子")
+    assert ref_suspect(b, bg) == "lib"
+    # 库首位＝整理本、没上下文、没语料 → 不标
+    assert ref_suspect(Cell(id="v:1:1:3", char="日", ref="日", cands=[["日", .9]], ref_left="之"), bg) == ""
+    assert ref_suspect(Cell(id="v:1:1:4", char="日", ref="曰", cands=[["日", .9]]), bg) == ""
+    assert ref_suspect(a, Counter()) == ""
+
+
+def test_ref_suspect_stamped_on_pending(tmp_path):
+    """reasons_for_pending 顺手在单上写 ref_suspect，不改原因；分不出的格把旧值删掉。"""
+    from collections import Counter
+    chars = [{"id": f"vol9:1:1:{i}", "admit": True, "char": ch} for i, ch in enumerate("子曰學而時習之子曰", 1)]
+    chars[1] = {"id": "vol9:1:1:2", "admit": False, "char": "日", "doubts": []}
+    chars += [{"id": f"vol9:1:2:{i}", "admit": True, "char": ch} for i, ch in enumerate("子曰有朋", 1)]
+    align = {"chars": [{"id": c["id"], "align_char": ch, "align_op": "equal"}
+                       for c, ch in zip(chars, "子日學而時習之子曰子曰有朋")]}
+    gm = {"columns": [{"chars": [{"id": "vol9:1:1:2", "candidates": [["曰", .99], ["日", .9]]}]}]}
+    _page(tmp_path, "vol9", 1, chars, align=align, gm=gm)
+    doc = {"cells": [{"cell": "1:1:2", "why": []}, {"cell": "8:8:8", "why": [], "ref_suspect": "lib"}]}
+    st = Counter()
+    res = reasons_for_pending(doc, tmp_path, "vol9", are_variants=lambda a, b: False, stats=st)
+    assert doc["cells"][0]["ref_suspect"] == "ref"         # 整理本「子日學」，全册「子曰」3 次 → 疑整理本错
+    assert "ref_suspect" not in doc["cells"][1]
+    assert st["ref_suspect_ref"] == 1
+    doc2 = {"cells": [{"cell": "1:1:2", "why": []}]}
+    res2 = reasons_for_pending(doc2, tmp_path, "vol9", are_variants=lambda a, b: False, suspect=False)
+    assert "ref_suspect" not in doc2["cells"][0]
+    assert res2["1:1:2"] == res["1:1:2"]                     # 原因不受标记影响
+
+
+def test_sparse_zero_goes_lib_missing():
+    """L02 里参校字库里 0 例的归 L01（A23 L02 深挖，sheldon 11-06）；1～2 例照旧 L02；L03 不动；前面的原因不受影响。"""
+    lib_n = {"乙": 1, "丁": 2, "甲": 50}.get
+    n = lambda ch: lib_n(ch) or 0
+    cells = [
+        Cell(id="v:1:1:1", char="甲", ref="丙", ref_op="coord"),     # 不同、0 例 → L01（原先 L02）
+        Cell(id="v:1:1:2", char="丙", ref="丙", ref_op="coord"),     # 相同、0 例 → 照旧 L03（另议）
+        Cell(id="v:1:1:3", char="甲", ref="乙"),                     # 1 例 → L02
+        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L03
+        Cell(id="v:1:1:5", char="甲", ref="丙", doubts=["ctx_garble_shape"]),   # 乱码闸先判，不动
+    ]
+    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_SPARSE_AGREE, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE, R.GARBLE_GATE]
+    from guji_manager.review.reasons import build_context, detail_of
+    ctx = build_context(cells, lib_n=n, lib_split=lambda ch: (n(ch), 0))
+    assert detail_of(R.LIB_MISSING, cells[0], ctx) == "all_zero:丙"
+
+
+def test_variant_pair_narrowed():
+    """V01 收窄（A24 11-06）：只看库首位／机器字与整理本的边；给了边分型只认 T1、T2。"""
+    var = lambda a, b: {a, b} in ({"衞", "衛"}, {"職", "軄"}, {"畫", "晝"})
+    tier = {frozenset("衞衛"): "T1", frozenset("職軄"): "T1", frozenset("畫晝"): "T3"}
+    et = lambda a, b: tier.get(frozenset((a, b)))
+    cells = [
+        Cell(id="v:1:1:1", char="衞", ref="衛", cands=[["衞", .9]]),                     # 首位有 T1 边 → V01
+        Cell(id="v:1:1:2", char="甲", ref="職", cands=[["甲", .9], ["軄", .8]]),         # 边只在陪衬候选 → 不算
+        Cell(id="v:1:1:3", char="晝", ref="畫", cands=[["晝", .9]]),                     # T3 → 不算
+    ]
+    ctx = build_context(cells, lib_n=lambda ch: 50, are_variants=var, edge_tier=et)
+    assert [classify(c, ctx) for c in cells] == [R.VARIANT_PAIR, R.REF_FINAL_DIFF, R.REF_FINAL_DIFF]
+    # 不给分型（旧 cv）：T3 也照旧算
+    ctx2 = build_context(cells, lib_n=lambda ch: 50, are_variants=var)
+    assert classify(cells[2], ctx2) is R.VARIANT_PAIR

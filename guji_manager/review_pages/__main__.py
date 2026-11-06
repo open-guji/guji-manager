@@ -15,6 +15,8 @@
   pair-events TYPE --items X.items.json --results DIR --book B --out events.jsonl [--apply --batch 批名 --reviewer 名]
                                             形近字对比卡（near_pair）/库内刻例审阅卡（lib_audit）结果 → relabel/evict/near_form/confirm 事件；
                                             缺省只写说明文件复核，--apply 才追加本机事件日志（推库、出 g 另要用户点头）
+  ref-check-items --cells c.jsonl --shrink-dir D --pages-dir D --out items.jsonl   整理本真错复核页 items（疑整理本错排最前，带邻格条）
+  ref-check-apply --results DIR --out 改字.tsv   复核页结果 → 改字的格（格号、旧字、新字、备注）
   pair-items --cells cells.jsonl --out items.jsonl [-n 30] [--seed S]   字对白名单抽样：每组稳定抽 n 格带前后文 → pair_whitelist items
   pair-apply --results DIR [--min-rate 1.0] [--min-judged 30]            白名单页结果 → 每组同字率＋可入白名单的组
   cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
@@ -50,7 +52,10 @@ def main(argv=None):
     p.add_argument("--gate", type=float, default=0.95)
     p = sub.add_parser("build"); p.add_argument("type"); p.add_argument("--items", required=True)
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
-    p.add_argument("--per-page", type=int); p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
+    p.add_argument("--per-page", type=int)
+    p.add_argument("--font", action="append", help="（char_card）子集化内嵌的字体文件，可重复，按顺序补字")
+    p.add_argument("--font-dir", help="（char_card）cv 的 fonts/ 目录：自动用 I.Ming、Jigmo 三档补字")
+    p.add_argument("--per-card", type=int, default=5); p.add_argument("--hint")
     p.add_argument("--mode", choices=["check"], help="gold_sample：check＝核对模式（显示机器答案，只点对/错填字/看不清）")
     p.add_argument("--exclude", nargs="*", default=[], help="已录入格号文件（json 列表/jsonl/每行一个）")
     p.add_argument("--no-rest-ok", action="store_true", help="char_card：不要「本页其余都对」，没点的格不算对（难认字页）")
@@ -73,6 +78,11 @@ def main(argv=None):
     p = sub.add_parser("gq-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p.add_argument("--shard", help="dataset 金标信封 items.jsonl；给了就回写成同样格式")
     p.add_argument("--why", default="字块质量页（glyph_quality）人点")
+    p = sub.add_parser("ref-check-items"); p.add_argument("--cells", required=True)
+    p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
+    p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
+    p.add_argument("--img-dir"); p.add_argument("--strip", type=int, default=2); p.add_argument("--vol")
+    p = sub.add_parser("ref-check-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p = sub.add_parser("pair-items"); p.add_argument("--cells", required=True); p.add_argument("--out", required=True)
     p.add_argument("-n", type=int, default=30); p.add_argument("--seed", default="pair-whitelist")
     p.add_argument("--min-cells", type=int, default=1); p.add_argument("--pre", help="预选 json {组: 同字|不同字|不确定}")
@@ -105,7 +115,8 @@ def main(argv=None):
     elif a.cmd == "build":
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
-                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok),
+                                         build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok,
+                                         fonts=list(a.font or []) + (build_mod.default_fonts(a.font_dir) if a.font_dir else [])),
                          ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
@@ -163,6 +174,18 @@ def main(argv=None):
             _write_jsonl(a.out, rs)
             from collections import Counter
             print(len(rs), dict(Counter(r["label"] for r in rs)))
+    elif a.cmd == "ref-check-items":
+        from . import ref_check
+        its, miss = ref_check.build_items(build_mod.read_items(a.cells), a.shrink_dir, a.pages_dir,
+                                          a.img_dir or str(Path(a.out).with_suffix("")) + "_img", a.page_name, a.strip,
+                                          default_vol=a.vol)
+        _write_jsonl(a.out, its)
+        print(f"{len(its)} 格 → {a.out}；缺图 {len(miss)}" + (f"：{', '.join(miss[:10])}" if miss else ""))
+    elif a.cmd == "ref-check-apply":
+        from . import ref_check
+        rows = ref_check.apply_results(_docs(a.results))
+        Path(a.out).write_text("cell\told\tnew\tnote\n" + "".join(f"{r['cell']}\t{r['old']}\t{r['new']}\t{r['note']}\n" for r in rows), encoding="utf-8")
+        print(f"{len(rows)} 格改字 → {a.out}")
     elif a.cmd == "pair-items":
         from . import pair
         pre = json.loads(Path(a.pre).read_text(encoding="utf-8")) if a.pre else None

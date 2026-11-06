@@ -96,6 +96,7 @@ def test_every_template_builds(t, tmp_path):
                            cells=[dict(id="1:1:1:1", img=str(img), inst=True, cur="畫")])],
         "lib_audit": [dict(char="官", tiles=[dict(id="1:1:1:1", img=str(img))])],
         "gold_sample": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["机器"]}, img=str(img))],
+        "ref_check": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["库首位"]}, lib="白", img=str(img))],
         "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
                                                                    dict(key="on", sha="bb", img=str(img))])],
     }[t]
@@ -297,7 +298,32 @@ def test_char_card_cands(tmp_path):
     items = [dict(id="005:142:7:3", pre="邯", ctx="西歸【□】鄘風", cands=[["邯", "字体"], ["邸", "Paddle"], ["⿰甘阝", "IDS"]])]
     st = build("char_card", items, "995ejelvk0", tmp_path / "p.html")
     html = (tmp_path / "p.html").read_text(encoding="utf-8")
-    assert st["tpl_version"] == "1.4.0" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+    assert st["tpl_version"] == "1.5.4" and "Paddle" in html and "西歸【□】鄘風" in html and 's.cands||[]' in html
+
+
+def test_char_card_ref_img(tmp_path):
+    """1.5：ref_img（维基 SKQS 标准图）与本书切图并排；没给 ref_img 的格不受影响。"""
+    from guji_manager.review_pages.build import build
+    img = tmp_path / "a.png"; img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    ref = tmp_path / "ref.svg"; ref.write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    items = [dict(id="vol01:1:1:1", pre="卿", img=str(img), ref_img=str(ref), ref_label="维基 SKQS_2711"),
+             dict(id="vol01:1:1:2", pre="卿", img=str(img))]
+    build("char_card", items, "96mid1ogzk", tmp_path / "p.html")
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "维基 SKQS_2711" in html and "data:image/svg+xml;base64," in html and "s.ref_img" in html
+
+
+def test_char_card_font_subset(tmp_path):
+    """1.5.1：给了字体就内嵌子集；没有任何字体有的字进 nofont；没给字体不变。"""
+    from guji_manager.review_pages.build import build, font_subset_css
+    import pytest
+    pytest.importorskip("fontTools")
+    items = [dict(id="a#1", pre="卿", cands=[["卿", "v2"]], ctx="左【〓】右")]
+    st = build("char_card", items, "b", tmp_path / "p.html", rest_ok=False)
+    html = (tmp_path / "p.html").read_text(encoding="utf-8")
+    assert "GujiSub" not in html and st["tpl_version"] == "1.5.4"
+    css, left = font_subset_css({"c": "卿"}, [])
+    assert css == "" and left == ["卿"]
 
 
 def test_cli_build_no_rest_ok(tmp_path, capsys):
@@ -623,3 +649,42 @@ def test_cli_build_hard_page_is_solo(tmp_path):
     main(["build", "char_card", "--items", str(items), "--book", "b", "--out", str(out), "--no-rest-ok", "--per-card", "3"])
     cs = json.loads(out.with_suffix(".cards.json").read_text(encoding="utf-8"))
     assert len(cs) == 3 and "認不出" not in out.read_text(encoding="utf-8") and "认不出" in out.read_text(encoding="utf-8")
+
+
+# ── ref_check 整理本真错复核（A32 11-06）─────────────────────────────────────
+def _rc_fixture(tmp_path):
+    from PIL import Image
+    shrink = tmp_path / "shrink" / "vol08"; shrink.mkdir(parents=True)
+    pages = tmp_path / "pages" / "vol08"; pages.mkdir(parents=True)
+    Image.new("L", (100, 100), 255).save(pages / "3.png")
+    chars = [{"id": f"vol08:3:1:{i}", "bbox_page": [10 + 15 * i, 10, 22 + 15 * i, 30]} for i in range(1, 6)]
+    (shrink / "p0003.json").write_text(json.dumps({"char_index": {"columns": [{"chars": chars}]}}), encoding="utf-8")
+    return str(tmp_path / "shrink" / "{vol}"), str(tmp_path / "pages" / "{vol}")
+
+
+def test_ref_check_items_order_and_apply(tmp_path):
+    from guji_manager.review_pages import ref_check as RC
+    sd, pd = _rc_fixture(tmp_path)
+    cells = [dict(id="vol08:3:1:2", ref="話", lib="詁"), dict(id="8:3:1:3", ref="新", lib="浙", ref_suspect="ref"),
+             dict(id="vol08:3:1:4", ref="王", lib="玉", ref_suspect="lib"), dict(id="vol08:3:1:9", ref="x")]
+    items, miss = RC.build_items(cells, sd, pd, tmp_path / "img")
+    assert miss == ["vol08:3:1:9"]
+    assert [i["id"] for i in items] == ["vol08:3:1:3", "vol08:3:1:2", "vol08:3:1:4"]     # ref 最前、lib 最后
+    assert items[0]["cands"] == {"新": ["整理本"], "浙": ["库首位"]} and items[0]["strip_at"] == 2 and len(items[0]["strip"]) == 5
+    B.build("ref_check", items, "96mid1ogzk", tmp_path / "rc.html")
+    h = (tmp_path / "rc.html").read_text(encoding="utf-8")
+    assert '"mode": "check"' in h and "ref_check" in h and "改作" in h
+    docs = [dict(id="vol08:3:1:3", how="click", pre="新", pick="浙", verdict="char", t=1),
+            dict(id="vol08:3:1:2", how="click", pre="話", pick="話", verdict="char", t=1),
+            dict(id="vol08:3:1:4", how="click", pre="王", pick="", verdict="unclear", t=1)]
+    assert RC.apply_results(docs) == [{"cell": "vol08:3:1:3", "old": "新", "new": "浙", "note": ""}]
+
+
+def test_char_card_doc_id_is_safe_for_db(tmp_path):
+    """逐格文档 id 必须过 safeId：格号里的 # : + 后台库不收（11-06 Sheldon 报后台存档失败）。"""
+    from guji_manager.review_pages import registry
+    tpl = (registry.TEMPLATE_DIR / "char_card.tpl.html").read_text(encoding="utf-8") if hasattr(registry, "TEMPLATE_DIR") else None
+    if tpl is None:
+        import pathlib
+        tpl = (pathlib.Path(registry.__file__).parent / "templates" / "char_card.tpl.html").read_text(encoding="utf-8")
+    assert 'D.coll+"/c_"+safeId(id)' in tpl and 'D.coll+"/c_"+id' not in tpl

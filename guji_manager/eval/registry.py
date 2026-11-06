@@ -204,6 +204,17 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     *[EvalSpec(id=f"match_pairs_{k}", script="eval_match_pairs.py", shard=f"glyph-match/pairs-{d}",
                pythonpath=True, title=f"匹配阈值·{t}人裁", needs=("heavy",))
       for k, d, t in (("siku_v2", "siku-v2", "殿本"), ("shiji", "shiji", "史記"), ("qtw", "qtw", "全唐文"))],
+    # 5a 比对基准（A23，2026-11-06）：新图×本书字形库，难例分档（偏移/贴边/污点/墨重/墨淡）＋受控扰动。
+    # 库 = 当前环境的 glyph.db（GUJI_GLYPH_DB 或 GUJI_WORKSPACE/output/glyph.db），一次只评一本；
+    # 跑三书要换三次库。第一个 id 与脚本名同（注册表守卫按脚本名核），评殿本。
+    *[EvalSpec(id=i, script="eval_match_bench.py", shard="char-clustering", arg_kind="none",
+               pythonpath=True, extra=("--book", sh, "--perturb", "--dataset", "../open-guji-dataset/char-clustering"),
+               title=f"5a 比对基准·{t}", needs=("heavy",),
+               note="answerable／novel 分开报，novelFS=库里没有这个字却判 same；档与扰动见脚本头；"
+                    "按 GUJI_GLYPH_DB 取库，库要和分片同书（殿本 004、史記 005、全唐文 006）")
+      for i, sh, t in (("match_bench", "004-siku-v2-human", "殿本"),
+                       ("match_bench_shiji", "005-shiji-human", "史記"),
+                       ("match_bench_qtw", "006-qtw-human", "全唐文"))],
     *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",

@@ -31,9 +31,10 @@ PAGE_MIN, COL_MIN = 10, 5
 COL_AGREE_MAX = 0.5
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
+#: 11-05 起（cv #1148）只有「机器推翻最新人裁」才进复审，说明里带这几个字；老单上「机器改判…，无人裁」的复审格不算 X03，归 recheck。
+MACHINE_OVERRULE_MARK = "推翻人裁"
 
 _GARBLE = {"ctx_garble_shape", "shadow_veto", "ctx_garble_rare"}
-_NEAR = {"near_form", "solo_confusable", "iron_confusable_ref"}
 _VARIANT = {"ref_lib_variant", "variant_indirect", "replace_form", "channel_off"}
 
 
@@ -56,10 +57,11 @@ class Cell:
     note: str = ""
     cls: str | None = None                             # 待审单上的旧卡片类别（老单的 seg_defect 只有这里有；11-04 起不出单）
     seg_kind: str | None = None                        # 切坏细分（单上同名字段；产物里在 evidence.seg_kind），见 SEG_KINDS
-    ref_left: str = ""                                 # 整理本这位前 20 字／后 20 字（只给「整理本缺字」格算，回查私用码用）
+    ref_left: str = ""                                 # 整理本这位前 20 字／后 20 字（缺字格回查私用码；其余格给 ref_suspect）
     ref_right: str = ""
     pua_code: str | None = None                        # 整理本这位的私用码永久编号「来源:码位」（如 daizhige:U+E123、siku-qiefen-v2:U+F1001），没有就空；glyph_pending 凭它判
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
+    page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
 
     @property
@@ -91,6 +93,7 @@ class Context:
     col_noref: Counter = field(default_factory=Counter)
     lib_n: Callable[[str], int] | None = None
     are_variants: Callable[[str, str], bool] | None = None
+    edge_tier: Callable[[str, str], str | None] | None = None   # 异体边分型 T1／T2／T3；给了就只认 T1、T2 算异体（V01 收窄）
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
     glyph_pending: frozenset[str] = frozenset()                 # 私用码表里登记为「已判定待收」的永久编号；没给＝一个都不算
 
@@ -103,12 +106,13 @@ def _col(cid: str) -> str:
     return ":".join(cid.split(":")[:-1])
 
 
-def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=()) -> Context:
-    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending))
+def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None) -> Context:
+    ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
+                  edge_tier=edge_tier)
     for c in cells:
         if not c.has_ref:
-            ctx.page_noref[_page(c.id)] += 1
-            if c.ref is None or not ref_missing(c.ref):
+            if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
+                ctx.page_noref[_page(c.id)] += 1
                 ctx.col_noref[_col(c.id)] += 1
         elif c.char != c.ref and not c.group and "occluded" not in c.codes \
                 and (c.col_agree is None or c.col_agree < COL_AGREE_MAX):
@@ -116,12 +120,23 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
     return ctx
 
 
+#: 算异体的边分型（A24 V01 深挖 11-06）：T3（只有通假、形近、简繁来源）不是异体。
+VARIANT_TIERS = frozenset({"T1", "T2"})
+
+
 def _variant_with_ref(c: Cell, ctx: Context) -> bool:
+    """异体：带异体疑问码；或整理本字与**库首位或机器字**在异体表里有边（A24 V01 深挖 11-06 收窄：不再看前五里其它候选，
+    那些多是陪衬字碰巧与整理本有边；给了 `ctx.edge_tier` 时只认 T1／T2，通假、简繁的 T3 不算）。只改分类，不放行。"""
     if c.codes & _VARIANT:
         return True
     if not (ctx.are_variants and c.has_ref and c.top and c.top != c.ref):
         return False
-    return any(x and x != c.ref and ctx.are_variants(c.ref, x) for x, *_ in c.cands[:5])
+    for x in {c.top, c.char}:
+        if not x or x == c.ref or not ctx.are_variants(c.ref, x):
+            continue
+        if ctx.edge_tier is None or ctx.edge_tier(c.ref, x) in VARIANT_TIERS:
+            return True
+    return False
 
 
 def _sparse(c: Cell, ctx: Context) -> bool:
@@ -147,21 +162,67 @@ def _group_kind(c: Cell) -> R | None:
     return R.GROUP_WEAK
 
 
+#: 己已巳、日曰两个字组（cv groups 的组 id）。
+HARD_GROUPS = frozenset({"jys", "ry"})
+
+
+def _hard_pair(c: Cell, x: Context) -> bool:
+    """极难形近：参校字／机器字／库首位全在己已巳日曰内，且①三者至少两个不同，或②（A24 Z01 深挖 11-06）三者同字但字组是 jys/ry、
+    或库候选前两名都在己已巳日曰内——字形分不开，按 11-05 口径归 H01 按文意定，不再落 Z01。只改分类，不放行。"""
+    s = {v for v in (c.ref, c.char, c.top) if v}
+    if not s or not s <= HARD_CHARS:
+        return False
+    if len(s) >= 2:
+        return True
+    gid = (c.group or {}).get("id")
+    top2 = [cd[0] for cd in c.cands[:2] if cd]
+    return gid in HARD_GROUPS or (len(top2) == 2 and set(top2) <= HARD_CHARS)
+
+
+def _near_pairs() -> frozenset[tuple[str, str]]:
+    """cv 手工形近表 NEVER_MATCH_FAMILIES（无序对）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
+    global _NEAR_PAIRS
+    if _NEAR_PAIRS is None:
+        try:
+            from .._cv import NEVER_MATCH_FAMILIES
+            _NEAR_PAIRS = frozenset(tuple(sorted(p)) for p in NEVER_MATCH_FAMILIES if len(p) == 2)
+        except Exception:  # noqa: BLE001 —— 没装 cv 时不挡分类
+            _NEAR_PAIRS = frozenset()
+    return _NEAR_PAIRS
+
+
+_NEAR_PAIRS: frozenset[tuple[str, str]] | None = None
+
+
+def _near_form(c: Cell, x: Context) -> bool:
+    """形近护栏（A24 N01 深挖 11-06 收窄）：库护栏 conflict／never_match，或参校字与（机器字、库候选前三）里某字
+    构成手工形近表里的一对。原先只要疑问码有 near_form（家族字碰巧排进候选前三）就算，约九成其实是库认不出，
+    现在落到后面的 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等。只改分类，不放行。"""
+    if c.evidence.get("guard") in ("conflict", "never_match"):
+        return True
+    if not c.has_ref:
+        return False
+    pairs = _near_pairs()
+    others = {c.char, *(cd[0] for cd in c.cands[:3] if cd)}
+    return any(o and o != c.ref and tuple(sorted((c.ref, o))) in pairs for o in others)
+
+
 #: 每条原因的判法；按 yaml 的 priority 依次试。没有判法的原因（如 col_width_out_of_band 还没接）永远不中。
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
     R.VISION_FLAGGED: lambda c, x: "vision_flag" in c.codes,
-    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE),
+    R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
-    R.SEG_PAGE_UNALIGNED: lambda c, x: (not c.has_ref and x.page_noref[_page(c.id)] >= PAGE_MIN)
+    R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
+        (not c.has_ref and not ref_missing(c.ref) and x.page_noref[_page(c.id)] >= PAGE_MIN)
         or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
-            and x.page_weak[_page(c.id)] >= PAGE_MIN),
+            and x.page_weak[_page(c.id)] >= PAGE_MIN)),
     R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
-    R.HARD_PAIR: lambda c, x: (lambda s: len(s) >= 2 and s <= HARD_CHARS)({v for v in (c.ref, c.char, c.top) if v}),
+    R.HARD_PAIR: _hard_pair,
     R.GROUP_ABSTAIN: lambda c, x: _group_kind(c) is R.GROUP_ABSTAIN,
     R.GROUP_CONFLICT: lambda c, x: _group_kind(c) is R.GROUP_CONFLICT,
     R.GROUP_DEMOTED: lambda c, x: _group_kind(c) is R.GROUP_DEMOTED,
@@ -174,12 +235,12 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE),
     R.REF_GAP: lambda c, x: not c.ref,
     R.VARIANT_PAIR: _variant_with_ref,
-    R.NEAR_FORM_GUARD: lambda c, x: c.evidence.get("guard") in ("conflict", "never_match") or bool(c.codes & _NEAR),
+    R.NEAR_FORM_GUARD: _near_form,
     R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
     R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
-    R.REF_REPLACED: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
+    R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
     R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
-    R.REF_MISMATCH: lambda c, x: c.has_ref and c.char != c.ref,
+    R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
 }
 
 
@@ -242,7 +303,7 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return str(c.group.get("id") or "")
     if reason in (R.HARD_PAIR, R.NEAR_FORM_GUARD, R.VARIANT_PAIR):
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
-    if reason in (R.REF_REPLACED, R.REF_MISMATCH, R.LIB_SPARSE_DISSENT):
+    if reason in (R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.LIB_SPARSE_DISSENT):
         return f"{c.ref or ''}>{c.char or ''}"
     if reason is R.GLYPH_PENDING:
         return c.pua_code or ""
@@ -251,11 +312,22 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     return ""
 
 
+def _first_entry(c: Cell, ctx: Context) -> bool:
+    """参校字在本书库里一例都没有（`lib_n`＝0，含借库）：这一格是它第一次进库。"""
+    return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) == 0)
+
+
 def classify(c: Cell, ctx: Context) -> R:
-    """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。"""
+    """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。
+
+    L02 刻例太少·不一致里参校字库里 0 例的格归 L01 少见的字（A23 L02 深挖，sheldon 11-06 定）：坐标对位的格产物上
+    没有 `lib_miss` 码，原先落进 L02；它们判的其实是第一次进库。只动 L02，前面的原因不动；L03 的同类格（0 例、
+    机器字＝参校字）另议（L03 深挖 R1，暂缓），照旧 L03。"""
     for r in _ordered():
         rule = RULES.get(r)
         if rule and rule(c, ctx):
+            if r is R.LIB_SPARSE_DISSENT and _first_entry(c, ctx):
+                return R.LIB_MISSING
             return r
     return R.UNKNOWN
 
@@ -287,8 +359,21 @@ def align_for_seed(seed: dict, align: dict | None) -> dict | None:
     return out
 
 
-def book_cells(products_dir, book: str) -> dict[str, Cell]:
-    """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。"""
+def _page_kind(root: Path, name: str) -> str | None:
+    """本页非正文页型：border_detect_gate 的 page_type 不是 body，或 row_segment 有列打了 roster（职名页分支）；正文页 None。"""
+    bg = _load_layer(root / "border_detect_gate" / name, "border_detect_gate_manifest") or {}
+    if bg.get("page_type") and bg["page_type"] != "body":
+        return str(bg["page_type"])
+    rs = _load_layer(root / "row_segment" / name, "cells") or {}
+    if any("roster" in (c.get("flags") or []) for c in rs.get("columns") or []):
+        return "roster"
+    return None
+
+
+def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[str, Cell]:
+    """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。
+
+    给了 `bigrams` 就顺手把全册整理本字（按页、按列序连起来）的相邻二字计数加进去，给 `ref_suspect` 用。"""
     root = Path(products_dir) / book
     out: dict[str, Cell] = {}
     for f in sorted((root / "seed_admit").glob("p*.json")):
@@ -302,9 +387,13 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
             if c.get("ref_char") and c["id"] not in ref:
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
+        kind = _page_kind(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
+        if bigrams is not None:
+            text = "".join(c for _, c in seq)
+            bigrams.update(text[i:i + 2] for i in range(len(text) - 1))
         for col in seed.get("columns", []):
             hit = [ch.get("char") == ref[ch["id"]][0] for ch in col.get("chars", [])
                    if "excluded" not in (ch.get("doubts") or []) and ref.get(ch["id"], (None,))[0]
@@ -318,8 +407,8 @@ def book_cells(products_dir, book: str) -> dict[str, Cell]:
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree)
-                if ref_missing(r) and cid in at:
+                                                 col_agree=agree, page_kind=kind)
+                if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
                     out[cid.split(":", 1)[1]].ref_right = "".join(c for _, c in seq[i + 1:i + 21])
@@ -377,6 +466,15 @@ def _default_are_variants():
         return None
 
 
+def _default_edge_tier():
+    """cv 异体边分型；旧 cv 没有就返回 None（V01 退回只看有没有边）。"""
+    try:
+        from .._cv import edge_tier as _et
+        return _et
+    except Exception:  # noqa: BLE001
+        return None
+
+
 #: 待收字登记表（私用码表里「已判定待收」的永久编号，一项一个 `来源:码位`）放在数据目录 `config/pua/glyph_pending_codes.json`
 #: （`{"codes": [...]}`，随 `guji db sync` 进中心库；A31 11-05 定：不放语料版本，免得动 corpus 指纹、触发 CorpusDrift）。
 #: 读不到＝空表＝一个都不算，全走 `ref_lacuna`，和改前一样。
@@ -393,6 +491,43 @@ def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
         return frozenset(json.loads(f.read_text(encoding="utf-8")).get("codes") or [])
     except Exception:  # noqa: BLE001
         return frozenset()
+
+
+#: 私用码码表（A24 11-06，一行一码：code「来源:码位」、verdict char/not_char/pending/open、char、orig、variant、cands…），
+#: 和登记表同在数据目录 `config/pua/`，随 `guji db sync` 进中心库，不进指纹。现在只读、只在出单统计里报数，
+#: **不参与原因判法**；登记表 `glyph_pending_codes.json` 由它导出，两份并存。
+PUA_TABLE_REL = ("config", "pua", "pua_table.jsonl")
+
+
+def load_pua_table(data_root: Path | str | None = None) -> dict[str, dict]:
+    """读私用码码表 → `{code: 行}`；数据目录取不到、文件不在返回空表，坏行跳过（不猜）。"""
+    try:
+        if data_root is None:
+            from .._cv import data_root as _data_root
+            data_root = _data_root()
+        text = Path(data_root).joinpath(*PUA_TABLE_REL).read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, dict] = {}
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("code"):
+            out[str(row["code"])] = row
+    return out
+
+
+def pua_table_stats(table: dict[str, dict], glyph_pending: frozenset[str]) -> Counter:
+    """码表的出单报数：总码数、各 verdict 数、登记表里有但码表不是 pending 的码数（两份应一致，不一致要报）。"""
+    n: Counter = Counter()
+    n["pua_table_codes"] = len(table)
+    for row in table.values():
+        n[f"pua_table_{row.get('verdict') or 'none'}"] += 1
+    if table:
+        n["pua_table_registry_mismatch"] = sum(1 for c in glyph_pending if (table.get(c) or {}).get("verdict") != "pending")
+    return n
 
 
 _RESOLVERS: dict[str, Callable[[str, str], str | None] | None] = {}
@@ -425,15 +560,51 @@ def _build_resolver(corpus: Path) -> Callable[[str, str], str | None] | None:
     return lambda left, right: resolve_pua_code(idx, left, right)
 
 
+#: 「疑整理本错」只读标记（A32 D01 深挖 11-06 提、协调者 11-06 定做；**只排序，不放行、不改字、不改原因**）：
+#: 库首位字和整理本字各放进这一格的整理本上下文（前一字＋X、X＋后一字），在本册整理本里数相邻二字出现次数，
+#: 整理本这一格自己的两次不算。库首位明显更通顺写 `ref`（疑整理本错，人审页置顶），整理本更通顺写 `lib`（疑库错，排后快过），
+#: 分不出不写。整理本真错率约 3–6%（D01、L02、X01 实测），所以这只是让真错先被看到。
+REF_SUSPECT_MIN = 2         # 库首位的上下文次数至少这么多才标「疑整理本错」
+REF_SUSPECT_FIELD = "ref_suspect"
+
+
+def ref_suspect(c: Cell, bigrams: Counter | None) -> str:
+    """'ref'＝疑整理本错（库首位更通顺）；'lib'＝疑库错（整理本更通顺）；''＝分不出或不适用。"""
+    if not bigrams or not c.has_ref or not c.top or c.top == c.ref or ref_missing(c.top):
+        return ""
+    left, right = c.ref_left[-1:], c.ref_right[:1]
+    if not (left or right):
+        return ""
+
+    def score(x: str, self_ref: bool) -> int:
+        n = 0
+        for g in ((left + x) if left else "", (x + right) if right else ""):
+            if g:
+                n += max(0, bigrams[g] - (1 if self_ref else 0))
+        return n
+
+    s_ref, s_top = score(c.ref, True), score(c.top, False)
+    if s_top >= REF_SUSPECT_MIN and s_top > 2 * s_ref:
+        return "ref"
+    if s_ref > s_top:
+        return "lib"
+    return ""
+
+
 def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, are_variants=None, glyph_pending=None,
-                        pua_resolve=None, stats=None) -> dict[str, tuple[R, str]]:
+                        pua_resolve=None, stats=None, suspect=True) -> dict[str, tuple[R, str]]:
     """待审单 `doc` 的每格 → (原因, 细节)。产物里找不到的格（如复审格）只用单上的字段判，判不出就 `unknown`。
+
+    `suspect`（缺省开）：顺手在 `doc` 的格上写只读标记 `ref_suspect`（见 `ref_suspect()`；分不出就删掉旧值），
+    `stats` 里记 `ref_suspect_ref`／`ref_suspect_lib`。只排序用，不影响原因。
 
     `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
     回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
+    tier = None
     if are_variants is None:
-        are_variants = _default_are_variants()
-    prod = book_cells(products_dir, book)
+        are_variants, tier = _default_are_variants(), _default_edge_tier()
+    bigrams: Counter | None = Counter() if suspect else None
+    prod = book_cells(products_dir, book, bigrams=bigrams)
     cells: list[Cell] = []
     for x in doc.get("cells", []):
         key = x["cell"].split(":", 1)[1] if x["cell"].count(":") >= 3 else x["cell"]
@@ -451,6 +622,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         glyph_pending = load_glyph_pending()
         if not glyph_pending and stats is not None:
             stats["glyph_pending_registry_missing"] = 1   # 登记表没读到：全走 ref_lacuna，出单报告要提示
+    if stats is not None:       # 码表只读报数，不影响判法
+        stats.update(pua_table_stats(load_pua_table(), glyph_pending))
     if glyph_pending:           # 登记表是空的就不必回查（和改前一样，没有任何变化）
         if pua_resolve is None:
             pua_resolve = pua_resolver()
@@ -460,11 +633,20 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
                 if c.pua_code and c.pua_code in glyph_pending and stats is not None:
                     stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        edge_tier=tier)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
         out[x["cell"]] = (r, detail_of(r, c, ctx))
+        if suspect:
+            v = ref_suspect(c, bigrams)
+            if v:
+                x[REF_SUSPECT_FIELD] = v
+                if stats is not None:
+                    stats[f"ref_suspect_{v}"] += 1
+            else:
+                x.pop(REF_SUSPECT_FIELD, None)
     return out
 
 
@@ -486,10 +668,12 @@ def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_vari
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
+    tier = None
     if are_variants is None:
-        are_variants = _default_are_variants()
+        are_variants, tier = _default_are_variants(), _default_edge_tier()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
-                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending)
+                        lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
+                        edge_tier=tier)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value
