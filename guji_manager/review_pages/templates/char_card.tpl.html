@@ -61,7 +61,7 @@ async function flush(){
   if(!DB||inflight)return;inflight=true;
   try{
     for(const c of D.cards)for(const s of c.samples){
-      const id=s.id,x=st.v[id],had=savedT[id]||0,ref=DB.doc(D.coll+"/c_"+id);
+      const id=s.id,x=st.v[id],had=savedT[id]||0,ref=DB.doc(D.coll+"/c_"+safeId(id));
       if(x&&x.t!==had){await ref.set({page_type:TPL.type,tpl_version:TPL.version,book:D.book,id,card:c.char,v:cellVal(c,id),t:x.t});savedT[id]=x.t}
       else if(!x&&had){await ref.delete();delete savedT[id]}
     }
