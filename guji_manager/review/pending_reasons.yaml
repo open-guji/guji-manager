@@ -223,7 +223,7 @@ reasons:
     label: 形近字
     hint: 有长得很像的字（十士、西酉…），要结合前后文看
     ui: pick
-    detect: guard=conflict/never_match，或 why 含 near_form/solo_confusable/iron_confusable_ref，且不在字组
+    detect: guard=conflict/never_match，或参校字与机器字／库候选前三构成手工形近表（cv NEVER_MATCH_FAMILIES）里的一对；仅疑问码 near_form（家族字碰巧在候选里）不算（A24 N01 深挖 11-06）
     legacy: {cls: [near_form], cause: [C], taxonomy: [Z4], v2: "N 形近护栏拦下"}
 
   # ── V 异体 ────────────────────────────────────────────

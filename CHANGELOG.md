@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 待审原因 N01 `near_form_guard` 收窄（PATCH，A31；A24 N01 深挖 11-06）：只留库护栏 conflict／never_match，或参校字与机器字／库候选前三构成 cv 手工形近表 `NEVER_MATCH_FAMILIES` 里一对的格；仅疑问码 near_form（家族字碰巧在候选前三）的格改落 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等后续原因。只改分类，不放行；殿本 N01 预计约 273→24，L02、P01、P02 相应增加。
+
 - `guji swap run` 开跑前和每批之间核数据目录有待收字登记表 `config/pua/glyph_pending_codes.json` 和语料 `corpus/daizhige/`（PATCH，A32，A31 11-06 要求）：缺了 R03 待收字会被统计成 R01、出单报告 `glyph_pending_registry_missing`＝1，缺就停下提示 `guji db pull`。
 
 - 新增 `guji swap run`／`guji swap audit`：换单 driver（MINOR，A32，用户 11-05「讲一下换单…做得自动」）。每批 N 册（缺省 6）：`auto_cycle --no-publish` → `sync_workspace(no_glyph)` → 对这批 `proofing-sync only=` 发布并等跑完 → 逐册取线上 `NNN.pending.json` 核版本 → 核过的清掉本地产物包；开跑前、每批之间核字形库账本不空且不比基准少一成、磁盘 ≥3GB；全程 `GUJI_DB_NO_GLYPH=1`；状态写 `<工作区>/reports/_swap/state.json`，同一条命令断点续跑；need-A33／blocked 的册只记入状态并最后列出。

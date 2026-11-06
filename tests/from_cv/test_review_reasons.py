@@ -360,3 +360,26 @@ def test_s01_skips_lacuna_and_nonbody():
     assert R.SEG_PAGE_UNALIGNED in set(_cls(noref))
     roster = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None, page_kind="roster") for i in range(12)]
     assert R.SEG_PAGE_UNALIGNED not in set(_cls(roster))
+
+
+def test_near_form_narrowed(monkeypatch):
+    """N01 收窄（A24 11-06）：疑问码 near_form 只因家族字碰巧在候选里，不算形近护栏；参校字与机器字／候选前三成表内对才算。"""
+    from guji_manager.review import reasons as rs
+    monkeypatch.setattr(rs, "_NEAR_PAIRS", frozenset({("圓", "圖"), ("侯", "候")}))
+    lib_n = lambda ch: 50
+    cells = [
+        # 家族字「圖」陪衬，参校字「愒」不成对 → 落 ref_final_diff
+        Cell(id="v:1:1:1", char="闡", ref="愒", doubts=["near_form"], cands=[["闡", .96], ["圖", .95]]),
+        # 改字层 → ref_ocr_diff
+        Cell(id="v:1:1:2", char="面", ref="凶", ref_op="replace", doubts=["near_form"], cands=[["面", .95]]),
+        # 参校字「圓」与候选第二「圖」成表内对 → 形近
+        Cell(id="v:1:1:3", char="闡", ref="圓", doubts=["near_form"], cands=[["闡", .96], ["圖", .95]]),
+        # 参校字与机器字成表内对 → 形近
+        Cell(id="v:1:1:4", char="侯", ref="候", cands=[["侯", .99]]),
+        # 表内对在候选第四 → 不算
+        Cell(id="v:1:1:5", char="甲", ref="圓", cands=[["甲", .9], ["乙", .8], ["丙", .7], ["圖", .6]]),
+    ]
+    assert _cls(cells, lib=lib_n) == [R.REF_FINAL_DIFF, R.REF_OCR_DIFF, R.NEAR_FORM_GUARD,
+                                      R.NEAR_FORM_GUARD, R.REF_FINAL_DIFF]
+    # 刻例 ≤2 → lib_sparse_dissent
+    assert _cls([cells[0]], lib=lambda ch: 1) == [R.LIB_SPARSE_DISSENT]
