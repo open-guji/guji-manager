@@ -71,7 +71,6 @@ EXISTING_GAPS: dict[str, set[str]] = {
         "open_guji_cv.clustering.glyph_db",
         "open_guji_cv.clustering.near_shape",
         "open_guji_cv.clustering.seeding",
-        "open_guji_cv.groups.registry",
     },
     "open_guji_cv.steps.rare_candidates": {
         "open_guji_cv.clustering.glyph_fp",

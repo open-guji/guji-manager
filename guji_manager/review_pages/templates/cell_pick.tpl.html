@@ -47,7 +47,9 @@ makePager({key:"cellpick-"+D.page_type,prefix:"p",all:D.items,per:D.per_page,fil
       un.onclick=()=>{v.sp="unclear";delete v.wrong;save();paint()};
       wr.onclick=()=>{delete v.sp;v.wrong=1;v.pick="";fill.style.display="";fill.focus();save();paint()};
       fill.oninput=()=>{v.other=fill.value;v.pick=fill.value||"";delete v.sp;save();paint()};
-      cs.append(ok,wr,un,fill);
+      const lb=(it.lib&&it.lib!==it.pre)?bt("lib","改作 "+it.lib):null; // ref_check：库首位一键改作
+      if(lb)lb.onclick=()=>{delete v.sp;v.wrong=1;v.pick=it.lib;v.other=it.lib;fill.value=it.lib;save();paint()};
+      cs.append(ok,wr,...(lb?[lb]:[]),un,fill);
       const nt2=document.createElement("input");nt2.type="text";nt2.placeholder="备注";nt2.size=20;nt2.value=v.note||"";nt2.oninput=()=>{v.note=nt2.value;save()};cs.appendChild(nt2);
       box.append(hd,...(sp0?[sp0]:[]),cx,cs);paint();return;
     }

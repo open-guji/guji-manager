@@ -110,6 +110,17 @@ def test_leverage(tmp_path):
     assert len(rows) == 15
 
 
+def test_leverage_l02_by_ref():
+    """L02 只按参校本字并卡：库首位乱选，不拆卡（A23 11-06）。别的原因照旧按字对。"""
+    cells = [{"vol": "035", "cell": f"1:1:{i}", "pending_reason": "lib_sparse_dissent", "ref": "𮪍", "top": t}
+             for i, t in enumerate("驎關駉駒隋", 1)]
+    cells += [{"vol": "005", "cell": f"2:1:{i}", "pending_reason": "group_abstain", "ref": "以", "top": t} for i, t in enumerate("已巳", 1)]
+    cards, _ = leverage.rank(cells)
+    l2 = [c for c in cards if c["reason"] == "lib_sparse_dissent"]
+    assert len(l2) == 1 and l2[0]["n_cells"] == 5 and l2[0]["ref"] == "𮪍" and l2[0]["top"] == ""
+    assert len([c for c in cards if c["reason"] == "group_abstain"]) == 2
+
+
 def test_freeze(tmp_path):
     f = tmp_path / "cal.yaml"
     freeze.main(["add", "--file", str(f), "--book", "dianben", "--from", "2026-11-05 10:00", "--to", "2026-11-05 20:00"])

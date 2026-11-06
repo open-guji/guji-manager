@@ -4,6 +4,13 @@
 
 ## [未发版]
 
+- 人审页 `char_card` 1.5.4（PATCH 修 bug，A24；Sheldon 11-06 报「后台存档失败」）：逐格文档 id `c_<格号>` 里的 `#`、`:`、`+` 被后台库拒收（只认 ASCII 字母数字和 `_`），格号带 `#`（私用码页 `daizhige:U+EAC0#20-31-148`）时每一格都存档失败、只落在浏览器本地。改成 `c_`＋`safeId(格号)`；读回按文档里的 `id` 字段，不依赖文档名；已在本地点的结果加载后自动补存。普通格号（`vol01:5:2:10`）的文档名跟着变，老文档读回时不受影响（读的是 `id` 字段），但会补存一份新名的。
+
+- review-pages 新页型 `ref_check`（整理本真错复核，A32 11-06，A31 定）：`ref-check-items`（待审格 → 带邻格条与裁图的 items，按 `ref_suspect` 排序 ref 最前）、`ref-check-apply`（结果 → 改字 tsv）；cell_pick 模板核对模式加「改作 库首位」按钮（`cell_pick` 1.2.0）。只读，不放行。
+- 待审单加只读标记 `ref_suspect`（PATCH，A31；A32 D01 深挖 11-06 提）：出单时在本册整理本里比库首位字与整理本字放进这一格上下文（前一字＋X、X＋后一字）的相邻二字次数（整理本这一格自己不算），库首位明显更通顺写 `ref`（疑整理本错，人审页置顶），整理本更通顺写 `lib`（疑库错），分不出不写；出单统计记 `ref_suspect_ref`／`ref_suspect_lib`。只排序用，不放行、不改字、不改原因。
+
+- 待审原因 N01 `near_form_guard` 收窄（PATCH，A31；A24 N01 深挖 11-06）：只留库护栏 conflict／never_match，或参校字与机器字／库候选前三构成 cv 手工形近表 `NEVER_MATCH_FAMILIES` 里一对的格；仅疑问码 near_form（家族字碰巧在候选前三）的格改落 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等后续原因。只改分类，不放行；殿本 N01 预计约 273→24，L02、P01、P02 相应增加。
+
 - `guji swap run` 开跑前和每批之间核数据目录有待收字登记表 `config/pua/glyph_pending_codes.json` 和语料 `corpus/daizhige/`（PATCH，A32，A31 11-06 要求）：缺了 R03 待收字会被统计成 R01、出单报告 `glyph_pending_registry_missing`＝1，缺就停下提示 `guji db pull`。
 
 - 新增 `guji swap run`／`guji swap audit`：换单 driver（MINOR，A32，用户 11-05「讲一下换单…做得自动」）。每批 N 册（缺省 6）：`auto_cycle --no-publish` → `sync_workspace(no_glyph)` → 对这批 `proofing-sync only=` 发布并等跑完 → 逐册取线上 `NNN.pending.json` 核版本 → 核过的清掉本地产物包；开跑前、每批之间核字形库账本不空且不比基准少一成、磁盘 ≥3GB；全程 `GUJI_DB_NO_GLYPH=1`；状态写 `<工作区>/reports/_swap/state.json`，同一条命令断点续跑；need-A33／blocked 的册只记入状态并最后列出。
