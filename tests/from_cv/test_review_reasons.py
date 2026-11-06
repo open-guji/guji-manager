@@ -478,3 +478,13 @@ def test_lib_unrecognized_kind_detail():
     from guji_manager.review.reasons import Context
     av = Context(are_variants=lambda a, b: {a, b} == {"全", "仝"})
     assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"
+
+
+def test_garble_gate_needs_ref():
+    """L05 要有整理本字；无对位的糊格（框线碎片、并格、圈点）落 R02（A24 L05 深挖 11-06）。"""
+    cells = [
+        Cell(id="v:1:1:1", char="甲", ref="乙", doubts=["ctx_garble_shape"]),
+        Cell(id="v:1:1:2", char="甲", ref=None, doubts=["ctx_garble_shape"]),
+        Cell(id="v:1:1:3", char="甲", ref=None, doubts=["shadow_veto"]),
+    ]
+    assert _cls(cells) == [R.GARBLE_GATE, R.REF_GAP, R.REF_GAP]

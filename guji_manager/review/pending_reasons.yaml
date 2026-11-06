@@ -297,9 +297,9 @@ reasons:
     reviewer: llm_then_human
     priority: 52
     label: 像框线或墨点
-    hint: 字形像框线或墨点，被乱码闸拦下，先看是不是误拦
+    hint: 格图印糊，库首位是错字被乱码闸拦下；整理本字多半是对的，先看图
     ui: free
-    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare
+    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare，且整理本这位有字（无对位的糊格落 R02）
     legacy: {cause: [A6], taxonomy: [S1], v2: "L 乱码闸／影子闸拦下"}
 
   # ── R 整理本缺位 ──────────────────────────────────────
