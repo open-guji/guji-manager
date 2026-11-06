@@ -7,9 +7,9 @@
 ## 定义与判定
 
 - 大类：复审与其他（X）；判定顺序 priority 5（小的先判，第一条命中即主原因）。
-- 判定依据：doubt=src_code_conflict（cv#938）；人裁的机器不能降，单列出卡
+- 判定依据：doubt=src_code_conflict（cv#938、cv#1187）；现在只剩「一码多字的码、放行字落族外」；人裁的机器不能降，只计 n_code_mismatch
 - 去向：一定人审（route `human`）；最终谁看：人；网页卡片 `pick`。
-- 负责改算法／数据：A31。
+- 负责改算法／数据：A24（2026-11-06 sheldon 经 A31 定，原 A31）。整条流程、参数、benchmark 见 [流程与benchmark.md](流程与benchmark.md)。
 
 ## 常见成因
 
