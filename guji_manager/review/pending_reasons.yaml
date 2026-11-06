@@ -237,7 +237,7 @@ reasons:
     label: 异体字
     hint: 两个字是异体，要确认本书刻的是哪个
     ui: pick
-    detect: 整理本字与库首选（或前五）是异体对，但不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
+    detect: 整理本字与库首选或机器字是异体对（边分型 T1／T2；T3 通假、简繁不算；前五里其它候选不看，A24 V01 深挖 11-06），且不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
     legacy: {cause: [B], cls: [variant], taxonomy: [M1, M2], v2: "V 组外异体对"}
 
   # ── L 字形库 ──────────────────────────────────────────

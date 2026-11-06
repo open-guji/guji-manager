@@ -439,3 +439,20 @@ def test_sparse_zero_goes_lib_missing():
     from guji_manager.review.reasons import build_context, detail_of
     ctx = build_context(cells, lib_n=n, lib_split=lambda ch: (n(ch), 0))
     assert detail_of(R.LIB_MISSING, cells[0], ctx) == "all_zero:丙"
+
+
+def test_variant_pair_narrowed():
+    """V01 收窄（A24 11-06）：只看库首位／机器字与整理本的边；给了边分型只认 T1、T2。"""
+    var = lambda a, b: {a, b} in ({"衞", "衛"}, {"職", "軄"}, {"畫", "晝"})
+    tier = {frozenset("衞衛"): "T1", frozenset("職軄"): "T1", frozenset("畫晝"): "T3"}
+    et = lambda a, b: tier.get(frozenset((a, b)))
+    cells = [
+        Cell(id="v:1:1:1", char="衞", ref="衛", cands=[["衞", .9]]),                     # 首位有 T1 边 → V01
+        Cell(id="v:1:1:2", char="甲", ref="職", cands=[["甲", .9], ["軄", .8]]),         # 边只在陪衬候选 → 不算
+        Cell(id="v:1:1:3", char="晝", ref="畫", cands=[["晝", .9]]),                     # T3 → 不算
+    ]
+    ctx = build_context(cells, lib_n=lambda ch: 50, are_variants=var, edge_tier=et)
+    assert [classify(c, ctx) for c in cells] == [R.VARIANT_PAIR, R.REF_FINAL_DIFF, R.REF_FINAL_DIFF]
+    # 不给分型（旧 cv）：T3 也照旧算
+    ctx2 = build_context(cells, lib_n=lambda ch: 50, are_variants=var)
+    assert classify(cells[2], ctx2) is R.VARIANT_PAIR
