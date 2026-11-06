@@ -7,6 +7,9 @@
     guji cellvotes migrate vol04 --cells <old_new_cells/vol04.tsv[.gz]> --source-rev <新页表rev> --out <目录> -w <工作区>
                                                   # 换图源迁票（GUJI-748）：只读，按格级对照表把每格最新人裁（和给了 --rev 的票）
                                                   # 迁到新格，出 events.jsonl／votes.jsonl／pending.tsv（没迁的）／report.md
+    guji cellvotes rebase vol05 --book-id 96mid1ogzk --source-rev 4 --out <目录> -w <工作区>
+                                                  # 换图源（页号格号不变，只换像素）后的人裁事件换算：只读，锚里的框按页表 from_rev.H
+                                                  # 换到新页、source_rev 改成新页表 rev，出 events.jsonl（id 加 ~r）／pending.tsv／report.md
     guji cellvotes write vol04 <目录> --batch H-web-vol04-2026-10-20 --reviewer Sheldon -w <工作区>
                                                   # 写进数据目录（锚按现行产物算）并消费；推库另跑 guji db sync
 
@@ -249,9 +252,42 @@ def cmd_migrate(args) -> None:
            f"票 {res.n_votes_in} → 迁出 {len(res.votes)}、没迁 {sum(res.reasons('票').values())}  → {args.out}/report.md")
 
 
+def cmd_rebase(args) -> None:
+    """换图源（页号格号不变）后的人裁事件换算提案（逻辑在 `feedback/source_rebase.py`）。只读：不写事件、不写库。"""
+    import re
+    from ._cv import feedback_root
+    from ._cv import EventLog
+    from .datastore import sources as S
+    from .feedback import source_rebase as R
+    miss = [k for k in ("book_id", "source_rev", "out") if not getattr(args, k)]
+    if miss:
+        raise SystemExit("rebase 要 " + "、".join("--" + k.replace("_", "-") for k in miss))
+    m = re.fullmatch(r"vol(\d+)", args.book)
+    if not m:
+        raise SystemExit(f"rebase 的册 id 要像 vol05：{args.book}")
+    vol, src = S.norm_vol(m[1]), S._client()
+    if args.events:
+        events = [json.loads(line) for f in args.events
+                  for line in Path(f).read_text(encoding="utf-8").splitlines() if line.strip()]
+        where = "、".join(args.events)
+    else:
+        events = [e.model_dump(mode="json") for e in EventLog(feedback_root()).iter_all(raw=True)]   # 读旧页号：不过页表 rev 闸
+        where = f"数据目录 {feedback_root()}"
+
+    def get_table(rev: int):
+        try:
+            return S.read_table(src, args.book_id, vol, rev)
+        except FileNotFoundError:
+            return None
+
+    res = R.rebase_events(events, args.book, int(args.source_rev), get_table)
+    R.write_report(res, Path(args.out), extra={"事件来源": where})
+    _print(f"事件 {res.n_in} → 迁出 {len(res.events)}、不迁 {sum(res.skipped.values())}、待办 {len(res.pending)}  → {args.out}/report.md")
+
+
 def add_parser(sub) -> None:
-    p = sub.add_parser("cellvotes", help="网站精校页投票 → 人裁事件：draft（只读出草稿）| write（写入并消费）| migrate（换图源迁票提案，只读）")
-    p.add_argument("action", choices=["draft", "write", "migrate"])
+    p = sub.add_parser("cellvotes", help="网站精校页投票 → 人裁事件：draft（只读出草稿）| write（写入并消费）| migrate（换图源迁票提案，只读）| rebase（页号不变的换图源：人裁锚换算提案，只读）")
+    p.add_argument("action", choices=["draft", "write", "migrate", "rebase"])
     p.add_argument("book", help="cv 册 id，如 vol04")
     p.add_argument("dir", nargs="?", default=None, help="write：draft 的输出目录")
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
@@ -277,6 +313,7 @@ def add_parser(sub) -> None:
                                                 "`bindings.book_bindings` 的输出）；给了就按绑定格查表，没认上格的不迁")
     p.add_argument("--min-iou", type=float, default=0.5, help="migrate：IoU 门槛，低于它的不迁（缺省 0.5）")
     p.add_argument("--new-rev", default=None, help="migrate：迁出的票改写成这个待审单 rev（缺省不改）")
+    p.add_argument("--book-id", default=None, help="rebase：网站书 id（页表在 R2 的 <书>/<册>/r<rev>.json），如 96mid1ogzk")
     p.add_argument("--no-consume", action="store_true", help="write：只写不消费")
 
 
@@ -288,6 +325,8 @@ def cmd_cellvotes(args) -> None:
         cmd_draft(args)
     elif args.action == "migrate":
         cmd_migrate(args)
+    elif args.action == "rebase":
+        cmd_rebase(args)
     else:
         if not args.dir or not args.batch or not args.reviewer:
             raise SystemExit("write 要 <目录> --batch --reviewer")
