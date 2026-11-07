@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.22] - 2026-11-07
+
+- `guji corpus pin` 崩溃（PATCH，A31 11-07 报）：`cmd_corpus` 读 `args.shift_book_ver`，parser 只有 `--book-ver`，一跑就 AttributeError；`guji recheck` 同病（读 `args.shift_book`，应为位置参数 `book`）。都是 #145 给 rekey-cells 加 `--shift-book` 时整词替换带坏的。改回后新增守卫 `tests/test_cli_args_guard.py`：每条子命令处理函数读的 `args.X` 都要是真 parser 定义过的参数。不动产物、指纹（L0）。
+
 ## [0.4.21] - 2026-11-07
 
 - 第 7 轮冻结版（PATCH）：含 #297 S04 碎片格、#302 标 main 钩子找 guji、#304 #310 Z 类重分、#316 R01 图片格提示、#319 #321 字库类重分与私用码落 R01 等，均只改分类/工具，不改放行。
