@@ -70,3 +70,15 @@ def test_ident_uses_book_config(monkeypatch):
     assert OL.ident("vol13") == ("96mid1ogzk", "013")
     assert OL.ident("junk") == (None, None)
     assert OL.book_text_dir("/bt", "988g7gsqhd") == "/bt/Book/q/h/d/988g7gsqhd"
+
+
+def test_guji_cmd_falls_back_without_path(monkeypatch, tmp_path):
+    """钩子环境 PATH 上没有 guji 时，不再起一个找不到的命令（QTW 11-07）。"""
+    from guji_manager import online_lists as ol
+    monkeypatch.delenv("GUJI_BIN", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(ol.sys, "executable", str(tmp_path / "python"))
+    cmd = ol._guji_cmd()
+    assert cmd[0] == str(tmp_path / "python") and "open_guji_cv.cli_v2" in cmd[-1]
+    monkeypatch.setenv("GUJI_BIN", "/x/guji")
+    assert ol._guji_cmd() == ["/x/guji"]

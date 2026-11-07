@@ -26,7 +26,23 @@ import urllib.request
 BOOK_ID = "96mid1ogzk"          # 殿本；册 yaml 没写 book_id、工作区目录名也认不出时的老口径（只对 volNN）
 _BOOK_ID_RE = re.compile(r"[0-9a-z]{10}")
 DATA = "https://data.openguji.com"
-GUJI = os.environ.get("GUJI_BIN", "guji")
+
+
+def _guji_cmd() -> list[str]:
+    """`guji` 命令：GUJI_BIN → 本解释器同目录的 guji → PATH 上的 guji → `python -c` 直接调入口。
+    标 main 钩子在别的会话的 venv 里起，PATH 上常没有 guji（QTW 11-07 踩过）。"""
+    if os.environ.get("GUJI_BIN"):
+        return [os.environ["GUJI_BIN"]]
+    here = os.path.join(os.path.dirname(sys.executable), "guji")
+    if os.path.exists(here):
+        return [here]
+    import shutil
+    if shutil.which("guji"):
+        return ["guji"]
+    return [sys.executable, "-c", "import sys; from open_guji_cv.cli_v2 import main; sys.argv[0] = 'guji'; sys.exit(main())"]
+
+
+GUJI = _guji_cmd()
 
 
 def _cfg() -> dict:
@@ -142,7 +158,7 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
 
 
 def _packs(vol: str, ws: str, env: dict) -> list[dict]:
-    out = subprocess.run([GUJI, "products", "pack", "list", vol, "-w", ws], capture_output=True, text=True, env=env).stdout
+    out = subprocess.run([*GUJI, "products", "pack", "list", vol, "-w", ws], capture_output=True, text=True, env=env).stdout
     rows = []
     for ln in out.splitlines():
         parts = ln.lstrip("★ ").split("\t")
@@ -198,7 +214,7 @@ def follow_main(vol: str, ws: str) -> int:
     if n != 0:
         print(f"{vol}: 旧单{'读不到票' if n < 0 else f'已有票（{n}）'}，不自动换；先走 proof_cycle plan/apply"); return 1
     print(f"{vol}: 线上单 {rev} 落后于 main {star['label']}，重出单")
-    subprocess.run([GUJI, "source", "pull", vol, "-w", ws], env=read_env, capture_output=True)
+    subprocess.run([*GUJI, "source", "pull", vol, "-w", ws], env=read_env, capture_output=True)
     rc = 1
     for _ in range(3):   # 读票接口偶发 500／握手失败
         rc = subprocess.run([sys.executable, "-u", f"{c['cv']}/scripts/zhengli/republish.py", "issue", "--book", vol, "-w", ws,
