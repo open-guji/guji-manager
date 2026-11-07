@@ -203,6 +203,13 @@ def write_audit_report(ws: Path, state: dict) -> Path | None:
     return write_report(ws, res, "机器改字抽检表-" + time.strftime("%Y%m%d-%H%M")) if res else None
 
 
+def reset_book_text(book_text) -> None:
+    """失败（blocked／need-A33）的册会在 book-text 工作区留下已改未提交的导出；放弃这些已跟踪文件的改动
+    （产物都在 reports/<册>/_cycle 里，要交 A33 的分支从那里重建），免得后面的册全部撞「工作区有未提交的改动」。
+    只还原已跟踪文件，不动未跟踪的。"""
+    subprocess.run(["git", "-C", str(book_text), "checkout", "--", "."], capture_output=True)
+
+
 def cmd_run(a) -> int:
     ws = Path(a.workspace).resolve()
     sp = Path(a.state) if a.state else ws / "reports" / "_swap" / "state.json"
@@ -228,9 +235,13 @@ def cmd_run(a) -> int:
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "w", encoding="utf-8") as f:
-            subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", ",".join(chunk),
-                            "-w", str(ws), "--book-text", a.book_text, "--no-publish"],
-                           cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
+            for b in chunk:                                  # 一册一个 auto_cycle：上一册失败留下的改动不能拖垮下一册
+                reset_book_text(a.book_text)
+                subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", b,
+                                "-w", str(ws), "--book-text", a.book_text, "--no-publish"],
+                               cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
+                f.flush()
+        reset_book_text(a.book_text)
         res = parse_cycle_log(log.read_text(encoding="utf-8"))
         for b in chunk:
             r = res.get(b, {"verdict": "no-result", "why": "auto_cycle 没给结论（进程中断？）"})
