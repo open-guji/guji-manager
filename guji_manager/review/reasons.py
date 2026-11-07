@@ -652,7 +652,8 @@ _EXTRA_SAME_WRITING = (frozenset("宫宮"),)
 def _default_same_writing():
     """同一个字的不同写法：cv `PROVISIONAL[*].forms`（暂归一表，sheldon 定的同义写法）的并集判等。取不到 cv 返回 None（退回 are_variants）。"""
     try:
-        from open_guji_cv.groups.registry import PROVISIONAL
+        from .._cv import groups_registry
+        PROVISIONAL = groups_registry.PROVISIONAL
     except Exception:  # noqa: BLE001
         return None
     sets = [frozenset(p.forms) for p in PROVISIONAL.values()] + list(_EXTRA_SAME_WRITING)
