@@ -64,7 +64,7 @@
 | S03 | [`col_width_out_of_band`](col_width_out_of_band/README.md) | 列宽异常 | 先改算法，改完剩下的并入 llm | A22 | 0 | 0 | 0 |
 | S04 | [`seg_defect`](seg_defect/README.md) | 切坏格 | 一定人审 | A22 | 0 | 20 | 0 |
 | V01 | [`variant_pair`](variant_pair/README.md) | 异体字 | 一定人审 | A24 | 260 | 122 | 2 |
-| V02 | [`variant_form_open`](group_form_open/README.md) | 写法待定（原 Z06 `group_form_open`，11-07 改归异体类） | 先改算法，改完剩下的并入 llm | A24 | 4 | 0 | 0 |
+| V02 | [`variant_form_open`](variant_form_open/README.md) | 写法待定（原 Z06 `group_form_open`，11-07 改归异体类） | 先改算法，改完剩下的并入 llm | A24 | 4 | 0 | 0 |
 | X01 | [`ruling_conflict`](ruling_conflict/README.md) | 裁定有冲突 | 一定人审 | A31 | 6 | 0 | 0 |
 | X02 | [`vision_flagged`](vision_flagged/README.md) | 看图觉得不对 | 一定人审 | A31 | 0 | 0 | 0 |
 | X03 | [`machine_changed`](machine_changed/README.md) | 机器改了字 | 一定人审 | A32 | 0 | 0 | 0 |
@@ -72,7 +72,7 @@
 | X99 | [`unknown`](unknown/README.md) | 原因不明 | 一定人审 | A31 | 0 | 0 | 0 |
 | Z01 | [`group_abstain`](group_abstain/README.md) | 形近字·没把握 | 大模型统一过一遍 | A24 | 525 | 103 | 11 |
 | Z02 | [`group_conflict`](group_conflict/README.md) | 形近字·判法打架 | 大模型统一过一遍 | A24 | 149 | 16 | 23 |
-| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 153 | 29 | 2 |
+| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 202 | 34 | 11 |
 | Z04 | [`group_ref_dissent`](group_ref_dissent/README.md) | 形近字·与参校本不同 | 大模型统一过一遍 | A24 | 277 | 10 | 5 |
 | Z05 | [`group_weak`](group_weak/README.md) | 形近字·证据弱（**已停用 11-06**，并入 Z01／R 类） | — | A24 | 35 | 5 | 3 |
 | Z06 | `group_form_open` | 已改名 `variant_form_open`（V02，11-07） | — | A24 | — | — | — |

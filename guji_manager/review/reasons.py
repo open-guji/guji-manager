@@ -97,6 +97,7 @@ class Context:
     col_noref: Counter = field(default_factory=Counter)
     lib_n: Callable[[str], int] | None = None            # 老口径刻例数（含借来的）；只在没给 lib_split 时兜底
     are_variants: Callable[[str, str], bool] | None = None
+    same_writing: Callable[[str, str], bool] | None = None      # 同一个字的不同写法（cv 暂归一表 forms，比 are_variants 窄）；Z 类折叠解法给字用它，没给退回 are_variants
     edge_tier: Callable[[str, str], str | None] | None = None   # 异体边分型 T1／T2／T3；给了就只认 T1、T2 算异体（V01 收窄）
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
     lib_own: Callable[[str], int] | None = None         # 字 → 本书版本的刻例数（n_confirmed）；L01–L03 边界用它
@@ -112,9 +113,9 @@ def _col(cid: str) -> str:
 
 
 def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None,
-                  lib_own=None) -> Context:
+                  lib_own=None, same_writing=None) -> Context:
     ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
-                  edge_tier=edge_tier, lib_own=lib_own)
+                  edge_tier=edge_tier, lib_own=lib_own, same_writing=same_writing)
     for c in cells:
         if not c.has_ref:
             if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
@@ -171,19 +172,28 @@ def _sparse(c: Cell, ctx: Context) -> bool:
 GROUP_SETTLED = frozenset({"admit", "keep", "provisional"})
 
 
+def _fold_fn(x: Context | None):
+    """Z 类折叠「同字异形」用的判等：优先 ``same_writing``（cv 暂归一表，只认同一个字的写法），没给退回 ``are_variants``。
+    cv 的异体表很宽（大／太、傳／傅、玉／王、戊／戌 都有边），拿它折会把文意与字形各执一字的真冲突折成一个字，落进 Z03
+    （A24 Z03 深挖 11-07：全唐文 Z03 11 格里 9 格）。"""
+    return (x.same_writing or x.are_variants) if x else None
+
+
 def _same_form(sol: set, x: Context | None) -> bool:
-    """解法给的几个字彼此是同字异形（象／𧰼、寇／㓂、會／㑹…，cv 按语义比）→ 不算「几个字」。没给 ``are_variants`` 就不折叠。"""
-    if not (x and x.are_variants and len(sol) > 1):
+    """解法给的几个字彼此是同字异形（象／𧰼、寇／㓂、會／㑹…）→ 不算「几个字」。没给判等函数就不折叠。"""
+    fold = _fold_fn(x)
+    if not (fold and len(sol) > 1):
         return False
     first, *rest = sorted(sol)
-    return all(x.are_variants(first, r) for r in rest)
+    return all(fold(first, r) for r in rest)
 
 
 def _distinct(sol: set, x: Context | None) -> list[str]:
-    """解法给的字按同字异形（``are_variants``）折叠后的不同字；没给 ``are_variants`` 就逐字比。"""
+    """解法给的字按同字异形折叠后的不同字；没给判等函数就逐字比。"""
+    fold = _fold_fn(x)
     out: list[str] = []
     for ch in sorted(sol):
-        if not any(ch == o or (x and x.are_variants and x.are_variants(o, ch)) for o in out):
+        if not any(ch == o or (fold and fold(o, ch)) for o in out):
             out.append(ch)
     return out
 
@@ -635,6 +645,24 @@ def _default_are_variants():
         return None
 
 
+#: cv 暂归一表之外、同一个字的写法（官宫宮 组里 宫宮 同字；cv guan 组 forms 没单列）
+_EXTRA_SAME_WRITING = (frozenset("宫宮"),)
+
+
+def _default_same_writing():
+    """同一个字的不同写法：cv `PROVISIONAL[*].forms`（暂归一表，sheldon 定的同义写法）的并集判等。取不到 cv 返回 None（退回 are_variants）。"""
+    try:
+        from .._cv import groups_registry
+        PROVISIONAL = groups_registry.PROVISIONAL
+    except Exception:  # noqa: BLE001
+        return None
+    sets = [frozenset(p.forms) for p in PROVISIONAL.values()] + list(_EXTRA_SAME_WRITING)
+
+    def same(a: str, b: str) -> bool:
+        return a == b or any(a in f and b in f for f in sets)
+    return same
+
+
 def _default_edge_tier():
     """cv 异体边分型；旧 cv 没有就返回 None（V01 退回只看有没有边）。"""
     try:
@@ -769,9 +797,10 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
 
     `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
     回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
-    tier = None
+    tier = same_writing = None
     if are_variants is None:
         are_variants, tier = _default_are_variants(), _default_edge_tier()
+        same_writing = _default_same_writing()
     bigrams: Counter | None = Counter() if suspect else None
     prod = book_cells(products_dir, book, bigrams=bigrams)
     cells: list[Cell] = []
@@ -804,7 +833,7 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
                         lib_own=lib_own_counts(glyph_db) if glyph_db else None,
-                        edge_tier=tier)
+                        edge_tier=tier, same_writing=same_writing)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
@@ -838,13 +867,14 @@ def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_vari
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
-    tier = None
+    tier = same_writing = None
     if are_variants is None:
         are_variants, tier = _default_are_variants(), _default_edge_tier()
+        same_writing = _default_same_writing()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
                         lib_own=lib_own_counts(glyph_db) if glyph_db else None,
-                        edge_tier=tier)
+                        edge_tier=tier, same_writing=same_writing)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value
