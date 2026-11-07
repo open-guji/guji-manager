@@ -478,3 +478,24 @@ def test_lib_unrecognized_kind_detail():
     from guji_manager.review.reasons import Context
     av = Context(are_variants=lambda a, b: {a, b} == {"全", "仝"})
     assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"
+
+
+def test_fragment_cell_without_ref_is_seg_defect():
+    """整理本这位没字、格框又比本页同类格小得多的碎片格归 S04（细分 clipped，R02 深挖 11-06）；有整理本字的不算。"""
+    from guji_manager.review.reasons import detail_of
+    c = Cell(id="v:1:2:3", char="一", ref=None, frag=True)
+    assert _cls([c]) == [R.SEG_DEFECT]
+    assert detail_of(R.SEG_DEFECT, c) == "clipped"
+    assert _cls([Cell(id="v:1:2:4", char="一", ref="六", frag=True)]) != [R.SEG_DEFECT]
+    assert _cls([Cell(id="v:1:2:5", char="一", ref=None, frag=False)]) == [R.REF_GAP]
+
+
+def test_frag_ids_from_cell_shrink(monkeypatch, tmp_path):
+    """格框边长 <0.6 倍本页同类格中位数、或长宽比 <0.35 算碎片；夹注与正文分开比；同类格不足 5 个不判。"""
+    from guji_manager.review import reasons
+
+    def box(i, w, h, jz=False):
+        return {"id": f"v:1:1:{i}", "width": w, "height": h, "step3_kind": "jiazhu" if jz else "char"}
+    chars = [box(i, 80, 80) for i in range(8)] + [box(8, 30, 30), box(9, 80, 20), box(10, 20, 20, True)]
+    monkeypatch.setattr(reasons, "_load_layer", lambda *a, **k: {"columns": [{"chars": chars}]})
+    assert reasons._frag_ids(tmp_path, "p001.json") == {"v:1:1:8", "v:1:1:9"}   # 夹注只 1 个，不判

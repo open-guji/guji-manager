@@ -29,6 +29,9 @@ PAGE_MIN, COL_MIN = 10, 5
 #: 弱证据格（有参校字、机器字不同）只在「本列大多对不上」时才算进整页对不上：本列有参校字的格里机器字＝参校字的比例
 #: 低于这个数。真错位的列几乎全不一致；半色调／褪色页对位是对的、只是认不准，列一致率多在 0.6 以上，不归 S01（A22 11-05）
 COL_AGREE_MAX = 0.5
+#: 碎片格（R02 深挖 11-06，sheldon 定直接改归 S04）：格框边长（√宽×高）小于本页同类（正文／夹注分开）格中位数的这个比例，
+#: 或短边／长边小于 FRAG_ASPECT，是切坏的碎片；只对**整理本这位没字**的格生效（有整理本字的格走别的原因）。
+FRAG_REL, FRAG_ASPECT = 0.6, 0.35
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
 #: 11-05 起（cv #1148）只有「机器推翻最新人裁」才进复审，说明里带这几个字；老单上「机器改判…，无人裁」的复审格不算 X03，归 recheck。
@@ -63,6 +66,7 @@ class Cell:
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
     page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
+    frag: bool = False                                 # 格框明显小于本页同类格（半截字、墨点、框角），见 `FRAG_REL`；没读到 cell_shrink 就是 False
 
     @property
     def codes(self) -> set[str]:
@@ -214,7 +218,7 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
-        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
+        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}) or (c.frag and not c.ref),
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
     R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
@@ -265,7 +269,9 @@ def seg_kind_of(c: Cell) -> str:
     k = c.seg_kind or (c.evidence or {}).get("seg_kind")
     if k in SEG_KINDS:
         return k
-    return JIAZHU_UNEVEN if JIAZHU_UNEVEN in c.codes else ""
+    if JIAZHU_UNEVEN in c.codes:
+        return JIAZHU_UNEVEN
+    return "clipped" if c.frag and not c.ref else ""
 
 
 #: 「少见的字」细分（A23，sheldon 11-04 定本书字样标注归书 Project）：作 lib_missing 的 pending_reason_detail，
@@ -410,6 +416,30 @@ def _page_kind(root: Path, name: str) -> str | None:
     return None
 
 
+def _frag_ids(root: Path, name: str) -> set[str]:
+    """本页的碎片格 id：cell_shrink 的格框边长比本页同类格（夹注／非夹注分开）中位数小得多，或长宽比悬殊。"""
+    shr = _load_layer(root / "cell_shrink" / name, "char_index") or {}
+    boxes: dict[str, tuple[float, float, bool]] = {}
+    for key in ("columns", "alt_columns"):
+        for col in shr.get(key) or []:
+            for ch in col.get("chars") or []:
+                w, h = ch.get("width"), ch.get("height")
+                if w and h and ch.get("id") not in boxes:
+                    boxes[ch["id"]] = (float(w), float(h), ch.get("step3_kind") == "jiazhu")
+    med: dict[bool, float] = {}
+    for jz in (False, True):
+        v = sorted((w * h) ** .5 for w, h, j in boxes.values() if j == jz)
+        if len(v) >= 5:
+            med[jz] = v[len(v) // 2]
+    out = set()
+    for cid, (w, h, jz) in boxes.items():
+        if jz not in med:
+            continue
+        if (w * h) ** .5 < FRAG_REL * med[jz] or min(w, h) / max(w, h) < FRAG_ASPECT:
+            out.add(cid)
+    return out
+
+
 def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[str, Cell]:
     """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。
 
@@ -428,6 +458,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
+        frags = _frag_ids(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -447,7 +478,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind)
+                                                 col_agree=agree, page_kind=kind, frag=cid in frags)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
