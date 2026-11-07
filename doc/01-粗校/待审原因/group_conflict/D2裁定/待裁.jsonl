@@ -1,0 +1,10 @@
+{"group": "wj", "ver": "wj-l2-1", "l": "道德寳章一卷内府藏本宋葛長庚撰長庚字白叟", "r": "淸人爲道士居武夷", "members": ["問", "間"], "prompt": "config/groups/wj/prompt.md", "cells": ["vol68:64:9:13"]}
+{"group": "wj", "ver": "wj-l2-1", "l": "者之遺惜流傳旣久篇帙脫佚闕卷一至卷十二又", "r": "卷三十一又闕卷三十三至四十一共二十二卷勘", "members": ["問", "間"], "prompt": "config/groups/wj/prompt.md", "cells": ["vol73:70:2:6"]}
+{"group": "zh", "ver": "zh-l2-1", "l": "前有附錄一卷爲奇逢所作格物說及楊東明興學", "r": "約八條旣曰附錄不應弁首或裝輯時誤置卷端耳", "members": ["㑹", "曾", "會"], "prompt": "config/groups/zh/prompt.md", "cells": ["vol46:112:8:3"]}
+{"group": "mz", "ver": "mz-l2-1", "l": "列所蓄碑帖之", "r": "前有自序稱余行塞上見古碑橫茀草間偶一動念", "members": ["目", "自"], "prompt": "config/groups/mz/prompt.md", "cells": ["vol42:40:1:9"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "分數比之九章方田粟米差分商功均輸盈不足之", "r": "往往相符而要在得算多多算勝以是知是編非僞", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol50:6:8:3"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "是書摘唐宋說部之文分類編次每類之下各分子", "r": "每條下悉注原書然皆習見之典别無新異其上細", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol62:89:5:20"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "□存", "r": "", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol65:40:1:4"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "志則於四部之末附載道經佛經之總數而不列其", "r": "唐志以下頗載經曰而挂漏實多今於二氏之書皆", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol68:12:6:12"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "載道經佛經之總數而不列其曰唐志以下頗載經", "r": "而挂漏實多今於二氏之書皆擇體裁猶近儒書者", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol68:12:6:20"]}
+{"group": "ry", "ver": "ry-l2-2", "l": "互有參錯殆亦因其格調相近不能猝辨歟智集原", "r": "已不可考觀焦竑經籍志所載惟有藍靜之集而藍", "members": ["日", "曰"], "prompt": "config/groups/ry/prompt.md", "cells": ["vol80:67:4:11"]}
