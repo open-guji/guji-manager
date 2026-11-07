@@ -631,3 +631,13 @@ def test_garble_gate_needs_ref():
         Cell(id="v:1:1:3", char="甲", ref=None, doubts=["shadow_veto"]),
     ]
     assert _cls(cells) == [R.GARBLE_GATE, R.REF_GAP, R.REF_GAP]
+
+
+def test_private_use_ref_is_lacuna():
+    """整理本这位是私用码（史記）也算参校本缺字 R01，detail 写码位；基本区字不受影响（A24 R01 核实，11-07）。"""
+    from guji_manager.review.reasons import ref_missing
+    assert ref_missing("") and ref_missing("\U000f0001") and ref_missing("〓") and not ref_missing("纏")
+    c = Cell(id="01:1:1:1:1", char="墟", ref="")
+    assert classify(c, build_context([c], lib_own=lambda ch: 0)) == R.REF_LACUNA
+    assert detail_of(R.REF_LACUNA, c) == "U+EDC1"
+    assert detail_of(R.REF_LACUNA, Cell(id="v:1:1:2", ref="〓")) == ""

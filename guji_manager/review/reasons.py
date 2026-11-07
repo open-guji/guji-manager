@@ -42,8 +42,10 @@ _VARIANT = {"ref_lib_variant", "variant_indirect", "replace_form", "channel_off"
 
 
 def ref_missing(ch: str | None) -> bool:
-    """整理本这位是〓或缅甸文占位（没码位的生僻字）。"""
-    return bool(ch) and (ch == "〓" or any(0x1000 <= ord(c) <= 0x109F for c in ch))
+    """整理本这位是〓、缅甸文占位或私用码（没码位的生僻字）。私用码（U+E000–F8FF、15／16 平面）11-07 起也算（A24 R01 核实，
+    sheldon 同意）：史記整理本直接带私用码，不是殿本那套缅文占位；原先它们落 P02／L01。"""
+    return bool(ch) and (ch == "〓" or any(0x1000 <= ord(c) <= 0x109F or 0xE000 <= ord(c) <= 0xF8FF or ord(c) >= 0xF0000
+                                           for c in ch))
 
 
 @dataclass
@@ -434,6 +436,8 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return f"{lib_unrecognized_kind(c, ctx)}:{c.ref or ''}"
     if reason is R.LIB_SPARSE_AGREE:
         return c.ref or ""
+    if reason is R.REF_LACUNA and c.ref and any(0xE000 <= ord(x) <= 0xF8FF or ord(x) >= 0xF0000 for x in c.ref):
+        return "/".join(f"U+{ord(x):04X}" for x in c.ref)          # 私用码参校字写码位（同一码位跨书意思不同，不能拿别书码表定字）
     if reason is R.RULING_CONFLICT and "human_unbound" in c.codes:
         h = (c.evidence or {}).get("human_unbound") or {}
         return f"human_unbound:{h.get('char') or ''}>{c.char or ''}"
@@ -846,7 +850,8 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         if pua_resolve is None:
             pua_resolve = pua_resolver()
         for c in cells:
-            if pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right):
+            if (pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right)
+                    and not any(0xE000 <= ord(q) <= 0xF8FF or ord(q) >= 0xF0000 for q in c.ref)):    # 参校字本身是私用码（史記）不回查殿本源（A24 R01）
                 c.pua_code = pua_resolve(c.ref_left, c.ref_right)
                 if c.pua_code and c.pua_code in glyph_pending and stats is not None:
                     stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
