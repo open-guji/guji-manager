@@ -595,6 +595,17 @@ def test_group_same_form_not_conflict():
     assert _cls([g("象", "𧰼", decision="demote")], var=var) == [R.GROUP_DEMOTED]
     assert _cls([g("傅", "傳", why="conflict")], var=var) == [R.GROUP_CONFLICT]
     assert _cls([g("象", "𧰼", why="conflict")]) == [R.GROUP_CONFLICT]  # 没给 are_variants 不折叠
+def test_group_fold_uses_same_writing_not_wide_variants():
+    """A24 Z03 11-07：折叠用同一个字的写法（same_writing），异体表里的大／太、傳／傅 不折，落 Z02。"""
+    g = lambda a, b, **k: Cell(id="v:1:1:1", char=a, ref=a, evidence={"group": {"id": "dt", "solvers": [{"char": a}, {"char": b}], **k}})
+    wide = lambda a, b: {a, b} == {"大", "太"} or {a, b} == {"象", "𧰼"}
+    same = lambda a, b: {a, b} == {"象", "𧰼"}
+    cells = [g("太", "大", decision="demote"), g("象", "𧰼", decision="demote")]
+    assert _cls(cells, var=wide) == [R.GROUP_DEMOTED, R.GROUP_DEMOTED]          # 只给宽表：大太被折成一个字（旧行为）
+    ctx = build_context(cells, are_variants=wide, same_writing=same)
+    assert [classify(c, ctx) for c in cells] == [R.GROUP_CONFLICT, R.GROUP_DEMOTED]
+
+
 def test_garble_gate_needs_ref():
     """L05 要有整理本字；无对位的糊格（框线碎片、并格、圈点）落 R02（A24 L05 深挖 11-06）。"""
     cells = [

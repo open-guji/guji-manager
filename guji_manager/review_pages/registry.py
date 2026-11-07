@@ -28,7 +28,7 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "N01、V01、越过参校本；按字组各抽 30 格带前后文，逐格点同字/不同字/看不清，每组页尾显示同字率，再定组结论（pair.py）",
              options=("同字", "不同字", "不确定"), doc_prefix="review_pair"),
     PageType("codepoint", "码位定夺", "codepoint.tpl.html", "2.2.0",
-             "Z06、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
+             "V02（原 Z06）、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
              "／分开·不同字／合并到别的字（全唐文码位页 11-01–11-04 并入，见 codepoint.py）；2.2 起字体缺字的候选可带字形图 glyphs",
              options=("unify", "other", "split_follow", "split_distinct"), doc_prefix="review_cp"),
     PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.2.0",

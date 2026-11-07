@@ -1,5 +1,7 @@
 # V02 `variant_form_open`（原 Z06 `group_form_open`）写法待定：字符级深挖（A24，2026-11-06）
 
+> **11-07 改名（manager#304）**：本原因已改名 `variant_form_open`、码 **V02**、归异体类（不是形近字组流程产生的，来自用字账写法判定）；旧名 `group_form_open` 照读，Z06 不再用。判定只看疑问码 `form_open`。下文写于改名前。
+
 > [待审原因总览](../README.md)
 
 派单见 ai-team `domain/CV/质检/待审原因深挖/派单-2026-11-06.md`。不调 API、不重跑整册；改动等下一轮统一重跑。底稿、逐格表、脚本在 ai-team `domain/CV/质检/待审原因深挖/Z06-*`。

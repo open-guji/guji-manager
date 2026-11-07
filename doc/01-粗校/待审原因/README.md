@@ -33,7 +33,7 @@
 
 ## 在哪里用到
 
-- **统计**：`guji-manager pending-stats`（线上单口径）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
+- **统计**：`guji-manager pending-stats`（线上单口径：读出单时写进单子的值，判法改了要重新出单才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
 - **分流**：`route`／`reviewer` 决定进大模型统一审（`llm_queue`）、算法、人审页还是留后；`iterate leverage` 按它排杠杆。
 - **人审页与网站**：网站卡片按 `ui`、`hint` 出形态和说明（kaiyuanguji-web、guji-console 的 `pendingReasons.ts` 是副本，改 yaml 后要用 `--json` 导出同步）。
 - **book-text**：待审格的 `char.json` 带 `pending_reason`，网站凭它显示字图。
@@ -72,11 +72,11 @@
 | X99 | [`unknown`](unknown/README.md) | 原因不明 | 一定人审 | A31 | 0 | 0 | 0 |
 | Z01 | [`group_abstain`](group_abstain/README.md) | 形近字·没把握 | 大模型统一过一遍 | A24 | 525 | 103 | 11 |
 | Z02 | [`group_conflict`](group_conflict/README.md) | 形近字·判法打架 | 大模型统一过一遍 | A24 | 149 | 16 | 23 |
-| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 153 | 29 | 2 |
+| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 202 | 34 | 11 |
 | Z04 | [`group_ref_dissent`](group_ref_dissent/README.md) | 形近字·与参校本不同 | 大模型统一过一遍 | A24 | 277 | 10 | 5 |
 | Z05 | [`group_weak`](group_weak/README.md) | 形近字·证据弱（**已停用 11-06**，并入 Z01／R 类） | — | A24 | 35 | 5 | 3 |
 | Z06 | `group_form_open` | 已改名 `variant_form_open`（V02，11-07） | — | A24 | — | — | — |
-| Z07 | [`group_unconfirmed`](Z类梳理.md) | 形近字·差一路确认（11-07 新增） | 大模型统一过一遍 | A24 | 110\* | 0\* | 14\* |
+| Z07 | [`group_unconfirmed`](group_unconfirmed/README.md) | 形近字·差一路确认（11-07 新增） | 大模型统一过一遍 | A24 | 110\* | 0\* | 14\* |
 
 \* L02、L03 两行接了字形库重算（L02 用四库总目 g19、史记 g6、全唐文中心库最新；L03 用三书中心库 11-06 最新 glyph.db；史记的刻例数都含借来的全唐文刻例），其余行没接字形库，所以这些格在其余行（多半是 P01、P02、L04）里也各算了一次，合计不能直接相加。L02 是 11-06 manager #258 之后的口径：参校字库里 0 例的格改判 L01（四库总目 277、史记 32、全唐文 1 格，是同一批包上 L02 改判前后之差，库用四库总目 g19、史记 g6；A24 用三书中心库最新 glyph.db 算 L01 的增量是 366、36、1，见 `tools/l01_profile.py`），这部分没加进 L01 那一行（L01 行没接字形库）（A23 11-06，见 [L02 页](lib_sparse_dissent/README.md)、[L03 页](lib_sparse_agree/README.md)）。
 
