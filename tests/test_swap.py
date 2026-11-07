@@ -82,3 +82,18 @@ def test_data_problem(tmp_path):
     (tmp_path / "corpus" / "daizhige").mkdir(parents=True)
     (tmp_path / "corpus" / "daizhige" / "0001.jsonl").write_text("{}\n")
     assert swap.data_problem(tmp_path) is None
+
+
+def test_reset_book_text(tmp_path):
+    import subprocess
+    def git(*a):
+        subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *a], check=True, capture_output=True)
+    git("init", "-q")
+    f = tmp_path / "x.json"
+    f.write_text("a")
+    git("add", "-A")
+    git("commit", "-qm", "a")
+    f.write_text("b")
+    (tmp_path / "new.txt").write_text("keep")
+    swap.reset_book_text(tmp_path)
+    assert f.read_text() == "a" and (tmp_path / "new.txt").exists()
