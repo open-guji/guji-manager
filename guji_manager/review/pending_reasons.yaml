@@ -264,7 +264,7 @@ reasons:
     label: 少见的字
     hint: 字形库里还没有这个字，这一格就是它第一次进库，请确认图上是不是参校本的字
     ui: pick
-    detect: 5a 判 diff（why 含 lib_miss / 「库里没有」）；或本该判 L02／L03、而参校字在本书库里 0 例（第一次进库；刻例只算本书版本，A23 11-06）
+    detect: 参校字在本书库里 0 例（第一次进库；刻例只算本书版本，借来的不算；A23 11-06）。11-07 起只留这一种：5a 判 diff 但本书库已有这个字（≥3 例）的印糊整字改归 L05／L04，整理本这一位没字的（ref_blank）改归 R02。没接字形库时（不知道刻例数）仍按 5a 判 diff（why 含 lib_miss／「库里没有」）归这里
     legacy: {cause: [F], cls: [lib_miss], taxonomy: [L1], v2: "L 库里没有这个字"}
   lib_sparse_dissent:
     code: L02
@@ -273,10 +273,10 @@ reasons:
     owner: A23
     reviewer: llm_then_human
     priority: 58
-    label: 刻例太少·不一致
-    hint: 库里这个字刻例很少，机器字和参校本不一致
+    label: 刻例太少
+    hint: 这个字本书库里只有一两个刻例，库认不准；机器字和参校本可能一致也可能不一致，请看图确认是不是参校本的字
     ui: pick
-    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），机器字≠参校字；大模型选中的若是这个少样本字 → 回人审
+    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），不论机器字是否＝参校字（11-07 起 L03 并入；机器字＝参校字的多半是上下文选了形近字、被护栏 ctx_guard_ref 改回）；大模型选中的若是这个少样本字 → 回人审。detail 写「参校字>机器字」
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·机器字≠整理本"}
   lib_sparse_agree:
     code: L03
@@ -285,10 +285,10 @@ reasons:
     owner: A23
     reviewer: human
     priority: 57
-    label: 刻例太少
-    hint: 这个字库里只有一两个刻例，库还认不准，请确认图上是不是参校本的字
+    label: 刻例太少（已停用）
+    hint: 已停用（2026-11-07）：旧数据里还有，不再产出；本书库 1～2 例的格一律落 L02
     ui: pick
-    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），机器字＝参校字（多半是上下文选了形近字、被护栏 ctx_guard_ref 改回参校字）
+    detect: 已停用；原为参校字本书库 1～2 例且机器字＝参校字（A23 第 6 轮梳理，sheldon 11-07 并入 L02）
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·上下文=整理本"}
   lib_unrecognized:
     code: L04
@@ -300,7 +300,7 @@ reasons:
     label: 库认不出
     hint: 库里有这个字，但这一格认不出，多半是印淡或压了框线
     ui: pick
-    detect: 兜底——有参校字、机器字（seed_admit char）＝参校字、前面各条都没中（不看刻例数、不看库认不认；不接字形库时 L02/L03 的格也落这里）。细分见 pending_reason_detail（reasons.lib_unrecognized_kind）
+    detect: 兜底——有参校字、机器字（seed_admit char）＝参校字、前面各条都没中（不看刻例数、不看库认不认；不接字形库时 L02 的格也落这里）。另收 5a 判 diff 而本书库已有这个字（≥3 例）、没带乱码闸码的印糊整字（细分 lib_diff，11-07 起，原落 L01）。细分见 pending_reason_detail（reasons.lib_unrecognized_kind）；旧人裁锚点漂移（human_unbound）改归 X01
     legacy: {cause: [H, I], taxonomy: [L2, L3], v2: "L 库样本够·上下文=整理本·库不认"}
   garble_gate:
     code: L05
@@ -312,7 +312,7 @@ reasons:
     label: 像框线或墨点
     hint: 格图印糊，库首位是错字被乱码闸拦下；整理本字多半是对的，先看图
     ui: free
-    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare，且整理本这位有字（无对位的糊格落 R02）
+    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare，且整理本这位有字（无对位的糊格落 R02）；11-07 起也收 5a 判 diff（cov<0.85）、本书库已有这个字（≥3 例）而带这些码的格（原落 L01）
     legacy: {cause: [A6], taxonomy: [S1], v2: "L 乱码闸／影子闸拦下"}
 
   # ── R 整理本缺位 ──────────────────────────────────────
@@ -394,7 +394,7 @@ reasons:
     label: 裁定有冲突
     hint: 之前的裁定和码表（或新证据）不一致，请看图再定
     ui: pick
-    detect: doubt=src_code_conflict（cv#938）；人裁的机器不能降，单列出卡
+    detect: doubt=src_code_conflict（cv#938）；人裁的机器不能降，单列出卡；另收旧人裁绑丢、旧裁字与本格字对不上（锚点漂移，human_unbound，原落 L04；A23 11-07）
     legacy: {}
   vision_flagged:
     code: X02

@@ -315,8 +315,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.REF_GAP: lambda c, x: not c.ref,
     R.VARIANT_PAIR: _variant_with_ref,
     R.NEAR_FORM_GUARD: _near_form,
-    R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
-    R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
+    R.LIB_SPARSE_AGREE: lambda c, x: False,                 # L03 11-07 停用，并入 L02（不论机器字是否＝参校字；A23，sheldon 11-07）
+    R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x),
     R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
     R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
     R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
@@ -372,6 +372,7 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 #: 「库认不出」细分（A23，sheldon 11-06「理清 L04 流程」）：作 lib_unrecognized 的 pending_reason_detail，写成 ``<细分>:<整理本字>``，
 #: 不新增取值。L04 是兜底：有参校字、机器字＝参校字、前面各条都没中。三书看图（ai-team 待审原因深挖/L04-库认不出.md）这样的格
 #: 停下来的原因只有几种，对着 seed_admit 的 ``ref_lib_coord``（参校字＝库首位＝本格字就放）逐条看是哪一关没过，按先后取第一个：
+#:   lib_diff       5a 判 diff（cov<0.85，带 lib_miss 码）、本书库已有这个字（≥3 例）：印糊整字，原来落 L01（A23 11-07 起归 L04／L05）
 #:   lib_other      库首位不是参校字（多是糊墨，库认成笔画少的形近字，如 畫→書、全→今）：只能看图
 #:   human_unbound  人裁绑丢、旧裁字与本格字不同（锚点漂移）：重锚或作废那条人裁事件
 #:   doubt_blocked  带 ref_lib_coord 白名单以外的疑问码（如 coord_conflict）：看那个疑问
@@ -380,7 +381,7 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 #:   clear          以上都没有：按 ref_lib_coord 该放，没放是因为这本书／这版单没开它（看单子出自哪版 cv、册 yaml 开没开）
 #: 门槛与白名单取殿本 ``ref_lib_coord`` 的口径（cv seed_admit ``ref_lib_coord_cov/gap``、``_REF_LIB_COORD_DOUBTS``）；
 #: 开了 ``reference_trust`` 的书（史記）门槛更松，这里的 low_cov／near_rival 对它偏严，只作分档，不作判定。
-LIB_UNREC_KINDS = ("lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
+LIB_UNREC_KINDS = ("lib_diff", "lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
 LIB_UNREC_COV, LIB_UNREC_GAP = 0.96, 0.01
 #: cv ``_REF_LIB_COORD_DOUBTS`` 里的码（中文说明「库 unsure」「上下文 margin 不足」等不是码，doubt_codes 本来就不取）。
 #: ``context_page_end`` 由 cv #1184 后续 PR 加入（A31 11-06 裁定），这里先认。
@@ -391,6 +392,8 @@ REF_LIB_COORD_OK_CODES = frozenset({"ctx_guard_ref", "context_variant_form", "gr
 
 def lib_unrecognized_kind(c: Cell, ctx: Context | None = None) -> str:
     """lib_unrecognized 细分（见 ``LIB_UNREC_KINDS``）。给了 ``ctx.are_variants`` 时，紧咬的对手是参校字的异体不算（同 cv 按语义比）。"""
+    if c.lib_miss:
+        return "lib_diff"
     if not c.cands or c.top != c.ref:
         return "lib_other"
     h = (c.evidence or {}).get("human_unbound") or {}
@@ -431,6 +434,9 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return f"{lib_unrecognized_kind(c, ctx)}:{c.ref or ''}"
     if reason is R.LIB_SPARSE_AGREE:
         return c.ref or ""
+    if reason is R.RULING_CONFLICT and "human_unbound" in c.codes:
+        h = (c.evidence or {}).get("human_unbound") or {}
+        return f"human_unbound:{h.get('char') or ''}>{c.char or ''}"
     return ""
 
 
@@ -442,21 +448,35 @@ def _first_entry(c: Cell, ctx: Context) -> bool:
 def classify(c: Cell, ctx: Context) -> R:
     """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。
 
-    字形库类 L01–L03 的边界（A23 L03 深挖，sheldon 11-06 同意调整）只看参校字在本书库里的刻例数 n（`lib_own_n`）
-    和机器字是否＝参校字：
+    字形库类 L01–L04 的边界（A23 L03 深挖 11-06、第 6 轮梳理 11-07，sheldon 同意）只看参校字在本书库里的刻例数 n（`lib_own_n`）：
 
-        n = 0          → L01 lib_missing        第一次进库（不论机器字）
-        1 ≤ n ≤ 2      → 机器字＝参校字 L03 lib_sparse_agree；≠ L02 lib_sparse_dissent
-        n ≥ 3          → 不进 L02／L03，落到后面（多半 L04 库认不出、P01／P02）
+        n = 0          → L01 lib_missing        第一次进库（不论机器字；借来的刻例不算）
+        1 ≤ n ≤ 2      → L02 lib_sparse_dissent 刻例太少（不论机器字是否＝参校字；L03 11-07 起停用并入）
+        n ≥ 3          → 带 lib_miss 码（5a 判 diff）的印糊整字：有乱码闸码落 L05，否则落 L04（细分 lib_diff）；
+                         不带 lib_miss 码的照旧往后落（多半 L04 库认不出、P01／P02）
 
-    带 `lib_miss` 码（5a 判 diff）的格照旧在 priority 51 先归 L01。n＝0 的改归只发生在 L02／L03 这一位上，
-    前面的原因（乱码闸、异体、形近护栏等）不受影响。"""
+    带 `lib_miss` 码的格：整理本这一位没字（ref_blank）不是「库里没有它」，不归 L01，往后落（多半 R02）；
+    没给字形库（n 是 None）时按老办法一律 L01。其余 L01–L04 的格不受影响。
+    L04 里旧人裁锚点漂移（细分 human_unbound，数据问题不是库问题）改归 X01 裁定有冲突。"""
     for r in _ordered():
         rule = RULES.get(r)
-        if rule and rule(c, ctx):
-            if r in (R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE) and _first_entry(c, ctx):
-                return R.LIB_MISSING
-            return r
+        if not (rule and rule(c, ctx)):
+            continue
+        if r is R.LIB_SPARSE_DISSENT and _first_entry(c, ctx):
+            return R.LIB_MISSING
+        if r is R.LIB_MISSING:
+            if not c.has_ref:
+                continue                                      # 整理本这位没字：不是库的事，往后落
+            n = lib_own_n(c, ctx)
+            if n is not None and n >= 1:
+                if n <= LIB_SPARSE:
+                    return R.LIB_SPARSE_DISSENT
+                if c.codes & _GARBLE:
+                    return R.GARBLE_GATE
+                r = R.LIB_UNRECOGNIZED
+        if r is R.LIB_UNRECOGNIZED and lib_unrecognized_kind(c, ctx) == "human_unbound":
+            return R.RULING_CONFLICT
+        return r
     return R.UNKNOWN
 
 

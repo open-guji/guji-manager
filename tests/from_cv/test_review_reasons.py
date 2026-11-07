@@ -133,7 +133,7 @@ def test_lib_and_ref_rules():
         Cell(id="v:1:1:7", char="丁", ref="甲"),
         Cell(id="v:1:1:8", char="丁", ref="甲", evidence={"guard": "conflict"}),
     ]
-    assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_AGREE,
+    assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_DISSENT,
                                       R.LIB_SPARSE_DISSENT, R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.NEAR_FORM_GUARD]
 
 
@@ -219,8 +219,9 @@ def test_lib_missing_detail_split():
              "松": Cell(id="v:1:1:2", char="林", ref="松", doubts=["库里没有这个字"]),
              "人": Cell(id="v:1:1:3", char="入", ref="人", doubts=["库里没有这个字"]),
              "∅": Cell(id="v:1:1:4", char="和", ref=None, doubts=["库里没有这个字"])}
-    for c in cells.values():
-        assert classify(c, ctx) is R.LIB_MISSING
+    for k, c in cells.items():
+        # 11-07：整理本这一位没字（ref_blank）不是「库里没有它」，不归 L01，落 R02；没给 lib_own 时其余仍按 5a 判 diff 归 L01
+        assert classify(c, ctx) is (R.REF_GAP if k == "∅" else R.LIB_MISSING)
     assert {k: detail_of(R.LIB_MISSING, c, ctx) for k, c in cells.items()} == {
         "以": "own_zero_borrow_has:以", "松": "all_zero:松", "人": "own_has:人", "∅": "ref_blank:"}
     no_lib = build_context([])
@@ -481,10 +482,10 @@ def test_sparse_zero_goes_lib_missing():
         Cell(id="v:1:1:1", char="甲", ref="丙", ref_op="coord"),     # 不同、0 例 → L01（原先 L02）
         Cell(id="v:1:1:2", char="丙", ref="丙", ref_op="coord"),     # 相同、0 例 → L01（原先 L03）
         Cell(id="v:1:1:3", char="甲", ref="乙"),                     # 1 例 → L02
-        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L03
+        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L02（L03 11-07 停用并入）
         Cell(id="v:1:1:5", char="甲", ref="丙", doubts=["ctx_garble_shape"]),   # 乱码闸先判，不动
     ]
-    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_MISSING, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE, R.GARBLE_GATE]
+    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_MISSING, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_DISSENT, R.GARBLE_GATE]
     from guji_manager.review.reasons import build_context, detail_of
     ctx = build_context(cells, lib_n=n, lib_split=lambda ch: (n(ch), 0))
     assert detail_of(R.LIB_MISSING, cells[0], ctx) == "all_zero:丙"
@@ -494,15 +495,31 @@ def test_sparse_zero_goes_lib_missing():
 def test_lib_boundary_table():
     """L01–L04 边界表（A23 L03 深挖，sheldon 11-06）：本书刻例 n × 机器字是否＝参校字。"""
     for n, same, want in [(0, True, R.LIB_MISSING), (0, False, R.LIB_MISSING),
-                          (1, True, R.LIB_SPARSE_AGREE), (1, False, R.LIB_SPARSE_DISSENT),
-                          (2, True, R.LIB_SPARSE_AGREE), (2, False, R.LIB_SPARSE_DISSENT),
+                          (1, True, R.LIB_SPARSE_DISSENT), (1, False, R.LIB_SPARSE_DISSENT),
+                          (2, True, R.LIB_SPARSE_DISSENT), (2, False, R.LIB_SPARSE_DISSENT),
                           (3, True, R.LIB_UNRECOGNIZED), (3, False, R.REF_FINAL_DIFF)]:
         c = Cell(id="v:1:1:1", char="丙" if same else "甲", ref="丙")
         ctx = build_context([c], lib_own=lambda ch, n=n: n if ch == "丙" else 50)
         assert classify(c, ctx) == want, (n, same)
-    # 带 lib_miss 码（5a 判 diff）的照旧先归 L01，不看刻例数
-    c = Cell(id="v:1:1:1", char="丙", ref="丙", doubts=["lib_miss"])
-    assert classify(c, build_context([c], lib_own=lambda ch: 9)) == R.LIB_MISSING
+    # 带 lib_miss 码（5a 判 diff）：本书 0 例仍 L01；1～2 例 L02；≥3 例的印糊整字有乱码闸码落 L05、否则 L04（细分 lib_diff）（11-07）
+    def lm(n, char="丙", doubts=("lib_miss",), ref="丙"):
+        c = Cell(id="v:1:1:1", char=char, ref=ref, doubts=list(doubts), cands=[[char, 0.8]])
+        return c, build_context([c], lib_own=lambda ch: n)
+    assert classify(*lm(0)) == R.LIB_MISSING
+    assert classify(*lm(2)) == R.LIB_SPARSE_DISSENT
+    assert classify(*lm(9)) == R.LIB_UNRECOGNIZED
+    assert classify(*lm(9, char="甲", doubts=("lib_miss", "ctx_garble_shape"))) == R.GARBLE_GATE
+    from guji_manager.review.reasons import lib_unrecognized_kind
+    c, ctx = lm(9, char="甲")
+    assert lib_unrecognized_kind(c, ctx) == "lib_diff" and detail_of(R.LIB_UNRECOGNIZED, c, ctx) == "lib_diff:丙"
+    # 整理本这位没字：不归 L01，落 R02
+    assert classify(*lm(9, ref=None)) == R.REF_GAP
+    assert classify(*lm(0, ref=None)) == R.REF_GAP
+    # 旧人裁锚点漂移（L04 human_unbound）改归 X01
+    h = Cell(id="v:1:1:1", char="乾", ref="乾", doubts=["human_unbound"], cands=[["乾", 0.99]],
+             evidence={"human_unbound": {"char": "所"}})
+    assert classify(h, build_context([h], lib_own=lambda ch: 9)) == R.RULING_CONFLICT
+    assert detail_of(R.RULING_CONFLICT, h) == "human_unbound:所>乾"
     # 没给库：L01–L03 都不按刻例判
     c = Cell(id="v:1:1:1", char="丙", ref="丙")
     assert classify(c, build_context([c])) == R.LIB_UNRECOGNIZED
@@ -513,7 +530,7 @@ def test_lib_count_own_book_only(tmp_path):
     import sqlite3
     from guji_manager.review.reasons import lib_counts, lib_own_counts
     c = Cell(id="v:1:1:1", char="牘", ref="牘")
-    assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 1)) == R.LIB_SPARSE_AGREE
+    assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 1)) == R.LIB_SPARSE_DISSENT
     assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 0)) == R.LIB_MISSING
     assert classify(c, build_context([c], lib_n=lambda ch: 4)) == R.LIB_UNRECOGNIZED      # 老口径 4 例 → 不算少
     db = tmp_path / "g.db"
