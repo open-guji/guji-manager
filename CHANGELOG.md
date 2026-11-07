@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+## [0.4.20] - 2026-11-06
+
+- 待审原因 Z02 `group_conflict` 分类（PATCH，A24；Sheldon 11-07 授权先改后通知）：`reasons._group_kind` 解法只差写法（`are_variants` 判同字异形：象／𧰼、寇／㓂、會／㑹）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）；只改分类、不放行；没给 `are_variants` 时行为不变。
 ## [0.4.19] - 2026-11-06
 
 - 待审原因 Z05 `group_weak` 停用（PATCH，A24 #285；Sheldon 11-06 定）：字组已定字（admit/keep/provisional）仍待审的格不归字组、按后面的原因落（L05、L04…）；why=ref_missing／solo_weak 落 R 类；其余并入 Z01。枚举与 yaml 保留，旧数据读得出，不再产出。只改分类，不放行。另含 Z06、R03 深挖文档（#292）。

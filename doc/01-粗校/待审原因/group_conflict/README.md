@@ -46,7 +46,7 @@ manager `review/reasons.py` `_group_kind`（priority 41）：格带 `group` 证�
 
 | 类 | 说明 | 格数 | 目视（放行字 对／错／读不定） | 主要字组 | 办法 |
 |---|---|---:|---|---|---|
-| A 异形同字 | 解法给的字与放行字只差写法（象／𧰼、寇／㓂、會／㑹），算成了「几个字」 | 10 | 8／1／1 | xz 6、kgc 2 | 改分类（第八节，要通知） |
+| A 异形同字 | 解法给的字与放行字只差写法（象／𧰼、寇／㓂、會／㑹），算成了「几个字」 | 10 | 8／1／1 | xz 6、kgc 2 | **已改分类**（11-07，`_group_kind` 同字异形不算 Z02，sheldon 授权先改后通知） |
 | B1 弱图像票反对 | 复核降审；整理本＝放行字；文意或别的图像路支持放行字；反对的只有 ids（margin<1.0）、yr_bars | 28 | 27／0／1 | rr 8、yr 7、yt 4、em 3、ly 2、fc、js、wj | **新旋钮 `group_flow_dissent_keep`** |
 | B2 L1 规则孤证误判 | 复核降审；放行字＝整理本字；唯一反对的是 L1 规则，且规则是个二字组合误判（傳甲午、引甲帳、理會經、地圓篇…） | 8 | 8／0／0 | yt 3、js 2、yh 2、zh 1 | **收窄规则（已做）** |
 | B2x L1 规则孤证（收窄后仍命中） | 同上，但规则的右字本身两可（遺至／還至、遺原／還原） | 6 | 6／0／0 | yh 3、zh 2、yt 1 | 人审（或再收窄，有损好命中，不建议） |
@@ -154,3 +154,9 @@ seed_admit 主循环放行
 - 逐格表 `Z02-逐格-三书132格.tsv`（类、真字、各解法字）、`Z02-bench-seed.tsv`、图 `图/`。
 - cv：`research/a24/z02/`（`bench_z02.py`、`Z02_seed.jsonl`、`scan_groups.py`、`rule_audit.py`、`loadall.py`）；`tests/test_group_flow_z02.py`；`config/groups/{zh,yh,yt,rm,js}/rules.yaml`；`doc/字组/判法打架.md`。
 - 云端取数：同 Z01／Z03（venv 装 cv、manager --no-deps、psycopg[binary]、websockets；假工作区 `workspace.yaml`＋`.central.json`；`GUJI_DATA_TOKEN=$GUJI_DATA_TOKEN_READ GUJI_DATA_HOME=<目录>`；`guji db pull -w <ws>`（要 `glyph.db` 就别加 `--no-rebuild`）、`products pack fetch`、`source pull`）。注意 ★main 包各册生成的 cv 版本不一，三书口径是「各册 ★main 现有产物」。
+
+
+## 十、11-07 sheldon 定后已做
+
+- 三书 `config/book_defaults.yaml` 已加 `group_flow_dissent_keep: [em fc ly wj yh yt js zh yr]`、`group_flow_ref_pair: [men chuo zy yr wm zh ts sy rm]` 并推中心库（rr、ry 不开）；下一轮重跑生效，要 cv 含 #1205（seed_admit 1.47）。
+- manager `_group_kind`：解法只差写法（`are_variants` 判同字异形）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）（A 10 格；只改分类、不放行）。
