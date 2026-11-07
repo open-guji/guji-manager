@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.21] - 2026-11-07
+
+- 第 7 轮冻结版（PATCH）：含 #297 S04 碎片格、#302 标 main 钩子找 guji、#304 #310 Z 类重分、#316 R01 图片格提示、#319 #321 字库类重分与私用码落 R01 等，均只改分类/工具，不改放行。
+
 - 待审原因 Z 类「同字异形」折叠收窄（PATCH，A24 Z03 深挖；Sheldon 11-06 定改分类可直接做，合后经收件箱告知 A31）：折叠解法给字改用新增的 `Context.same_writing`（cv 暂归一表 `PROVISIONAL.forms` 并集＋宫宮），不再用宽异体表 `are_variants`（大／太、傳／傅、玉／王、戊／戌 都有边）；这些文意与字形路各执一字的格由 Z03 改落 Z02（三书 ★main 现算 Z03 247→236，Z02 +11，全唐文 Z03 11→2）。没给 `same_writing` 时退回 `are_variants`。只改分类、不放行。
 - 待审原因 Z 类按「解法给出了什么」重分（MINOR，A24 Z 类梳理；Sheldon 11-07 同意，已经协调者通知 A31–A34）：新增 Z07 `group_unconfirmed`「形近字·差一路确认」（一个字、why=weak 或联合判共字组没表态，原落 Z01／Z02）；Z06 `group_form_open` 改名 `variant_form_open`、码 V02、归异体类（yaml renamed，旧名照读）；ref／coord_dissent 而参校字是〓的落 R01；复核 `group_flow_ref_dissent` 归 Z04、复核两字归 Z02、复核没字归 Z01；字组已定字（含解法全弃权的 keep）不归 Z；Z 类 detail 改写「组:lift|joint|review」。只改分类、不放行。网站、控制台 pendingReasons 副本要按 `--json` 同步。
 
