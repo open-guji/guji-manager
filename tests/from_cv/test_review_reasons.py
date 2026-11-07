@@ -536,6 +536,14 @@ def test_lib_unrecognized_kind_detail():
     assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"
 
 
+def test_group_same_form_not_conflict():
+    """A24 Z02 11-06：解法只差写法（同字异形）不算判法打架；真异字照旧。"""
+    g = lambda a, b, **k: Cell(id="v:1:1:1", char=a, ref=b, evidence={"group": {"id": "xz", "solvers": [{"char": a}, {"char": b}], **k}})
+    var = lambda a, b: {a, b} == {"象", "𧰼"}
+    assert _cls([g("象", "𧰼", why="conflict")], var=var) == [R.GROUP_ABSTAIN]  # Z05 已停用，落 Z01
+    assert _cls([g("象", "𧰼", decision="demote")], var=var) == [R.GROUP_DEMOTED]
+    assert _cls([g("傅", "傳", why="conflict")], var=var) == [R.GROUP_CONFLICT]
+    assert _cls([g("象", "𧰼", why="conflict")]) == [R.GROUP_CONFLICT]  # 没给 are_variants 不折叠
 def test_garble_gate_needs_ref():
     """L05 要有整理本字；无对位的糊格（框线碎片、并格、圈点）落 R02（A24 L05 深挖 11-06）。"""
     cells = [
