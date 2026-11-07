@@ -4,6 +4,14 @@
 
 ## [未发版]
 
+## [0.4.18] - 2026-11-06
+
+- 待审原因 L01–L03 边界（PATCH，A23 #287；Sheldon 11-06 同意）：刻例只算本书版本（`lib_own_counts`）；参校字本书库 0 例一律归 L01，1～2 例按机器字是否＝参校字分 L03／L02；leverage 里 L03 也按参校字并卡。P02 说明改写（#284）。只改归类，不放行。
+
+- 待审原因 L05 `garble_gate` 要有整理本字（A24，Sheldon 11-06 同意）：`reasons.py` 无对位的糊格（框线碎片、并格、圈点）不再判 L05，落 R02 `ref_gap`；殿本约 −29、史記 −13、全唐文 0（★main 现算）。只改原因，不改放行。
+
+- 待审原因 L05 `garble_gate` 深挖（PATCH，A24；Sheldon 11-06）：新增 `tools/l05_profile.py`（体检＋按 `rare_ref_coord_min_cov`／`rare_ref_coord_group_top` 离线回放，分 A1／A2／A3／B／C 五类）；`doc/01-粗校/待审原因/garble_gate/` 重写 README（判定条件、现状、五类配图）、流程与参数、benchmark。不改原因码、不改分类逻辑；对应 cv #1204（seed_admit 1.45，缺省关）。
+
 ## [0.4.17] - 2026-11-06
 
 - 待审原因 L04 `lib_unrecognized` 理流程（PATCH，A23；Sheldon 11-06「理清整个流程、定 benchmark、下一本书能快速做」）：`pending_reason_detail` 改写成 `<细分>:<参校字>`，细分按 `ref_lib_coord` 逐关看哪一关没过（`lib_other`／`human_unbound`／`doubt_blocked`／`low_cov`／`near_rival`／`clear`，`reasons.lib_unrecognized_kind`）；yaml detect 文案改成与代码一致（兜底，不看刻例数与库认不认）；`pending-stats` 的 cells.tsv 末尾加 `detail` 列；新增 `review/vis_review.py`（看图裁定导出对照图与窗口、答案写成 vis-o1 裁定）。只改分类细节与统计，不放行、不改原因取值。说明见 `doc/01-粗校/待审原因/lib_unrecognized/`。

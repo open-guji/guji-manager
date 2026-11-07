@@ -4,8 +4,8 @@
 
   guji-manager iterate leverage --cells out/r5/cells.tsv --out out/r5/leverage [--top 200] [--book sj]
 
-一张「卡」＝一组同类格：同 pending_reason＋同一对（参校本字, 库首位字）；`BY_REF` 里的原因（L02）只按参校本字并卡。按下面顺序排：
-  tier 0  第一次进库的字（lib_missing、lib_sparse_agree）——用户 11-03 定必须人裁，同字全书一卡；
+一张「卡」＝一组同类格：同 pending_reason＋同一对（参校本字, 库首位字）；`BY_REF` 里的原因（L02、L03）只按参校本字并卡。按下面顺序排：
+  tier 0  第一次进库的字（lib_missing）与刻例太少的字（lib_sparse_agree，本书库 1～2 例）——用户 11-03 定必须人裁，同字全书一卡；
   tier 1  其他会走人审的原因（route=human，或 llm 被大模型留回的）按分数；
   tier 2  单列/底线（hard_pair、occluded_no_ref 归留人审、unknown）放最后，不出点选页，只在报告里列。
 分数 score＝同对格数 ＋ 2×(涉及册数−1)（一次确认能放掉多册）＋ 同字头在全书的总格数×0.1。
@@ -23,7 +23,8 @@ from .common import cell_key, read_tsv, write_tsv
 FIRST_ENTRY = ("lib_missing", "lib_sparse_agree")
 #: 只按参校本字并卡、不看库首位的原因：库里这个字刻例 ≤2，库首位是在库里有的字中乱挑的，按字对并卡会把同一个字
 #: 拆成好多张（殿本 L02 286 格按字对 223 张、按字 171 张；A23 L02 深挖，sheldon 11-06 定）。
-BY_REF = ("lib_sparse_dissent",)
+#: L03 同理（A23 L03 深挖 11-06：殿本 L03 线上单 224 格、186 字，库首位同样是乱挑的形近字）。
+BY_REF = ("lib_sparse_dissent", "lib_sparse_agree")
 BOTTOM = ("hard_pair", "occluded_no_ref", "unknown")
 
 
