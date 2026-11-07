@@ -179,33 +179,53 @@ def _same_form(sol: set, x: Context | None) -> bool:
     return all(x.are_variants(first, r) for r in rest)
 
 
+def _distinct(sol: set, x: Context | None) -> list[str]:
+    """解法给的字按同字异形（``are_variants``）折叠后的不同字；没给 ``are_variants`` 就逐字比。"""
+    out: list[str] = []
+    for ch in sorted(sol):
+        if not any(ch == o or (x and x.are_variants and x.are_variants(o, ch)) for o in out):
+            out.append(ch)
+    return out
+
+
+#: 字组流程的场景（`evidence.group.mode`），写进 Z 类的 `pending_reason_detail`：`<组>:<场景>`。
+GROUP_SCENES = ("lift", "joint", "review")
+
+
 def _group_kind(c: Cell, x: Context | None = None) -> R | None:
+    """字组格 → Z 类原因（A24 Z 类梳理 11-07，sheldon 同意）。**只按解法给出了什么分**，场景（补放 lift／联合判 joint／
+    复核 review）写进 detail，不再决定原因：
+
+    - 字组已定字（admit／keep／provisional）、写法待定（form_open，归 V02）、整理本缺位（ref_missing／solo_weak）→ 不是 Z；
+    - 唯一的反证是参校本〓（ref／coord_dissent 而参校字是〓）→ 不是 Z，落 R01 参校本缺字；
+    - Z04 与参校本不同：给了一个字，参校本是另一个真字（补放 ref／coord_dissent，复核 group_flow_ref_dissent）；
+    - Z02 判法打架：给了 ≥2 个不同字（同字异形折叠后）；
+    - Z03 复核推翻：复核，一个字、与放行字不同；
+    - Z07 差一路确认：一个字，但规定的第二路没确认（why=weak；联合判共字组弃权 why=joint）；
+    - Z01 没把握：一个字都没给。
+    真正的判序就是本函数的顺序；yaml 里 Z 类的 priority 只决定它们排在 H01 之后、N/V/L/R/P 之前。"""
     g = c.group
-    if not g:
+    if not g or "form_open" in c.codes:
         return None
-    if "form_open" in c.codes:
-        return R.GROUP_FORM_OPEN
-    sol = {s.get("char") for s in g.get("solvers") or [] if s.get("char")}
     why, dec = g.get("why"), g.get("decision")
-    if dec in GROUP_SETTLED and sol:
-        # 字组已经定了字（放行／保持／暂归一），格还留在待审是后面的闸拦的（影子闸 shadow_veto、人裁绑丢 human_unbound 等）。
-        # 这不是「证据弱」：原先落到最后一行 Z05（36 格里 9 格），现在让它按后面的原因（L05 乱码闸、L04 库认不出…）落。
-        # A24 Z05 深挖 2026-11-06。
+    if dec in GROUP_SETTLED:
+        # 字组已经定了字，格还留在待审是后面的闸拦的（影子闸、人裁绑丢等），按后面的原因落（A24 Z05 深挖 11-06）。
         return None
-    if not sol:
+    chars = _distinct({s.get("char") for s in g.get("solvers") or [] if s.get("char")}, x)
+    if why in ("ref_dissent", "coord_dissent"):
+        # 参校本这位是〓：不是「与参校本不同」，是参校本缺字（卿𨜊 组 235 格，A24 Z 类梳理 11-07）
+        return None if ref_missing(c.ref) else R.GROUP_REF_DISSENT
+    if why in ("ref_missing", "solo_weak"):
+        return None
+    if not chars:
         return R.GROUP_ABSTAIN
-    if why in ("ref_dissent", "coord_dissent", "ref_dissent_follow"):
-        return R.GROUP_REF_DISSENT
-    # A24 Z02 深挖 11-06：几路解法只差写法（同字异形）不算判法打架，往下按降审／证据弱分（只改分类，不放行）
-    if not _same_form(sol, x) and (len(sol) > 1 or why in ("conflict", "joint")):
+    if len(chars) >= 2:
         return R.GROUP_CONFLICT
     if dec == "demote":
-        return R.GROUP_DEMOTED
-    if why in ("ref_missing", "solo_weak"):
-        # 整理本缺位被部首族门／solo_margin 挡下：字组没有「证据弱」这回事，是整理本缺字，按后面的原因落（R 整理本缺字／缺位）。
-        return None
-    # 其余（why=weak：给字的解法不许单独补放；有文意给字但字形拆不开等）：字形单路没把握，并入 Z01。
-    # Z05 group_weak 2026-11-06 停用（A24 深挖，sheldon 定），枚举与 yaml 保留，旧数据读得出，不再产出。
+        return R.GROUP_REF_DISSENT if "group_flow_ref_dissent" in c.codes else R.GROUP_DEMOTED
+    if why in ("weak", "joint"):
+        return R.GROUP_UNCONFIRMED
+    # 其余（一个字，why=abstain／conflict 但几路只差写法等）：没有一路说了算，归没把握。
     return R.GROUP_ABSTAIN
 
 
@@ -274,8 +294,9 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GROUP_CONFLICT: lambda c, x: _group_kind(c, x) is R.GROUP_CONFLICT,
     R.GROUP_DEMOTED: lambda c, x: _group_kind(c, x) is R.GROUP_DEMOTED,
     R.GROUP_REF_DISSENT: lambda c, x: _group_kind(c, x) is R.GROUP_REF_DISSENT,
-    R.GROUP_WEAK: lambda c, x: _group_kind(c, x) is R.GROUP_WEAK,
-    R.GROUP_FORM_OPEN: lambda c, x: _group_kind(c, x) is R.GROUP_FORM_OPEN or "form_open" in c.codes,
+    R.GROUP_UNCONFIRMED: lambda c, x: _group_kind(c, x) is R.GROUP_UNCONFIRMED,
+    R.GROUP_WEAK: lambda c, x: False,                       # Z05 11-06 停用
+    R.VARIANT_FORM_OPEN: lambda c, x: "form_open" in c.codes,
     R.GLYPH_PENDING: lambda c, x: bool(c.pua_code) and c.pua_code in x.glyph_pending,
     R.REF_LACUNA: lambda c, x: ref_missing(c.ref),
     R.LIB_MISSING: lambda c, x: c.lib_miss,
@@ -388,7 +409,8 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     if reason in (R.SEG_COL_UNALIGNED,):
         return _col(c.id)
     if reason.name.startswith("GROUP_") and c.group:
-        return str(c.group.get("id") or "")
+        mode = c.group.get("mode")
+        return f"{c.group.get('id') or ''}:{mode}" if mode in GROUP_SCENES else str(c.group.get("id") or "")
     if reason in (R.HARD_PAIR, R.NEAR_FORM_GUARD, R.VARIANT_PAIR):
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
     if reason in (R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.LIB_SPARSE_DISSENT):
