@@ -2,7 +2,7 @@
 import json
 
 from guji_manager.review.pending_reason import PendingReason as R
-from guji_manager.review.reasons import Cell, build_context, classify, reasons_for_pending, stamp
+from guji_manager.review.reasons import Cell, build_context, classify, reasons_for_pending, stamp, detail_of
 
 
 def _cls(cells, lib=None, var=None):
@@ -71,6 +71,37 @@ def test_group_kinds():
     assert _cls([g(solvers=[{"char": "傅"}])]) == [R.GROUP_ABSTAIN]   # Z05 已停用：并入 Z01
 
 
+def test_group_kinds_by_evidence_1107():
+    """A24 Z 类梳理 11-07：只按解法给出了什么分，场景写 detail。"""
+    g = lambda ref="傳", doubts=(), **k: Cell(id="v:1:1:1", char="傅", ref=ref, doubts=list(doubts),
+                                             evidence={"group": {"id": "fc", **k}})
+    # 联合判只有一个字（共字组没表态）→ Z07，不是打架；两个字照旧 Z02
+    assert _cls([g(mode="joint", decision="review", why="joint", solvers=[{"char": "傅"}, {"solver": "yz:ctx", "char": None}])]) \
+        == [R.GROUP_UNCONFIRMED]
+    assert _cls([g(mode="joint", decision="review", why="joint", solvers=[{"char": "傅"}, {"char": "傳"}])]) == [R.GROUP_CONFLICT]
+    # 复核：没字 Z01、两字 Z02、一字 Z03、整理本是组里另一形 Z04
+    assert _cls([g(mode="review", decision="demote", why="abstain", solvers=[{"char": None}])]) == [R.GROUP_ABSTAIN]
+    assert _cls([g(mode="review", decision="demote", why="conflict", solvers=[{"char": "傅"}, {"char": "傳"}])]) == [R.GROUP_CONFLICT]
+    assert _cls([g(mode="review", decision="demote", why="agree", solvers=[{"char": "傅"}])]) == [R.GROUP_DEMOTED]
+    assert _cls([g(mode="review", decision="demote", why="agree", solvers=[{"char": "傅"}],
+                   doubts=["group_flow_ref_dissent"])]) == [R.GROUP_REF_DISSENT]
+    # 参校本〓：不是「与参校本不同」，落 R01
+    assert _cls([g(ref="〓", mode="lift", decision="review", why="coord_dissent", solvers=[{"char": "卿"}])]) == [R.REF_LACUNA]
+    # 复核 keep 而解法全弃权：字组没意见，不落 Z01
+    assert _cls([g(mode="review", decision="keep", why="abstain", solvers=[{"char": None}])])[0] is not R.GROUP_ABSTAIN
+
+
+def test_group_detail_scene_and_form_open():
+    c = Cell(id="v:1:1:1", char="傅", ref="傳", evidence={"group": {"id": "fc", "mode": "review", "decision": "demote",
+                                                                  "why": "agree", "solvers": [{"char": "傅"}]}})
+    assert detail_of(R.GROUP_DEMOTED, c) == "fc:review"
+    fo = Cell(id="v:1:1:1", char=None, ref="歲", doubts=["form_open"], evidence={"group": {"id": "sui", "solvers": []}})
+    assert _cls([fo]) == [R.VARIANT_FORM_OPEN]
+    from guji_manager.review.pending_reason import parse, specs
+    assert parse("group_form_open") is R.VARIANT_FORM_OPEN and specs()[R.VARIANT_FORM_OPEN].code == "V02"
+    assert specs()[R.GROUP_UNCONFIRMED].code == "Z07"
+
+
 def test_group_settled_is_not_weak():
     """字组已放／保持／暂归一的格还在待审，是后面的闸拦的：不落 Z05，按后面的原因落（A24 Z05 深挖 11-06）。"""
     g = lambda dec, why="agree", **k: Cell(id="v:1:1:1", char="宫", ref="宮", evidence={"group": {
@@ -82,7 +113,7 @@ def test_group_settled_is_not_weak():
     assert _cls([g("provisional")])[0] is not R.GROUP_ABSTAIN
     # 复核降审、没定字的照旧
     assert _cls([g("demote")]) == [R.GROUP_DEMOTED]
-    assert _cls([g("review", why="weak")]) == [R.GROUP_ABSTAIN]
+    assert _cls([g("review", why="weak")]) == [R.GROUP_UNCONFIRMED]   # Z07（11-07）
     # 整理本缺位（ref_missing／solo_weak）不是字组的事，落后面的原因
     ref_gap = lambda why: Cell(id="v:1:1:1", char="宫", ref=None, evidence={"group": {
         "id": "guan", "decision": "review", "why": why, "solvers": [{"char": "宫"}]}})
@@ -102,7 +133,7 @@ def test_lib_and_ref_rules():
         Cell(id="v:1:1:7", char="丁", ref="甲"),
         Cell(id="v:1:1:8", char="丁", ref="甲", evidence={"guard": "conflict"}),
     ]
-    assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_AGREE,
+    assert _cls(cells, lib=lib_n) == [R.REF_LACUNA, R.LIB_MISSING, R.GARBLE_GATE, R.LIB_SPARSE_DISSENT,
                                       R.LIB_SPARSE_DISSENT, R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.NEAR_FORM_GUARD]
 
 
@@ -188,8 +219,9 @@ def test_lib_missing_detail_split():
              "松": Cell(id="v:1:1:2", char="林", ref="松", doubts=["库里没有这个字"]),
              "人": Cell(id="v:1:1:3", char="入", ref="人", doubts=["库里没有这个字"]),
              "∅": Cell(id="v:1:1:4", char="和", ref=None, doubts=["库里没有这个字"])}
-    for c in cells.values():
-        assert classify(c, ctx) is R.LIB_MISSING
+    for k, c in cells.items():
+        # 11-07：整理本这一位没字（ref_blank）不是「库里没有它」，不归 L01，落 R02；没给 lib_own 时其余仍按 5a 判 diff 归 L01
+        assert classify(c, ctx) is (R.REF_GAP if k == "∅" else R.LIB_MISSING)
     assert {k: detail_of(R.LIB_MISSING, c, ctx) for k, c in cells.items()} == {
         "以": "own_zero_borrow_has:以", "松": "all_zero:松", "人": "own_has:人", "∅": "ref_blank:"}
     no_lib = build_context([])
@@ -450,10 +482,10 @@ def test_sparse_zero_goes_lib_missing():
         Cell(id="v:1:1:1", char="甲", ref="丙", ref_op="coord"),     # 不同、0 例 → L01（原先 L02）
         Cell(id="v:1:1:2", char="丙", ref="丙", ref_op="coord"),     # 相同、0 例 → L01（原先 L03）
         Cell(id="v:1:1:3", char="甲", ref="乙"),                     # 1 例 → L02
-        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L03
+        Cell(id="v:1:1:4", char="丁", ref="丁"),                     # 2 例 → L02（L03 11-07 停用并入）
         Cell(id="v:1:1:5", char="甲", ref="丙", doubts=["ctx_garble_shape"]),   # 乱码闸先判，不动
     ]
-    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_MISSING, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE, R.GARBLE_GATE]
+    assert _cls(cells, lib=n) == [R.LIB_MISSING, R.LIB_MISSING, R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_DISSENT, R.GARBLE_GATE]
     from guji_manager.review.reasons import build_context, detail_of
     ctx = build_context(cells, lib_n=n, lib_split=lambda ch: (n(ch), 0))
     assert detail_of(R.LIB_MISSING, cells[0], ctx) == "all_zero:丙"
@@ -463,15 +495,31 @@ def test_sparse_zero_goes_lib_missing():
 def test_lib_boundary_table():
     """L01–L04 边界表（A23 L03 深挖，sheldon 11-06）：本书刻例 n × 机器字是否＝参校字。"""
     for n, same, want in [(0, True, R.LIB_MISSING), (0, False, R.LIB_MISSING),
-                          (1, True, R.LIB_SPARSE_AGREE), (1, False, R.LIB_SPARSE_DISSENT),
-                          (2, True, R.LIB_SPARSE_AGREE), (2, False, R.LIB_SPARSE_DISSENT),
+                          (1, True, R.LIB_SPARSE_DISSENT), (1, False, R.LIB_SPARSE_DISSENT),
+                          (2, True, R.LIB_SPARSE_DISSENT), (2, False, R.LIB_SPARSE_DISSENT),
                           (3, True, R.LIB_UNRECOGNIZED), (3, False, R.REF_FINAL_DIFF)]:
         c = Cell(id="v:1:1:1", char="丙" if same else "甲", ref="丙")
         ctx = build_context([c], lib_own=lambda ch, n=n: n if ch == "丙" else 50)
         assert classify(c, ctx) == want, (n, same)
-    # 带 lib_miss 码（5a 判 diff）的照旧先归 L01，不看刻例数
-    c = Cell(id="v:1:1:1", char="丙", ref="丙", doubts=["lib_miss"])
-    assert classify(c, build_context([c], lib_own=lambda ch: 9)) == R.LIB_MISSING
+    # 带 lib_miss 码（5a 判 diff）：本书 0 例仍 L01；1～2 例 L02；≥3 例的印糊整字有乱码闸码落 L05、否则 L04（细分 lib_diff）（11-07）
+    def lm(n, char="丙", doubts=("lib_miss",), ref="丙"):
+        c = Cell(id="v:1:1:1", char=char, ref=ref, doubts=list(doubts), cands=[[char, 0.8]])
+        return c, build_context([c], lib_own=lambda ch: n)
+    assert classify(*lm(0)) == R.LIB_MISSING
+    assert classify(*lm(2)) == R.LIB_SPARSE_DISSENT
+    assert classify(*lm(9)) == R.LIB_UNRECOGNIZED
+    assert classify(*lm(9, char="甲", doubts=("lib_miss", "ctx_garble_shape"))) == R.GARBLE_GATE
+    from guji_manager.review.reasons import lib_unrecognized_kind
+    c, ctx = lm(9, char="甲")
+    assert lib_unrecognized_kind(c, ctx) == "lib_diff" and detail_of(R.LIB_UNRECOGNIZED, c, ctx) == "lib_diff:丙"
+    # 整理本这位没字：不归 L01，落 R02
+    assert classify(*lm(9, ref=None)) == R.REF_GAP
+    assert classify(*lm(0, ref=None)) == R.REF_GAP
+    # 旧人裁锚点漂移（L04 human_unbound）改归 X01
+    h = Cell(id="v:1:1:1", char="乾", ref="乾", doubts=["human_unbound"], cands=[["乾", 0.99]],
+             evidence={"human_unbound": {"char": "所"}})
+    assert classify(h, build_context([h], lib_own=lambda ch: 9)) == R.RULING_CONFLICT
+    assert detail_of(R.RULING_CONFLICT, h) == "human_unbound:所>乾"
     # 没给库：L01–L03 都不按刻例判
     c = Cell(id="v:1:1:1", char="丙", ref="丙")
     assert classify(c, build_context([c])) == R.LIB_UNRECOGNIZED
@@ -482,7 +530,7 @@ def test_lib_count_own_book_only(tmp_path):
     import sqlite3
     from guji_manager.review.reasons import lib_counts, lib_own_counts
     c = Cell(id="v:1:1:1", char="牘", ref="牘")
-    assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 1)) == R.LIB_SPARSE_AGREE
+    assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 1)) == R.LIB_SPARSE_DISSENT
     assert classify(c, build_context([c], lib_n=lambda ch: 4, lib_own=lambda ch: 0)) == R.LIB_MISSING
     assert classify(c, build_context([c], lib_n=lambda ch: 4)) == R.LIB_UNRECOGNIZED      # 老口径 4 例 → 不算少
     db = tmp_path / "g.db"
@@ -536,6 +584,26 @@ def test_lib_unrecognized_kind_detail():
     assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"
 
 
+def test_fragment_cell_without_ref_is_seg_defect():
+    """整理本这位没字、格框又比本页同类格小得多的碎片格归 S04（细分 clipped，R02 深挖 11-06）；有整理本字的不算。"""
+    from guji_manager.review.reasons import detail_of
+    c = Cell(id="v:1:2:3", char="一", ref=None, frag=True)
+    assert _cls([c]) == [R.SEG_DEFECT]
+    assert detail_of(R.SEG_DEFECT, c) == "clipped"
+    assert _cls([Cell(id="v:1:2:4", char="一", ref="六", frag=True)]) != [R.SEG_DEFECT]
+    assert _cls([Cell(id="v:1:2:5", char="一", ref=None, frag=False)]) == [R.REF_GAP]
+
+
+def test_frag_ids_from_cell_shrink(monkeypatch, tmp_path):
+    """格框边长 <0.6 倍本页同类格中位数、或长宽比 <0.35 算碎片；夹注与正文分开比；同类格不足 5 个不判。"""
+    from guji_manager.review import reasons
+
+    def box(i, w, h, jz=False):
+        return {"id": f"v:1:1:{i}", "width": w, "height": h, "step3_kind": "jiazhu" if jz else "char"}
+    chars = [box(i, 80, 80) for i in range(8)] + [box(8, 30, 30), box(9, 80, 20), box(10, 20, 20, True)]
+    monkeypatch.setattr(reasons, "_load_layer", lambda *a, **k: {"columns": [{"chars": chars}]})
+    assert reasons._frag_ids(tmp_path, "p001.json") == {"v:1:1:8", "v:1:1:9"}   # 夹注只 1 个，不判
+
 def test_group_same_form_not_conflict():
     """A24 Z02 11-06：解法只差写法（同字异形）不算判法打架；真异字照旧。"""
     g = lambda a, b, **k: Cell(id="v:1:1:1", char=a, ref=b, evidence={"group": {"id": "xz", "solvers": [{"char": a}, {"char": b}], **k}})
@@ -544,6 +612,17 @@ def test_group_same_form_not_conflict():
     assert _cls([g("象", "𧰼", decision="demote")], var=var) == [R.GROUP_DEMOTED]
     assert _cls([g("傅", "傳", why="conflict")], var=var) == [R.GROUP_CONFLICT]
     assert _cls([g("象", "𧰼", why="conflict")]) == [R.GROUP_CONFLICT]  # 没给 are_variants 不折叠
+def test_group_fold_uses_same_writing_not_wide_variants():
+    """A24 Z03 11-07：折叠用同一个字的写法（same_writing），异体表里的大／太、傳／傅 不折，落 Z02。"""
+    g = lambda a, b, **k: Cell(id="v:1:1:1", char=a, ref=a, evidence={"group": {"id": "dt", "solvers": [{"char": a}, {"char": b}], **k}})
+    wide = lambda a, b: {a, b} == {"大", "太"} or {a, b} == {"象", "𧰼"}
+    same = lambda a, b: {a, b} == {"象", "𧰼"}
+    cells = [g("太", "大", decision="demote"), g("象", "𧰼", decision="demote")]
+    assert _cls(cells, var=wide) == [R.GROUP_DEMOTED, R.GROUP_DEMOTED]          # 只给宽表：大太被折成一个字（旧行为）
+    ctx = build_context(cells, are_variants=wide, same_writing=same)
+    assert [classify(c, ctx) for c in cells] == [R.GROUP_CONFLICT, R.GROUP_DEMOTED]
+
+
 def test_garble_gate_needs_ref():
     """L05 要有整理本字；无对位的糊格（框线碎片、并格、圈点）落 R02（A24 L05 深挖 11-06）。"""
     cells = [
@@ -552,3 +631,13 @@ def test_garble_gate_needs_ref():
         Cell(id="v:1:1:3", char="甲", ref=None, doubts=["shadow_veto"]),
     ]
     assert _cls(cells) == [R.GARBLE_GATE, R.REF_GAP, R.REF_GAP]
+
+
+def test_private_use_ref_is_lacuna():
+    """整理本这位是私用码（史記）也算参校本缺字 R01，detail 写码位；基本区字不受影响（A24 R01 核实，11-07）。"""
+    from guji_manager.review.reasons import ref_missing
+    assert ref_missing("") and ref_missing("\U000f0001") and ref_missing("〓") and not ref_missing("纏")
+    c = Cell(id="01:1:1:1:1", char="墟", ref="")
+    assert classify(c, build_context([c], lib_own=lambda ch: 0)) == R.REF_LACUNA
+    assert detail_of(R.REF_LACUNA, c) == "U+EDC1"
+    assert detail_of(R.REF_LACUNA, Cell(id="v:1:1:2", ref="〓")) == ""

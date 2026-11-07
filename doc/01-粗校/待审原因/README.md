@@ -33,7 +33,7 @@
 
 ## 在哪里用到
 
-- **统计**：`guji-manager pending-stats`（线上单口径）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
+- **统计**：`guji-manager pending-stats`（线上单口径：读出单时写进单子的值，判法改了要重新出单才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
 - **分流**：`route`／`reviewer` 决定进大模型统一审（`llm_queue`）、算法、人审页还是留后；`iterate leverage` 按它排杠杆。
 - **人审页与网站**：网站卡片按 `ui`、`hint` 出形态和说明（kaiyuanguji-web、guji-console 的 `pendingReasons.ts` 是副本，改 yaml 后要用 `--json` 导出同步）。
 - **book-text**：待审格的 `char.json` 带 `pending_reason`，网站凭它显示字图。
@@ -49,8 +49,8 @@
 | D02 | [`occluded_no_ref`](occluded_no_ref/README.md) | 有遮挡且参校本缺 | 一定人审 | A32 | 137 | 0 | 1 |
 | H01 | [`hard_pair`](hard_pair/README.md) | 极难形近 | 留到标点、专名阶段 | A24 | 432 | 117 | 21 |
 | L01 | [`lib_missing`](lib_missing/README.md) | 少见的字 | 一定人审 | A24 | 354 | 112 | 5 |
-| L02 | [`lib_sparse_dissent`](lib_sparse_dissent/README.md) | 刻例太少·不一致 | 大模型统一过一遍 | A23 | 84\* | 10\* | 0\* |
-| L03 | [`lib_sparse_agree`](lib_sparse_agree/README.md) | 刻例太少 | 一定人审 | A23 | 105† | 1† | 1† |
+| L02 | [`lib_sparse_dissent`](lib_sparse_dissent/README.md) | 刻例太少（11-07 起并入原 L03） | 大模型统一过一遍 | A23 | 84\* | 10\* | 0\* |
+| L03 | [`lib_sparse_agree`](lib_sparse_agree/README.md) | 刻例太少（11-07 停用并入 L02） | 一定人审 | A23 | 105† | 1† | 1† |
 | L04 | [`lib_unrecognized`](lib_unrecognized/README.md) | 库认不出 | 先改算法，改完剩下的并入 llm | A23 | 392 | 9 | 3 |
 | L05 | [`garble_gate`](garble_gate/README.md) | 像框线或墨点 | 先改算法，改完剩下的并入 llm | A24 | 184 | 52 | 2 |
 | N01 | [`near_form_guard`](near_form_guard/README.md) | 形近字 | 大模型统一过一遍 | A24 | 273 | 40 | 6 |
@@ -64,6 +64,7 @@
 | S03 | [`col_width_out_of_band`](col_width_out_of_band/README.md) | 列宽异常 | 先改算法，改完剩下的并入 llm | A22 | 0 | 0 | 0 |
 | S04 | [`seg_defect`](seg_defect/README.md) | 切坏格 | 一定人审 | A22 | 0 | 20 | 0 |
 | V01 | [`variant_pair`](variant_pair/README.md) | 异体字 | 一定人审 | A24 | 260 | 122 | 2 |
+| V02 | [`variant_form_open`](variant_form_open/README.md) | 写法待定（原 Z06 `group_form_open`，11-07 改归异体类） | 先改算法，改完剩下的并入 llm | A24 | 4 | 0 | 0 |
 | X01 | [`ruling_conflict`](ruling_conflict/README.md) | 裁定有冲突 | 一定人审 | A31 | 6 | 0 | 0 |
 | X02 | [`vision_flagged`](vision_flagged/README.md) | 看图觉得不对 | 一定人审 | A31 | 0 | 0 | 0 |
 | X03 | [`machine_changed`](machine_changed/README.md) | 机器改了字 | 一定人审 | A32 | 0 | 0 | 0 |
@@ -71,14 +72,19 @@
 | X99 | [`unknown`](unknown/README.md) | 原因不明 | 一定人审 | A31 | 0 | 0 | 0 |
 | Z01 | [`group_abstain`](group_abstain/README.md) | 形近字·没把握 | 大模型统一过一遍 | A24 | 525 | 103 | 11 |
 | Z02 | [`group_conflict`](group_conflict/README.md) | 形近字·判法打架 | 大模型统一过一遍 | A24 | 149 | 16 | 23 |
-| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 153 | 29 | 2 |
+| Z03 | [`group_demoted`](group_demoted/README.md) | 形近字·复核推翻 | 大模型统一过一遍 | A24 | 202 | 34 | 11 |
 | Z04 | [`group_ref_dissent`](group_ref_dissent/README.md) | 形近字·与参校本不同 | 大模型统一过一遍 | A24 | 277 | 10 | 5 |
 | Z05 | [`group_weak`](group_weak/README.md) | 形近字·证据弱（**已停用 11-06**，并入 Z01／R 类） | — | A24 | 35 | 5 | 3 |
-| Z06 | [`group_form_open`](group_form_open/README.md) | 写法待定 | 先改算法，改完剩下的并入 llm | A24 | 5 | 0 | 0 |
+| Z06 | `group_form_open` | 已改名 `variant_form_open`（V02，11-07） | — | A24 | — | — | — |
+| Z07 | [`group_unconfirmed`](group_unconfirmed/README.md) | 形近字·差一路确认（11-07 新增） | 大模型统一过一遍 | A24 | 110\* | 0\* | 14\* |
+
+> **2026-11-07 字库类判法调整**（第 6 轮梳理，Sheldon 同意，A23；报告 [第6轮库相关梳理](第6轮库相关梳理-2026-11-07.md)）：L01 只留本书 0 例；印糊整字（5a 判 diff、本书库已有）改归 L05／L04；无对位的 L01 格归 R02；L03 停用并入 L02；L04 的 human_unbound 归 X01。下面各表是调整前的数。
 
 \* L02、L03 两行接了字形库重算（L02 用四库总目 g19、史记 g6、全唐文中心库最新；L03 用三书中心库 11-06 最新 glyph.db；史记的刻例数都含借来的全唐文刻例），其余行没接字形库，所以这些格在其余行（多半是 P01、P02、L04）里也各算了一次，合计不能直接相加。L02 是 11-06 manager #258 之后的口径：参校字库里 0 例的格改判 L01（四库总目 277、史记 32、全唐文 1 格，是同一批包上 L02 改判前后之差，库用四库总目 g19、史记 g6；A24 用三书中心库最新 glyph.db 算 L01 的增量是 366、36、1，见 `tools/l01_profile.py`），这部分没加进 L01 那一行（L01 行没接字形库）（A23 11-06，见 [L02 页](lib_sparse_dissent/README.md)、[L03 页](lib_sparse_agree/README.md)）。
 
 † L01–L03 边界 11-06 再调整（Sheldon 同意）：刻例数只算本书版本，参校字本书库 0 例的格一律归 L01。L03 行是调整后接三书中心库 11-06 glyph.db 现算的数；同一批包上 L01 再增 殿本 197、史记 22、全唐文 0，L02 史记 13→19、其余不变，L04 不动（见 [L03 页](lib_sparse_agree/README.md)）。
+
+- 形近字组 Z01–Z07 之间怎么分：见 [Z类梳理](Z类梳理.md)（A24 11-07，新分法已实施）。Z 行的 Z01–Z04 数字是 11-06 旧口径；新口径三书现算见 Z类梳理（Z01 551、Z02 73、Z03 248、Z04 147、Z07 124；\* 为新口径）。
 
 ## 维护
 

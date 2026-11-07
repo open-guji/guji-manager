@@ -29,6 +29,9 @@ PAGE_MIN, COL_MIN = 10, 5
 #: 弱证据格（有参校字、机器字不同）只在「本列大多对不上」时才算进整页对不上：本列有参校字的格里机器字＝参校字的比例
 #: 低于这个数。真错位的列几乎全不一致；半色调／褪色页对位是对的、只是认不准，列一致率多在 0.6 以上，不归 S01（A22 11-05）
 COL_AGREE_MAX = 0.5
+#: 碎片格（R02 深挖 11-06，sheldon 定直接改归 S04）：格框边长（√宽×高）小于本页同类（正文／夹注分开）格中位数的这个比例，
+#: 或短边／长边小于 FRAG_ASPECT，是切坏的碎片；只对**整理本这位没字**的格生效（有整理本字的格走别的原因）。
+FRAG_REL, FRAG_ASPECT = 0.6, 0.35
 #: 「机器改判」复审格：待审单上 recheck=true 且说明以此开头（auto_cycle 出的复审清单）
 MACHINE_CHANGED_NOTE = "机器改判"
 #: 11-05 起（cv #1148）只有「机器推翻最新人裁」才进复审，说明里带这几个字；老单上「机器改判…，无人裁」的复审格不算 X03，归 recheck。
@@ -39,8 +42,10 @@ _VARIANT = {"ref_lib_variant", "variant_indirect", "replace_form", "channel_off"
 
 
 def ref_missing(ch: str | None) -> bool:
-    """整理本这位是〓或缅甸文占位（没码位的生僻字）。"""
-    return bool(ch) and (ch == "〓" or any(0x1000 <= ord(c) <= 0x109F for c in ch))
+    """整理本这位是〓、缅甸文占位或私用码（没码位的生僻字）。私用码（U+E000–F8FF、15／16 平面）11-07 起也算（A24 R01 核实，
+    sheldon 同意）：史記整理本直接带私用码，不是殿本那套缅文占位；原先它们落 P02／L01。"""
+    return bool(ch) and (ch == "〓" or any(0x1000 <= ord(c) <= 0x109F or 0xE000 <= ord(c) <= 0xF8FF or ord(c) >= 0xF0000
+                                           for c in ch))
 
 
 @dataclass
@@ -63,6 +68,7 @@ class Cell:
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
     page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
+    frag: bool = False                                 # 格框明显小于本页同类格（半截字、墨点、框角），见 `FRAG_REL`；没读到 cell_shrink 就是 False
 
     @property
     def codes(self) -> set[str]:
@@ -93,6 +99,7 @@ class Context:
     col_noref: Counter = field(default_factory=Counter)
     lib_n: Callable[[str], int] | None = None            # 老口径刻例数（含借来的）；只在没给 lib_split 时兜底
     are_variants: Callable[[str, str], bool] | None = None
+    same_writing: Callable[[str, str], bool] | None = None      # 同一个字的不同写法（cv 暂归一表 forms，比 are_variants 窄）；Z 类折叠解法给字用它，没给退回 are_variants
     edge_tier: Callable[[str, str], str | None] | None = None   # 异体边分型 T1／T2／T3；给了就只认 T1、T2 算异体（V01 收窄）
     lib_split: Callable[[str], tuple[int, int]] | None = None   # 字 → (本书刻例数, 借来刻例数)，给 lib_missing 细分
     lib_own: Callable[[str], int] | None = None         # 字 → 本书版本的刻例数（n_confirmed）；L01–L03 边界用它
@@ -108,9 +115,9 @@ def _col(cid: str) -> str:
 
 
 def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=None, glyph_pending=(), edge_tier=None,
-                  lib_own=None) -> Context:
+                  lib_own=None, same_writing=None) -> Context:
     ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
-                  edge_tier=edge_tier, lib_own=lib_own)
+                  edge_tier=edge_tier, lib_own=lib_own, same_writing=same_writing)
     for c in cells:
         if not c.has_ref:
             if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
@@ -167,41 +174,70 @@ def _sparse(c: Cell, ctx: Context) -> bool:
 GROUP_SETTLED = frozenset({"admit", "keep", "provisional"})
 
 
+def _fold_fn(x: Context | None):
+    """Z 类折叠「同字异形」用的判等：优先 ``same_writing``（cv 暂归一表，只认同一个字的写法），没给退回 ``are_variants``。
+    cv 的异体表很宽（大／太、傳／傅、玉／王、戊／戌 都有边），拿它折会把文意与字形各执一字的真冲突折成一个字，落进 Z03
+    （A24 Z03 深挖 11-07：全唐文 Z03 11 格里 9 格）。"""
+    return (x.same_writing or x.are_variants) if x else None
+
+
 def _same_form(sol: set, x: Context | None) -> bool:
-    """解法给的几个字彼此是同字异形（象／𧰼、寇／㓂、會／㑹…，cv 按语义比）→ 不算「几个字」。没给 ``are_variants`` 就不折叠。"""
-    if not (x and x.are_variants and len(sol) > 1):
+    """解法给的几个字彼此是同字异形（象／𧰼、寇／㓂、會／㑹…）→ 不算「几个字」。没给判等函数就不折叠。"""
+    fold = _fold_fn(x)
+    if not (fold and len(sol) > 1):
         return False
     first, *rest = sorted(sol)
-    return all(x.are_variants(first, r) for r in rest)
+    return all(fold(first, r) for r in rest)
+
+
+def _distinct(sol: set, x: Context | None) -> list[str]:
+    """解法给的字按同字异形折叠后的不同字；没给判等函数就逐字比。"""
+    fold = _fold_fn(x)
+    out: list[str] = []
+    for ch in sorted(sol):
+        if not any(ch == o or (fold and fold(o, ch)) for o in out):
+            out.append(ch)
+    return out
+
+
+#: 字组流程的场景（`evidence.group.mode`），写进 Z 类的 `pending_reason_detail`：`<组>:<场景>`。
+GROUP_SCENES = ("lift", "joint", "review")
 
 
 def _group_kind(c: Cell, x: Context | None = None) -> R | None:
+    """字组格 → Z 类原因（A24 Z 类梳理 11-07，sheldon 同意）。**只按解法给出了什么分**，场景（补放 lift／联合判 joint／
+    复核 review）写进 detail，不再决定原因：
+
+    - 字组已定字（admit／keep／provisional）、写法待定（form_open，归 V02）、整理本缺位（ref_missing／solo_weak）→ 不是 Z；
+    - 唯一的反证是参校本〓（ref／coord_dissent 而参校字是〓）→ 不是 Z，落 R01 参校本缺字；
+    - Z04 与参校本不同：给了一个字，参校本是另一个真字（补放 ref／coord_dissent，复核 group_flow_ref_dissent）；
+    - Z02 判法打架：给了 ≥2 个不同字（同字异形折叠后）；
+    - Z03 复核推翻：复核，一个字、与放行字不同；
+    - Z07 差一路确认：一个字，但规定的第二路没确认（why=weak；联合判共字组弃权 why=joint）；
+    - Z01 没把握：一个字都没给。
+    真正的判序就是本函数的顺序；yaml 里 Z 类的 priority 只决定它们排在 H01 之后、N/V/L/R/P 之前。"""
     g = c.group
-    if not g:
+    if not g or "form_open" in c.codes:
         return None
-    if "form_open" in c.codes:
-        return R.GROUP_FORM_OPEN
-    sol = {s.get("char") for s in g.get("solvers") or [] if s.get("char")}
     why, dec = g.get("why"), g.get("decision")
-    if dec in GROUP_SETTLED and sol:
-        # 字组已经定了字（放行／保持／暂归一），格还留在待审是后面的闸拦的（影子闸 shadow_veto、人裁绑丢 human_unbound 等）。
-        # 这不是「证据弱」：原先落到最后一行 Z05（36 格里 9 格），现在让它按后面的原因（L05 乱码闸、L04 库认不出…）落。
-        # A24 Z05 深挖 2026-11-06。
+    if dec in GROUP_SETTLED:
+        # 字组已经定了字，格还留在待审是后面的闸拦的（影子闸、人裁绑丢等），按后面的原因落（A24 Z05 深挖 11-06）。
         return None
-    if not sol:
+    chars = _distinct({s.get("char") for s in g.get("solvers") or [] if s.get("char")}, x)
+    if why in ("ref_dissent", "coord_dissent"):
+        # 参校本这位是〓：不是「与参校本不同」，是参校本缺字（卿𨜊 组 235 格，A24 Z 类梳理 11-07）
+        return None if ref_missing(c.ref) else R.GROUP_REF_DISSENT
+    if why in ("ref_missing", "solo_weak"):
+        return None
+    if not chars:
         return R.GROUP_ABSTAIN
-    if why in ("ref_dissent", "coord_dissent", "ref_dissent_follow"):
-        return R.GROUP_REF_DISSENT
-    # A24 Z02 深挖 11-06：几路解法只差写法（同字异形）不算判法打架，往下按降审／证据弱分（只改分类，不放行）
-    if not _same_form(sol, x) and (len(sol) > 1 or why in ("conflict", "joint")):
+    if len(chars) >= 2:
         return R.GROUP_CONFLICT
     if dec == "demote":
-        return R.GROUP_DEMOTED
-    if why in ("ref_missing", "solo_weak"):
-        # 整理本缺位被部首族门／solo_margin 挡下：字组没有「证据弱」这回事，是整理本缺字，按后面的原因落（R 整理本缺字／缺位）。
-        return None
-    # 其余（why=weak：给字的解法不许单独补放；有文意给字但字形拆不开等）：字形单路没把握，并入 Z01。
-    # Z05 group_weak 2026-11-06 停用（A24 深挖，sheldon 定），枚举与 yaml 保留，旧数据读得出，不再产出。
+        return R.GROUP_REF_DISSENT if "group_flow_ref_dissent" in c.codes else R.GROUP_DEMOTED
+    if why in ("weak", "joint"):
+        return R.GROUP_UNCONFIRMED
+    # 其余（一个字，why=abstain／conflict 但几路只差写法等）：没有一路说了算，归没把握。
     return R.GROUP_ABSTAIN
 
 
@@ -257,7 +293,7 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
-        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}),
+        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}) or (c.frag and not c.ref),
     R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
     R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
     R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
@@ -270,8 +306,9 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.GROUP_CONFLICT: lambda c, x: _group_kind(c, x) is R.GROUP_CONFLICT,
     R.GROUP_DEMOTED: lambda c, x: _group_kind(c, x) is R.GROUP_DEMOTED,
     R.GROUP_REF_DISSENT: lambda c, x: _group_kind(c, x) is R.GROUP_REF_DISSENT,
-    R.GROUP_WEAK: lambda c, x: _group_kind(c, x) is R.GROUP_WEAK,
-    R.GROUP_FORM_OPEN: lambda c, x: _group_kind(c, x) is R.GROUP_FORM_OPEN or "form_open" in c.codes,
+    R.GROUP_UNCONFIRMED: lambda c, x: _group_kind(c, x) is R.GROUP_UNCONFIRMED,
+    R.GROUP_WEAK: lambda c, x: False,                       # Z05 11-06 停用
+    R.VARIANT_FORM_OPEN: lambda c, x: "form_open" in c.codes,
     R.GLYPH_PENDING: lambda c, x: bool(c.pua_code) and c.pua_code in x.glyph_pending,
     R.REF_LACUNA: lambda c, x: ref_missing(c.ref),
     R.LIB_MISSING: lambda c, x: c.lib_miss,
@@ -280,8 +317,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.REF_GAP: lambda c, x: not c.ref,
     R.VARIANT_PAIR: _variant_with_ref,
     R.NEAR_FORM_GUARD: _near_form,
-    R.LIB_SPARSE_AGREE: lambda c, x: _sparse(c, x) and c.char == c.ref,
-    R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x) and c.char != c.ref,
+    R.LIB_SPARSE_AGREE: lambda c, x: False,                 # L03 11-07 停用，并入 L02（不论机器字是否＝参校字；A23，sheldon 11-07）
+    R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x),
     R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
     R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
     R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
@@ -309,7 +346,9 @@ def seg_kind_of(c: Cell) -> str:
     k = c.seg_kind or (c.evidence or {}).get("seg_kind")
     if k in SEG_KINDS:
         return k
-    return JIAZHU_UNEVEN if JIAZHU_UNEVEN in c.codes else ""
+    if JIAZHU_UNEVEN in c.codes:
+        return JIAZHU_UNEVEN
+    return "clipped" if c.frag and not c.ref else ""
 
 
 #: 「少见的字」细分（A23，sheldon 11-04 定本书字样标注归书 Project）：作 lib_missing 的 pending_reason_detail，
@@ -335,6 +374,7 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 #: 「库认不出」细分（A23，sheldon 11-06「理清 L04 流程」）：作 lib_unrecognized 的 pending_reason_detail，写成 ``<细分>:<整理本字>``，
 #: 不新增取值。L04 是兜底：有参校字、机器字＝参校字、前面各条都没中。三书看图（ai-team 待审原因深挖/L04-库认不出.md）这样的格
 #: 停下来的原因只有几种，对着 seed_admit 的 ``ref_lib_coord``（参校字＝库首位＝本格字就放）逐条看是哪一关没过，按先后取第一个：
+#:   lib_diff       5a 判 diff（cov<0.85，带 lib_miss 码）、本书库已有这个字（≥3 例）：印糊整字，原来落 L01（A23 11-07 起归 L04／L05）
 #:   lib_other      库首位不是参校字（多是糊墨，库认成笔画少的形近字，如 畫→書、全→今）：只能看图
 #:   human_unbound  人裁绑丢、旧裁字与本格字不同（锚点漂移）：重锚或作废那条人裁事件
 #:   doubt_blocked  带 ref_lib_coord 白名单以外的疑问码（如 coord_conflict）：看那个疑问
@@ -343,7 +383,7 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 #:   clear          以上都没有：按 ref_lib_coord 该放，没放是因为这本书／这版单没开它（看单子出自哪版 cv、册 yaml 开没开）
 #: 门槛与白名单取殿本 ``ref_lib_coord`` 的口径（cv seed_admit ``ref_lib_coord_cov/gap``、``_REF_LIB_COORD_DOUBTS``）；
 #: 开了 ``reference_trust`` 的书（史記）门槛更松，这里的 low_cov／near_rival 对它偏严，只作分档，不作判定。
-LIB_UNREC_KINDS = ("lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
+LIB_UNREC_KINDS = ("lib_diff", "lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
 LIB_UNREC_COV, LIB_UNREC_GAP = 0.96, 0.01
 #: cv ``_REF_LIB_COORD_DOUBTS`` 里的码（中文说明「库 unsure」「上下文 margin 不足」等不是码，doubt_codes 本来就不取）。
 #: ``context_page_end`` 由 cv #1184 后续 PR 加入（A31 11-06 裁定），这里先认。
@@ -354,6 +394,8 @@ REF_LIB_COORD_OK_CODES = frozenset({"ctx_guard_ref", "context_variant_form", "gr
 
 def lib_unrecognized_kind(c: Cell, ctx: Context | None = None) -> str:
     """lib_unrecognized 细分（见 ``LIB_UNREC_KINDS``）。给了 ``ctx.are_variants`` 时，紧咬的对手是参校字的异体不算（同 cv 按语义比）。"""
+    if c.lib_miss:
+        return "lib_diff"
     if not c.cands or c.top != c.ref:
         return "lib_other"
     h = (c.evidence or {}).get("human_unbound") or {}
@@ -382,7 +424,8 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
     if reason in (R.SEG_COL_UNALIGNED,):
         return _col(c.id)
     if reason.name.startswith("GROUP_") and c.group:
-        return str(c.group.get("id") or "")
+        mode = c.group.get("mode")
+        return f"{c.group.get('id') or ''}:{mode}" if mode in GROUP_SCENES else str(c.group.get("id") or "")
     if reason in (R.HARD_PAIR, R.NEAR_FORM_GUARD, R.VARIANT_PAIR):
         return "/".join(sorted({v for v in (c.ref, c.char, c.top) if v}))
     if reason in (R.REF_OCR_DIFF, R.REF_FINAL_DIFF, R.LIB_SPARSE_DISSENT):
@@ -393,6 +436,11 @@ def detail_of(reason: R, c: Cell, ctx: Context | None = None) -> str:
         return f"{lib_unrecognized_kind(c, ctx)}:{c.ref or ''}"
     if reason is R.LIB_SPARSE_AGREE:
         return c.ref or ""
+    if reason is R.REF_LACUNA and c.ref and any(0xE000 <= ord(x) <= 0xF8FF or ord(x) >= 0xF0000 for x in c.ref):
+        return "/".join(f"U+{ord(x):04X}" for x in c.ref)          # 私用码参校字写码位（同一码位跨书意思不同，不能拿别书码表定字）
+    if reason is R.RULING_CONFLICT and "human_unbound" in c.codes:
+        h = (c.evidence or {}).get("human_unbound") or {}
+        return f"human_unbound:{h.get('char') or ''}>{c.char or ''}"
     return ""
 
 
@@ -404,21 +452,35 @@ def _first_entry(c: Cell, ctx: Context) -> bool:
 def classify(c: Cell, ctx: Context) -> R:
     """一格 → 原因。按 priority 第一个命中的；都不中 `UNKNOWN`。
 
-    字形库类 L01–L03 的边界（A23 L03 深挖，sheldon 11-06 同意调整）只看参校字在本书库里的刻例数 n（`lib_own_n`）
-    和机器字是否＝参校字：
+    字形库类 L01–L04 的边界（A23 L03 深挖 11-06、第 6 轮梳理 11-07，sheldon 同意）只看参校字在本书库里的刻例数 n（`lib_own_n`）：
 
-        n = 0          → L01 lib_missing        第一次进库（不论机器字）
-        1 ≤ n ≤ 2      → 机器字＝参校字 L03 lib_sparse_agree；≠ L02 lib_sparse_dissent
-        n ≥ 3          → 不进 L02／L03，落到后面（多半 L04 库认不出、P01／P02）
+        n = 0          → L01 lib_missing        第一次进库（不论机器字；借来的刻例不算）
+        1 ≤ n ≤ 2      → L02 lib_sparse_dissent 刻例太少（不论机器字是否＝参校字；L03 11-07 起停用并入）
+        n ≥ 3          → 带 lib_miss 码（5a 判 diff）的印糊整字：有乱码闸码落 L05，否则落 L04（细分 lib_diff）；
+                         不带 lib_miss 码的照旧往后落（多半 L04 库认不出、P01／P02）
 
-    带 `lib_miss` 码（5a 判 diff）的格照旧在 priority 51 先归 L01。n＝0 的改归只发生在 L02／L03 这一位上，
-    前面的原因（乱码闸、异体、形近护栏等）不受影响。"""
+    带 `lib_miss` 码的格：整理本这一位没字（ref_blank）不是「库里没有它」，不归 L01，往后落（多半 R02）；
+    没给字形库（n 是 None）时按老办法一律 L01。其余 L01–L04 的格不受影响。
+    L04 里旧人裁锚点漂移（细分 human_unbound，数据问题不是库问题）改归 X01 裁定有冲突。"""
     for r in _ordered():
         rule = RULES.get(r)
-        if rule and rule(c, ctx):
-            if r in (R.LIB_SPARSE_DISSENT, R.LIB_SPARSE_AGREE) and _first_entry(c, ctx):
-                return R.LIB_MISSING
-            return r
+        if not (rule and rule(c, ctx)):
+            continue
+        if r is R.LIB_SPARSE_DISSENT and _first_entry(c, ctx):
+            return R.LIB_MISSING
+        if r is R.LIB_MISSING:
+            if not c.has_ref:
+                continue                                      # 整理本这位没字：不是库的事，往后落
+            n = lib_own_n(c, ctx)
+            if n is not None and n >= 1:
+                if n <= LIB_SPARSE:
+                    return R.LIB_SPARSE_DISSENT
+                if c.codes & _GARBLE:
+                    return R.GARBLE_GATE
+                r = R.LIB_UNRECOGNIZED
+        if r is R.LIB_UNRECOGNIZED and lib_unrecognized_kind(c, ctx) == "human_unbound":
+            return R.RULING_CONFLICT
+        return r
     return R.UNKNOWN
 
 
@@ -460,6 +522,30 @@ def _page_kind(root: Path, name: str) -> str | None:
     return None
 
 
+def _frag_ids(root: Path, name: str) -> set[str]:
+    """本页的碎片格 id：cell_shrink 的格框边长比本页同类格（夹注／非夹注分开）中位数小得多，或长宽比悬殊。"""
+    shr = _load_layer(root / "cell_shrink" / name, "char_index") or {}
+    boxes: dict[str, tuple[float, float, bool]] = {}
+    for key in ("columns", "alt_columns"):
+        for col in shr.get(key) or []:
+            for ch in col.get("chars") or []:
+                w, h = ch.get("width"), ch.get("height")
+                if w and h and ch.get("id") not in boxes:
+                    boxes[ch["id"]] = (float(w), float(h), ch.get("step3_kind") == "jiazhu")
+    med: dict[bool, float] = {}
+    for jz in (False, True):
+        v = sorted((w * h) ** .5 for w, h, j in boxes.values() if j == jz)
+        if len(v) >= 5:
+            med[jz] = v[len(v) // 2]
+    out = set()
+    for cid, (w, h, jz) in boxes.items():
+        if jz not in med:
+            continue
+        if (w * h) ** .5 < FRAG_REL * med[jz] or min(w, h) / max(w, h) < FRAG_ASPECT:
+            out.add(cid)
+    return out
+
+
 def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[str, Cell]:
     """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。
 
@@ -478,6 +564,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
+        frags = _frag_ids(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -497,7 +584,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind)
+                                                 col_agree=agree, page_kind=kind, frag=cid in frags)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
@@ -580,6 +667,24 @@ def _default_are_variants():
         return _av
     except Exception:  # noqa: BLE001 —— 异体表读不到就不判异体，落到后面的规则
         return None
+
+
+#: cv 暂归一表之外、同一个字的写法（官宫宮 组里 宫宮 同字；cv guan 组 forms 没单列）
+_EXTRA_SAME_WRITING = (frozenset("宫宮"),)
+
+
+def _default_same_writing():
+    """同一个字的不同写法：cv `PROVISIONAL[*].forms`（暂归一表，sheldon 定的同义写法）的并集判等。取不到 cv 返回 None（退回 are_variants）。"""
+    try:
+        from .._cv import groups_registry
+        PROVISIONAL = groups_registry.PROVISIONAL
+    except Exception:  # noqa: BLE001
+        return None
+    sets = [frozenset(p.forms) for p in PROVISIONAL.values()] + list(_EXTRA_SAME_WRITING)
+
+    def same(a: str, b: str) -> bool:
+        return a == b or any(a in f and b in f for f in sets)
+    return same
 
 
 def _default_edge_tier():
@@ -716,9 +821,10 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
 
     `stats`（可选 Counter）：`glyph_pending_by_window` 记「按窗口回查判成待收字」的格数——待收字不派人审，
     回查错了格会被悄悄藏起来，出单报告要单列这个数，第一次上线抽 20 格看图。"""
-    tier = None
+    tier = same_writing = None
     if are_variants is None:
         are_variants, tier = _default_are_variants(), _default_edge_tier()
+        same_writing = _default_same_writing()
     bigrams: Counter | None = Counter() if suspect else None
     prod = book_cells(products_dir, book, bigrams=bigrams)
     cells: list[Cell] = []
@@ -744,14 +850,15 @@ def reasons_for_pending(doc: dict, products_dir, book: str, *, glyph_db=None, ar
         if pua_resolve is None:
             pua_resolve = pua_resolver()
         for c in cells:
-            if pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right):
+            if (pua_resolve and not c.pua_code and ref_missing(c.ref) and (c.ref_left or c.ref_right)
+                    and not any(0xE000 <= ord(q) <= 0xF8FF or ord(q) >= 0xF0000 for q in c.ref)):    # 参校字本身是私用码（史記）不回查殿本源（A24 R01）
                 c.pua_code = pua_resolve(c.ref_left, c.ref_right)
                 if c.pua_code and c.pua_code in glyph_pending and stats is not None:
                     stats["glyph_pending_by_window"] += 1    # 按窗口回查判成待收字的格数（风险提示：回查错了格会被悄悄藏起来，出单报告要单列）
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
                         lib_own=lib_own_counts(glyph_db) if glyph_db else None,
-                        edge_tier=tier)
+                        edge_tier=tier, same_writing=same_writing)
     out = {}
     for x, c in zip(doc.get("cells", []), cells):
         r = classify(c, ctx)
@@ -785,13 +892,14 @@ def stamp_cards(cards: list[dict], cells: list[Cell], *, glyph_db=None, are_vari
     """控制台待审卡（`review/cards.py`）每张带 `pending_reason`／`pending_reason_detail`，与出单同一套判法。
 
     `cells` 与 `cards` 一一对应；整页／整列对不上按这批卡自己数（与待审单按整单数同口径）。"""
-    tier = None
+    tier = same_writing = None
     if are_variants is None:
         are_variants, tier = _default_are_variants(), _default_edge_tier()
+        same_writing = _default_same_writing()
     ctx = build_context(cells, lib_n=lib_counts(glyph_db) if glyph_db else None, are_variants=are_variants,
                         lib_split=lib_split_counts(glyph_db) if glyph_db else None, glyph_pending=glyph_pending,
                         lib_own=lib_own_counts(glyph_db) if glyph_db else None,
-                        edge_tier=tier)
+                        edge_tier=tier, same_writing=same_writing)
     for card, c in zip(cards, cells):
         r = classify(c, ctx)
         card["pending_reason"] = r.value

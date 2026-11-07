@@ -28,6 +28,7 @@ version: 1
 renamed:
   ref_replaced: ref_ocr_diff      # 2026-11-06 Sheldon：P01/P02 旧名看不出区别
   ref_mismatch: ref_final_diff
+  group_form_open: variant_form_open   # 2026-11-07 A24 Z 类梳理：写法待定不是形近字组产生的，改归异体 V02（Z06 不再用）
 
 categories:
   segmentation: {code: S, label: 切分位置}
@@ -95,7 +96,7 @@ reasons:
     label: 切坏格
     hint: 这一格切得不完整，机器认不出字；请看书影，把字直接写进框里
     ui: free
-    detect: 人或闸标了切坏格（confirm v=seg_defect，或单上 cls=seg_defect）；史記夹注两行分法不均、按整理本切的格（doubt 码 jiazhu_uneven，cv#1011）也归这里，细分 jiazhu_uneven
+    detect: 人或闸标了切坏格（confirm v=seg_defect，或单上 cls=seg_defect）；史記夹注两行分法不均、按整理本切的格（doubt 码 jiazhu_uneven，cv#1011）也归这里，细分 jiazhu_uneven；整理本这位没字、且格框比本页同类格小得多（边长 <0.6 倍中位数，或长宽比 <0.35；半截字、墨点、框角）的碎片格也归这里，细分 clipped（R02 深挖 11-06）
     legacy: {cls: [seg_defect]}
 
   # ── D 遮挡 ─────────────────────────────────────────────
@@ -149,7 +150,7 @@ reasons:
     label: 形近字·没把握
     hint: 形近字，几种判法都没给出字，请按前后文选
     ui: pick
-    detect: 有字组证据，solvers 都没给字（不同义组）
+    detect: 有字组证据、字组没定字，解法一个字都没给（补放、联合判、复核都算；场景写在 detail「组:lift|joint|review」）；字组只是同字异形之争（一个字）也落这里
     legacy: {cause: [C], cls: [near_form], taxonomy: [Z1], v2: "Z 没有解法给字(弃权)"}
   group_conflict:
     code: Z02
@@ -161,7 +162,7 @@ reasons:
     label: 形近字·判法打架
     hint: 几种判法给了不同的字，请按前后文选
     ui: pick
-    detect: solvers 给了 ≥2 个不同字，或 why=conflict/joint
+    detect: 解法给了 ≥2 个不同字（同字异形先折叠，manager#296）；补放、联合判、复核都算。联合判只有一个字（共字组没表态）不算，归 Z07
     legacy: {cause: [C], taxonomy: [Z2], v2: "Z 解法之间冲突"}
   group_demoted:
     code: Z03
@@ -173,7 +174,7 @@ reasons:
     label: 形近字·复核推翻
     hint: 复核给了与放行字不同的字
     ui: pick
-    detect: 字组 decision=demote
+    detect: 复核（decision=demote），解法只给一个字、与放行字不同；复核时解法没给字归 Z01、≥2 字归 Z02、整理本是组里另一形（group_flow_ref_dissent）归 Z04
     legacy: {cause: [C], taxonomy: [Z2], v2: "Z 复核给了不同于放行字的字(降审)"}
   group_ref_dissent:
     code: Z04
@@ -185,7 +186,7 @@ reasons:
     label: 形近字·与参校本不同
     hint: 判法给的字和参校本这里的字不一样
     ui: pick
-    detect: 字组 why=ref_dissent 或 coord_dissent
+    detect: 解法给了一个字，参校本（现役或坐标对位）是另一个真字：补放 why=ref_dissent/coord_dissent，复核疑问码 group_flow_ref_dissent；参校字是〓的不算，落 R01（A24 Z 类梳理 11-07）
     legacy: {cause: [C], cls: [ref_conflict], taxonomy: [Z2], v2: "Z 解法给的字与整理本(坐标)对位不同"}
   group_weak:
     code: Z05
@@ -199,19 +200,18 @@ reasons:
     ui: pick
     detect: 已停用；原为字组其余情况（why=joint/weak）
     legacy: {cause: [C], taxonomy: [Z3], v2: "Z 证据偏弱"}
-  group_form_open:
-    code: Z06
+  group_unconfirmed:
+    code: Z07
     category: group
-    route: algo
+    route: llm
     owner: A24
-    reviewer: human
-    priority: 45
-    label: 写法待定
-    hint: 知道是哪个字，但不确定本书刻的是哪种写法，只在组内写法里挑
-    ui: pick
-    detect: 字组是同义（写法）组：暂归一、按参校本取字、码位组能解；或 why=form_open
-    legacy: {cls: [form_open], cause: [C], v2: "Z 同义组"}
-
+    reviewer: llm_then_human
+    priority: 46
+    label: 形近字·差一路确认
+    hint: 判法给了一个字，但还差另一路（另一种判法或相邻字组）确认，请看这个字对不对
+    ui: confirm
+    detect: 解法只给一个字（同字异形折叠后），why=weak（给字的只有不许单独补放的解法，lift_needs）或 why=joint（联合判共字组弃权／没表态）（A24 Z 类梳理 11-07 新增；原落 Z01、Z02）
+    legacy: {cause: [C], taxonomy: [Z3], v2: "Z 证据偏弱"}
   # ── N 形近护栏 ─────────────────────────────────────────
   near_form_guard:
     code: N01
@@ -240,6 +240,19 @@ reasons:
     detect: 整理本字与库首选或机器字是异体对（边分型 T1／T2；T3 通假、简繁不算；前五里其它候选不看，A24 V01 深挖 11-06），且不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
     legacy: {cause: [B], cls: [variant], taxonomy: [M1, M2], v2: "V 组外异体对"}
 
+  variant_form_open:
+    code: V02
+    category: variant
+    route: algo
+    owner: A24
+    reviewer: human
+    priority: 45
+    label: 写法待定
+    hint: 知道是哪个字，但不确定本书刻的是哪种写法，只在组内写法里挑
+    ui: pick
+    detect: 疑问码 form_open：seed_admit 整理本通道放行位，整理本字在用字账（variant_ledger）≥2 写法的同义组里、decide_form 定不了写法（不是形近字组流程产生的）。旧名 group_form_open、码 Z06（2026-11-07 改归异体类，Z06 不再用）
+    legacy: {cls: [form_open], cause: [C], v2: "Z 同义组"}
+
   # ── L 字形库 ──────────────────────────────────────────
   lib_missing:
     code: L01
@@ -251,7 +264,7 @@ reasons:
     label: 少见的字
     hint: 字形库里还没有这个字，这一格就是它第一次进库，请确认图上是不是参校本的字
     ui: pick
-    detect: 5a 判 diff（why 含 lib_miss / 「库里没有」）；或本该判 L02／L03、而参校字在本书库里 0 例（第一次进库；刻例只算本书版本，A23 11-06）
+    detect: 参校字在本书库里 0 例（第一次进库；刻例只算本书版本，借来的不算；A23 11-06）。11-07 起只留这一种：5a 判 diff 但本书库已有这个字（≥3 例）的印糊整字改归 L05／L04，整理本这一位没字的（ref_blank）改归 R02。没接字形库时（不知道刻例数）仍按 5a 判 diff（why 含 lib_miss／「库里没有」）归这里
     legacy: {cause: [F], cls: [lib_miss], taxonomy: [L1], v2: "L 库里没有这个字"}
   lib_sparse_dissent:
     code: L02
@@ -260,10 +273,10 @@ reasons:
     owner: A23
     reviewer: llm_then_human
     priority: 58
-    label: 刻例太少·不一致
-    hint: 库里这个字刻例很少，机器字和参校本不一致
+    label: 刻例太少
+    hint: 这个字本书库里只有一两个刻例，库认不准；机器字和参校本可能一致也可能不一致，请看图确认是不是参校本的字
     ui: pick
-    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），机器字≠参校字；大模型选中的若是这个少样本字 → 回人审
+    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），不论机器字是否＝参校字（11-07 起 L03 并入；机器字＝参校字的多半是上下文选了形近字、被护栏 ctx_guard_ref 改回）；大模型选中的若是这个少样本字 → 回人审。detail 写「参校字>机器字」
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·机器字≠整理本"}
   lib_sparse_agree:
     code: L03
@@ -272,10 +285,10 @@ reasons:
     owner: A23
     reviewer: human
     priority: 57
-    label: 刻例太少
-    hint: 这个字库里只有一两个刻例，库还认不准，请确认图上是不是参校本的字
+    label: 刻例太少（已停用）
+    hint: 已停用（2026-11-07）：旧数据里还有，不再产出；本书库 1～2 例的格一律落 L02
     ui: pick
-    detect: 参校字在本书库里 1～2 例（只算本书版本；0 例归 L01），机器字＝参校字（多半是上下文选了形近字、被护栏 ctx_guard_ref 改回参校字）
+    detect: 已停用；原为参校字本书库 1～2 例且机器字＝参校字（A23 第 6 轮梳理，sheldon 11-07 并入 L02）
     legacy: {cause: [I], taxonomy: [L4], v2: "L 库样本过少·上下文=整理本"}
   lib_unrecognized:
     code: L04
@@ -287,7 +300,7 @@ reasons:
     label: 库认不出
     hint: 库里有这个字，但这一格认不出，多半是印淡或压了框线
     ui: pick
-    detect: 兜底——有参校字、机器字（seed_admit char）＝参校字、前面各条都没中（不看刻例数、不看库认不认；不接字形库时 L02/L03 的格也落这里）。细分见 pending_reason_detail（reasons.lib_unrecognized_kind）
+    detect: 兜底——有参校字、机器字（seed_admit char）＝参校字、前面各条都没中（不看刻例数、不看库认不认；不接字形库时 L02 的格也落这里）。另收 5a 判 diff 而本书库已有这个字（≥3 例）、没带乱码闸码的印糊整字（细分 lib_diff，11-07 起，原落 L01）。细分见 pending_reason_detail（reasons.lib_unrecognized_kind）；旧人裁锚点漂移（human_unbound）改归 X01
     legacy: {cause: [H, I], taxonomy: [L2, L3], v2: "L 库样本够·上下文=整理本·库不认"}
   garble_gate:
     code: L05
@@ -299,7 +312,7 @@ reasons:
     label: 像框线或墨点
     hint: 格图印糊，库首位是错字被乱码闸拦下；整理本字多半是对的，先看图
     ui: free
-    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare，且整理本这位有字（无对位的糊格落 R02）
+    detect: why 含 ctx_garble_shape / shadow_veto / ctx_garble_rare，且整理本这位有字（无对位的糊格落 R02）；11-07 起也收 5a 判 diff（cov<0.85）、本书库已有这个字（≥3 例）而带这些码的格（原落 L01）
     legacy: {cause: [A6], taxonomy: [S1], v2: "L 乱码闸／影子闸拦下"}
 
   # ── R 整理本缺位 ──────────────────────────────────────
@@ -323,7 +336,7 @@ reasons:
     reviewer: llm_then_human
     priority: 50
     label: 参校本缺字
-    hint: 参校本这里写的是〓（没码位的生僻字），请从图上读
+    hint: 参校本这里写的是〓（没码位的生僻字），请从图上读；若是字形引述（「古文作〓」「說文作〓」等），不硬录常用字，标「图片格」只留图，说明写引述什么字
     ui: free
     detect: 整理本这位是〓或私用码；先走新图源文本层与私用码表（cv#932），再大模型，读不准的人审
     legacy: {cause: [A2], taxonomy: [P1], v2: "R 整理本缺字(〓/缅甸)"}
@@ -381,7 +394,7 @@ reasons:
     label: 裁定有冲突
     hint: 之前的裁定和码表（或新证据）不一致，请看图再定
     ui: pick
-    detect: doubt=src_code_conflict（cv#938）；人裁的机器不能降，单列出卡
+    detect: doubt=src_code_conflict（cv#938）；人裁的机器不能降，单列出卡；另收旧人裁绑丢、旧裁字与本格字对不上（锚点漂移，human_unbound，原落 L04；A23 11-07）
     legacy: {}
   vision_flagged:
     code: X02
