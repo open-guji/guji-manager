@@ -95,7 +95,7 @@ reasons:
     label: 切坏格
     hint: 这一格切得不完整，机器认不出字；请看书影，把字直接写进框里
     ui: free
-    detect: 人或闸标了切坏格（confirm v=seg_defect，或单上 cls=seg_defect）；史記夹注两行分法不均、按整理本切的格（doubt 码 jiazhu_uneven，cv#1011）也归这里，细分 jiazhu_uneven
+    detect: 人或闸标了切坏格（confirm v=seg_defect，或单上 cls=seg_defect）；史記夹注两行分法不均、按整理本切的格（doubt 码 jiazhu_uneven，cv#1011）也归这里，细分 jiazhu_uneven；整理本这位没字、且格框比本页同类格小得多（边长 <0.6 倍中位数，或长宽比 <0.35；半截字、墨点、框角）的碎片格也归这里，细分 clipped（R02 深挖 11-06）
     legacy: {cls: [seg_defect]}
 
   # ── D 遮挡 ─────────────────────────────────────────────
