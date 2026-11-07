@@ -65,6 +65,12 @@
 - **sy 山由出 3 格**（vol37:113:1:16、vol38:182:8:15、vol67:116:3:20）：整理本＝山、ids＝山，目视也是山；被共字组 chu 的**码位**解法（codepoint＝出）反对而卡在联合判。码位解法对「由」这个码位当然给出，不是这格的证据。建议联合判里共字组的 codepoint 不当反对票（先看 chu 的其余联合判格），要 cv 改动，另开卡。
 - 目视这 21 个新格：整理本字对的占大半，与旧 132 格的结论一致。
 
+### 11-07 sheldon 定「都按建议来」后已做
+
+- 三书 `config/book_defaults.yaml` 已推中心库：`group_flow_dissent_keep`＝[em fc ly wj yh yt js zh yr rr]、`group_flow_ref_pair`＝[men chuo zy yr wm zh ts sy rm rr]、`group_flow_ctx_agree`＝[rr]（rr 要本组文意同意才放）、`group_flow_dissent_l1`＝[zh yh yt js]。要 cv ≥ #1223（seed_admit 1.60），下一轮重跑生效，没自己重跑。已 send.py 告知 A31。
+- 回退：删这几行重落 seed_admit，并把 rr 从两个名单拿掉。
+- D2 搭档文意裁定（7 条入缓存，3 条 low 送人审）见 [`D2裁定/`](D2裁定/)；同字异形移出 Z02（manager#296）。
+
 ### 范围与脚本已同步
 
 - 统计：`guji-manager pending-stats` 自动用 dev 定义，每个会话重跑就是自己这个码下的内容；我这个码的字符级重统计跑 [`脚本/新-11-07/`](脚本/新-11-07/)：`extract_z.py`（逐册取 Z02 格，`VOLS`＝册号）→ `collect_items.py` → `partition_new.py`（分类）→ `rr_eval.py`（rr 各来源对错）。
