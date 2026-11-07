@@ -145,6 +145,19 @@ def _group_of(ch: str) -> str | None:
     return gs[0].id if gs else None
 
 
+def _reason(v) -> str:
+    """单上的原因值按 yaml `renamed` 换成新名（如 11-07 `group_form_open`→`variant_form_open`）；空记 unknown。
+    认不出的值原样留着（不吞成 unknown），方便看出单子用了哪个版本的判法。"""
+    if not v:
+        return "unknown"
+    try:
+        from .review.pending_reason import renamed
+        r = renamed()
+        return r[str(v)].value if str(v) in r else str(v)
+    except Exception:  # noqa: BLE001
+        return str(v)
+
+
 #: 单独计数的标记：单上 `src`，或 pending_reason_detail 前缀。（待收字 11-05 定加取值 glyph_pending，按原因计数，不在这里）
 DETAIL_TAGS = (("同字对照自检：", "seg_selfcheck"),)
 
@@ -179,7 +192,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
             v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
             rows.append({"vol": vol, "cell": c["cell"], "big": v.big, "sub": v.sub, "key": v.key, "owner": v.owner,
                          "fix": v.fix, "conc": conc_tag(page_n[pos[0]], col_n[pos[1]]), "cause": cause_of(c) or "",
-                         "pending_reason": c.get("pending_reason") or "unknown",
+                         "pending_reason": _reason(c.get("pending_reason")),
                          "detail": str(c.get("pending_reason_detail") or ""),
                          "src": _tag_of(c),
                          "kind": nb.get(str(pos[0]).lstrip("0") or "0", "body"),
