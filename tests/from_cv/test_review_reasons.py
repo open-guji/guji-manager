@@ -2,7 +2,7 @@
 import json
 
 from guji_manager.review.pending_reason import PendingReason as R
-from guji_manager.review.reasons import Cell, build_context, classify, reasons_for_pending, stamp
+from guji_manager.review.reasons import Cell, build_context, classify, reasons_for_pending, stamp, detail_of
 
 
 def _cls(cells, lib=None, var=None):
@@ -71,6 +71,37 @@ def test_group_kinds():
     assert _cls([g(solvers=[{"char": "傅"}])]) == [R.GROUP_ABSTAIN]   # Z05 已停用：并入 Z01
 
 
+def test_group_kinds_by_evidence_1107():
+    """A24 Z 类梳理 11-07：只按解法给出了什么分，场景写 detail。"""
+    g = lambda ref="傳", doubts=(), **k: Cell(id="v:1:1:1", char="傅", ref=ref, doubts=list(doubts),
+                                             evidence={"group": {"id": "fc", **k}})
+    # 联合判只有一个字（共字组没表态）→ Z07，不是打架；两个字照旧 Z02
+    assert _cls([g(mode="joint", decision="review", why="joint", solvers=[{"char": "傅"}, {"solver": "yz:ctx", "char": None}])]) \
+        == [R.GROUP_UNCONFIRMED]
+    assert _cls([g(mode="joint", decision="review", why="joint", solvers=[{"char": "傅"}, {"char": "傳"}])]) == [R.GROUP_CONFLICT]
+    # 复核：没字 Z01、两字 Z02、一字 Z03、整理本是组里另一形 Z04
+    assert _cls([g(mode="review", decision="demote", why="abstain", solvers=[{"char": None}])]) == [R.GROUP_ABSTAIN]
+    assert _cls([g(mode="review", decision="demote", why="conflict", solvers=[{"char": "傅"}, {"char": "傳"}])]) == [R.GROUP_CONFLICT]
+    assert _cls([g(mode="review", decision="demote", why="agree", solvers=[{"char": "傅"}])]) == [R.GROUP_DEMOTED]
+    assert _cls([g(mode="review", decision="demote", why="agree", solvers=[{"char": "傅"}],
+                   doubts=["group_flow_ref_dissent"])]) == [R.GROUP_REF_DISSENT]
+    # 参校本〓：不是「与参校本不同」，落 R01
+    assert _cls([g(ref="〓", mode="lift", decision="review", why="coord_dissent", solvers=[{"char": "卿"}])]) == [R.REF_LACUNA]
+    # 复核 keep 而解法全弃权：字组没意见，不落 Z01
+    assert _cls([g(mode="review", decision="keep", why="abstain", solvers=[{"char": None}])])[0] is not R.GROUP_ABSTAIN
+
+
+def test_group_detail_scene_and_form_open():
+    c = Cell(id="v:1:1:1", char="傅", ref="傳", evidence={"group": {"id": "fc", "mode": "review", "decision": "demote",
+                                                                  "why": "agree", "solvers": [{"char": "傅"}]}})
+    assert detail_of(R.GROUP_DEMOTED, c) == "fc:review"
+    fo = Cell(id="v:1:1:1", char=None, ref="歲", doubts=["form_open"], evidence={"group": {"id": "sui", "solvers": []}})
+    assert _cls([fo]) == [R.VARIANT_FORM_OPEN]
+    from guji_manager.review.pending_reason import parse, specs
+    assert parse("group_form_open") is R.VARIANT_FORM_OPEN and specs()[R.VARIANT_FORM_OPEN].code == "V02"
+    assert specs()[R.GROUP_UNCONFIRMED].code == "Z07"
+
+
 def test_group_settled_is_not_weak():
     """字组已放／保持／暂归一的格还在待审，是后面的闸拦的：不落 Z05，按后面的原因落（A24 Z05 深挖 11-06）。"""
     g = lambda dec, why="agree", **k: Cell(id="v:1:1:1", char="宫", ref="宮", evidence={"group": {
@@ -82,7 +113,7 @@ def test_group_settled_is_not_weak():
     assert _cls([g("provisional")])[0] is not R.GROUP_ABSTAIN
     # 复核降审、没定字的照旧
     assert _cls([g("demote")]) == [R.GROUP_DEMOTED]
-    assert _cls([g("review", why="weak")]) == [R.GROUP_ABSTAIN]
+    assert _cls([g("review", why="weak")]) == [R.GROUP_UNCONFIRMED]   # Z07（11-07）
     # 整理本缺位（ref_missing／solo_weak）不是字组的事，落后面的原因
     ref_gap = lambda why: Cell(id="v:1:1:1", char="宫", ref=None, evidence={"group": {
         "id": "guan", "decision": "review", "why": why, "solvers": [{"char": "宫"}]}})

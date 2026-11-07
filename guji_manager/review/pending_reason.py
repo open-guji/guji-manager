@@ -40,10 +40,11 @@ class PendingReason(str, Enum):
     GROUP_CONFLICT = "group_conflict"
     GROUP_DEMOTED = "group_demoted"
     GROUP_REF_DISSENT = "group_ref_dissent"
-    GROUP_WEAK = "group_weak"
-    GROUP_FORM_OPEN = "group_form_open"
+    GROUP_WEAK = "group_weak"            # Z05 2026-11-06 停用，旧数据照读
+    GROUP_UNCONFIRMED = "group_unconfirmed"  # Z07 2026-11-07 新增：一个字，缺规定的第二路确认
     NEAR_FORM_GUARD = "near_form_guard"
     VARIANT_PAIR = "variant_pair"
+    VARIANT_FORM_OPEN = "variant_form_open"  # V02 写法待定；旧名 group_form_open（Z06，2026-11-07 改归异体类）
     LIB_MISSING = "lib_missing"
     LIB_SPARSE_DISSENT = "lib_sparse_dissent"
     LIB_SPARSE_AGREE = "lib_sparse_agree"

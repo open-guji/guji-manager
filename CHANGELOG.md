@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 待审原因 Z 类按「解法给出了什么」重分（MINOR，A24 Z 类梳理；Sheldon 11-07 同意，已经协调者通知 A31–A34）：新增 Z07 `group_unconfirmed`「形近字·差一路确认」（一个字、why=weak 或联合判共字组没表态，原落 Z01／Z02）；Z06 `group_form_open` 改名 `variant_form_open`、码 V02、归异体类（yaml renamed，旧名照读）；ref／coord_dissent 而参校字是〓的落 R01；复核 `group_flow_ref_dissent` 归 Z04、复核两字归 Z02、复核没字归 Z01；字组已定字（含解法全弃权的 keep）不归 Z；Z 类 detail 改写「组:lift|joint|review」。只改分类、不放行。网站、控制台 pendingReasons 副本要按 `--json` 同步。
+
 ## [0.4.20] - 2026-11-06
 
 - 待审原因 Z02 `group_conflict` 分类（PATCH，A24；Sheldon 11-07 授权先改后通知）：`reasons._group_kind` 解法只差写法（`are_variants` 判同字异形：象／𧰼、寇／㓂、會／㑹）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）；只改分类、不放行；没给 `are_variants` 时行为不变。

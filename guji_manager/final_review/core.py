@@ -7,6 +7,7 @@ from collections import Counter
 #: pending_reason → 判读类（对应降人审框架 6.2 的三种提示词）
 CLASS_OF = {
     "group_abstain": "Z", "group_conflict": "Z", "group_demoted": "Z", "group_ref_dissent": "Z", "group_weak": "Z",
+    "group_unconfirmed": "Z",
     "near_form_guard": "N",
     "lib_sparse_dissent": "L",
     "ref_final_diff": "P", "ref_ocr_diff": "P",

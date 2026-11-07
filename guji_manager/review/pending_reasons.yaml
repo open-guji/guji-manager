@@ -28,6 +28,7 @@ version: 1
 renamed:
   ref_replaced: ref_ocr_diff      # 2026-11-06 Sheldon：P01/P02 旧名看不出区别
   ref_mismatch: ref_final_diff
+  group_form_open: variant_form_open   # 2026-11-07 A24 Z 类梳理：写法待定不是形近字组产生的，改归异体 V02（Z06 不再用）
 
 categories:
   segmentation: {code: S, label: 切分位置}
@@ -149,7 +150,7 @@ reasons:
     label: 形近字·没把握
     hint: 形近字，几种判法都没给出字，请按前后文选
     ui: pick
-    detect: 有字组证据，solvers 都没给字（不同义组）
+    detect: 有字组证据、字组没定字，解法一个字都没给（补放、联合判、复核都算；场景写在 detail「组:lift|joint|review」）；字组只是同字异形之争（一个字）也落这里
     legacy: {cause: [C], cls: [near_form], taxonomy: [Z1], v2: "Z 没有解法给字(弃权)"}
   group_conflict:
     code: Z02
@@ -161,7 +162,7 @@ reasons:
     label: 形近字·判法打架
     hint: 几种判法给了不同的字，请按前后文选
     ui: pick
-    detect: solvers 给了 ≥2 个不同字，或 why=conflict/joint
+    detect: 解法给了 ≥2 个不同字（同字异形先折叠，manager#296）；补放、联合判、复核都算。联合判只有一个字（共字组没表态）不算，归 Z07
     legacy: {cause: [C], taxonomy: [Z2], v2: "Z 解法之间冲突"}
   group_demoted:
     code: Z03
@@ -173,7 +174,7 @@ reasons:
     label: 形近字·复核推翻
     hint: 复核给了与放行字不同的字
     ui: pick
-    detect: 字组 decision=demote
+    detect: 复核（decision=demote），解法只给一个字、与放行字不同；复核时解法没给字归 Z01、≥2 字归 Z02、整理本是组里另一形（group_flow_ref_dissent）归 Z04
     legacy: {cause: [C], taxonomy: [Z2], v2: "Z 复核给了不同于放行字的字(降审)"}
   group_ref_dissent:
     code: Z04
@@ -185,7 +186,7 @@ reasons:
     label: 形近字·与参校本不同
     hint: 判法给的字和参校本这里的字不一样
     ui: pick
-    detect: 字组 why=ref_dissent 或 coord_dissent
+    detect: 解法给了一个字，参校本（现役或坐标对位）是另一个真字：补放 why=ref_dissent/coord_dissent，复核疑问码 group_flow_ref_dissent；参校字是〓的不算，落 R01（A24 Z 类梳理 11-07）
     legacy: {cause: [C], cls: [ref_conflict], taxonomy: [Z2], v2: "Z 解法给的字与整理本(坐标)对位不同"}
   group_weak:
     code: Z05
@@ -199,19 +200,18 @@ reasons:
     ui: pick
     detect: 已停用；原为字组其余情况（why=joint/weak）
     legacy: {cause: [C], taxonomy: [Z3], v2: "Z 证据偏弱"}
-  group_form_open:
-    code: Z06
+  group_unconfirmed:
+    code: Z07
     category: group
-    route: algo
+    route: llm
     owner: A24
-    reviewer: human
-    priority: 45
-    label: 写法待定
-    hint: 知道是哪个字，但不确定本书刻的是哪种写法，只在组内写法里挑
-    ui: pick
-    detect: 字组是同义（写法）组：暂归一、按参校本取字、码位组能解；或 why=form_open
-    legacy: {cls: [form_open], cause: [C], v2: "Z 同义组"}
-
+    reviewer: llm_then_human
+    priority: 46
+    label: 形近字·差一路确认
+    hint: 判法给了一个字，但还差另一路（另一种判法或相邻字组）确认，请看这个字对不对
+    ui: confirm
+    detect: 解法只给一个字（同字异形折叠后），why=weak（给字的只有不许单独补放的解法，lift_needs）或 why=joint（联合判共字组弃权／没表态）（A24 Z 类梳理 11-07 新增；原落 Z01、Z02）
+    legacy: {cause: [C], taxonomy: [Z3], v2: "Z 证据偏弱"}
   # ── N 形近护栏 ─────────────────────────────────────────
   near_form_guard:
     code: N01
@@ -239,6 +239,19 @@ reasons:
     ui: pick
     detect: 整理本字与库首选或机器字是异体对（边分型 T1／T2；T3 通假、简繁不算；前五里其它候选不看，A24 V01 深挖 11-06），且不在字组里；或 why 含 ref_lib_variant/variant_indirect/replace_form/channel_off
     legacy: {cause: [B], cls: [variant], taxonomy: [M1, M2], v2: "V 组外异体对"}
+
+  variant_form_open:
+    code: V02
+    category: variant
+    route: algo
+    owner: A24
+    reviewer: human
+    priority: 45
+    label: 写法待定
+    hint: 知道是哪个字，但不确定本书刻的是哪种写法，只在组内写法里挑
+    ui: pick
+    detect: 疑问码 form_open：seed_admit 整理本通道放行位，整理本字在用字账（variant_ledger）≥2 写法的同义组里、decide_form 定不了写法（不是形近字组流程产生的）。旧名 group_form_open、码 Z06（2026-11-07 改归异体类，Z06 不再用）
+    legacy: {cls: [form_open], cause: [C], v2: "Z 同义组"}
 
   # ── L 字形库 ──────────────────────────────────────────
   lib_missing:
