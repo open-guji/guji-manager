@@ -1,0 +1,74 @@
+书	册	格	字组	模式	放行字	整理本字	目视真字	分类	各解法
+qtw	008	42:2:5	yh	review	還	還	還	C	ctx=遺 ids=還
+siku	vol04	60:9:12	yt	review	圖	圖	圖	B1	ctx=圖 ids=圓
+siku	vol09	202:1:3	wj	review	間	間	間	C	ctx=問 ids=間
+siku	vol09	218:5:19	rr	review	人	人	人	C	ctx=入 rr_img=人 ids=-
+siku	vol10	85:2:11	zh	review	會	會	會	C	ctx=曾 ids=會
+siku	vol10	113:1:21	wm	joint	未	末	末	D1	ctx=末 bars=未
+siku	vol11	88:1:16	rr	review	入	入	入	C	ctx=八 rr_img=入 ids=入
+siku	vol14	155:7:14	yt	review	圖	圖	圖	B1	ctx=圖 ids=圓
+siku	vol14	175:6:13	men	joint	間	閣	閣	D3	ids=閣 wj:ctx=問 wj:ids=-
+siku	vol15	10:9:19	zh	review	曾	曾	曾	B2x	ctx=會 ids=曾
+siku	vol15	24:2:6	em	review	而	而	而	B1	ctx=而 ids=面
+siku	vol15	148:2:10	rr	review	人	人	人	C	ctx=入 rr_img=人 ids=人
+siku	vol16	21:3:15	yt	review	圖	圖	圖	B2x	ctx=圓 ids=圖
+siku	vol16	24:9:6	rr	review	入	入	?	C	ctx=人 rr_img=入 ids=-
+siku	vol16	162:9:19	zh	review	會	會	會	B2	ctx=曾 ids=會
+siku	vol18	112:3:10a	chuo	joint	遺	巡	巡	D1	ids=巡 yh:ctx=- yh:ids=遺
+siku	vol18	115:3:20	em	review	面	面	面	B1	ctx=面 ids=而
+siku	vol19	80:8:15	yt	review	圓	圓	圓	B1	ctx=圓 ids=圖
+siku	vol21	223:9:8	rr	review	人	人	?	B1	ctx=- rr_img=人 ids=入
+siku	vol22	89:9:20	rr	lift	八	人	?	D3	ctx=入 rr_img=人 ids=人
+siku	vol23	61:3:5	zy	joint	子	予	于	D3	zy_strokes=- ctx=于 ids=- yz:ctx=予 vis=-
+siku	vol23	68:9:19	yh	review	還	還	還	B2x	ctx=遺 ids=還 vis=-
+siku	vol26	49:2:16	wm	joint	末	未	未	D1	ctx=未 bars=末
+siku	vol37	35:7:15	rr	review	人	人	?	C	ctx=八 rr_img=人 ids=人
+siku	vol37	113:1:16	sy	joint	由	山	山	D3	ids=山 chu:codepoint=出
+siku	vol38	182:8:15	sy	joint	由	山	山	D3	ids=山 chu:codepoint=出
+siku	vol39	47:4:10	ry	joint	日	目	目	D3	ctx=- ry_shape=日 rm:ctx=目
+siku	vol39	106:1:5	yh	review	遺	遺	遺	B2x	ctx=還 ids=遺 vis=-
+siku	vol41	41:2:9	men	joint	閣	閻	閻	D3	ids=- ctx=閻 wj:ctx=問 wj:ids=間 vis=-
+siku	vol42	30:7:19	rr	review	八	八	八	B1	ctx=- rr_img=八 ids=入
+siku	vol44	224:8:6	ry	joint	曰	目	?	D3	ctx=曰 ry_shape=- rm:ctx=目
+siku	vol46	94:5:15	rr	lift	八	人	人	D1	ctx=人 rr_img=八 ids=-
+siku	vol47	88:6:14	rr	lift	入	人	?	D3	ctx=入 rr_img=人 ids=-
+siku	vol48	53:3:10	zh	review	曾	曾	曾	B2x	ctx=會 ids=曾
+siku	vol51	53:9:18	rr	review	人	人	人	C	ctx=入 rr_img=人 ids=人
+siku	vol52	23:7:7	yr	lift	二	一	?	D3	ctx=二 ids=一 yr_bars=-
+siku	vol52	80:3:18	rr	review	入	入	入	C	ctx=八 rr_img=入 ids=入
+siku	vol53	96:4:13	rr	lift	八	人	人	D3	ctx=八 rr_img=人 ids=人
+siku	vol54	64:2:6	yr	review	二	二	二	C	ctx=一 ids=二 yr_bars=二
+siku	vol57	110:1:3	wm	joint	末	宋	宋	D3	ctx=- bars=未 sz:ids=宋
+siku	vol59	78:2:14	rr	review	八	八	八	B1	ctx=八 rr_img=八 ids=入
+siku	vol65	43:9:5	rr	lift	入	人	人	D3	ctx=- rr_img=入 ids=人
+siku	vol66	44:9:18	zh	review	曾	曾	曾	B2x	ctx=會 ids=曾
+siku	vol67	45:2:18	rr	lift	入	人	?	D3	ctx=- rr_img=人 ids=入
+siku	vol67	47:2:20	rr	lift	人	入	入	D1	ctx=入 rr_img=人 ids=-
+siku	vol67	116:3:20	sy	joint	由	山	山	D3	ids=山 chu:codepoint=出
+siku	vol68	159:6:19	rr	lift	八	入	入	D3	ctx=- rr_img=八 ids=入
+siku	vol68	160:3:16	rr	lift	入	人	入	D3	ctx=- rr_img=入 ids=人
+siku	vol69	155:5:3	ss	joint	士	十	十	D2	ss_bars=十 ts:ctx=- ts:bars=- ts:ids=士
+siku	vol70	10:2:10	yh	review	還	還	還	B2x	ctx=遺 ids=還 vis=-
+siku	vol70	33:9:21	rr	lift	八	人	人	D3	ctx=- rr_img=人 ids=八
+siku	vol70	100:9:8	rr	review	人	人	入	C	ctx=入 rr_img=人 ids=人
+siku	vol73	134:9:7	rr	lift	人	入	入	D1	ctx=入 rr_img=人 ids=入
+siku	vol76	105:1:7	yh	review	還	還	還	B2x	ctx=遺 ids=還 vis=-
+siku	vol77	38:1:4	rr	review	八	八	八	B1	ctx=八 rr_img=- ids=入
+siku	vol79	41:5:15	zh	joint	會	㑹	會	D1	ctx=會 ids=會 form:freq=- form:top1=會 qin:ids=禽
+siku	vol80	89:1:5	rr	review	入	入	?	C	ctx=八 rr_img=入 ids=入
+siku	vol82	156:6:12	rr	review	入	入	入	B1	ctx=入 rr_img=- ids=人
+siku	vol82	195:9:16	rr	review	八	八	八	C	ctx=入 rr_img=八 ids=八
+siku	vol84	68:8:18	rr	review	入	入	入	B1	ctx=入 rr_img=入 ids=八
+siku	vol90	64:5:3	rr	review	八	八	八	C	ctx=人 rr_img=八 ids=八
+siku	vol90	174:9:15	rr	lift	入	人	人	D1	ctx=人 rr_img=入 ids=-
+siku	vol92	3:5:21	rr	lift	人	入	入	D3	ctx=- rr_img=人 ids=入
+siku	vol93	77:7:6	rr	review	人	人	?	C	ctx=八 rr_img=人 ids=人
+siku	vol94	58:1:17	rr	review	人	人	人	C	ctx=八 rr_img=人 ids=人
+siku	vol94	66:1:21	rr	review	人	人	入	C	ctx=入 rr_img=人 ids=人
+siku	vol94	126:4:6	rr	review	人	人	人	B1	ctx=- rr_img=人 ids=八
+siku	vol96	175:4:16	rr	review	入	入	?	C	ctx=人 rr_img=入 ids=入
+siku	vol97	123:8:17	rr	lift	人	入	?	D1	ctx=入 rr_img=人 ids=入
+sj	02	50:1:8a	rr	lift	人	八	?	D3	ctx=- rr_img=人 ids=八
+sj	02	61:8:21a	rr	review	人	人	人	C	ctx=八 rr_img=人 ids=人 ctx_over=-
+sj	05	23:2:16	zh	review	㑹	㑹	會	C	ctx=曾 ids=會
+sj	09	6:3:9a	rr	lift	入	八	?	D3	ctx=- rr_img=八 ids=人
