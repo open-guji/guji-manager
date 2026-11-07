@@ -159,4 +159,4 @@ seed_admit 主循环放行
 ## 十、11-07 sheldon 定后已做
 
 - 三书 `config/book_defaults.yaml` 已加 `group_flow_dissent_keep: [em fc ly wj yh yt js zh yr]`、`group_flow_ref_pair: [men chuo zy yr wm zh ts sy rm]` 并推中心库（rr、ry 不开）；下一轮重跑生效，要 cv 含 #1205（seed_admit 1.47）。
-- manager `_group_kind`：解法只差写法（`are_variants` 判同字异形）不再算 Z02，落降审或证据弱（A 10 格；只改分类、不放行）。
+- manager `_group_kind`：解法只差写法（`are_variants` 判同字异形）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）（A 10 格；只改分类、不放行）。
