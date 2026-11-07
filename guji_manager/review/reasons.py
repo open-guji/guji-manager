@@ -143,7 +143,15 @@ def _sparse(c: Cell, ctx: Context) -> bool:
     return bool(ctx.lib_n and c.has_ref and ctx.lib_n(c.ref) <= LIB_SPARSE)
 
 
-def _group_kind(c: Cell) -> R | None:
+def _same_form(sol: set, x: Context | None) -> bool:
+    """解法给的几个字彼此是同字异形（象／𧰼、寇／㓂、會／㑹…，cv 按语义比）→ 不算「几个字」。没给 ``are_variants`` 就不折叠。"""
+    if not (x and x.are_variants and len(sol) > 1):
+        return False
+    first, *rest = sorted(sol)
+    return all(x.are_variants(first, r) for r in rest)
+
+
+def _group_kind(c: Cell, x: Context | None = None) -> R | None:
     g = c.group
     if not g:
         return None
@@ -155,7 +163,8 @@ def _group_kind(c: Cell) -> R | None:
         return R.GROUP_ABSTAIN
     if why in ("ref_dissent", "coord_dissent", "ref_dissent_follow"):
         return R.GROUP_REF_DISSENT
-    if len(sol) > 1 or why in ("conflict", "joint"):
+    # A24 Z02 深挖 11-06：几路解法只差写法（同字异形）不算判法打架，往下按降审／证据弱分（只改分类，不放行）
+    if not _same_form(sol, x) and (len(sol) > 1 or why in ("conflict", "joint")):
         return R.GROUP_CONFLICT
     if dec == "demote":
         return R.GROUP_DEMOTED
@@ -223,12 +232,12 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
             and x.page_weak[_page(c.id)] >= PAGE_MIN)),
     R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
     R.HARD_PAIR: _hard_pair,
-    R.GROUP_ABSTAIN: lambda c, x: _group_kind(c) is R.GROUP_ABSTAIN,
-    R.GROUP_CONFLICT: lambda c, x: _group_kind(c) is R.GROUP_CONFLICT,
-    R.GROUP_DEMOTED: lambda c, x: _group_kind(c) is R.GROUP_DEMOTED,
-    R.GROUP_REF_DISSENT: lambda c, x: _group_kind(c) is R.GROUP_REF_DISSENT,
-    R.GROUP_WEAK: lambda c, x: _group_kind(c) is R.GROUP_WEAK,
-    R.GROUP_FORM_OPEN: lambda c, x: _group_kind(c) is R.GROUP_FORM_OPEN or "form_open" in c.codes,
+    R.GROUP_ABSTAIN: lambda c, x: _group_kind(c, x) is R.GROUP_ABSTAIN,
+    R.GROUP_CONFLICT: lambda c, x: _group_kind(c, x) is R.GROUP_CONFLICT,
+    R.GROUP_DEMOTED: lambda c, x: _group_kind(c, x) is R.GROUP_DEMOTED,
+    R.GROUP_REF_DISSENT: lambda c, x: _group_kind(c, x) is R.GROUP_REF_DISSENT,
+    R.GROUP_WEAK: lambda c, x: _group_kind(c, x) is R.GROUP_WEAK,
+    R.GROUP_FORM_OPEN: lambda c, x: _group_kind(c, x) is R.GROUP_FORM_OPEN or "form_open" in c.codes,
     R.GLYPH_PENDING: lambda c, x: bool(c.pua_code) and c.pua_code in x.glyph_pending,
     R.REF_LACUNA: lambda c, x: ref_missing(c.ref),
     R.LIB_MISSING: lambda c, x: c.lib_miss,

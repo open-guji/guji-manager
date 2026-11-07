@@ -478,3 +478,13 @@ def test_lib_unrecognized_kind_detail():
     from guji_manager.review.reasons import Context
     av = Context(are_variants=lambda a, b: {a, b} == {"全", "仝"})
     assert lib_unrecognized_kind(cases["near_rival"], av) == "clear"
+
+
+def test_group_same_form_not_conflict():
+    """A24 Z02 11-06：解法只差写法（同字异形）不算判法打架；真异字照旧。"""
+    g = lambda a, b, **k: Cell(id="v:1:1:1", char=a, ref=b, evidence={"group": {"id": "xz", "solvers": [{"char": a}, {"char": b}], **k}})
+    var = lambda a, b: {a, b} == {"象", "𧰼"}
+    assert _cls([g("象", "𧰼", why="conflict")], var=var) == [R.GROUP_WEAK]
+    assert _cls([g("象", "𧰼", decision="demote")], var=var) == [R.GROUP_DEMOTED]
+    assert _cls([g("傅", "傳", why="conflict")], var=var) == [R.GROUP_CONFLICT]
+    assert _cls([g("象", "𧰼", why="conflict")]) == [R.GROUP_CONFLICT]  # 没给 are_variants 不折叠
