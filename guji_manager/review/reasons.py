@@ -163,6 +163,10 @@ def _sparse(c: Cell, ctx: Context) -> bool:
     return n is not None and n <= LIB_SPARSE
 
 
+#: 字组流程已定下字的决定（`evidence.group.decision`）；这样的格要是还在待审，不是字组的事。
+GROUP_SETTLED = frozenset({"admit", "keep", "provisional"})
+
+
 def _group_kind(c: Cell) -> R | None:
     g = c.group
     if not g:
@@ -171,6 +175,11 @@ def _group_kind(c: Cell) -> R | None:
         return R.GROUP_FORM_OPEN
     sol = {s.get("char") for s in g.get("solvers") or [] if s.get("char")}
     why, dec = g.get("why"), g.get("decision")
+    if dec in GROUP_SETTLED and sol:
+        # 字组已经定了字（放行／保持／暂归一），格还留在待审是后面的闸拦的（影子闸 shadow_veto、人裁绑丢 human_unbound 等）。
+        # 这不是「证据弱」：原先落到最后一行 Z05（36 格里 9 格），现在让它按后面的原因（L05 乱码闸、L04 库认不出…）落。
+        # A24 Z05 深挖 2026-11-06。
+        return None
     if not sol:
         return R.GROUP_ABSTAIN
     if why in ("ref_dissent", "coord_dissent", "ref_dissent_follow"):
@@ -179,7 +188,12 @@ def _group_kind(c: Cell) -> R | None:
         return R.GROUP_CONFLICT
     if dec == "demote":
         return R.GROUP_DEMOTED
-    return R.GROUP_WEAK
+    if why in ("ref_missing", "solo_weak"):
+        # 整理本缺位被部首族门／solo_margin 挡下：字组没有「证据弱」这回事，是整理本缺字，按后面的原因落（R 整理本缺字／缺位）。
+        return None
+    # 其余（why=weak：给字的解法不许单独补放；有文意给字但字形拆不开等）：字形单路没把握，并入 Z01。
+    # Z05 group_weak 2026-11-06 停用（A24 深挖，sheldon 定），枚举与 yaml 保留，旧数据读得出，不再产出。
+    return R.GROUP_ABSTAIN
 
 
 #: 己已巳、日曰两个字组（cv groups 的组 id）。
