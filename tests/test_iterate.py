@@ -119,6 +119,10 @@ def test_leverage_l02_by_ref():
     l2 = [c for c in cards if c["reason"] == "lib_sparse_dissent"]
     assert len(l2) == 1 and l2[0]["n_cells"] == 5 and l2[0]["ref"] == "𮪍" and l2[0]["top"] == ""
     assert len([c for c in cards if c["reason"] == "group_abstain"]) == 2
+    # L03 同样按参校字并卡（A23 L03 深挖 11-06）
+    l3 = [{"vol": "057", "cell": f"9:1:{i}", "pending_reason": "lib_sparse_agree", "ref": "耆", "top": t} for i, t in enumerate("者書者", 1)]
+    cards3, _ = leverage.rank(l3)
+    assert len(cards3) == 1 and cards3[0]["n_cells"] == 3 and cards3[0]["tier"] == 0
 
 
 def test_freeze(tmp_path):

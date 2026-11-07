@@ -4,6 +4,19 @@
 
 ## [未发版]
 
+## [0.4.20] - 2026-11-06
+
+- 待审原因 Z02 `group_conflict` 分类（PATCH，A24；Sheldon 11-07 授权先改后通知）：`reasons._group_kind` 解法只差写法（`are_variants` 判同字异形：象／𧰼、寇／㓂、會／㑹）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）；只改分类、不放行；没给 `are_variants` 时行为不变。
+## [0.4.19] - 2026-11-06
+
+- 待审原因 Z05 `group_weak` 停用（PATCH，A24 #285；Sheldon 11-06 定）：字组已定字（admit/keep/provisional）仍待审的格不归字组、按后面的原因落（L05、L04…）；why=ref_missing／solo_weak 落 R 类；其余并入 Z01。枚举与 yaml 保留，旧数据读得出，不再产出。只改分类，不放行。另含 Z06、R03 深挖文档（#292）。
+
+## [0.4.18] - 2026-11-06
+
+- 待审原因 L01–L03 边界（PATCH，A23 #287；Sheldon 11-06 同意）：刻例只算本书版本（`lib_own_counts`）；参校字本书库 0 例一律归 L01，1～2 例按机器字是否＝参校字分 L03／L02；leverage 里 L03 也按参校字并卡。P02 说明改写（#284）。只改归类，不放行。
+
+- 待审原因 L05 `garble_gate` 要有整理本字（A24，Sheldon 11-06 同意）：`reasons.py` 无对位的糊格（框线碎片、并格、圈点）不再判 L05，落 R02 `ref_gap`；殿本约 −29、史記 −13、全唐文 0（★main 现算）。只改原因，不改放行。
+
 - 待审原因 L05 `garble_gate` 深挖（PATCH，A24；Sheldon 11-06）：新增 `tools/l05_profile.py`（体检＋按 `rare_ref_coord_min_cov`／`rare_ref_coord_group_top` 离线回放，分 A1／A2／A3／B／C 五类）；`doc/01-粗校/待审原因/garble_gate/` 重写 README（判定条件、现状、五类配图）、流程与参数、benchmark。不改原因码、不改分类逻辑；对应 cv #1204（seed_admit 1.45，缺省关）。
 
 ## [0.4.17] - 2026-11-06
