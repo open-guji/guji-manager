@@ -67,6 +67,7 @@
 | `p_ref_max_cov` | 机器字库覆盖率须**低于**它才取整理本字；缺 cov 不放 | `None`（不核） |
 | `p_ref_adjacent` | 放开「同列相邻格也是这类就不放」 | 关 |
 | `p_ref_jiazhu` | 放开夹注 a/b 半格 | 关 |
+| `p_ref_skip_variant` | 机器字与整理本字有直接异体边的格不取整理本字（保刻形；cv#1210，seed_admit 1.49） | 关 |
 
 离线回放（`P01-scripts/rule_eval.py`，用 ★main 包同口径复算 `_p_ref_pass`）：
 
@@ -89,13 +90,17 @@
 - 全唐文 35 格：cov≥0.98 的 15 格里机器字对 13（87%），但仍有 2 个整理本对，达不到零错，**不放**；建议 QTW 的整理本字 vs 机器字走文意终审，并把底本异文记入交接单。
 - 图糊 N、对位偏移 S：不是 P01 本来的活，S 要报 A22/A23 看对位（vol17 110:2:7–8），N 靠文本层或另一参校本（史記、全唐文没有图源文本层）。
 
+**抽检与外溢（11-06 夜，sheldon 定殿本取 0.95）**：
+- sheldon 看 30 格（殿本 0.95＋相邻＋夹注放出 90 格里随机抽，15 格在 cov 0.93–0.95）：整理本字 **0 错**；其中 6 格格框切分有问题（切掉一截或带了邻字笔画），整理本字都对，cov 0.909–0.939，没有单独的信号能挡，属切分环节（S 类）的活。
+- 外溢：`p_ref` 不分原因码，放开相邻／夹注后会碰 L01（库认不出）格——殿本 ★main 里 L01 格中 cov<0.95 的有 196 格会被放。抽 30 格（Claude 初判）：14 格机器字与整理本字是直接异体对（羨羡、諫諌、緣縁、奥奧、舟丹、鉞鋮…），整理本字都对但会盖掉刻形，殿本不按参校本取异体；其余 16 格整理本对 15、1 格黑条。所以加 `p_ref_skip_variant`，殿本必开。
+
 ## 五、整条流程与参数（下一本书照做）
 
 1. **取数**：`guji-manager pending-stats --ws <ws> --text <书> --out <目录>`（线上单，P01 在 `cells.tsv` 里 `pending_reason=ref_replaced`，旧名；新单叫 `ref_ocr_diff`）；再 `P01-scripts/extract.py` 逐册拉 ★main 包，`reasons_for_pending` 取 `ref_ocr_diff` 格，附机器字、整理本字、库候选、cov、前后文、replace 段长、cell_shrink 框。
 2. **裁格图、看图**：`crops.py` 裁格、`sheet.py` 拼表（每张 18 格，左图右字），逐格标 R/M/V/N/S/B/?。
 3. **判书的类型**：看 M 比例。M 很少（殿本、史記）→ 整理本与图源同一底本，可以取整理本字；M 占多数（全唐文）→ 整理本是另一底本，不要取。
 4. **标 cov 上限**：把标过的格画 cov 分布（图 0），取「M 的最小 cov 之下」作 `p_ref_max_cov`（殿本 0.93、史記 0.97）。书的库覆盖率口径不同，每本自己标。
-5. **开旋钮**：册 yaml `seed_admit` params 写 `p_ref_admit: true`、`p_ref_max_cov: x`、`p_ref_adjacent: true`、`p_ref_jiazhu: true`；`guji book show --effective` 核对。
+5. **开旋钮**：册 yaml `seed_admit` params 写 `p_ref_admit: true`、`p_ref_max_cov: x`、`p_ref_adjacent: true`、`p_ref_jiazhu: true`、`p_ref_skip_variant: true`；`guji book show --effective` 核对。
 6. **回放**：`p_ref_sim.py` 模拟、`rule_eval.py` 比较放出数和看图精度；上线后用 benchmark 核。
 7. **留审的格**：文意终审（`guji-manager final-review`）在 {整理本字, 机器字} 里选；回人审的在网页 `pick` 卡。
 
@@ -107,6 +112,7 @@
 | `p_ref_max_cov` | 同上 | 0.93（保守）／0.95 | 0.97 | — |
 | `p_ref_adjacent` | 同上 | 开 | 开 | — |
 | `p_ref_jiazhu` | 同上 | 开 | 开 | — |
+| `p_ref_skip_variant` | 同上 | 开 | 开（按史記刻形原则由 SJ 定） | — |
 | 判定 priority 60 | manager `reasons.py` | 不改 | | |
 
 ## 六、Benchmark
@@ -119,7 +125,8 @@
 | B2 放出数 | 规则放出的 P01 格（线上单口径） | 殿本 18（0.93＋相邻＋夹注）；史記 87 | 越多越好，B1 为 0 前提 |
 | B3 召回 | 放出的「整理本对」／「整理本对」总数 | 殿本 48／约 132；史記 62／98 | 提高 |
 | B4 P01 流入 | `pending-stats` 里 P01 格数，按书按轮 | 殿本 75、全唐文 29 | 下降 |
-| B5 sheldon 抽检 | 新规则放出的格，抽 30 格看图金标 | **待做** | 0 错 |
+| B5 sheldon 抽检 | 新规则放出的格，抽 30 格看图金标 | 殿本 0.95＋相邻＋夹注：30 格 0 错（6 格切分有问题，字对） | 0 错 |
+| B6 外溢抽检 | 同规则放出的非 P01 格（L01），抽 30 格 | 14 格异体对（加 `p_ref_skip_variant` 挡）、其余 15 对 1 黑条 | 0 错 |
 
 跑法：`python P01-scripts/rule_eval.py`（需 `all.json`＝`build_all.py` 的输出、`p_ref_sim.py` 的 `sim/`）。
 
@@ -136,6 +143,4 @@
 
 ## 九、待 sheldon 定
 
-1. 殿本第 6 轮开 `p_ref_admit`＋`p_ref_max_cov`：取 0.93（零错、−18）还是 0.95（−25、看图 1 错）？建议 0.93＋相邻＋夹注。
-2. 史記书级开 `p_ref_admit`＋`p_ref_max_cov 0.97`＋相邻＋夹注（放 87／142，其中 24 格图糊按文意放）：由 SJ 开，是否同意？
-3. 上线前抽 30 格金标（B5）：我出看图页，还是由你直接看 `P01-逐格-三书469格.tsv` 里放出的格？
+已定（11-06 夜）：1. 殿本 `p_ref_max_cov` 取 0.95＋相邻＋夹注（加 `p_ref_skip_variant`）；2. 史記由 SJ 开 0.97＋相邻＋夹注；3. 抽检 30 格 0 错。待办：史記 24 格图糊由 SJ 抽看；A31 写殿本册 yaml。

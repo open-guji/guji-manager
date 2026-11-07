@@ -58,7 +58,7 @@
 
 **F 同字异体 V（史記 11／97，殿本随机 7／110）**：隸、冢、謀、携、恭、識 一类，取哪个都可。
 
-## 四、能放行多少（`p_ref_coord`，cv#1208，seed_admit 1.47，缺省关）
+## 四、能放行多少（`p_ref_coord`，cv#1208，seed_admit 1.48，缺省关）
 
 旧 `p_ref_admit` **碰不到 P02**：它的候选格要求文本对位 `amap` 里有整理本字，而 P02 的格恰恰没有。新旋钮 `p_ref_coord`（要同时开 `p_ref_admit`）让这类格退到坐标对位的整理本字（去掉 `coord_conflict_ids`、〓、空格位），cov 上限、相邻、夹注三个旋钮（P01 加的）同样管它们，放行通道仍是 `p_ref`，`evidence.p_ref.via = "coord"`。
 

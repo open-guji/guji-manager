@@ -68,7 +68,25 @@ def test_group_kinds():
     assert _cls([g(solvers=[{"char": "傅"}, {"char": "傳"}])]) == [R.GROUP_CONFLICT]
     assert _cls([g(solvers=[{"char": "傅"}], why="ref_dissent")]) == [R.GROUP_REF_DISSENT]
     assert _cls([g(solvers=[{"char": "傅"}], decision="demote")]) == [R.GROUP_DEMOTED]
-    assert _cls([g(solvers=[{"char": "傅"}])]) == [R.GROUP_WEAK]
+    assert _cls([g(solvers=[{"char": "傅"}])]) == [R.GROUP_ABSTAIN]   # Z05 已停用：并入 Z01
+
+
+def test_group_settled_is_not_weak():
+    """字组已放／保持／暂归一的格还在待审，是后面的闸拦的：不落 Z05，按后面的原因落（A24 Z05 深挖 11-06）。"""
+    g = lambda dec, why="agree", **k: Cell(id="v:1:1:1", char="宫", ref="宮", evidence={"group": {
+        "id": "guan", "decision": dec, "why": why, "solvers": [{"char": "宫"}]}}, **k)
+    # 影子闸 shadow_veto → L05 乱码闸
+    assert _cls([g("admit", doubts=["shadow_veto"])]) == [R.GARBLE_GATE]
+    # 其余：字组放了字、整理本是另一写法，库认不出等后面的原因
+    assert _cls([g("keep")])[0] is not R.GROUP_ABSTAIN
+    assert _cls([g("provisional")])[0] is not R.GROUP_ABSTAIN
+    # 复核降审、没定字的照旧
+    assert _cls([g("demote")]) == [R.GROUP_DEMOTED]
+    assert _cls([g("review", why="weak")]) == [R.GROUP_ABSTAIN]
+    # 整理本缺位（ref_missing／solo_weak）不是字组的事，落后面的原因
+    ref_gap = lambda why: Cell(id="v:1:1:1", char="宫", ref=None, evidence={"group": {
+        "id": "guan", "decision": "review", "why": why, "solvers": [{"char": "宫"}]}})
+    assert R.GROUP_ABSTAIN not in _cls([ref_gap("ref_missing")]) and R.GROUP_ABSTAIN not in _cls([ref_gap("solo_weak")])
 
 
 def test_lib_and_ref_rules():
