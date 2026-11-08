@@ -110,10 +110,12 @@ def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
             return
         if label:
             _note_round(bid, label)   # 先占位：后面的统计跑不成，看板也看得到这一轮
-        repo = os.environ.get("GUJI_AITEAM_REPO", os.path.expanduser("~/ai-team"))
-        run_py = os.path.join(repo, "domain", "CV", "质检", "按包统计人审率", "run.py")
-        if not os.path.isfile(run_py):
-            print(f"（包口径人审率没自动更新：没找到 {run_py}；设 GUJI_AITEAM_REPO；看板「迭代轮次」已先占位，待统计）")
+        from .progress_sync import RUN_PY, ensure_ai_team
+        team = ensure_ai_team()     # 没有检出就自己浅克隆一份；以前这里缺检出静默跳过，看板包口径就此停住（11-08）
+        run_py = str(team.joinpath(*RUN_PY)) if team else ""
+        if not run_py:
+            print("（包口径人审率没自动更新：没有 ai-team 检出且克隆失败；设 GUJI_AITEAM_REPO。看板「迭代轮次」已先占位，"
+                  "之后 `guji-manager progress-sync --fix` 会补）")
             return
         out = os.path.join(ws, "reports", book, "_pack_rate")
         os.makedirs(out, exist_ok=True)
