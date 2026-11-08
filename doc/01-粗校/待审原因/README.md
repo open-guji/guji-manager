@@ -54,7 +54,7 @@
 | L04 | [`lib_unrecognized`](lib_unrecognized/README.md) | 库认不出 | 先改算法，改完剩下的并入 llm | A23 | 392 | 9 | 3 |
 | L05 | [`garble_gate`](garble_gate/README.md) | 像框线或墨点 | 先改算法，改完剩下的并入 llm | A24 | 184 | 52 | 2 |
 | N01 | [`near_form_guard`](near_form_guard/README.md) | 形近字 | 大模型统一过一遍 | A24 | 273 | 40 | 6 |
-| P01 | [`ref_ocr_diff`](ref_ocr_diff/README.md) | 识别字与参校本不同 | 大模型统一过一遍 | A24 | 174 | 77 | 30 |
+| P01 | [`ref_ocr_diff`](ref_ocr_diff/README.md) | 识别字与参校本不同 | 先改算法（殿本开 p_ref，见页内），改完剩下的并入 llm | A24 | 174 | 77 | 30 |
 | P02 | [`ref_final_diff`](ref_final_diff/README.md) | 定字与参校本不同 | 大模型统一过一遍 | A24 | 374 | 68 | 0 |
 | R01 | [`ref_lacuna`](ref_lacuna/README.md) | 参校本缺字 | 先改算法，改完剩下的并入 llm | A24 | 287 | 12 | 2 |
 | R02 | [`ref_gap`](ref_gap/README.md) | 参校本这里没字 | 大模型统一过一遍 | A24 | 145 | 76 | 9 |
