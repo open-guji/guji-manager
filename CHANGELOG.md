@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 执行方成功存包后清本机该册的 `cache/<册>` 和 `products/<册>`（PATCH，A30 11-08，Sheldon 同意）：执行机磁盘被各册缓存和产物副本堆满（殿本工作区 14 GB，cache 7.3 GB、products 4.4 GB），剩余低于 3 GB 就不领单。包已推中心库，这两处可重建；`cache/_judge`、`cache/glyph-derived`、工作区仓、册 yaml、feedback、output 不动，失败单和没存包的单不清。`GUJI_JOBS_KEEP_ARTIFACTS=1` 关闭。不动产物、指纹（L0）。
 - `_cv._FALLBACK` 补登记参校本属性三个名字 `RefProfile`、`load_reference_profile`、`ref_profile_lint`（PATCH，cv #1273 manager_api 新导出，test_cv_surface 红；A22 11-08）。
 - 「整理本读不到」的页也算本就没参照（PATCH，QTW 11-08：全唐文 002 册里没写 references，208 页备注全是它）：并入 `ref_by_design`，同 #351 不判 S01／S02／R02。
 - 本页本就没配参校本不判整页／整列对不上（PATCH，QTW 经 A31 11-08 报；用户 11-06/07 定待审原因改分类直接改）：全唐文 001–003 故意不带参校本，首跑约 1.9 万格被记成 S01。对位层 note 是「未配置整理本／未配置证人」的页，`Cell.ref_by_design`＝真，不判 S01／S02／R02，落 L04 `lib_unrecognized`（细分 `no_ref`，带 `lib_miss` 码的仍 `lib_diff`）。只改分类，不动产物、指纹。

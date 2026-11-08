@@ -396,6 +396,7 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "pack", label, location=name and f"r2:{name}",
                      data={"change": change, "info": m.group(2) if m else None})
         self.ev(f"已存包 {label}" + (f"（{m.group(2)}）" if m else ""))
+        self.pushed = True
 
     # ── 总流程 ──
     def run(self) -> str:
@@ -443,6 +444,10 @@ class Job:
         self.db(S.finish, self.id, self.aid, outcome, error=err and redact(err)[:4000], exit_code=code,
                  log_tail=tail)
         _retire_dir(self.dir, outcome, self.id, self.att["n"])     # 结果（含日志尾巴）已落库、产物已推完
+        if outcome == "succeeded" and getattr(self, "pushed", False) and self.ws and sp.get("book"):
+            freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
+            if freed:
+                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存和产物副本，释放 {freed / 2**20:.0f} MB")
         return outcome
 
 
@@ -693,6 +698,34 @@ def _retire_dir(d: Path, outcome: str, job_id: int, n: int) -> None:
         for old in kept[FAILED_LOGS_KEEP:]:
             old.unlink(missing_ok=True)
     shutil.rmtree(d, ignore_errors=True)
+
+
+def _say_clean(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def _clean_book_artifacts(ws: str, book: str) -> int:
+    """成功存包后清这一册在工作区里的 cache/<册> 和 products/<册>，返回释放的字节数。
+
+    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，包已推完，下一张单会重新生成或 fetch。
+    只删这两个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
+    册 yaml、feedback、output 都不动。路径必须落在工作区的 cache、products 之内。
+    设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
+    if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
+        return 0
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book or ""):
+        return 0
+    root = Path(ws)
+    freed = 0
+    for rel in ("cache", "products"):
+        base = (root / rel).resolve()
+        d = (base / book).resolve()
+        if d.parent != base or not d.is_dir() or d.is_symlink():
+            continue
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file() and not f.is_symlink())
+        shutil.rmtree(d, ignore_errors=True)
+        freed += size
+    return freed
 
 
 #: 空间不够时依次清的本地缓存（可重建，总授权里的「清本地缓存」）：先 uv，还不够再 guji-data
