@@ -21,6 +21,7 @@ import gzip
 import hashlib
 import io
 import json
+import time
 from datetime import date, datetime, timedelta, timezone
 
 MANIFEST = "manifest.json"
@@ -131,12 +132,43 @@ def check(conn, man: dict) -> dict:
 
 # ---- 经 Worker 存取 ----
 
-def upload(src, day: str, files: dict[str, bytes], man: dict) -> dict:
+PART_BYTES = 64 * 1024 * 1024     # 单次 PUT 超过约 100 MB 会被 Worker/边缘掐断（11-08 files 表 220 MB 上传被重置），大文件切片传
+_TRIES = 4
+
+
+def _put(src, day: str, name: str, data: bytes, ct: str, sleep=time.sleep) -> None:
+    """单个文件上传，失败重试几次（网络抖动）；最后一次仍失败就抛出。"""
+    for a in range(1, _TRIES + 1):
+        try:
+            src.put_backup(day, name, data, ct)
+            return
+        except Exception:  # noqa: BLE001
+            if a == _TRIES:
+                raise
+            sleep(5 * a)
+
+
+def upload(src, day: str, files: dict[str, bytes], man: dict, *, part_bytes: int = PART_BYTES) -> dict:
+    """上传各表文件；超过 ``part_bytes`` 的切成 ``<文件名>.partNNN`` 多片，清单里该表记 ``parts``（按序）。"""
+    man = json.loads(json.dumps(man))                     # 不改调用方的清单
+    n_files = 1
     for name, data in sorted(files.items()):
-        src.put_backup(day, name, data, "application/gzip")
+        if len(data) <= part_bytes:
+            _put(src, day, name, data, "application/gzip")
+            n_files += 1
+            continue
+        parts = []
+        for i in range(0, len(data), part_bytes):
+            pn = f"{name}.part{i // part_bytes:03d}"
+            _put(src, day, pn, data[i:i + part_bytes], "application/octet-stream")
+            parts.append(pn)
+        n_files += len(parts)
+        for spec in man["tables"].values():
+            if spec["file"] == name:
+                spec["parts"] = parts
     body = json.dumps(man, ensure_ascii=False, indent=1).encode("utf-8")
-    src.put_backup(day, MANIFEST, body, "application/json")   # 清单最后传：有清单才算完整
-    return {"date": day, "files": len(files) + 1, "bytes": sum(map(len, files.values())) + len(body)}
+    _put(src, day, MANIFEST, body, "application/json")    # 清单最后传：有清单才算完整
+    return {"date": day, "files": n_files, "bytes": sum(map(len, files.values())) + len(body)}
 
 
 def complete_dates(src) -> list[str]:
@@ -153,7 +185,12 @@ def complete_dates(src) -> list[str]:
 
 def fetch(src, day: str) -> tuple[dict[str, bytes], dict]:
     man = json.loads(src.get_backup(day, MANIFEST))
-    files = {spec["file"]: src.get_backup(day, spec["file"]) for spec in man["tables"].values()}
+    def _get(spec):
+        if spec.get("parts"):                              # 切片存的：按序拼回整个 gz
+            return b"".join(src.get_backup(day, p) for p in spec["parts"])
+        return src.get_backup(day, spec["file"])
+
+    files = {spec["file"]: _get(spec) for spec in man["tables"].values()}
     return files, man
 
 

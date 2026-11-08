@@ -33,6 +33,7 @@ def test_classify_routes_files_to_tables():
     assert classify("feedback/anchors/vol02.jsonl") == "anchors"
     assert classify("feedback/anchor_patches/vol02/x.png") == "anchor_patches_meta"
     assert classify("feedback/verdicts/page-type/items.jsonl") == "verdicts"
+    assert classify("feedback/notes/vol48.jsonl") == "files"
     assert classify("feedback/lists/x.txt") == "files"
     assert classify("review/batches/b.json") == "files"
     assert classify("config/crop_exclusions.jsonl") == "files"

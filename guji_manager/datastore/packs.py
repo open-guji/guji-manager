@@ -204,6 +204,8 @@ def push_products(book: str, root: Path, label: str | None = None, steps: list[s
           content_type="application/json", tries=3)
     if not steps:                       # 只打了几步的包不算整册存过
         write_mark(root, book, label, "push")
+    from ..pack_stats import record     # 存包的同时把这册的人审率分子分母写进看板（不再靠事后统计脚本）；写不了只提示
+    record(book, label, root, steps)
     return man
 
 
