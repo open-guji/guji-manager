@@ -16,6 +16,8 @@ from .cards import doubt_codes
 
 PROOF_FIELDS_SCHEMA = "guji-proof/0.2"
 LIB_TOP_N = 5
+CTX_WHY_MAX = 200
+DIAN_SRC = "punct_llm"
 NO_DOUBT = ["none"]          # 无疑问码但仍待审时的占位
 
 
@@ -57,7 +59,15 @@ def pending_fields(card: dict) -> dict:
     if ctx and ctx.get("margin") is not None:
         # 字表 ctx.c 是字符串：上下文没给出字（先验、领先幅度不足）时写 ""，不写 null
         out["ctx"] = {"c": ctx.get("char") or "", "margin": _num(ctx["margin"], 4), "src": ctx.get("source") or ""}
+        if ctx.get("why"):         # 点校倾向字的理由（src=punct_llm，≤200 字）；网页只提示不预选
+            out["ctx"]["why"] = str(ctx["why"])[:CTX_WHY_MAX]
         out["margin"] = _num(ctx["margin"], 4)
+    dian = card.get("dian")
+    if dian and dian.get("char"):
+        # 点校倾向字（点校阶段 AI 文意判读，未放行的格）：占用 ctx 位，src 固定 punct_llm；网页提示不预选
+        out["ctx"] = {"c": dian["char"], "src": DIAN_SRC}
+        if dian.get("why"):
+            out["ctx"]["why"] = str(dian["why"])[:CTX_WHY_MAX]
     ref = card.get("ref")
     if ref and ref.get("char"):
         out["ref"] = {"c": ref["char"], "op": ref.get("op")}
