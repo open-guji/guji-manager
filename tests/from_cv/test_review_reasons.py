@@ -50,6 +50,16 @@ def test_occluded_split_by_ref():
     assert _cls([a, b]) == [R.OCCLUDED_WITH_REF, R.OCCLUDED_NO_REF]
 
 
+def test_occluded_jys_ref_goes_to_hard_pair():
+    """D01 深挖（A24 11-08）：遮挡格、整理本字是己已巳日曰之一 → H01（印泥下库首位是噪声、机器字 None，原先永远落 D01）；其余遮挡格照旧分 D01／D02。"""
+    a = Cell(id="v:1:1:1", char=None, ref="巳", cands=[["唐", 0.8]], doubts=["occluded"])
+    b = Cell(id="v:1:1:2", char=None, ref="曰", doubts=["occluded"], evidence={"occluded": {"density": 30.0}})
+    c = Cell(id="v:1:1:3", char=None, ref="官", cands=[["宮", 0.99]], doubts=["occluded"])
+    d = Cell(id="v:1:1:4", char=None, ref="〓", doubts=["occluded"])
+    e = Cell(id="v:1:1:5", char="甲", ref="巳", doubts=["occluded"])      # 机器字不在组内：不当极难形近
+    assert _cls([a, b, c, d, e]) == [R.HARD_PAIR, R.HARD_PAIR, R.OCCLUDED_WITH_REF, R.OCCLUDED_NO_REF, R.OCCLUDED_WITH_REF]
+
+
 def test_page_and_column_unaligned():
     page = [Cell(id=f"v:2:{i // 20 + 1}:{i % 20 + 1}", char="甲", ref=None) for i in range(10)]
     assert set(_cls(page)) == {R.SEG_PAGE_UNALIGNED}
@@ -512,6 +522,12 @@ def test_lib_boundary_table():
     from guji_manager.review.reasons import lib_unrecognized_kind
     c, ctx = lm(9, char="甲")
     assert lib_unrecognized_kind(c, ctx) == "lib_diff" and detail_of(R.LIB_UNRECOGNIZED, c, ctx) == "lib_diff:丙"
+    # lib_diff 且带 boundary_ink 旗（溢墨）→ 归切分 S04 bleed（A22 判据，A24 11-08）；不带旗照旧 L04
+    cb = Cell(id="v:1:1:1", char="甲", ref="丙", doubts=["lib_miss"], cands=[["甲", 0.8]], bleed=True)
+    ctxb = build_context([cb], lib_own=lambda ch: 9)
+    assert classify(cb, ctxb) == R.SEG_DEFECT and detail_of(R.SEG_DEFECT, cb, ctxb) == "bleed"
+    cb0 = Cell(id="v:1:1:1", char="甲", ref="丙", doubts=["lib_miss"], cands=[["甲", 0.8]], bleed=True)
+    assert classify(cb0, build_context([cb0], lib_own=lambda ch: 0)) == R.LIB_MISSING     # 本书 0 例仍 L01，不动
     # 整理本这位没字：不归 L01，落 R02
     assert classify(*lm(9, ref=None)) == R.REF_GAP
     assert classify(*lm(0, ref=None)) == R.REF_GAP
@@ -641,3 +657,28 @@ def test_private_use_ref_is_lacuna():
     assert classify(c, build_context([c], lib_own=lambda ch: 0)) == R.REF_LACUNA
     assert detail_of(R.REF_LACUNA, c) == "U+EDC1"
     assert detail_of(R.REF_LACUNA, Cell(id="v:1:1:2", ref="〓")) == ""
+
+
+def test_ref_by_design_not_seg_or_ref_gap():
+    """本页本就没配参校本（全唐文 001–003 故意不带）：不判 S01／S02／R02，落 L04（细分 no_ref）；库 unsure 带 lib_miss 的细分 lib_diff。"""
+    page = [Cell(id=f"v:8:{i % 3 + 1}:{i}", char="甲", ref=None, ref_by_design=True) for i in range(12)]
+    ctx = build_context(page)
+    assert set(classify(c, ctx) for c in page) == {R.LIB_UNRECOGNIZED}
+    assert detail_of(R.LIB_UNRECOGNIZED, page[0], ctx) == "no_ref:"
+    miss = Cell(id="v:8:1:30", char="甲", ref=None, ref_by_design=True, doubts=["lib_miss"])
+    assert classify(miss, build_context([miss])) is R.LIB_UNRECOGNIZED
+    assert detail_of(R.LIB_UNRECOGNIZED, miss, None) == "lib_diff:"
+    # 对照：没标设计的同样 12 格仍是整页对不上
+    plain = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None) for i in range(12)]
+    assert set(_cls(plain)) == {R.SEG_PAGE_UNALIGNED}
+
+
+def test_noref_notes_include_unreadable(tmp_path):
+    """align_ref 备注「整理本读不到」（册里没写 references）算本就没参照。"""
+    import json
+    from guji_manager.review.reasons import _ref_by_design
+    d = tmp_path / "align_ref"
+    d.mkdir()
+    for name, note, want in (("p1.json", "整理本读不到", True), ("p2.json", "8-gram 锚定失败", False)):
+        (d / name).write_text(json.dumps({"align_ref": {"note": note}}), encoding="utf-8")
+        assert _ref_by_design(tmp_path, name) is want

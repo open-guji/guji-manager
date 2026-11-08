@@ -31,6 +31,7 @@ from . import cards as cards_mod
 from . import pair_audit
 from . import codepoint as cp_mod
 from . import glyph_quality as gq_mod
+from . import seg_cut as sc_mod
 from .preselect import KINDS
 from .registry import PageType, get
 
@@ -236,6 +237,12 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "items": its, "hint": hint, "box": box,
                 "options": [[o, gq_mod.LABEL_NAMES[o]] for o in pt.options], "n_excluded": n0 - len(items)}
         stat = {"items": len(its), "crops": sum(len(r["crops"]) for r in its), "pages": -(-len(its) // pp)}
+    elif page_type == "seg_cut":
+        pp = per_page or 6
+        its = [dict(r, img=embed(r["img"])) for r in sc_mod.normalize(items, root)]
+        data = {"book": book, "per_page": pp, "items": its, "hint": hint,
+                "options": [[o, n] for o, n in zip(pt.options, ("要切", "不切", "看不出"))]}
+        stat = {"items": len(its), "pages": -(-len(its) // pp)}
     elif page_type in ("gold_sample", "ref_check"):
         if page_type == "ref_check":
             mode = "check"

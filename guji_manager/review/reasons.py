@@ -68,6 +68,8 @@ class Cell:
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
     page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
+    bleed: bool = False                                # cell_shrink 给这格打了 boundary_ink 旗（框线／邻字墨溢进格框，A22 11-08 L04 残片判据第 2 条）；没读到就是 False
+    ref_by_design: bool = False                        # 本页本就没配参校本（align_ref note「未配置整理本／未配置证人」，如全唐文 001–003 故意不带）：没有对位字是设计，不是对位／切分出了事；不判 S01／S02／R02，落字形类
     frag: bool = False                                 # 格框明显小于本页同类格（半截字、墨点、框角），见 `FRAG_REL`；没读到 cell_shrink 就是 False
 
     @property
@@ -119,7 +121,7 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
     ctx = Context(lib_n=lib_n, are_variants=are_variants, lib_split=lib_split, glyph_pending=frozenset(glyph_pending),
                   edge_tier=edge_tier, lib_own=lib_own, same_writing=same_writing)
     for c in cells:
-        if not c.has_ref:
+        if not c.has_ref and not c.ref_by_design:
             if c.ref is None or not ref_missing(c.ref):      # 〓 是整理本缺字（R01），不算「无对位」（S01 深挖 11-06，与列一支同口径）
                 ctx.page_noref[_page(c.id)] += 1
                 ctx.col_noref[_col(c.id)] += 1
@@ -245,9 +247,22 @@ def _group_kind(c: Cell, x: Context | None = None) -> R | None:
 HARD_GROUPS = frozenset({"jys", "ry"})
 
 
+def _occluded(c: Cell) -> bool:
+    return "occluded" in c.codes or bool(c.evidence.get("occluded"))
+
+
+def _occluded_hard_ref(c: Cell) -> bool:
+    """遮挡格、整理本字是己已巳日曰之一（A24 D01 深挖 11-08，第 7 轮 52 格里 19 格，看图 19/19 图上就是这一族的字）。
+    印泥下库首位是噪声（唐、臯、包…），机器字是 None，所以 `_hard_pair` 的「三者全在组内」永远不中；但这一格就算没有印章也只能按文意定
+    是组里哪一个，留在 D01 只会让人审白看一遍。按「为什么还停在这里」归 H01，和不遮挡的己已巳同一条路（折叠组／文意裁定）。只改分类，不放行。"""
+    return _occluded(c) and c.has_ref and c.ref in HARD_CHARS and (not c.char or c.char in HARD_CHARS)
+
+
 def _hard_pair(c: Cell, x: Context) -> bool:
     """极难形近：参校字／机器字／库首位全在己已巳日曰内，且①三者至少两个不同，或②（A24 Z01 深挖 11-06）三者同字但字组是 jys/ry、
     或库候选前两名都在己已巳日曰内——字形分不开，按 11-05 口径归 H01 按文意定，不再落 Z01。只改分类，不放行。"""
+    if _occluded_hard_ref(c):
+        return True
     s = {v for v in (c.ref, c.char, c.top) if v}
     if not s or not s <= HARD_CHARS:
         return False
@@ -294,13 +309,13 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}) or (c.frag and not c.ref),
-    R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
-    R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
-    R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
+    R.OCCLUDED_WITH_REF: lambda c, x: _occluded(c) and c.has_ref and not _occluded_hard_ref(c),
+    R.OCCLUDED_NO_REF: lambda c, x: _occluded(c) and not _occluded_hard_ref(c),
+    R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and not c.ref_by_design and (
         (not c.has_ref and not ref_missing(c.ref) and x.page_noref[_page(c.id)] >= PAGE_MIN)
         or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
             and x.page_weak[_page(c.id)] >= PAGE_MIN)),
-    R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and x.col_noref[_col(c.id)] >= COL_MIN,
+    R.SEG_COL_UNALIGNED: lambda c, x: not c.ref and not c.ref_by_design and x.col_noref[_col(c.id)] >= COL_MIN,
     R.HARD_PAIR: _hard_pair,
     R.GROUP_ABSTAIN: lambda c, x: _group_kind(c, x) is R.GROUP_ABSTAIN,
     R.GROUP_CONFLICT: lambda c, x: _group_kind(c, x) is R.GROUP_CONFLICT,
@@ -314,13 +329,13 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.LIB_MISSING: lambda c, x: c.lib_miss,
     # 要有整理本字才算 L05（A24 L05 深挖 11-06，sheldon 同意）：无对位的糊格（框线碎片、并格、圈点）不是「库首位错」，落到后面的 R02
     R.GARBLE_GATE: lambda c, x: bool(c.codes & _GARBLE) and c.has_ref,
-    R.REF_GAP: lambda c, x: not c.ref,
+    R.REF_GAP: lambda c, x: not c.ref and not c.ref_by_design,
     R.VARIANT_PAIR: _variant_with_ref,
     R.NEAR_FORM_GUARD: _near_form,
     R.LIB_SPARSE_AGREE: lambda c, x: False,                 # L03 11-07 停用，并入 L02（不论机器字是否＝参校字；A23，sheldon 11-07）
     R.LIB_SPARSE_DISSENT: lambda c, x: _sparse(c, x),
     R.REF_OCR_DIFF: lambda c, x: c.ref_op == "replace" or "replace_align" in c.codes,
-    R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
+    R.LIB_UNRECOGNIZED: lambda c, x: (c.has_ref and c.char == c.ref) or (c.ref_by_design and not c.has_ref),
     R.REF_FINAL_DIFF: lambda c, x: c.has_ref and c.char != c.ref,
 }
 
@@ -348,6 +363,8 @@ def seg_kind_of(c: Cell) -> str:
         return k
     if JIAZHU_UNEVEN in c.codes:
         return JIAZHU_UNEVEN
+    if c.bleed:
+        return "bleed"
     return "clipped" if c.frag and not c.ref else ""
 
 
@@ -383,7 +400,8 @@ def lib_missing_kind(c: Cell, ctx: Context | None) -> str:
 #:   clear          以上都没有：按 ref_lib_coord 该放，没放是因为这本书／这版单没开它（看单子出自哪版 cv、册 yaml 开没开）
 #: 门槛与白名单取殿本 ``ref_lib_coord`` 的口径（cv seed_admit ``ref_lib_coord_cov/gap``、``_REF_LIB_COORD_DOUBTS``）；
 #: 开了 ``reference_trust`` 的书（史記）门槛更松，这里的 low_cov／near_rival 对它偏严，只作分档，不作判定。
-LIB_UNREC_KINDS = ("lib_diff", "lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear")
+#:   no_ref         本页本就没配参校本（``ref_by_design``）：无参校字可比，库 unsure／上下文 margin 不够才停下来，看图
+LIB_UNREC_KINDS = ("lib_diff", "lib_other", "human_unbound", "doubt_blocked", "low_cov", "near_rival", "clear", "no_ref")
 LIB_UNREC_COV, LIB_UNREC_GAP = 0.96, 0.01
 #: cv ``_REF_LIB_COORD_DOUBTS`` 里的码（中文说明「库 unsure」「上下文 margin 不足」等不是码，doubt_codes 本来就不取）。
 #: ``context_page_end`` 由 cv #1184 后续 PR 加入（A31 11-06 裁定），这里先认。
@@ -396,6 +414,9 @@ def lib_unrecognized_kind(c: Cell, ctx: Context | None = None) -> str:
     """lib_unrecognized 细分（见 ``LIB_UNREC_KINDS``）。给了 ``ctx.are_variants`` 时，紧咬的对手是参校字的异体不算（同 cv 按语义比）。"""
     if c.lib_miss:
         return "lib_diff"
+    if c.ref_by_design and not c.has_ref:
+        h = (c.evidence or {}).get("human_unbound") or {}
+        return "human_unbound" if "human_unbound" in c.codes and h.get("char") and h.get("char") != c.char else "no_ref"
     if not c.cands or c.top != c.ref:
         return "lib_other"
     h = (c.evidence or {}).get("human_unbound") or {}
@@ -480,6 +501,8 @@ def classify(c: Cell, ctx: Context) -> R:
                 r = R.LIB_UNRECOGNIZED
         if r is R.LIB_UNRECOGNIZED and lib_unrecognized_kind(c, ctx) == "human_unbound":
             return R.RULING_CONFLICT
+        if r is R.LIB_UNRECOGNIZED and c.bleed and lib_unrecognized_kind(c, ctx) == "lib_diff":
+            return R.SEG_DEFECT                               # 印糊整字里带 boundary_ink 旗的是溢墨切坏，归切分 S04（A22 判据，A24 11-08）
         return r
     return R.UNKNOWN
 
@@ -520,6 +543,27 @@ def _page_kind(root: Path, name: str) -> str | None:
     if any("roster" in (c.get("flags") or []) for c in rs.get("columns") or []):
         return "roster"
     return None
+
+
+#: align_ref 的 note：本册没配整理本／证人，或册里没写 references 读不到（cv align_ref `未配置整理本`／`未配置证人`／`整理本读不到`；QTW 11-08：全唐文 002 的 208 页都是「整理本读不到」）。
+NOREF_NOTES = ("未配置整理本", "未配置证人", "整理本读不到")
+
+
+def _ref_by_design(root: Path, name: str) -> bool:
+    """本页的对位层说「没配参校本」（不是锚不上、不是钉页无此页）→ 无对位是设计。"""
+    ar = _layer_note(root, name)
+    return any(n in ar for n in NOREF_NOTES)
+
+
+def _layer_note(root: Path, name: str) -> str:
+    return str((_load_layer(root / "align_ref" / name, "align_ref") or {}).get("note") or "")
+
+
+def _bleed_ids(root: Path, name: str) -> set[str]:
+    """本页 cell_shrink 打了 boundary_ink 旗的格 id。"""
+    shr = _load_layer(root / "cell_shrink" / name, "char_index") or {}
+    return {ch["id"] for key in ("columns", "alt_columns") for col in shr.get(key) or []
+            for ch in col.get("chars") or [] if "boundary_ink" in (ch.get("flags") or [])}
 
 
 def _frag_ids(root: Path, name: str) -> set[str]:
@@ -564,7 +608,9 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 ref[c["id"]] = (c["ref_char"], "coord")
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
+        by_design = _ref_by_design(root, f.name)
         frags = _frag_ids(root, f.name)
+        bleeds = _bleed_ids(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -584,7 +630,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind, frag=cid in frags)
+                                                 col_agree=agree, page_kind=kind, ref_by_design=by_design, frag=cid in frags, bleed=cid in bleeds)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])

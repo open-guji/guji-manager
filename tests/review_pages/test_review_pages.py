@@ -99,6 +99,8 @@ def test_every_template_builds(t, tmp_path):
         "ref_check": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["库首位"]}, lib="白", img=str(img))],
         "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
                                                                    dict(key="on", sha="bb", img=str(img))])],
+        "seg_cut": [dict(id="06:26:2:-1", column_image=str(img), expect_chars=["東", "雍"],
+                         grids={"main": [dict(id="06:26:2:-1", slot=-1, sub=None, bbox_col=[0, 0, 1, 1], bbox_page=[10, 20, 11, 21])]})],
     }[t]
     out = tmp_path / "p.html"
     st = B.build(t, items, "b1", out)
@@ -688,3 +690,15 @@ def test_char_card_doc_id_is_safe_for_db(tmp_path):
         import pathlib
         tpl = (pathlib.Path(registry.__file__).parent / "templates" / "char_card.tpl.html").read_text(encoding="utf-8")
     assert 'D.coll+"/c_"+safeId(id)' in tpl and 'D.coll+"/c_"+id' not in tpl
+
+
+def test_seg_cut_labels_and_page_coords():
+    from guji_manager.review_pages import seg_cut as sc
+    row = dict(id="a", grids={"main": [dict(id="a", bbox_col=[0, 100, 50, 200], bbox_page=[10, 1100, 60, 1300])]})
+    assert sc.page_map(row) == (2.0, 900.0)
+    docs = [dict(page_type="seg_cut", cell="a", label="cut", cuts=[150.0], cuts_page=[1200.0], how="click", t=1),
+            dict(page_type="seg_cut", cell="a", label="keep", cuts=[], how="click", t=2),
+            dict(page_type="seg_cut", cell="b", label="cut", cuts=[1], how="page_ok", t=1),
+            dict(page_type="seg_cut", cell="c", label="x", how="click", t=1)]
+    rows = sc.label_rows(sc.labels_from_docs(docs))
+    assert [(r["id"], r["label"]) for r in rows] == [("a", "keep"), ("b", "cut")]
