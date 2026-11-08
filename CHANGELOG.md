@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 任务库连接数满时退避重试（PATCH，A30 11-08；worker-13 重起报 `too many connections for role jobs_rw` 直接退出）：`jobsdb.connect` 遇到角色连接数满（SQLSTATE 53300）随机退避重试最多 8 次（单次最长约 60 秒，`GUJI_JOBSDB_FULL_RETRIES` 可调），别的连接错误仍短重试 10 次。不动产物、指纹（L0）。
 ## [0.4.25] - 2026-11-08
 
 - 中心库备份大文件切片上传＋失败重试（PATCH，A31 11-08，Sheldon/协调者定）：`datastore backup` 把整表 gz 一次 PUT 上传，`files` 表压缩后 220 MB 被边缘掐断（`Connection reset`），备份连续失败。现在 `upload` 把超过 64 MB 的文件切成 `<表>.copy.gz.partNNN`，清单该表记 `parts`；单个文件上传失败重试 4 次；`fetch`（含 `restore-check`）按 `parts` 拼回，旧备份（无 `parts`）照读。不动产物、指纹（L0）。
