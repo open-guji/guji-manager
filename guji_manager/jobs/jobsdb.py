@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import random
 import socket
 import ssl
 import sys
@@ -109,6 +110,20 @@ def _tunnel_port(tok: str) -> int:
     return _port
 
 
+#: 「too many connections for role」（服务器给 jobs_rw 设了上限）时的退避：约 8 次、单次最长 60 秒，合计几分钟
+FULL_RETRIES = int(os.environ.get("GUJI_JOBSDB_FULL_RETRIES", "8"))
+FULL_BACKOFF_BASE = 8.0
+FULL_BACKOFF_MAX = 60.0
+
+
+def _too_many(e: Exception) -> bool:
+    """连接数满（SQLSTATE 53300，或报错文字含 too many connections）。"""
+    if getattr(e, "sqlstate", None) == "53300":
+        return True
+    m = str(e).lower()
+    return "too many connections" in m or "remaining connection slots" in m
+
+
 def connect():
     """开一条到新任务库的 psycopg 连接（调用方自己设 autocommit）。"""
     import time
@@ -120,12 +135,23 @@ def connect():
         raise SystemExit("要连新任务库：设 JOBSDB_PASSWORD（Postgres 口令，jobs_rw／jobs_ro 的）")
     port = _tunnel_port(tok)
     last: Exception | None = None
-    for _ in range(10):        # 隧道线程刚起、或 wss 握手慢，短暂重试
+    quick = 0                  # 普通失败（隧道没起好、握手慢）：短间隔重试 10 次
+    full = 0                   # 角色连接数满：退避重试，随机错峰，免得几十台同时重起又一起撞满
+    while True:
         try:
             return psycopg.connect(host="127.0.0.1", port=port, dbname="jobs",
                                    user=os.environ.get("JOBSDB_USER", "jobs_rw"), password=pw,
                                    sslmode="disable", connect_timeout=20)
         except psycopg.OperationalError as e:
             last = e
+            if _too_many(e):
+                full += 1
+                if full > FULL_RETRIES:
+                    break
+                time.sleep(min(FULL_BACKOFF_MAX, FULL_BACKOFF_BASE * full) * (0.5 + random.random()))
+                continue
+            quick += 1
+            if quick >= 10:
+                break
             time.sleep(1.5)
     raise last  # type: ignore[misc]
