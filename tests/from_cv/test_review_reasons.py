@@ -657,3 +657,17 @@ def test_private_use_ref_is_lacuna():
     assert classify(c, build_context([c], lib_own=lambda ch: 0)) == R.REF_LACUNA
     assert detail_of(R.REF_LACUNA, c) == "U+EDC1"
     assert detail_of(R.REF_LACUNA, Cell(id="v:1:1:2", ref="〓")) == ""
+
+
+def test_ref_by_design_not_seg_or_ref_gap():
+    """本页本就没配参校本（全唐文 001–003 故意不带）：不判 S01／S02／R02，落 L04（细分 no_ref）；库 unsure 带 lib_miss 的细分 lib_diff。"""
+    page = [Cell(id=f"v:8:{i % 3 + 1}:{i}", char="甲", ref=None, ref_by_design=True) for i in range(12)]
+    ctx = build_context(page)
+    assert set(classify(c, ctx) for c in page) == {R.LIB_UNRECOGNIZED}
+    assert detail_of(R.LIB_UNRECOGNIZED, page[0], ctx) == "no_ref:"
+    miss = Cell(id="v:8:1:30", char="甲", ref=None, ref_by_design=True, doubts=["lib_miss"])
+    assert classify(miss, build_context([miss])) is R.LIB_UNRECOGNIZED
+    assert detail_of(R.LIB_UNRECOGNIZED, miss, None) == "lib_diff:"
+    # 对照：没标设计的同样 12 格仍是整页对不上
+    plain = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None) for i in range(12)]
+    assert set(_cls(plain)) == {R.SEG_PAGE_UNALIGNED}
