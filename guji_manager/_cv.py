@@ -186,6 +186,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "K_MIN": ("clustering.glyph_db", "K_MIN"),
     "KIND_PARAM": ("core.page_kinds", "KIND_PARAM"),
     "load_page_kinds": ("core.page_kinds", "load_page_kinds"),
+    # 参校本属性（cv #1273，A 块）
+    "RefProfile": ("core.ref_profile", "RefProfile"),
+    "load_reference_profile": ("core.ref_profile", "load_reference_profile"),
+    "ref_profile_lint": ("core.ref_profile", "lint"),
     "params_hash": ("core.engine", "params_hash"),
     "core_corpus_pin_REPO_ROOT": ("core.corpus_pin", "REPO_ROOT"),
     "ADMIT_KIND": ("report.slots", "ADMIT_KIND"),

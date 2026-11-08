@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- `_cv._FALLBACK` 补登记参校本属性三个名字 `RefProfile`、`load_reference_profile`、`ref_profile_lint`（PATCH，cv #1273 manager_api 新导出，test_cv_surface 红；A22 11-08）。
 - 「整理本读不到」的页也算本就没参照（PATCH，QTW 11-08：全唐文 002 册里没写 references，208 页备注全是它）：并入 `ref_by_design`，同 #351 不判 S01／S02／R02。
 - 本页本就没配参校本不判整页／整列对不上（PATCH，QTW 经 A31 11-08 报；用户 11-06/07 定待审原因改分类直接改）：全唐文 001–003 故意不带参校本，首跑约 1.9 万格被记成 S01。对位层 note 是「未配置整理本／未配置证人」的页，`Cell.ref_by_design`＝真，不判 S01／S02／R02，落 L04 `lib_unrecognized`（细分 `no_ref`，带 `lib_miss` 码的仍 `lib_diff`）。只改分类，不动产物、指纹。
 - 新页型 `seg_cut` 1.0.0 人裁切线（PATCH，缺省不影响旧页；SJ 需求）：一格一段列图叠两套格网，点图画切线或标不切/看不出，结果带列图与页图坐标；CLI `build seg_cut`、`segcut-apply`。
