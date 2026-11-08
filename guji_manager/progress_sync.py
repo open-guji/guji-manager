@@ -34,6 +34,7 @@ import tempfile
 from pathlib import Path
 
 from .iterate.progress_rounds import SECTION, round_key, round_of
+from .pack_stats import pack_of
 
 DIANBEN = "96mid1ogzk"          # 殿本；cv 册名是 volNN，progress_report 只认这一种
 AITEAM_URL = "https://github.com/open-guji-core/ai-team"
@@ -59,7 +60,8 @@ def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
         pack = ((ex.get("cv.pack") or {}).get("label"))
         pack_ok = pack == main or not pack      # 没有包口径的册（文本层、1.x 修订册）走线上单口径，不替它们开包口径
         if not pack_ok:
-            out["packs"].append({"book": book, "vol": vol, "ws": v.get("ws") or book, "main": main, "pack": pack})
+            out["packs"].append({"book": book, "vol": vol, "ws": v.get("ws") or book, "main": main, "pack": pack,
+                                 "from_packs": bool(pack_of(ex, main))})     # 存包时已随包算好的，直接转，不用下包
         rk = round_key(main) if round_of(main) else None
         if rk:
             d = by_round.setdefault((book, rk), {"n": 0, "ok": 0})
@@ -152,12 +154,39 @@ def _skeleton(ws_id: str, root: Path) -> Path:
     return d
 
 
-def fix_packs(stale: list[dict]) -> dict[str, str]:
-    """标 main 后包口径没跟上的册：取 ★main 包重算并写看板。"""
+def fix_packs_from_stats(stale: list[dict]) -> dict[str, str]:
+    """存包时已随包写了人审率（cv.packs）的册：直接转成包口径，不下包。"""
+    import time
+    from ._cv import connect
     res: dict[str, str] = {}
+    with connect() as conn:
+        for s in stale:
+            k = f"{s['book']}/{s['vol']}"
+            row = conn.execute("SELECT extra FROM progress.volume WHERE book_id = %s AND vol = %s", (s["book"], s["vol"])).fetchone()
+            st = pack_of(row[0] if row else None, s["main"])
+            if not st:
+                res[k] = "fail: cv.packs 里没有这个标签"
+                continue
+            pack = {"label": s["main"], "cells": st["cells"], "review": st["review"], "rate": round(st["review"] / st["cells"], 5),
+                    "pick": "main", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            conn.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (s["book"], s["vol"], json.dumps({"extra": {"cv.pack": pack}}, ensure_ascii=False), "A31"))
+            res[k] = "ok"
+    return res
+
+
+def fix_packs(stale: list[dict]) -> dict[str, str]:
+    """标 main 后包口径没跟上的册：存包时已算好的直接转，其余取 ★main 包重算并写看板。"""
+    res: dict[str, str] = {}
+    quick = [s for s in stale if s.get("from_packs")]
+    if quick:
+        res.update(fix_packs_from_stats(quick))
+    stale = [s for s in stale if not s.get("from_packs")]
+    if not stale:
+        return res
     team = ensure_ai_team()
     if not team:
-        return {f"{s['book']}/{s['vol']}": "fail: 没有 ai-team 检出且克隆失败（设 GUJI_AITEAM_REPO，或让环境能访问 open-guji-core/ai-team）" for s in stale}
+        res.update({f"{s['book']}/{s['vol']}": "fail: 没有 ai-team 检出且克隆失败（设 GUJI_AITEAM_REPO，或让环境能访问 open-guji-core/ai-team）" for s in stale})
+        return res
     groups: dict[tuple[str, str], list[str]] = {}
     for s in stale:
         groups.setdefault((s["book"], s["ws"]), []).append(s["vol"])
