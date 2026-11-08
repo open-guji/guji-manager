@@ -522,6 +522,12 @@ def test_lib_boundary_table():
     from guji_manager.review.reasons import lib_unrecognized_kind
     c, ctx = lm(9, char="甲")
     assert lib_unrecognized_kind(c, ctx) == "lib_diff" and detail_of(R.LIB_UNRECOGNIZED, c, ctx) == "lib_diff:丙"
+    # lib_diff 且带 boundary_ink 旗（溢墨）→ 归切分 S04 bleed（A22 判据，A24 11-08）；不带旗照旧 L04
+    cb = Cell(id="v:1:1:1", char="甲", ref="丙", doubts=["lib_miss"], cands=[["甲", 0.8]], bleed=True)
+    ctxb = build_context([cb], lib_own=lambda ch: 9)
+    assert classify(cb, ctxb) == R.SEG_DEFECT and detail_of(R.SEG_DEFECT, cb, ctxb) == "bleed"
+    cb0 = Cell(id="v:1:1:1", char="甲", ref="丙", doubts=["lib_miss"], cands=[["甲", 0.8]], bleed=True)
+    assert classify(cb0, build_context([cb0], lib_own=lambda ch: 0)) == R.LIB_MISSING     # 本书 0 例仍 L01，不动
     # 整理本这位没字：不归 L01，落 R02
     assert classify(*lm(9, ref=None)) == R.REF_GAP
     assert classify(*lm(0, ref=None)) == R.REF_GAP
