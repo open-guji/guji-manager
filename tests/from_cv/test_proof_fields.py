@@ -54,3 +54,14 @@ def test_slim_only_two_keys():
 def test_ctx_without_margin_is_omitted():
     f = pending_fields(dict(CARD, ctx={"char": "曰", "margin": None, "source": "context"}))
     assert "ctx" not in f and "margin" not in f
+
+
+def test_dian_hint_overrides_ctx_and_clips_why():
+    f = pending_fields(dict(CARD, dian={"char": "曰", "why": "某" * 300}))
+    assert f["ctx"]["c"] == "曰" and f["ctx"]["src"] == "punct_llm" and len(f["ctx"]["why"]) == 200
+    assert "margin" not in f["ctx"]
+
+
+def test_dian_hint_without_char_is_ignored():
+    f = pending_fields(dict(CARD, dian={"char": "", "why": "x"}))
+    assert f["ctx"]["src"] == "prior"
