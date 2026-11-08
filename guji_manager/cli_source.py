@@ -160,15 +160,23 @@ def cmd_check(args) -> None:
               f"https://blob.open-guji.com/sha256/{p['sha256'][:2]}/{p['sha256']}.png")
 
 
-def _finish(src, args, table, blobs, why) -> None:
+def _finish(src, args, table, blobs, why, *, pagemeta: bool = True) -> None:
     from ._cv import sources as S
     if args.dry_run:
         print(f"（dry-run）不发布：{len(table['pages'])} 页，{len(blobs)} 张页图")
         return
+    from .datastore import pagemeta as PM
+    pages = None
+    if pagemeta and table.get("status", "final") == "final" and not getattr(args, "no_pagemeta", False):
+        # 标 final 要同时有页面范围（旁车 pagemeta，规范：没有 page 对象不让标 final）；先算好，算不出来就不发页表
+        pages = PM.build_pages(table, src_size=_src_size_of(args), gray_of=_gray_of_blobs(blobs, args))
     out = S.publish(src, table, blobs, by=_actor(args), why=why)
     if table.get("ws") and table.get("book"):
         S.write_pointer(src, table["ws"], table["book"], table["book_id"], table["vol"])
     print(f"✓ 发布 {out['book_id']}/{out['vol']} r{out['rev']:03d}：{out['n_pages']} 页，改动 {len(out['changed'])} 页")
+    if pages is not None:
+        meta = PM.publish_pagemeta(src, out, pages, by=_actor(args), why=why or "登记页表时同步产出")
+        print(f"  ✓ 页面范围 r{out['rev']:03d}.page.v{meta['v']}：{len(pages)} 页")
 
 
 def cmd_ia(args) -> None:
@@ -363,17 +371,98 @@ def cmd_replace(args) -> None:
     new, blobs = S.with_page(t, args.seq, Path(args.png).read_bytes(), args.why, _actor(args))
     for k in ("rev", "prev", "prev_sha256", "created", "by", "why", "changed", "n_pages"):
         new.pop(k, None)
-    _finish(src, args, new, blobs, args.why)
+    _finish(src, args, new, blobs, args.why, pagemeta=False)     # 换一页不重算整册；补页面范围走 `pagemeta` 动作
+
+
+def _src_size_of(args):
+    """`--src-sizes` 指的 json：{"<源图 id>": [宽, 高]}（文淵閣用 "<Commons 标题>#<DjVu 页>" 也行，见 `pagemeta.build_page`）。"""
+    path = getattr(args, "src_sizes", None)
+    if not path:
+        return None
+    d = json.loads(Path(path).read_text(encoding="utf-8"))
+    return lambda sid: d.get(sid)
+
+
+def _gray_of_blobs(blobs, args):
+    """单页扫描检测 content 要读页图灰度：先看手边的 blobs，没有就从公开的 blob.open-guji.com 取。"""
+    if getattr(args, "no_detect", False):
+        return None
+    from PIL import Image
+    import numpy as np
+
+    def gray(row):
+        data = blobs.get(row["sha256"]) if blobs else None
+        if data is None:
+            from ._cv import sources as S
+            data = S._http(f"https://blob.open-guji.com/sha256/{row['sha256'][:2]}/{row['sha256']}.png")
+        return np.asarray(Image.open(io.BytesIO(data)).convert("L"))
+    return gray
+
+
+def cmd_pagemeta(args) -> None:
+    """给一版已发布的页表补页面范围旁车（只增不改；已有就出下一版 v）。"""
+    from ._cv import sources as S
+    from .datastore import pagemeta as PM
+    vol = S.norm_vol(args.vol)
+    src = _src()
+    table = S.read_table(src, args.book_id, vol, args.rev)
+    sizes = _src_size_of(args)
+    if sizes is not None:
+        # 文淵閣：json 里按 Commons 标题给，页表按源件 file 取 id，这里转一下
+        by_title = {s["file"]: s.get("commons_title") for s in table.get("sources", []) if s.get("commons_title")}
+        raw = sizes
+
+        def sizes(sid, raw=raw, by_title=by_title):          # noqa: E306
+            r = raw(sid)
+            if r:
+                return r
+            f, _, pg = sid.partition("#")
+            return raw(f"{by_title.get(f)}#{pg}") if by_title.get(f) else None
+    pages = PM.build_pages(table, src_size=sizes, gray_of=_gray_of_blobs({}, args))
+    errs = PM.validate_pagemeta(table, PM.make_pagemeta(table, pages, by="", why=""))
+    hows: dict[str, int] = {}
+    for m in pages.values():
+        hows[m["how"]] = hows.get(m["how"], 0) + 1
+    print(f"{args.book_id}/{vol} r{table['rev']:03d}（{table.get('status')}）：{len(pages)} 页，来源 {hows}，校验问题 {len(errs)}")
+    for e in errs[:20]:
+        print("  ✗", e)
+    if errs:
+        sys.exit(1)
+    if args.dry_run:
+        print("（dry-run）不发布")
+        return
+    meta = PM.publish_pagemeta(src, table, pages, by=_actor(args), why=args.why)
+    print(f"✓ 页面范围 r{table['rev']:03d}.page.v{meta['v']}")
+
+
+def cmd_pagemeta_check(args) -> None:
+    """核已发布的页面范围旁车：和页表对得上、四角在源图内、content 在页图内。"""
+    from ._cv import sources as S
+    from .datastore import pagemeta as PM
+    vol = S.norm_vol(args.vol)
+    src = _src()
+    table = S.read_table(src, args.book_id, vol, args.rev)
+    meta = PM.read_pagemeta(src, args.book_id, vol, int(table["rev"]))
+    if meta is None:
+        print(f"✗ {args.book_id}/{vol} r{table['rev']:03d} 还没有页面范围旁车")
+        sys.exit(1)
+    errs = PM.validate_pagemeta(table, meta)
+    print(f"{args.book_id}/{vol} r{table['rev']:03d}.page.v{meta['v']}：{len(meta['pages'])} 页，问题 {len(errs)}")
+    for e in errs[:20]:
+        print("  ✗", e)
+    if errs:
+        sys.exit(1)
 
 
 ACTIONS = {"pull": cmd_pull, "show": cmd_show, "list": cmd_list, "check": cmd_check,
-            "ia": cmd_ia, "commons": cmd_commons, "commons-pack": cmd_commons_pack, "spreads": cmd_spreads, "register": cmd_register, "replace": cmd_replace}
+            "ia": cmd_ia, "commons": cmd_commons, "commons-pack": cmd_commons_pack, "spreads": cmd_spreads, "register": cmd_register, "replace": cmd_replace,
+            "pagemeta": cmd_pagemeta, "pagemeta-check": cmd_pagemeta_check}
 
 
 def add_parser(sub) -> None:
     p = sub.add_parser("source", help="[v2] 原图：源件存档、页图、页表（R2），云会话取原图")
     p.add_argument("action", choices=sorted(ACTIONS))
-    p.add_argument("pos", nargs="*", help="pull：<册>；spreads：<源件>；show/check/ia/commons/commons-pack/register：<书id> <册>；list：<书id>；replace：<书id> <册> <页序> <png>")
+    p.add_argument("pos", nargs="*", help="pull：<册>；spreads：<源件>；show/check/pagemeta/pagemeta-check/ia/commons/commons-pack/register：<书id> <册>；list：<书id>；replace：<书id> <册> <页序> <png>")
     p.add_argument("-w", "--workspace", default=None, help="pull：工作区（定册配置里的原图目录）")
     p.add_argument("--rev", type=int, default=None, help="页表版本，缺省最新")
     p.add_argument("--to", default=None, help="pull：落到这个目录（<页>.png），不按册配置")
@@ -403,6 +492,10 @@ def add_parser(sub) -> None:
     p.add_argument("--dry-run", action="store_true", help="写：只算不传")
     p.add_argument("--json", action="store_true", help="show：整份页表")
     p.add_argument("--out", default=None, help="commons-pack：输出目录（新版 DjVu 与 .upload.json）；spreads：拆页表路径")
+    p.add_argument("--src-sizes", default=None,
+                   help="pagemeta／final 登记：源图宽高 json {\"<源图 id>\": [宽,高]}，拆页与文淵閣必给（页表里没有）；文淵閣 id 可写 \"<Commons 标题>#<DjVu 页>\"")
+    p.add_argument("--no-detect", action="store_true", help="pagemeta／final 登记：单页扫描不检测版框，content 取整幅（how: whole）")
+    p.add_argument("--no-pagemeta", action="store_true", help="register／ia／commons：标 final 也不产页面范围（只给过渡期用，会被验收脚本点名）")
     p.add_argument("--reroot", action="store_true",
                    help="commons：修好的版本已传上 Commons，按旧页表逐页对上，沿用页序（页 id 不变）")
 
@@ -410,7 +503,7 @@ def add_parser(sub) -> None:
 def cmd_source(args) -> None:
     pos = list(args.pos or [])
     a = args.action
-    need = {"pull": 1, "list": 1, "spreads": 1, "show": 2, "check": 2, "ia": 2, "commons": 2, "commons-pack": 2, "register": 2, "replace": 4}[a]
+    need = {"pull": 1, "list": 1, "spreads": 1, "show": 2, "check": 2, "ia": 2, "commons": 2, "commons-pack": 2, "register": 2, "replace": 4, "pagemeta": 2, "pagemeta-check": 2}[a]
     if a == "pull" and args.book_id:
         need = 0
     if len(pos) < need:
@@ -445,6 +538,9 @@ def cmd_source(args) -> None:
             sys.exit(2)
     if a == "commons-pack" and not args.out:
         print("✗ commons-pack 要 --out <目录>", file=sys.stderr)
+        sys.exit(2)
+    if a == "pagemeta" and not args.why:
+        print("✗ pagemeta 要 --why", file=sys.stderr)
         sys.exit(2)
     if a == "replace" and not args.why:
         print("✗ replace 要 --why", file=sys.stderr)

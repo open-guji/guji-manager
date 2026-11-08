@@ -610,9 +610,19 @@ def revisions(src, book_id: str, vol: str) -> list[int]:
     return sorted(out)
 
 
-def read_table(src, book_id: str, vol: str, rev: int | None = None) -> dict:
+def read_table(src, book_id: str, vol: str, rev: int | None = None, *, with_page: bool = False) -> dict:
     """取一版页表。`rev` 不给 = 最新的正式版：`status: staged` 的预发版（换图源时先发、册 yaml 钉
-    `source_rev` 才用）跳过，免得别人一 pull 就把新图写进旧配置。"""
+    `source_rev` 才用）跳过，免得别人一 pull 就把新图写进旧配置。
+
+    `with_page=True`：把这一版页表的页面范围旁车（`pagemeta`，最新版）并进 `pages[i]["extent"]`；没有旁车就原样返回。"""
+    t = _read_table(src, book_id, vol, rev)
+    if with_page:
+        from . import pagemeta as PM
+        PM.merge_into_table(t, PM.read_pagemeta(src, book_id, t["vol"], int(t["rev"])))
+    return t
+
+
+def _read_table(src, book_id: str, vol: str, rev: int | None = None) -> dict:
     vol = norm_vol(vol)
     if rev is None:
         revs = revisions(src, book_id, vol)
