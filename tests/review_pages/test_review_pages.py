@@ -695,8 +695,8 @@ def test_char_card_doc_id_is_safe_for_db(tmp_path):
 def test_seg_cut_labels_and_page_coords():
     from guji_manager.review_pages import seg_cut as sc
     row = dict(id="a", grids={"main": [dict(id="a", bbox_col=[0, 100, 50, 200], bbox_page=[10, 1100, 60, 1300])]})
-    assert sc.page_map(row) == (2.0, 900.0)
-    docs = [dict(page_type="seg_cut", cell="a", label="cut", cuts=[150.0], cuts_page=[1200.0], how="click", t=1),
+    assert sc.page_map(row) == (2.0, 900.0, 1.0, 10.0)
+    docs = [dict(page_type="seg_cut", cell="a", label="cut", cuts=[dict(d="v", p=150.0)], cuts_page=[dict(d="v", p=1200.0)], how="click", t=1),
             dict(page_type="seg_cut", cell="a", label="keep", cuts=[], how="click", t=2),
             dict(page_type="seg_cut", cell="b", label="cut", cuts=[1], how="page_ok", t=1),
             dict(page_type="seg_cut", cell="c", label="x", how="click", t=1)]

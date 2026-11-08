@@ -2,100 +2,88 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>/*COMMON_CSS*/
 #list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px}
-#list .card{margin:0;display:flex;flex-direction:column;gap:8px}
+#list .card{margin:0;display:flex;flex-direction:column;gap:6px}
 .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
 .meta .ch{font:600 18px/1 var(--font-glyph);color:var(--fg)}
 .win{position:relative;width:100%;max-width:440px;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:4px;cursor:crosshair;touch-action:manipulation}
-.win img{position:absolute;left:0;width:100%;image-rendering:pixelated;pointer-events:none;user-select:none}
-.win .ln{position:absolute;left:0;right:0;height:0;pointer-events:none}
-.win .ln.main{border-top:1px dashed #d33}
-.win .ln.alt{border-top:1px dashed #28c}
-.win .ln.mine{border-top:3px solid #1a9e4b}
-.win .tb{position:absolute;border:2px solid rgba(240,170,0,.8);pointer-events:none}
-.legend{font-size:11px;color:var(--muted)}
-.legend b.m{color:#d33}.legend b.a{color:#28c}.legend b.g{color:#1a9e4b}
-.qb{display:flex;gap:6px;flex-wrap:wrap}
-.qb button{padding:6px 10px;min-height:36px;font-size:13px}
-.qb button[aria-pressed="true"]{color:#fff}
-.qb button[data-v=cut][aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
-.qb button[data-v=keep][aria-pressed="true"]{background:#b7791f;border-color:#b7791f}
-.qb button[data-v=unsure][aria-pressed="true"]{background:#5b5f8a;border-color:#5b5f8a}
-.cn{font-size:12px;color:var(--muted)}
+.win img{position:absolute;image-rendering:pixelated;pointer-events:none;user-select:none}
+.win .ln{position:absolute;pointer-events:none;background:#1a9e4b}
+.win .ln.v{width:3px;margin-left:-1px;top:0;bottom:0}
+.win .ln.h{height:3px;margin-top:-1px;left:0;right:0}
+.row{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.row button{padding:4px 10px;min-height:30px;font-size:12px}
+.row button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
 </style>
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
 /*COMMON_JS*/
 /*STORE_JS*/
-// 每格一张卡：一段列图（红虚线＝主切法的格界，蓝虚线＝备选，黄框＝本格），点图加一条绿色切线、点绿线取消；
-// 点「不切」「看不出」记那个结论；画了线即「要切」。没有点的格不算数（不设默认）。
+// 每格一张卡：只放大本格这一块图。点哪里切就在哪里画一条绿线（默认竖线；右下角可切成横线），点已有的线取消。
+// 画了线这格就算定了；没画的格不算数。存档 raw={v:"cut",cuts:[{d:"v"|"h",p}]}（列图像素坐标）。
 const MAJOR=D.tpl_version.split(".")[0], P=D.per_page;
 const byId={};D.items.forEach((it,i)=>byId[it.id]={it,i});
+const r1=y=>Math.round(y*10)/10;
+const toPage=(it,c)=>({d:c.d,p:r1(c.d==="v"?c.p*it.kx+it.cx:c.p*it.ky+it.cy)});
 const S=makeStore({key:"seg-cut-"+D.book+"-v"+MAJOR,pageOf:k=>Math.floor(((byId[k]||{i:0}).i)/P),
   docOf:(k,raw)=>{const it=(byId[k]||{}).it||{};const cuts=raw.cuts||[];
-    return {cell:k,vol:it.vol,label:raw.v||null,cuts,cuts_page:cuts.map(y=>Math.round((y*it.k+it.c)*10)/10)}}});
+    return {cell:k,vol:it.vol,label:"cut",cuts,cuts_page:cuts.map(c=>toPage(it,c))}}});
 const st=S.st;
-const lab=it=>{const r=S.raw(it.id);return r&&r.v?r:null};
-const r1=y=>Math.round(y*10)/10;
-function setRaw(it,v,cuts){
-  if(!v)S.clear(it.id);else S.set(it.id,{v,cuts:cuts||[]});
+if(!st.dir)st.dir="v";
+const cutsOf=it=>{const r=S.raw(it.id);return r&&r.cuts?r.cuts:[]};
+function addCut(it,d,p){
+  const cs=cutsOf(it).slice();
+  const j=cs.findIndex(c=>c.d===d&&Math.abs(c.p-p)<=5);
+  if(j>=0)cs.splice(j,1);else cs.push({d,p:r1(p)});
+  if(cs.length)S.set(it.id,{v:"cut",cuts:cs});else S.clear(it.id);
 }
-function addCut(it,y){const r=lab(it)||{cuts:[]};const cs=(r.cuts||[]).slice();
-  const j=cs.findIndex(c=>Math.abs(c-y)<=6);
-  if(j>=0)cs.splice(j,1);else cs.push(r1(y));cs.sort((a,b)=>a-b);
-  if(cs.length)setRaw(it,"cut",cs);else S.clear(it.id)}
 function paint(box,it){
-  const win=box.querySelector(".win"),H=it.wy1-it.wy0,r=lab(it)||{};
-  for(const e of win.querySelectorAll(".mine"))e.remove();
-  for(const y of r.cuts||[]){const d=document.createElement("div");d.className="ln mine";d.style.top=((y-it.wy0)/H*100)+"%";win.appendChild(d)}
-  for(const b of box.querySelectorAll(".qb button"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
-  const n=(r.cuts||[]).length,exp=Math.max(0,(it.expect||[]).length-1);
-  box.querySelector(".cn").textContent=r.v==="cut"?`已画 ${n} 条切线`+(exp?`（按整理本这格应有 ${exp+1} 字，约 ${exp} 条）`:""):"";
+  const win=box.querySelector(".win"),W=it.wx1-it.wx0,H=it.wy1-it.wy0;
+  for(const e of win.querySelectorAll(".ln"))e.remove();
+  for(const c of cutsOf(it)){const d=document.createElement("div");d.className="ln "+c.d;
+    if(c.d==="v")d.style.left=((c.p-it.wx0)/W*100)+"%";else d.style.top=((c.p-it.wy0)/H*100)+"%";win.appendChild(d)}
 }
-function card(it,idx){
+function card(it){
   const box=document.createElement("div");box.className="card";
   const m=document.createElement("div");m.className="meta";
-  const ch=document.createElement("span");ch.className="ch";ch.textContent=it.shows||"？";
-  const id=document.createElement("span");id.textContent=it.id+(it.expect.length?" · 整理本："+it.expect.join(""):"")+(it.note?" · "+it.note:"");
+  const ch=document.createElement("span");ch.className="ch";ch.textContent=it.expect.length?it.expect.join(""):(it.shows||"？");
+  const id=document.createElement("span");id.textContent=it.id+(it.note?" · "+it.note:"");
   m.append(ch,id);box.appendChild(m);
-  const H=it.wy1-it.wy0,win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+H;
-  const im=document.createElement("img");im.src=it.img;im.alt="列图";im.style.top=(-it.wy0/H*100)+"%";win.appendChild(im);
-  for(const n of ["main","alt"])for(const g of it.grids[n]||[])for(const y of [g[0],g[1]]){
-    if(y<it.wy0||y>it.wy1)continue;const d=document.createElement("div");d.className="ln "+n;d.style.top=((y-it.wy0)/H*100)+"%";win.appendChild(d)}
-  for(const b of it.tbox){const d=document.createElement("div");d.className="tb";
-    d.style.left=(b[0]/it.iw*100)+"%";d.style.width=((b[2]-b[0])/it.iw*100)+"%";d.style.top=((b[1]-it.wy0)/H*100)+"%";d.style.height=((b[3]-b[1])/H*100)+"%";win.appendChild(d)}
-  win.onclick=e=>{const rc=win.getBoundingClientRect();addCut(it,it.wy0+(e.clientY-rc.top)/rc.height*H);paint(box,it);stat()};
+  const W=it.wx1-it.wx0,H=it.wy1-it.wy0,win=document.createElement("div");win.className="win";win.style.aspectRatio=W+"/"+H;
+  const im=document.createElement("img");im.src=it.img;im.alt="本格";
+  im.style.width=(it.iw/W*100)+"%";im.style.left=(-it.wx0/W*100)+"%";im.style.top=(-it.wy0/H*100)+"%";win.appendChild(im);
+  win.onclick=e=>{const rc=win.getBoundingClientRect();
+    if(st.dir==="v")addCut(it,"v",it.wx0+(e.clientX-rc.left)/rc.width*W);else addCut(it,"h",it.wy0+(e.clientY-rc.top)/rc.height*H);
+    paint(box,it);stat()};
   box.appendChild(win);
-  const lg=document.createElement("div");lg.className="legend";lg.innerHTML="<b class=m>红虚线</b>主切法　<b class=a>蓝虚线</b>备选　黄框＝本格　<b class=g>绿线</b>＝你画的切线（点图加线，点线取消）";box.appendChild(lg);
-  const qb=document.createElement("div");qb.className="qb";
-  for(const [v,t] of D.options){if(v==="cut")continue;const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
-    b.onclick=()=>{const r=lab(it);if(r&&r.v===v)S.clear(it.id);else setRaw(it,v,[]);paint(box,it);stat()};qb.appendChild(b)}
-  const cl=document.createElement("button");cl.type="button";cl.textContent="清掉重画";cl.onclick=()=>{S.clear(it.id);paint(box,it);stat()};qb.appendChild(cl);
-  box.appendChild(qb);const cn=document.createElement("div");cn.className="cn";box.appendChild(cn);
-  paint(box,it);return box;
+  const row=document.createElement("div");row.className="row";row.append("点哪里切　");
+  for(const [d,t] of [["v","竖切"],["h","横切"]]){const b=document.createElement("button");b.type="button";b.textContent=t;b.dataset.d=d;
+    b.onclick=()=>{st.dir=d;S.save();syncDir()};row.appendChild(b)}
+  box.appendChild(row);paint(box,it);return box;
 }
+function syncDir(){for(const b of document.querySelectorAll(".row button"))b.setAttribute("aria-pressed",String(b.dataset.d===st.dir))}
 const NP=()=>Math.max(1,Math.ceil(D.items.length/P));
 function stat(){
-  const n={cut:0,keep:0,unsure:0};for(const it of D.items){const r=lab(it);if(r)n[r.v]++}
-  const got=n.cut+n.keep+n.unsure;
-  $("stat").textContent=`已审 ${st.seen}/${NP()} 页 · 已定 ${got}/${D.items.length} 格（切 ${n.cut}、不切 ${n.keep}、看不出 ${n.unsure}）`;
+  const got=D.items.filter(it=>cutsOf(it).length).length;
+  $("stat").textContent=`已审 ${st.seen}/${NP()} 页 · 已画线 ${got}/${D.items.length} 格`;
   $("bar").style.width=(got/Math.max(1,D.items.length)*100)+"%";
 }
 function render(){
   st.page=Math.min(Math.max(0,st.page),NP()-1);
   const L=$("list");L.textContent="";
-  D.items.slice(st.page*P,(st.page+1)*P).forEach((it,i)=>L.appendChild(card(it,i)));
+  D.items.slice(st.page*P,(st.page+1)*P).forEach(it=>L.appendChild(card(it)));
+  syncDir();
   $("pg").textContent=`第 ${st.page+1} / ${NP()} 页`;
   $("sub").textContent=`册 ${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`;
-  $("hint").textContent=D.hint||"每张卡是一格附近的列图。框里被并进了几个小字就在字与字之间画切线：点图加一条绿线，点已有绿线取消；这格其实不用切点「不切」；看不出点「看不出」。每点一下就存后台。没点的格不算数。";
+  $("hint").textContent=D.hint||"点哪里切，就在哪里画一条绿线（默认竖线，双行小字左右并排从中间切开；要横着切就点下面「横切」）。点已有的线取消。每点一下就存后台。没画线的格不算数。";
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
   for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"完成":"下一页";
   stat();S.save();
 }
 function exportAll(){
   const labels=[],unconfirmed=[];
-  for(const it of D.items){const r=lab(it);
-    if(r)labels.push({cell:it.id,label:r.v,cuts:r.cuts||[],cuts_page:(r.cuts||[]).map(y=>Math.round((y*it.k+it.c)*10)/10),how:S.how(it.id)});else unconfirmed.push(it.id)}
+  for(const it of D.items){const cs=cutsOf(it);
+    if(cs.length)labels.push({cell:it.id,label:"cut",cuts:cs,cuts_page:cs.map(c=>toPage(it,c)),how:S.how(it.id)});else unconfirmed.push(it.id)}
   return {page_type:TPL.type,tpl_version:TPL.version,book:D.book,pages_seen:st.seen,labels,unconfirmed};
 }
 function next(){
