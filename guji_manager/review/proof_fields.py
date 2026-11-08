@@ -18,6 +18,7 @@ PROOF_FIELDS_SCHEMA = "guji-proof/0.2"
 LIB_TOP_N = 5
 CTX_WHY_MAX = 200
 DIAN_SRC = "punct_llm"
+REFS_MAX = 5
 NO_DOUBT = ["none"]          # 无疑问码但仍待审时的占位
 
 
@@ -45,6 +46,16 @@ def _stale(sv: dict) -> dict | None:
     return {"c": c, "ts": sv.get("ts"), "state": "withdrawn" if sv.get("withdrawn") else (sv.get("status") or "stale")}
 
 
+def _refs(raw) -> list[dict]:
+    """来源链接 [{u, t}]：只收 http(s)，最多 REFS_MAX 条，标题截 60 字；坏项丢弃。"""
+    out = []
+    for r in raw or []:
+        u = str((r or {}).get("u") or "").strip()
+        if u.startswith(("http://", "https://")) and len(out) < REFS_MAX:
+            out.append({"u": u, "t": str(r.get("t") or u)[:60]})
+    return out
+
+
 def pending_fields(card: dict) -> dict:
     """卡 → 0.2 新增字段（键序固定；值为空的键不出）。不含 `img`／`ex`。"""
     out: dict = {"why": why_codes(card)}
@@ -63,11 +74,16 @@ def pending_fields(card: dict) -> dict:
             out["ctx"]["why"] = str(ctx["why"])[:CTX_WHY_MAX]
         out["margin"] = _num(ctx["margin"], 4)
     dian = card.get("dian")
-    if dian and dian.get("char"):
+    if dian:
         # 点校倾向字（点校阶段 AI 文意判读，未放行的格）：占用 ctx 位，src 固定 punct_llm；网页提示不预选
-        out["ctx"] = {"c": dian["char"], "src": DIAN_SRC}
-        if dian.get("why"):
-            out["ctx"]["why"] = str(dian["why"])[:CTX_WHY_MAX]
+        why = str(dian["why"])[:CTX_WHY_MAX] if dian.get("why") else ""
+        if dian.get("char"):
+            out["ctx"] = {"c": dian["char"], "src": DIAN_SRC, **({"why": why} if why else {})}
+        elif why:
+            out["dnote"] = why         # 没有倾向字（弃权、字不在候选）时只带查证备注
+        refs = _refs(dian.get("refs"))
+        if refs:
+            out["refs"] = refs
     ref = card.get("ref")
     if ref and ref.get("char"):
         out["ref"] = {"c": ref["char"], "op": ref.get("op")}
