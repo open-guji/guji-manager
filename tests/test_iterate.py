@@ -218,3 +218,27 @@ def test_note_main_round_placeholder(monkeypatch):
     monkeypatch.setattr(cv, "connect", lambda: Conn(True), raising=False)
     assert pr.note_main_round("b1", "r5") and not written          # 已有就不动
     assert not pr.note_main_round("b1", "job207")                  # 没有轮次的标签不占
+
+
+def test_auto_round_upgrades_pending_placeholder(monkeypatch):
+    """标 main 时占位的「待统计」（verdict=pending＋备注）被汇总后要升成 main，不能永远停在待统计（11-08 第 6／7 轮踩过）。"""
+    from guji_manager.iterate import progress_rounds as pr
+
+    class Cur:
+        def __init__(self, rows): self.rows = rows
+        def fetchall(self): return self.rows
+
+    class Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, q, args=()):
+            if "FROM progress.volume" in q:
+                return Cur([("11", {"a31.main": {"label": "r5"}, "cv.pack": {"label": "cv0.6.3-c30-g19-r5", "cells": 2000, "review": 3, "pick": "main"}}, None)])
+            if "FROM progress.metric" in q:
+                return Cur([("r5", {"verdict": "pending", "note": "已标 main，人审率待统计（占位）", "date": "2026-11-07"}, "第5轮")])
+            return Cur([])
+
+    import guji_manager._cv as cv
+    monkeypatch.setattr(cv, "connect", lambda: Conn(), raising=False)
+    out = pr.auto_round("bk", "r5", write_db=False)
+    assert out["verdict"] == "main" and "note" not in out and out["date"] == "2026-11-07" and out["pending"] == 3
