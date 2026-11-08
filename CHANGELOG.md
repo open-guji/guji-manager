@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.23] - 2026-11-07
+
+- 页面范围 pagemeta（PATCH，#343）：新命令 `guji source pagemeta` 出每页源图位置（H／src）与版框内容区（content）旁车文件；不动产物。
+- 待审原因 L04 `lib_diff` 分类（PATCH，#347；#337 是文档与 benchmark）：带 `boundary_ink` 旗的格归 S04 bleed（A22 残片判据）；只改分类、不放行。
 - 新页型 `seg_cut` 1.0.0 人裁切线（PATCH，缺省不影响旧页；SJ 需求）：一格一段列图叠两套格网，点图画切线或标不切/看不出，结果带列图与页图坐标；CLI `build seg_cut`、`segcut-apply`。
 - 带框重的字块不进字形库（PATCH，Sheldon 11-08 定；只在 `SELFCHECK_BOOKS` 开了 frame 的书，即殿本）：`glyphdb_admit` 人裁进库前按库里同字刻例比「端区比字身宽多少」（`seg_defect.lib_frame_heavy`），带框重的计入 `no_lib`／`frame_heavy`，格键与特征记进 `frame_heavy_keys` 反馈切分；库里同字不到 5 个照收。
 ## [0.4.22] - 2026-11-07
