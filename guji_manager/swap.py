@@ -41,9 +41,9 @@ def parse_books(spec: str) -> list[str]:
             continue
         m = re.fullmatch(r"vol(\d+)-vol(\d+)", part)
         if m:
-            out += [f"vol{i}" for i in range(int(m[1]), int(m[2]) + 1)]
+            out += [f"vol{i:02d}" for i in range(int(m[1]), int(m[2]) + 1)]
         elif re.fullmatch(r"vol\d+", part):
-            out.append(part)
+            out.append(f"vol{int(part[3:]):02d}")
         else:
             raise SystemExit(f"--books 看不懂 {part!r}（如 vol20-vol99 或 vol23,vol24）")
     return list(dict.fromkeys(out))
