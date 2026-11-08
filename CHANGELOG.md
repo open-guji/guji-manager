@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 存包时随包写人审率 `pack_stats`（PATCH，A31 11-08，Sheldon 定：数据随 pipeline 跑完自动更新，网站直接读中心库）：整册存包成功后按 seed_admit 数全册格与待审格，写进 `progress.volume.extra['cv.packs'][<包标签>]`（每册留最近 8 个）；标 main 钩子据此直接收一轮、`progress-sync --fix` 也优先用它；不连库、无 seed_admit、只打几步的包静默跳过，永远不抛。
 - 后台看板自动对账 `guji-manager progress-sync`（PATCH，A31 11-08，Sheldon 定：看板必须自动更新到最新，不能靠手动）：对一遍中心库里的事实——线上单 rev ≠ 看板 `pending_rev`（重跑 cv `progress_report`）、`a31.main` ≠ `cv.pack`（取 ★main 包重算写看板）、已标 main 的轮次在「迭代轮次」里还是占位（`auto_round` 汇总）——落后的就补，幂等，可每小时跑；不带 `--fix` 只报告（有落后退出码 1）。同时：标 main 钩子 `push_pack_rate` 缺 ai-team 检出时改为自己浅克隆一份（原来静默跳过，11-08 第 6／7 轮包口径和轮次因此停在「待统计」）；`auto_round` 汇总后把占位的 `verdict=pending`／备注升成 main（原来永远停在待统计）。不动产物、指纹（L0）。
 - 执行方成功存包后清本机该册的 `cache/<册>` 和 `products/<册>`（PATCH，A30 11-08，Sheldon 同意）：执行机磁盘被各册缓存和产物副本堆满（殿本工作区 14 GB，cache 7.3 GB、products 4.4 GB），剩余低于 3 GB 就不领单。包已推中心库，这两处可重建；`cache/_judge`、`cache/glyph-derived`、工作区仓、册 yaml、feedback、output 不动，失败单和没存包的单不清。`GUJI_JOBS_KEEP_ARTIFACTS=1` 关闭。不动产物、指纹（L0）。
 - `_cv._FALLBACK` 补登记参校本属性三个名字 `RefProfile`、`load_reference_profile`、`ref_profile_lint`（PATCH，cv #1273 manager_api 新导出，test_cv_surface 红；A22 11-08）。
