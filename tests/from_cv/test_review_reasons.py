@@ -50,6 +50,16 @@ def test_occluded_split_by_ref():
     assert _cls([a, b]) == [R.OCCLUDED_WITH_REF, R.OCCLUDED_NO_REF]
 
 
+def test_occluded_jys_ref_goes_to_hard_pair():
+    """D01 深挖（A24 11-08）：遮挡格、整理本字是己已巳日曰之一 → H01（印泥下库首位是噪声、机器字 None，原先永远落 D01）；其余遮挡格照旧分 D01／D02。"""
+    a = Cell(id="v:1:1:1", char=None, ref="巳", cands=[["唐", 0.8]], doubts=["occluded"])
+    b = Cell(id="v:1:1:2", char=None, ref="曰", doubts=["occluded"], evidence={"occluded": {"density": 30.0}})
+    c = Cell(id="v:1:1:3", char=None, ref="官", cands=[["宮", 0.99]], doubts=["occluded"])
+    d = Cell(id="v:1:1:4", char=None, ref="〓", doubts=["occluded"])
+    e = Cell(id="v:1:1:5", char="甲", ref="巳", doubts=["occluded"])      # 机器字不在组内：不当极难形近
+    assert _cls([a, b, c, d, e]) == [R.HARD_PAIR, R.HARD_PAIR, R.OCCLUDED_WITH_REF, R.OCCLUDED_NO_REF, R.OCCLUDED_WITH_REF]
+
+
 def test_page_and_column_unaligned():
     page = [Cell(id=f"v:2:{i // 20 + 1}:{i % 20 + 1}", char="甲", ref=None) for i in range(10)]
     assert set(_cls(page)) == {R.SEG_PAGE_UNALIGNED}

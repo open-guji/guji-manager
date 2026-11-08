@@ -245,9 +245,22 @@ def _group_kind(c: Cell, x: Context | None = None) -> R | None:
 HARD_GROUPS = frozenset({"jys", "ry"})
 
 
+def _occluded(c: Cell) -> bool:
+    return "occluded" in c.codes or bool(c.evidence.get("occluded"))
+
+
+def _occluded_hard_ref(c: Cell) -> bool:
+    """遮挡格、整理本字是己已巳日曰之一（A24 D01 深挖 11-08，第 7 轮 52 格里 19 格，看图 19/19 图上就是这一族的字）。
+    印泥下库首位是噪声（唐、臯、包…），机器字是 None，所以 `_hard_pair` 的「三者全在组内」永远不中；但这一格就算没有印章也只能按文意定
+    是组里哪一个，留在 D01 只会让人审白看一遍。按「为什么还停在这里」归 H01，和不遮挡的己已巳同一条路（折叠组／文意裁定）。只改分类，不放行。"""
+    return _occluded(c) and c.has_ref and c.ref in HARD_CHARS and (not c.char or c.char in HARD_CHARS)
+
+
 def _hard_pair(c: Cell, x: Context) -> bool:
     """极难形近：参校字／机器字／库首位全在己已巳日曰内，且①三者至少两个不同，或②（A24 Z01 深挖 11-06）三者同字但字组是 jys/ry、
     或库候选前两名都在己已巳日曰内——字形分不开，按 11-05 口径归 H01 按文意定，不再落 Z01。只改分类，不放行。"""
+    if _occluded_hard_ref(c):
+        return True
     s = {v for v in (c.ref, c.char, c.top) if v}
     if not s or not s <= HARD_CHARS:
         return False
@@ -294,8 +307,8 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}) or (c.frag and not c.ref),
-    R.OCCLUDED_WITH_REF: lambda c, x: ("occluded" in c.codes or bool(c.evidence.get("occluded"))) and c.has_ref,
-    R.OCCLUDED_NO_REF: lambda c, x: "occluded" in c.codes or bool(c.evidence.get("occluded")),
+    R.OCCLUDED_WITH_REF: lambda c, x: _occluded(c) and c.has_ref and not _occluded_hard_ref(c),
+    R.OCCLUDED_NO_REF: lambda c, x: _occluded(c) and not _occluded_hard_ref(c),
     R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and (
         (not c.has_ref and not ref_missing(c.ref) and x.page_noref[_page(c.id)] >= PAGE_MIN)
         or (c.has_ref and c.char != c.ref and not c.group and (c.col_agree is None or c.col_agree < COL_AGREE_MAX)
