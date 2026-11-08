@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- `cellvotes draft` 增加票的去向分流（PATCH，A34 11-08，Sheldon 定：所有投票结果写中心库，切分线自己按批次找）：除原有输出外，多出 `route.md`（改文本批／切分类／无字／挂起各几格，切分类按页汇总）和 `structure.tsv`（页、列、格、类、页面显示字、备注，切坏无字、错位、破损、带备注的看不出），交切分线用；不改落票逻辑、不动产物、指纹（L0）。
 - 任务库连接数满时退避重试（PATCH，A30 11-08；worker-13 重起报 `too many connections for role jobs_rw` 直接退出）：`jobsdb.connect` 遇到角色连接数满（SQLSTATE 53300）随机退避重试最多 8 次（单次最长约 60 秒，`GUJI_JOBSDB_FULL_RETRIES` 可调），别的连接错误仍短重试 10 次。不动产物、指纹（L0）。
 ## [0.4.25] - 2026-11-08
 
