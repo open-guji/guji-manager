@@ -545,8 +545,8 @@ def _page_kind(root: Path, name: str) -> str | None:
     return None
 
 
-#: align_ref 的 note：本册没配整理本／证人（cv align_ref `未配置整理本`／`未配置证人`）。
-NOREF_NOTES = ("未配置整理本", "未配置证人")
+#: align_ref 的 note：本册没配整理本／证人，或册里没写 references 读不到（cv align_ref `未配置整理本`／`未配置证人`／`整理本读不到`；QTW 11-08：全唐文 002 的 208 页都是「整理本读不到」）。
+NOREF_NOTES = ("未配置整理本", "未配置证人", "整理本读不到")
 
 
 def _ref_by_design(root: Path, name: str) -> bool:
