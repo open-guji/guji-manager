@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 
 TERMINALS = set("。！？")
@@ -82,6 +83,11 @@ def sent_export(char: dict, punct: dict | None, entity: dict | None, *,
             continue
         ents.append((s, en + 1, e))
 
+    marks_g.sort(key=lambda x: x[0])
+    mg_keys = [g for g, _ in marks_g]
+    ents.sort(key=lambda x: x[0])
+    ent_keys = [x[0] for x in ents]
+
     out = []
     for s, e in _split(flat, punct_at):
         cells = [flat[i][0] for i in range(s, e)]
@@ -90,11 +96,12 @@ def sent_export(char: dict, punct: dict | None, entity: dict | None, *,
         t = "".join(flat[i][1] for i in range(s, e))
         bad = [c for c in cells if c in assumed_cells]
         marks = []
-        for g, m in marks_g:
-            if s < g <= e or (g == s and m in OPENERS):
+        for g, m in marks_g[bisect.bisect_left(mg_keys, s):bisect.bisect_right(mg_keys, e)]:
+            # g==s 只收开括号类（属本句句首）；g==e 排除开括号类（属下一句句首）
+            if (g == s and m in OPENERS) or (s < g < e) or (g == e and m not in OPENERS):
                 marks.append((g - s, 0, {"kind": "punct", "ch": m, "pos": g - s}))
-        for es, ee, ent in ents:
-            if es >= s and ee <= e:
+        for es, ee, ent in ents[bisect.bisect_left(ent_keys, s):bisect.bisect_left(ent_keys, e)]:
+            if ee <= e:
                 tg = ent.get("target") or {}
                 d = {"kind": "entity", "type": ent.get("type"), "start": es - s, "end": ee - s,
                      "entity_id": tg.get("entity_id"), "status": tg.get("status", "new_candidate"),
