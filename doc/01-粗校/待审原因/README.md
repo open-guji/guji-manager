@@ -45,8 +45,8 @@
 
 | 码 | 原因 | 名 | 去向 | 负责 | 四库总目 | 史记 | 全唐文 |
 |---|---|---|---|---|---:|---:|---:|
-| D01 | [`occluded_with_ref`](occluded_with_ref/README.md) | 有遮挡 | 先改算法，改完剩下的并入 llm | A32 | 108 | 4 | 0 |
-| D02 | [`occluded_no_ref`](occluded_no_ref/README.md) | 有遮挡且参校本缺 | 一定人审 | A32 | 137 | 0 | 1 |
+| D01 | [`occluded_with_ref`](occluded_with_ref/README.md) | 有遮挡 | 先改算法，改完剩下的并入 llm | A32 | 33‡ | 4 | 0 |
+| D02 | [`occluded_no_ref`](occluded_no_ref/README.md) | 有遮挡且参校本缺 | 一定人审 | A32 | 53‡ | 0 | 1 |
 | H01 | [`hard_pair`](hard_pair/README.md) | 极难形近 | 留到标点、专名阶段 | A24 | 432 | 117 | 21 |
 | L01 | [`lib_missing`](lib_missing/README.md) | 少见的字 | 一定人审 | A24 | 354 | 112 | 5 |
 | L02 | [`lib_sparse_dissent`](lib_sparse_dissent/README.md) | 刻例太少（11-07 起并入原 L03） | 大模型统一过一遍 | A23 | 84\* | 10\* | 0\* |
@@ -83,6 +83,8 @@
 \* L02、L03 两行接了字形库重算（L02 用四库总目 g19、史记 g6、全唐文中心库最新；L03 用三书中心库 11-06 最新 glyph.db；史记的刻例数都含借来的全唐文刻例），其余行没接字形库，所以这些格在其余行（多半是 P01、P02、L04）里也各算了一次，合计不能直接相加。L02 是 11-06 manager #258 之后的口径：参校字库里 0 例的格改判 L01（四库总目 277、史记 32、全唐文 1 格，是同一批包上 L02 改判前后之差，库用四库总目 g19、史记 g6；A24 用三书中心库最新 glyph.db 算 L01 的增量是 366、36、1，见 `tools/l01_profile.py`），这部分没加进 L01 那一行（L01 行没接字形库）（A23 11-06，见 [L02 页](lib_sparse_dissent/README.md)、[L03 页](lib_sparse_agree/README.md)）。
 
 † L01–L03 边界 11-06 再调整（Sheldon 同意）：刻例数只算本书版本，参校字本书库 0 例的格一律归 L01。L03 行是调整后接三书中心库 11-06 glyph.db 现算的数；同一批包上 L01 再增 殿本 197、史记 22、全唐文 0，L02 史记 13→19、其余不变，L04 不动（见 [L03 页](lib_sparse_agree/README.md)）。
+
+‡ D01、D02 殿本数是第 7 轮（cv v0.6.17 ★main，vol20–99）11-08 现算：D01 原 52 格，其中己已巳 19 格改归 H01（manager 本次改动，见 [D01 页](occluded_with_ref/README.md)）；D02 53 格。史记、全唐文仍是 11-06 的数。
 
 - 形近字组 Z01–Z07 之间怎么分：见 [Z类梳理](Z类梳理.md)（A24 11-07，新分法已实施）。Z 行的 Z01–Z04 数字是 11-06 旧口径；新口径三书现算见 Z类梳理（Z01 551、Z02 73、Z03 248、Z04 147、Z07 124；\* 为新口径）。
 
