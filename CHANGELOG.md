@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 新页型 `seg_cut` 1.0.0 人裁切线（PATCH，缺省不影响旧页；SJ 需求）：一格一段列图叠两套格网，点图画切线或标不切/看不出，结果带列图与页图坐标；CLI `build seg_cut`、`segcut-apply`。
 ## [0.4.22] - 2026-11-07
 
 - `guji corpus pin` 崩溃（PATCH，A31 11-07 报）：`cmd_corpus` 读 `args.shift_book_ver`，parser 只有 `--book-ver`，一跑就 AttributeError；`guji recheck` 同病（读 `args.shift_book`，应为位置参数 `book`）。都是 #145 给 rekey-cells 加 `--shift-book` 时整词替换带坏的。改回后新增守卫 `tests/test_cli_args_guard.py`：每条子命令处理函数读的 `args.X` 都要是真 parser 定义过的参数。不动产物、指纹（L0）。
