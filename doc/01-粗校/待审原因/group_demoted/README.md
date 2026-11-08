@@ -166,3 +166,11 @@ manager reasons._group_kind：复核、解法折叠后只有 1 个字、不是 r
 ## 九、材料
 
 ai-team `待审原因深挖/Z03-逐格-三书247格.tsv`（逐格：类、放行字、整理本字、复核字、库首位、给字的解法、是否新增）、`Z03-bench-seed.tsv`、`图/`、`Z03-scripts/`（`extract.py` 取数并输出 `dis_kept`、`crops.py` 裁格图、`sheet.py`／`bigsheet.py`／`mont.py` 拼图）。云端取数装法同 Z01：假工作区（`workspace.yaml`＋`.central.json`）、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`guji products pack fetch`、`guji source pull`。★main 包各册生成的 cv 版本不一（殿本 80 册是 0.6.16，其余旧包），口径是「各册 ★main 现有产物」。
+
+## 十、第 7 轮复查（2026-11-08，殿本 vol20–99，cv v0.6.17，★main 现算）
+
+- Z03 现 **145 格**（第 6 轮同 80 册同口径 134）。换图源重切，组成变动大：走 53、进 64，留 81。走的里面一二 16、宮宫 11、賓賔 5（①②生效）；进的里面一二 23、入人八 7、日曰折叠组外 ly 5、guan 5。
+- **宫官**（guan 18 格）不是同写法：文意 L3 high 给「官」，放行「宫」，是真文意推翻，不归 ①。
+- **一二 27 格**：yr_bars 单路数出「二」，ids 低 margin 弃权。我看了 27 格原图：多为单横，横上方是邻字残笔，放行「一」＝整理本多数对。所以 #1229 的改字规则（要两路图像同给别字）不触发是对的，没有误改。该留的没留：19 格 ids 刻形＝放行字＝整理本，只有 yr_bars 反对 → cv#1245 `group_flow_dissent_keep_form`，旧 0 新 19。
+- 剩下 8 格：ids 判了二或一但 margin 够大（6、3、10、26 等）、整理本二（20）等，留人审。
+- 看图表：`图/7-r7-yr27.png`；底表 `Z03-r7-yr27.json`。
