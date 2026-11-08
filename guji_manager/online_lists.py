@@ -146,12 +146,15 @@ def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
             return
         out = os.path.join(ws, "reports", book, "_pack_rate")
         os.makedirs(out, exist_ok=True)
+        # run.py 要调 `guji` 命令：venv 的 bin 可能不在 PATH 里，把 sys.executable 所在目录补到最前面
+        env = dict(os.environ)
+        env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
         with open(os.path.join(out, "run.log"), "ab") as f:
             # 包口径写完后接着汇总这一轮，写后台「迭代轮次」（每标一册更新一次，册数随之增长）
             cmd = [sys.executable, "-u", run_py, "--ws", ws, "--vol-names", book, "--pick", "main", "--out", out, "--push-progress", bid]
             nxt = [sys.executable, "-u", "-m", "guji_manager.iterate", "auto-round", "--book", bid, "--label", label] if label else None
             sh = " ".join(shlex.quote(x) for x in cmd) + (" && " + " ".join(shlex.quote(x) for x in nxt) if nxt else "")
-            subprocess.Popen(["/bin/sh", "-c", sh], stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+            subprocess.Popen(["/bin/sh", "-c", sh], stdout=f, stderr=subprocess.STDOUT, start_new_session=True, env=env)
         print(f"包口径人审率已在后台统计并写看板{'，随后汇总本轮写「迭代轮次」' if label else ''}，日志 {out}/run.log")
     except Exception as e:  # noqa: BLE001
         print(f"（包口径人审率没起来：{e}）")
