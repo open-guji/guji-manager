@@ -164,13 +164,40 @@ def publish_batch(books: list[str], text_id: str) -> str:
         time.sleep(45)
 
 
-def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path, book_text: Path | None = None) -> None:
+def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dict) -> None:
+    """换单后刷新后台「文本整理」看板（pending_review 等）。必须在 db sync 之后跑：auto_cycle 里那次是在新单推库前算的，
+    读到的还是旧单（11-08 vol44 显示 377、实际 80）。失败要响，并记进 state，不能静默。"""
+    cv = cv or (Path(os.environ["GUJI_CV"]) if os.environ.get("GUJI_CV") else None)
+    script = cv / "scripts" / "zhengli" / "progress_report.py" if cv else None
+    if not script or not script.exists():
+        print(f"⚠ 看板没刷新：找不到 progress_report.py（cv={cv}），请手动 python progress_report.py --books {','.join(books)}", file=sys.stderr)
+        for b in books:
+            state["books"][b]["progress"] = "no-script"
+        return
+    for b in books:
+        r = subprocess.run([sys.executable, str(script), "--books", b, "--text-id", text_id],
+                           capture_output=True, text=True, env={**os.environ, "PYTHONPATH": str(cv)})
+        ok = r.returncode == 0 and "已写 progress" in r.stdout
+        state["books"][b]["progress"] = "ok" if ok else "failed"
+        if not ok:
+            print(f"⚠ {b} 看板没刷新：{(r.stdout + r.stderr).strip()[-300:]}", file=sys.stderr)
+
+
+def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path, book_text: Path | None = None,
+                       cv: Path | None = None) -> None:
     """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
 
     全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
     from .cli_db import sync_workspace
     audit_books(ws, done, book_text, text_id, state, sp)          # 产物包核过就清，所以在发布前出机器改字抽检数据
     sync_workspace(ws, admit=False, no_glyph=True)
+    refresh_progress(done, text_id, cv, state)                       # 新单已进中心库，看板才算得对
+    save_state(sp, state)
+    if os.environ.get("GUJI_SWAP_NO_PUBLISH"):          # 并行分片时不各自发布（网站发布 workflow 串行排队、互相取消），最后统一发
+        for b in done:
+            state["books"][b].update(status="done", publish="deferred")
+        save_state(sp, state)
+        return
     concl = publish_batch(done, text_id)
     for b in done:
         want, got = expected_rev(ws, b, text_id), live_rev(text_id, int(b[3:]))
@@ -222,7 +249,7 @@ def cmd_run(a) -> int:
         return 0
     for chunk in chunks(pub_only, a.batch_size):
         precheck(ws, state)
-        publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text))
+        publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv)
     for chunk in chunks(todo, a.batch_size):
         precheck(ws, state)                                  # 每批之间再核一次账本与磁盘
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
@@ -239,7 +266,7 @@ def cmd_run(a) -> int:
         done = [b for b in chunk if state["books"][b]["status"] == "done"]
         if not done:
             continue
-        publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text))
+        publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text), cv)
     rep = write_audit_report(ws, state)
     if rep:
         print(f"机器改字抽检表：{rep}", file=sys.stderr)

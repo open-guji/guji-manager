@@ -99,6 +99,31 @@ def _note_round(bid: str, label: str) -> None:
         print(f"（看板没占上这一轮：{e}）")
 
 
+def _promote_from_packs(bid: str, ch: str, label: str) -> bool:
+    """标 main 后：这册 ★main 包存包时已把人审率写进 extra['cv.packs']（`pack_stats.record`）→ 直接转成看板的包口径 `cv.pack`
+    并收这一轮（`auto_round`）。库里没有这个包的数（旧包、存包的机器没连库）返回 False，由调用方走老办法（下包重算）。"""
+    try:
+        import json
+        import time
+        from ._cv import connect
+        from .iterate.progress_rounds import auto_round
+        from .pack_stats import pack_of
+        with connect() as conn:
+            row = conn.execute("SELECT extra FROM progress.volume WHERE book_id = %s AND vol = %s", (bid, ch)).fetchone()
+            st = pack_of((row[0] if row else None), label)
+            if not st:
+                return False
+            pack = {"label": label, "cells": st["cells"], "review": st["review"], "rate": round(st["review"] / st["cells"], 5),
+                    "pick": "main", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            conn.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (bid, ch, json.dumps({"extra": {"cv.pack": pack}}, ensure_ascii=False), "A31"))
+        auto_round(bid, label)
+        print(f"包口径人审率取自存包时的统计：{label} 待审 {st['review']} / {st['cells']} 格，已写看板并收轮")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"（从存包统计取人审率没成：{e}；改走下包重算）")
+        return False
+
+
 def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
     """标 main 后在后台统计这册 ★main 包的人审率，写进后台看板（progress.volume.extra['cv.pack']）。
     要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、NEON_DATABASE_URL；缺了就静默跳过。永远不抛。"""
@@ -110,10 +135,14 @@ def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
             return
         if label:
             _note_round(bid, label)   # 先占位：后面的统计跑不成，看板也看得到这一轮
-        repo = os.environ.get("GUJI_AITEAM_REPO", os.path.expanduser("~/ai-team"))
-        run_py = os.path.join(repo, "domain", "CV", "质检", "按包统计人审率", "run.py")
-        if not os.path.isfile(run_py):
-            print(f"（包口径人审率没自动更新：没找到 {run_py}；设 GUJI_AITEAM_REPO；看板「迭代轮次」已先占位，待统计）")
+            if _promote_from_packs(bid, ch, label):
+                return                # 存包时已随包算好待审数：直接用，不用再下包重算（也不再依赖 ai-team 检出）
+        from .progress_sync import RUN_PY, ensure_ai_team
+        team = ensure_ai_team()     # 没有检出就自己浅克隆一份；以前这里缺检出静默跳过，看板包口径就此停住（11-08）
+        run_py = str(team.joinpath(*RUN_PY)) if team else ""
+        if not run_py:
+            print("（包口径人审率没自动更新：没有 ai-team 检出且克隆失败；设 GUJI_AITEAM_REPO。看板「迭代轮次」已先占位，"
+                  "之后 `guji-manager progress-sync --fix` 会补）")
             return
         out = os.path.join(ws, "reports", book, "_pack_rate")
         os.makedirs(out, exist_ok=True)

@@ -54,3 +54,27 @@ def test_slim_only_two_keys():
 def test_ctx_without_margin_is_omitted():
     f = pending_fields(dict(CARD, ctx={"char": "曰", "margin": None, "source": "context"}))
     assert "ctx" not in f and "margin" not in f
+
+
+def test_dian_hint_overrides_ctx_and_clips_why():
+    f = pending_fields(dict(CARD, dian={"char": "曰", "why": "某" * 300}))
+    assert f["ctx"]["c"] == "曰" and f["ctx"]["src"] == "punct_llm" and len(f["ctx"]["why"]) == 200
+    assert "margin" not in f["ctx"]
+
+
+def test_dian_hint_without_char_is_ignored():
+    f = pending_fields(dict(CARD, dian={"char": "", "why": "x"}))
+    assert f["ctx"]["src"] == "prior"
+
+
+def test_dian_note_and_refs_without_char():
+    f = pending_fields(dict(CARD, dian={"char": "", "why": "查不到", "refs": [
+        {"u": "https://zh.wikisource.org/wiki/x", "t": "維基文庫"}, {"u": "javascript:alert(1)", "t": "x"}] + [{"u": f"https://e/{i}"} for i in range(9)]}))
+    assert f["dnote"] == "查不到" and f["ctx"]["src"] == "prior"
+    assert len(f["refs"]) == 5 and f["refs"][0] == {"u": "https://zh.wikisource.org/wiki/x", "t": "維基文庫"}
+    assert all(r["u"].startswith("https://") for r in f["refs"])
+
+
+def test_dian_refs_with_char():
+    f = pending_fields(dict(CARD, dian={"char": "白", "why": "杜詩原句", "refs": [{"u": "https://a/b", "t": "杜詩"}]}))
+    assert f["ctx"] == {"c": "白", "src": "punct_llm", "why": "杜詩原句"} and f["refs"] == [{"u": "https://a/b", "t": "杜詩"}]
