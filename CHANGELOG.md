@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.4.25] - 测试中
+## [0.4.25] - 2026-11-08
 
 - 中心库备份大文件切片上传＋失败重试（PATCH，A31 11-08，Sheldon/协调者定）：`datastore backup` 把整表 gz 一次 PUT 上传，`files` 表压缩后 220 MB 被边缘掐断（`Connection reset`），备份连续失败。现在 `upload` 把超过 64 MB 的文件切成 `<表>.copy.gz.partNNN`，清单该表记 `parts`；单个文件上传失败重试 4 次；`fetch`（含 `restore-check`）按 `parts` 拼回，旧备份（无 `parts`）照读。不动产物、指纹（L0）。
 
