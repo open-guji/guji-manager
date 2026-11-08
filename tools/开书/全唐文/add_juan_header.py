@@ -13,12 +13,13 @@ def cn(n):
     if r<10: return h+'零'+D[r]
     return h+(D[r//10]+'十'+(D[r%10] if r%10 else '') if r>=20 else '一十'+(D[r%10] if r%10 else ''))
 
-def add_headers(lines,min_juan=1):
+def add_headers(lines,min_juan=1,also=()):
+    """also：小于 min_juan 也要补的卷号（册003 卷1–2，2026-11-08；册04 卷3–6 已定稿不动）。"""
     res=[];n=0
     for i,l in enumerate(lines):
         res.append(l)
         m=re.match(r'#@ KR4h0168_NKFB_(\d{4})-01a$',l.strip())
-        if m and int(m.group(1))>=min_juan:
+        if m and (int(m.group(1))>=min_juan or int(m.group(1)) in also):
             h='欽定全唐文卷'+cn(int(m.group(1)))
             if not (i+1<len(lines) and lines[i+1]==h): res.append(h);n+=1
     return res,n

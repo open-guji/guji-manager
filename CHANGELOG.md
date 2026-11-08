@@ -2,7 +2,7 @@
 
 版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
-## [未发版]
+## [0.4.24] - 测试中
 
 - 存包时随包写人审率 `pack_stats`（PATCH，A31 11-08，Sheldon 定：数据随 pipeline 跑完自动更新，网站直接读中心库）：整册存包成功后按 seed_admit 数全册格与待审格，写进 `progress.volume.extra['cv.packs'][<包标签>]`（每册留最近 8 个）；标 main 钩子据此直接收一轮、`progress-sync --fix` 也优先用它；不连库、无 seed_admit、只打几步的包静默跳过，永远不抛。
 - 后台看板自动对账 `guji-manager progress-sync`（PATCH，A31 11-08，Sheldon 定：看板必须自动更新到最新，不能靠手动）：对一遍中心库里的事实——线上单 rev ≠ 看板 `pending_rev`（重跑 cv `progress_report`）、`a31.main` ≠ `cv.pack`（取 ★main 包重算写看板）、已标 main 的轮次在「迭代轮次」里还是占位（`auto_round` 汇总）——落后的就补，幂等，可每小时跑；不带 `--fix` 只报告（有落后退出码 1）。同时：标 main 钩子 `push_pack_rate` 缺 ai-team 检出时改为自己浅克隆一份（原来静默跳过，11-08 第 6／7 轮包口径和轮次因此停在「待统计」）；`auto_round` 汇总后把占位的 `verdict=pending`／备注升成 main（原来永远停在待统计）。不动产物、指纹（L0）。
