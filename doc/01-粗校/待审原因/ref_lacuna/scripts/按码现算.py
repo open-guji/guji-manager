@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 BOOKS = {"siku": "siku-zongmu", "sj": "988g3f0wsu", "qtw": "995ejelvk0"}
-LAYERS = ("seed_admit", "align_ref", "glyph_match")
+LAYERS = ("seed_admit", "align_ref", "glyph_match", "cell_shrink")
 
 
 def main():

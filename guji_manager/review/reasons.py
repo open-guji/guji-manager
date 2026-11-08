@@ -68,6 +68,7 @@ class Cell:
     src: str | None = None                             # 单上的来源标记；"seg_selfcheck"＝出单同字对照自检放上单的已放行格（B1③）
     page_kind: str | None = None                       # 非正文页型（border_detect_gate page_type≠body，或职名页分支 roster）；正文页是 None。非正文页不判 S01
     col_agree: float | None = None                     # 本列（含已放行格）有参校字的格里机器字＝参校字的比例；不知道是 None（照旧算弱证据）
+    bleed: bool = False                                # cell_shrink 给这格打了 boundary_ink 旗（框线／邻字墨溢进格框，A22 11-08 L04 残片判据第 2 条）；没读到就是 False
     frag: bool = False                                 # 格框明显小于本页同类格（半截字、墨点、框角），见 `FRAG_REL`；没读到 cell_shrink 就是 False
 
     @property
@@ -361,6 +362,8 @@ def seg_kind_of(c: Cell) -> str:
         return k
     if JIAZHU_UNEVEN in c.codes:
         return JIAZHU_UNEVEN
+    if c.bleed:
+        return "bleed"
     return "clipped" if c.frag and not c.ref else ""
 
 
@@ -493,6 +496,8 @@ def classify(c: Cell, ctx: Context) -> R:
                 r = R.LIB_UNRECOGNIZED
         if r is R.LIB_UNRECOGNIZED and lib_unrecognized_kind(c, ctx) == "human_unbound":
             return R.RULING_CONFLICT
+        if r is R.LIB_UNRECOGNIZED and c.bleed and lib_unrecognized_kind(c, ctx) == "lib_diff":
+            return R.SEG_DEFECT                               # 印糊整字里带 boundary_ink 旗的是溢墨切坏，归切分 S04（A22 判据，A24 11-08）
         return r
     return R.UNKNOWN
 
@@ -533,6 +538,13 @@ def _page_kind(root: Path, name: str) -> str | None:
     if any("roster" in (c.get("flags") or []) for c in rs.get("columns") or []):
         return "roster"
     return None
+
+
+def _bleed_ids(root: Path, name: str) -> set[str]:
+    """本页 cell_shrink 打了 boundary_ink 旗的格 id。"""
+    shr = _load_layer(root / "cell_shrink" / name, "char_index") or {}
+    return {ch["id"] for key in ("columns", "alt_columns") for col in shr.get(key) or []
+            for ch in col.get("chars") or [] if "boundary_ink" in (ch.get("flags") or [])}
 
 
 def _frag_ids(root: Path, name: str) -> set[str]:
@@ -578,6 +590,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
         frags = _frag_ids(root, f.name)
+        bleeds = _bleed_ids(root, f.name)
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -597,7 +610,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind, frag=cid in frags)
+                                                 col_agree=agree, page_kind=kind, frag=cid in frags, bleed=cid in bleeds)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])
