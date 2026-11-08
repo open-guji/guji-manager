@@ -64,7 +64,7 @@ D01 52 格（35 册），**34 格在首叶（p1）**，其余零散在卷内印�
 | `lane_seal_lib_veto`（+`_second`、`_min_n`） | 0.95（第二名不否决、刻例≥2） | 库否决 | 缺省 |
 | `lane_seal_shift_guard` | 开 | 整页错位护栏 | 缺省 |
 | `fold_occluded` | 关 | 遮挡格也进折叠组（要库首位也在组里） | **没开**（所以 r7 的 4 格首位在组内的己已巳也没折叠） |
-| `fold_occluded_lib_max_cov`（cv#新，seed_admit 1.67） | None（关） | 库首位在组外但 cov<此值（印泥下没把握）仍按整理本字归组；字仍待文意，只记 `fold_pending` | **建议开 0.9**（需 `fold_occluded: true`、`fold_ref_char: false`，不要同开 `fold_lib_top_in_group`） |
+| `fold_occluded_lib_max_cov`（cv#新，seed_admit 1.72） | None（关） | 库首位在组外但 cov<此值（印泥下没把握）仍按整理本字归组；字仍待文意，只记 `fold_pending` | **建议开 0.9**（需 `fold_occluded: true`、`fold_ref_char: false`，不要同开 `fold_lib_top_in_group`） |
 
 书级配置示例（殿本，待 sheldon 点头后由 A31 写进 book_defaults）：
 
@@ -80,7 +80,7 @@ params:
 ## 五、这次改了什么（11-08）
 
 1. **guji-manager `reasons.py`**：遮挡格、整理本字在 日曰己已巳、机器字为空或也在组内 → `hard_pair`（H01），不再落 D01／D02。理由：这一格就算没有印章也只能按文意定组里哪一个，留在 D01 只会让人看一遍图又定不了。只改分类，不放行，不动 `pending_reasons.yaml`。第 7 轮现算：D01 52→33，H01 +19（殿本这 41 册）；金标回放 J 19/19 归 H01、非 J 0 误归（`d_bench.py`）。
-2. **cv seed_admit 1.67** `fold_occluded_lib_max_cov`（缺省关）：让这 19 格进折叠组的「字待文意」状态，将来 H01 的文意裁定（干净会话读，写裁定库，不调 API）一并放行。单测覆盖；**没做整册回放**，开之前先用 `fold_pending` 数量对一遍（预期 19）。
+2. **cv seed_admit 1.72** `fold_occluded_lib_max_cov`（缺省关）：让这 19 格进折叠组的「字待文意」状态，将来 H01 的文意裁定（干净会话读，写裁定库，不调 API）一并放行。单测覆盖；**没做整册回放**，开之前先用 `fold_pending` 数量对一遍（预期 19）。
 
 ## 六、benchmark 与怎么继续提高
 
