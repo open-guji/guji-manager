@@ -36,6 +36,15 @@ def attach_sent(doc: dict, char: dict, punct: dict | None, entity: dict | None) 
     return doc, dropped
 
 
+def sent_for_item(sents: list[dict], cell: str) -> dict | None:
+    """静态审阅页用：从 pending.json 的 sent[] 里取含该格的句子，瘦成 {t, marks, at}（at＝本格在句内的下标）。"""
+    for sn in sents or []:
+        cells = sn.get("cells") or []
+        if cell in cells:
+            return {"t": sn["t"], "marks": sn.get("marks", []), "at": cells.index(cell)}
+    return None
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print(__doc__)

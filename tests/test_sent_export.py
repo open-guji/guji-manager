@@ -46,3 +46,10 @@ def test_attach_sent_into_pending():
     doc, dropped = attach_sent(doc, char, pj, None)
     assert dropped == 0 and [s["t"] for s in doc["sent"]] == ["丙丁"]
     assert attach_sent({"cells": [{"a": "1:1:3"}]}, char, None, None)[0].get("sent") is None
+
+
+def test_sent_for_item():
+    from guji_manager.review.sent_attach import sent_for_item
+    sents = [{"t": "甲乙", "cells": ["a", "b"], "marks": [{"kind": "punct", "ch": "。", "pos": 2}]}]
+    assert sent_for_item(sents, "b") == {"t": "甲乙", "marks": sents[0]["marks"], "at": 1}
+    assert sent_for_item(sents, "z") is None and sent_for_item(None, "a") is None

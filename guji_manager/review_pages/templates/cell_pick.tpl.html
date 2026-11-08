@@ -27,7 +27,19 @@ makePager({key:"cellpick-"+D.page_type,prefix:"p",all:D.items,per:D.per_page,fil
     const hd=document.createElement("div");hd.className="stat";hd.textContent=it.id+(it.kind?" · "+it.kind:"")+(it.fact?" · "+it.fact:"");
     const cx=document.createElement("div");cx.className="ctx";
     const lt=(it.strip||[]).length?(it.left||"").slice(-12):(it.left||""),rt=(it.strip||[]).length?(it.right||"").slice(0,12):(it.right||"");
+    if(it.sent&&it.sent.t){ // 点校标出的标点专名号句子：标点红、专名下划线（虚线＝未挂库）、本格加粗框
+      const ch=Array.from(it.sent.t),pm=it.sent.marks||[];
+      for(let i=0;i<=ch.length;i++){
+        pm.filter(m=>m.kind==="punct"&&m.pos===i).forEach(m=>{const e=document.createElement("span");e.style.color="#a33";e.textContent=m.ch;cx.append(e)});
+        if(i===ch.length)break;
+        const e=document.createElement(i===it.sent.at?"b":"span");e.textContent=ch[i];
+        const en=pm.find(m=>m.kind==="entity"&&i>=m.start&&i<m.end);
+        if(en){e.style.textDecoration="underline";e.style.textDecorationStyle=(en.status==="matched"||en.status==="matched_multi")?"solid":"dashed";e.style.textUnderlineOffset="3px"}
+        cx.append(e);
+      }
+    }else{
     cx.append(document.createTextNode(lt));const b=document.createElement("b");b.textContent=it.ref_char?"【"+it.ref_char+"】":"〔？〕";cx.append(b,document.createTextNode(rt));
+    }
     let sp0=null;
     if((it.strip||[]).length){ // 横向邻格条：左右各几格的字块图，目标格红框；下面配前后各 12 字
       sp0=document.createElement("div");sp0.className="strip";
