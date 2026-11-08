@@ -36,17 +36,22 @@ class ConsumeResult:
     unbound: int = 0           # glyphdb_admit：绑定判不该采信（重切后待审／作废），不取图、不进库（非错误）
     superseded: int = 0        # glyphdb_admit：库里这一格已是更晚的人裁，旧票不再覆盖（非错误）
     withdrawn: int = 0         # glyphdb_admit：更晚的人裁判切坏／非字／破损，撤掉库里旧的人裁刻例
+    frame_heavy: int = 0       # glyphdb_admit：字块带框重（同字对照，`seg_defect.lib_frame_heavy`），不进库（也计入 no_lib）
     errors: list[str] = None   # type: ignore[assignment]
+    frame_heavy_keys: list[str] = None   # type: ignore[assignment]  —— 上面那些格的键与特征，反馈切分查为什么框线没切掉
 
     def __post_init__(self) -> None:
         if self.errors is None:
             self.errors = []
+        if self.frame_heavy_keys is None:
+            self.frame_heavy_keys = []
 
     def to_dict(self) -> dict:
         return {"consumer": self.consumer, "events": self.n_events, "added": self.added,
                 "updated": self.updated, "skipped": self.skipped, "no_lib": self.no_lib,
                 "occluded": self.occluded, "unbound": self.unbound,
                 "superseded": self.superseded, "withdrawn": self.withdrawn,
+                "frame_heavy": self.frame_heavy, "frame_heavy_keys": self.frame_heavy_keys,
                 "errors": self.errors}
 
 
@@ -461,10 +466,38 @@ def _lib_newer(db, db_id: str, e: Event, ts_of) -> bool:
     return bool(ts) and ts > (e.ts or "")
 
 
+def _frame_on() -> bool:
+    """当前工作区这部书开没开带框判据（`seg_defect.SELFCHECK_BOOKS[...]["frame"]`）。认不出书就不开。"""
+    try:
+        from .._cv import workspace_root
+        from ..review.seg_defect import book_id_of, book_opts
+        o = book_opts(book_id_of(workspace_root()))
+    except Exception:                    # noqa: BLE001 —— 没有工作区（单测、离线重放）就不判
+        return False
+    return bool(o and o.get("frame"))
+
+
+def _frame_heavy(db, shape: str, img, on: bool) -> str | None:
+    """字块带框重就返回特征（`seg_defect.lib_frame_heavy`，参照＝库里同字刻例），否则 None；`on` 为假不判。"""
+    if not on:
+        return None
+    import cv2
+    import numpy as np
+    from ..review.seg_defect import LIB_REF_MAX, lib_frame_heavy
+    rows = db.conn.execute(
+        "SELECT i.patch_png FROM exemplars e JOIN glyphs g ON g.glyph_id = e.glyph_id "
+        "  JOIN instances i ON i.instance_id = e.instance_id "
+        " WHERE g.char = ? AND i.patch_png IS NOT NULL LIMIT ?", (shape, LIB_REF_MAX)).fetchall()
+    refs = [cv2.imdecode(np.frombuffer(bytes(r[0]), np.uint8), cv2.IMREAD_GRAYSCALE) for r in rows]
+    return lib_frame_heavy(img, [r for r in refs if r is not None])
+
+
 def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
-                  withdraws=(), ts_of=lambda _i: None) -> ConsumeResult:
+                  withdraws=(), ts_of=lambda _i: None, frame_on: bool | None = None) -> ConsumeResult:
     """`glyphdb_admit` 的逐条进库（拆出来只为外面能包一层 `_OCC_BOOKS`）。按人裁时间顺序处理，同一格以最后一票为准。"""
     bind_memo: dict = {}
+    if frame_on is None:
+        frame_on = _frame_on()
     import cv2
     from .._cv import binarize_page
     wd = {id(e) for e, _d in withdraws}
@@ -550,6 +583,15 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
             # 候选里根本不出现，用户反映「很多字反复审了很多遍」。整页与字块共用同一把
             # Sauvola 尺子这条纪律不变，只是纸缘留白不属于字块。
             img = binarize_page(img, edge_margin=0)
+        # 带框重的字块不进库（Sheldon 2026-11-08）：人确认的字没错，但字头字脚挂着一整条版框线，进库就把框线当笔画学进去。
+        # 只在开了带框判据的书（`seg_defect.SELFCHECK_BOOKS` 的 frame）判；拿库里同字刻例当参照，库里不到 SAME_MIN_REF 个照收
+        # （本书仅此一例的字不缺样本）。拦下的格键与特征记进 `res.frame_heavy_keys`，反馈切分（列端框线为什么没切掉）。
+        fh = _frame_heavy(db, shape, img, frame_on)
+        if fh:
+            res.no_lib += 1
+            res.frame_heavy += 1
+            res.frame_heavy_keys.append(f"{e.target.key}\t{shape}\t{fh}")
+            continue
         # v2 命名空间：见上面「id 必须加前缀」那节
         db_id = e.target.key if e.target.key.startswith("v2:") else f"v2:{e.target.key}"
         # 人裁改判要压过旧的人裁（2026-09-07）。admit_instance 的幂等闸只认主键：
