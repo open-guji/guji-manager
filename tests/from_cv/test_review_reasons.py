@@ -671,3 +671,14 @@ def test_ref_by_design_not_seg_or_ref_gap():
     # 对照：没标设计的同样 12 格仍是整页对不上
     plain = [Cell(id=f"v:9:{i % 3 + 1}:{i}", char="甲", ref=None) for i in range(12)]
     assert set(_cls(plain)) == {R.SEG_PAGE_UNALIGNED}
+
+
+def test_noref_notes_include_unreadable(tmp_path):
+    """align_ref 备注「整理本读不到」（册里没写 references）算本就没参照。"""
+    import json
+    from guji_manager.review.reasons import _ref_by_design
+    d = tmp_path / "align_ref"
+    d.mkdir()
+    for name, note, want in (("p1.json", "整理本读不到", True), ("p2.json", "8-gram 锚定失败", False)):
+        (d / name).write_text(json.dumps({"align_ref": {"note": note}}), encoding="utf-8")
+        assert _ref_by_design(tmp_path, name) is want
