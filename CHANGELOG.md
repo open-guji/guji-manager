@@ -5,6 +5,7 @@
 ## [未发版]
 
 - 新页型 `seg_cut` 1.0.0 人裁切线（PATCH，缺省不影响旧页；SJ 需求）：一格一段列图叠两套格网，点图画切线或标不切/看不出，结果带列图与页图坐标；CLI `build seg_cut`、`segcut-apply`。
+- `seg_cut` 2.0.0（PATCH，sheldon 试用反馈）：支持竖切（双行夹注小字左右并排）；界面只留「点哪里切」一个动作（默认竖线，可切横线），去掉两套格网线与不切/看不出/清掉按钮，只放大本格一块图；结果 cuts 改为 `[{d:v|h,p}]`（列图与页图坐标）。
 - 带框重的字块不进字形库（PATCH，Sheldon 11-08 定；只在 `SELFCHECK_BOOKS` 开了 frame 的书，即殿本）：`glyphdb_admit` 人裁进库前按库里同字刻例比「端区比字身宽多少」（`seg_defect.lib_frame_heavy`），带框重的计入 `no_lib`／`frame_heavy`，格键与特征记进 `frame_heavy_keys` 反馈切分；库里同字不到 5 个照收。
 ## [0.4.22] - 2026-11-07
 

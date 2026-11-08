@@ -241,7 +241,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         pp = per_page or 6
         its = [dict(r, img=embed(r["img"])) for r in sc_mod.normalize(items, root)]
         data = {"book": book, "per_page": pp, "items": its, "hint": hint,
-                "options": [[o, n] for o, n in zip(pt.options, ("要切", "不切", "看不出"))]}
+                "options": []}
         stat = {"items": len(its), "pages": -(-len(its) // pp)}
     elif page_type in ("gold_sample", "ref_check"):
         if page_type == "ref_check":
