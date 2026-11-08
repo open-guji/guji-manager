@@ -84,10 +84,14 @@ def gate(products: Path, book: str, ws: Path, text_id: str, out: Path) -> dict:
 def handoff(out: Path, book: str, label: str, rows: list, man: dict) -> None:
     by = Counter(x["reason"] for x in rows)
     L = [f"# 第 {book} 册 v0.1 交接单（{date.today()}，出v01.py 生成）", "",
-         f"- 底：产物包 `{label}`（cv {man.get('cv_version') or '?'}），已标 main。",
+         f"- 底：产物包 `{label}`（cv {man.get('cv_version') or '?'}），须已标 main。",
          f"- 待审 {len(rows)} 格；收口去向：全部**留人审**（放行 0、算法再处理 0），交精校。",
          "- 逐格：同目录 `cells.tsv`。", "", "| pending_reason | 格数 |", "|---|---|"]
     L += [f"| {k} | {n} |" for k, n in by.most_common()]
+    left = [x for x in rows if x["fate"].startswith("留人审（")]
+    if left:
+        L += ["", "## 切分残留（人定不再重跑，留人审）", "", "| 格 | 原因 | 机器字 |", "|---|---|---|"]
+        L += [f'| {x["cell"]} | {x["reason"]} {x["detail"]} | {x["char"]} |' for x in left]
     hp = [x for x in rows if x["reason"] == "hard_pair"]
     if hp:
         L += ["", "## 极难字（hard_pair，要看文意）", "", "| 格 | 机器字 |", "|---|---|"]
@@ -142,6 +146,7 @@ def main() -> int:
     ap.add_argument("--title", help="章题，如「卷三至卷六」")
     ap.add_argument("--gate-only", action="store_true", help="只判停、出收口清单")
     ap.add_argument("--force", action="store_true", help="有算法再处理也往下走（只在人定放行时用）")
+    ap.add_argument("--promote", metavar="WHY", help="顺手把包标 main（写令牌），WHY 是 dev cv 包进 main 的理由")
     ap.add_argument("--no-fetch", action="store_true", help="沙箱里已有该包，不重取")
     a = ap.parse_args()
     ws, book = Path(a.workspace).resolve(), a.book
@@ -168,16 +173,31 @@ def main() -> int:
         print(f"  清单 {out}/cells.tsv；按页画框看图（tools/开书/全唐文/draw_page.py），改册配置／格位表后重跑")
         if not a.force:
             return 2
+        for x in g["rows"]:              # 人看过、定为修不了也不值得再跑的（如空页墨点）：转留人审，交接单单列
+            if x["fate"] == "算法再处理":
+                x["fate"] = "留人审（切分残留，--force）"
     if a.gate_only:
         return 0
     if not (a.book_text and a.title):
         sys.exit("✗ 往下走要 --book-text 和 --title")
-    man = json.loads((products / book / "_source.json").read_text(encoding="utf-8")) if (products / book / "_source.json").exists() else {}
+    import re
+    m = re.match(r"cv(.+?)(?:pg([0-9a-f]+))?-c", a.label)          # 包标签：cv<版本>[pg<commit>]-c<语料>-g-…
+    man = {"cv_version": (m.group(1) if m else None)}
+    if a.promote:                     # 标 main（开书授权内）；dev cv 出的包 main 要 --why
+        subprocess.run([py, "-m", "open_guji_cv.cli_v2", "products", "pack", "promote", book, "-w", str(ws),
+                        "--label", a.label, "--note", f"{book} v0.1：待审 {s['n']}，收口全留人审",
+                        "--why", a.promote], check=True, env={**env, "GUJI_AUTO_ONLINE_LISTS": "0"})
     handoff(out, book, a.label, g["rows"], man)
     bt = Path(a.book_text).resolve()
     chapter = book
     online = bt_dir(bt, text_id) / "default" / f"{chapter}.char.json"
     tv = json.loads(online.read_text(encoding="utf-8")).get("version") if online.exists() else "0.1.0"
+    # 字块图要原图：没有就取；prep 按 data_full/*/<册> 找图，图在 data_full/<册> 的书（全唐文）补一层链接（E14-5）
+    if not (ws / "data_full" / book).is_dir():
+        subprocess.run([py, "-m", "open_guji_cv.cli_v2", "source", "pull", book, "-w", str(ws)], env=env)
+    if (ws / "data_full" / book).is_dir() and not list((ws / "data_full").glob(f"*/{book}")):
+        (ws / "data_full" / "_vol").mkdir(exist_ok=True)
+        (ws / "data_full" / "_vol" / book).symlink_to(Path("..") / book)
     rc = subprocess.run([py, str(cv / "scripts/zhengli/republish.py"), "from-pack", "--book", book, "-w", str(ws),
                          "--label", a.label, "--text-version", tv, "--no-alt", "--no-pull"], env=env, cwd=cv).returncode
     if rc:
