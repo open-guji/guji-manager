@@ -128,6 +128,51 @@ def _sheet(args) -> dict | None:
     return {**doc, "_path": str(p)}
 
 
+def _route(t, out: Path, rev: str) -> dict:
+    """票按去向分流（A34 11-08）：text＝改文本批（□→字，走 1.x revise）；structure＝切分类（切坏无字、错位、破损、
+    带备注的看不出），写成按页按列的清单交切分线（A22/A31）；exclude＝无字（排除名单）；recheck＝推翻旧裁回网站复审。
+    人裁事件照常全写进中心库（切分线自己去库里按批次找），这里只给出人读的去向清单 route.md 与 structure.tsv。"""
+    text, structure, exclude, held = [], [], [], []
+    for d in t.drafts:
+        v, pl = d.payload.get("v"), d.payload
+        note = "；".join(x.get("note") or "" for x in d.votes if x.get("note"))
+        shown = next((x.get("shown") for x in d.votes if x.get("shown")), "")
+        if d.held:
+            held.append((d.a, d.held))
+        elif v == "confirm":
+            text.append((d.a, pl.get("shape", "")))
+        elif v == "seg_defect":
+            if pl.get("shape"):
+                text.append((d.a, pl["shape"]))
+            structure.append((d.a, "切坏" + ("（字对，已入文本批）" if pl.get("shape") else "（无字）"), shown, note))
+        elif v == "damaged":
+            structure.append((d.a, "破损/无整页坐标", shown, note))
+        elif v == "not_a_char":
+            exclude.append(d.a)
+    for a, why in t.skipped:
+        if "看不出" in why:                    # 与已有人裁一致等跳过项不进清单（那是重跑 draft 时的幂等）
+            structure.append((a, "看不出/错位：" + why, "", ""))
+    from .opinions.schema import cell_key
+    structure.sort(key=lambda r: cell_key(r[0]))
+    with open(out / "structure.tsv", "w", encoding="utf-8") as f:
+        f.write("页\t列\t格\t类\t页面显示字\t备注\n")
+        for a, kind, shown, note in structure:
+            pg, col, slot = a.split(":")
+            f.write(f"{pg}\t{col}\t{slot}\t{kind}\t{shown}\t{note}\n")
+    L = [f"# {rev} 票的去向", "", f"- 改文本批：{len(text)} 格（□→字，走 1.x revise 一批一 PR）",
+         f"- 切分类清单：{len(structure)} 格（structure.tsv，按页按列；事件已写中心库，切分线按批次自取）",
+         f"- 无字（排除名单，需 --include-none）：{len(exclude)} 格", f"- 挂起：{len(held)} 格", ""]
+    pages: dict[str, list] = {}
+    for a, kind, shown, note in structure:
+        pages.setdefault(a.split(":")[0], []).append(f"{a} {kind}")
+    if pages:
+        L.append("## 切分类按页")
+        for pg in sorted(pages, key=int):
+            L.append(f"- 第 {pg} 页（{len(pages[pg])} 格）：" + "；".join(pages[pg]))
+    (out / "route.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    return {"text": len(text), "structure": len(structure), "exclude": len(exclude), "held": len(held)}
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -189,7 +234,9 @@ def cmd_draft(args) -> None:
            f"（回网站再看 {len(rc)}）、跳过 {len(t.skipped)}")
     for d in t.held:
         _print(f"  挂起 {d.a}：{d.held}")
-    _print(f"→ {out}/drafts.jsonl、held.tsv、report.md")
+    r = _route(t, out, args.rev)
+    _print(f"去向：改文本 {r['text']}、切分类 {r['structure']}、无字 {r['exclude']}、挂起 {r['held']}")
+    _print(f"→ {out}/drafts.jsonl、held.tsv、report.md、route.md、structure.tsv")
 
 
 def cmd_write(args) -> None:
