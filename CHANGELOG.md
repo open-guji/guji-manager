@@ -4,7 +4,9 @@
 
 ## [未发版]
 
-## [0.4.30] - 测试中
+## [0.4.30] - 2026-11-09
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 GUJI-764 修复（#416）。
 
 - `glyphdb_admit` 人裁同字升级（PATCH，A31 11-09，GUJI-764，QTW 报）：库里同一格已有同字 auto（provenance 非 human）刻例时，人裁 confirm 原先被主键幂等闸挡掉、记 skipped、库里仍是 auto；现在同字也撤旧再进（计 updated），并删掉这次撤旧留的 `evictions` 行（升级不是撤库）。字不同、已是 human 的路径不变。L0。
 
