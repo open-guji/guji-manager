@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.29] - 2026-11-09
+
+- 发版（PATCH，A32 11-09）：从 dev 切，含 #407。
+- 出卡把「排除名单上没人看过」的格放回待审（PATCH，A32 11-09，A31 要求，#407）：`review/cards.py` 的出卡闸原先挡掉全部排除名单格；现在 reason 不是 `human:*`、也没有人给的字／判残的格（管线 `gate:crop_defect` 等，文本里整格掉字）照常出卡，口径同 `pack_stats.is_pending`。配套 cv `pending_list.py`、`sprite_build.py`（cord 无框的排除格按同列邻格估框并写 `box`／`box_est`）。不动产物、指纹（L0）。
+
 ## [0.4.28] - 2026-11-09
 
 - 发版（PATCH，A31 11-09）：从 dev 切，含 #402、#403。
