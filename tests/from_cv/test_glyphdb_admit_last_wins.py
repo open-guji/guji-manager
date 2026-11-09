@@ -108,3 +108,55 @@ def test_relabel_evicts_machine_seeded_exemplar_without_admission(db):
         assert c.execute("SELECT count(*) FROM glyphs WHERE char='之'").fetchone()[0] == 0
     finally:
         c.close()
+
+
+def _prov(p) -> str | None:
+    c = sqlite3.connect(p)
+    try:
+        r = c.execute("SELECT provenance FROM admissions WHERE instance_id=?", (f"v2:{KEY}",)).fetchone()
+        return r[0] if r else None
+    finally:
+        c.close()
+
+
+def _counts(p) -> tuple[int, int]:
+    c = sqlite3.connect(p)
+    try:
+        return (c.execute("SELECT count(*) FROM exemplars WHERE instance_id=?", (f"v2:{KEY}",)).fetchone()[0],
+                c.execute("SELECT count(*) FROM evictions WHERE instance_id=?", (f"v2:{KEY}",)).fetchone()[0])
+    finally:
+        c.close()
+
+
+@pytest.fixture
+def auto_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUJI_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("GUJI_FEEDBACK_DIR", str(tmp_path / "feedback"))
+    p = tmp_path / "a.db"
+    g = GlyphDB(p)
+    assert g.admit_instance(f"v2:{KEY}", "之", _png(), provenance="auto", page="1", col=1, idx=1)
+    g.conn.commit()
+    g.close()
+    return p
+
+
+def test_same_char_auto_upgrades_to_human_without_eviction_row(auto_db):
+    assert _prov(auto_db) == "auto"
+    r = glyphdb_admit([(_ev({"v": "confirm", "shape": "之"}, "2026-11-09T00:00:00Z", "up"), None)],
+                      db_path=str(auto_db))
+    assert _prov(auto_db) == "human" and _lib(auto_db) == "之"
+    assert _counts(auto_db) == (1, 0)
+    assert r.updated == 1 and r.added == 1 and r.skipped == 0
+
+
+def test_same_char_human_stays_idempotent(db):
+    r = glyphdb_admit([(_ev({"v": "confirm", "shape": "之"}, "2026-11-09T00:00:00Z", "again"), None)],
+                      db_path=str(db))
+    assert _prov(db) == "human" and _counts(db) == (1, 0)
+    assert r.skipped == 1 and r.updated == 0
+
+
+def test_different_char_auto_still_evicts_and_admits(auto_db):
+    r = glyphdb_admit([(_ev({"v": "confirm", "shape": "由"}, "2026-11-09T00:00:00Z", "diff"), None)],
+                      db_path=str(auto_db))
+    assert _prov(auto_db) == "human" and _lib(auto_db) == "由" and r.updated == 1
