@@ -36,6 +36,10 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.clustering.keben_counts"):
         "只在 solo_5b_cov 开时读刻例数（cv#1278，缺省关；参数进指纹，缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 solo_5b 之前要把本模块并入该册指纹（随 solo_5b 启用的 PR 补）",
+    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.textlayer_ref"):
+        "只在 textlayer_ref_gap 开时取图源文本层字（cv#1332，缺省空＝关；参数与文本层数据指纹 textlayer_ref_gap_fingerprint 进参数指纹，"
+        "缺省不进 dump，故关时产物逐字节不变，code_equiv 已证 cv#1335）；列进 code_deps 会让各书 seed_admit 全部过期，"
+        "册开 textlayer_ref_gap 之前要把本模块并入该册指纹（随启用的 PR 补）",
     ("open_guji_cv.steps.invert_detect", "open_guji_cv.utils.preclean"): "只解析预处理后的原图路径",
     ("open_guji_cv.steps.border_detect", "open_guji_cv.feedback.lookup"):
         "只读人裁逐列抬头（head-raise-columns）；裁决不进指纹、靠该页显式重跑生效，同 row_segment 读 manual-cells（#706）",
