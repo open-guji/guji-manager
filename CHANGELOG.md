@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- `guji opinions ingest --channels charfix,span`（PATCH，A34 11-09）：只入指定渠道，其余（如精校票 cellreview，走 cellvotes）留在来源里不动。原先入池命令不分渠道，夜间修订流程一入池就把 300 多条精校票带进来。缺省仍全入。不动产物、指纹（L0）。
+
 ## [0.4.29] - 2026-11-09
 
 - 发版（PATCH，A32 11-09）：从 dev 切，含 #407。
