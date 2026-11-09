@@ -215,6 +215,12 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
       for i, sh, t in (("match_bench", "004-siku-v2-human", "殿本"),
                        ("match_bench_shiji", "005-shiji-human", "史記"),
                        ("match_bench_qtw", "006-qtw-human", "全唐文"))],
+    # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
+    EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
+             pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
+                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human"),
+             title="5a 相似度基准·全唐文", needs=("heavy",),
+             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报"),
     *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
