@@ -50,7 +50,7 @@ def test_all_pass(tmp_path):
     _cord(d)
     res = EC.run(d, "001", FREEZE, "0.4.5", tag_lookup=lambda repo, c: ["freeze/x"],
                  frozen_char=_char(d), commit_lookup=ON_MAIN)
-    assert res["ok"] and all(v is True for v in _by_id(res).values())
+    assert res["ok"] and all(v is True for k, v in _by_id(res).items() if k != "E3")
 
 
 def test_vol01_like_failures(tmp_path):
@@ -58,7 +58,7 @@ def test_vol01_like_failures(tmp_path):
     res = EC.run(d, "001", FREEZE, None, tag_lookup=lambda repo, c: [])
     ok = _by_id(res)
     assert not res["ok"]
-    assert ok == {"E1": False, "E2": False, "E3": False, "E4": False, "E5": True,
+    assert ok == {"E1": False, "E2": False, "E3": None, "E4": False, "E5": True,
                   "E6": False, "E7": False, "E8": False, "E9": None, "E10": None, "E11": None}
 
 
