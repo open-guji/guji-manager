@@ -308,7 +308,7 @@ RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
-        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN}) or (c.frag and not c.ref),
+        or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN, EVICT_REVIEW}) or (c.frag and not c.ref),
     R.OCCLUDED_WITH_REF: lambda c, x: _occluded(c) and c.has_ref and not _occluded_hard_ref(c),
     R.OCCLUDED_NO_REF: lambda c, x: _occluded(c) and not _occluded_hard_ref(c),
     R.SEG_PAGE_UNALIGNED: lambda c, x: c.page_kind is None and not c.ref_by_design and (
@@ -353,7 +353,10 @@ JIAZHU_UNEVEN = "jiazhu_uneven"
 #: 原因归 seg_defect，pending_reason_detail 写 `SELFCHECK_DETAIL + seg_kind`（统计按这个前缀单独数）。
 SELFCHECK_SRC = "seg_selfcheck"
 SELFCHECK_DETAIL = "同字对照自检："
-SEG_KINDS = ("merged", "clipped", "bleed", "frame_residue", JIAZHU_UNEVEN)
+#: 撤库重审（Sheldon 11-09）：库内刻例审阅卡上人点了「撤库」的格（多半切坏、认不出字），cv seed_admit `evict_review` 闸
+#: 退回待审、带 doubt 码 `evict_review`：归 seg_defect，细分记 evict_review。
+EVICT_REVIEW = "evict_review"
+SEG_KINDS = ("merged", "clipped", "bleed", "frame_residue", JIAZHU_UNEVEN, EVICT_REVIEW)
 
 
 def seg_kind_of(c: Cell) -> str:
@@ -363,6 +366,8 @@ def seg_kind_of(c: Cell) -> str:
         return k
     if JIAZHU_UNEVEN in c.codes:
         return JIAZHU_UNEVEN
+    if EVICT_REVIEW in c.codes:
+        return EVICT_REVIEW
     if c.bleed:
         return "bleed"
     return "clipped" if c.frag and not c.ref else ""

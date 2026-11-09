@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
+
 - `guji code check` 不查书仓 `code/tests/` 的 import（PATCH，A20 11-09）：本书测试要借 cv 仓 `tests/helpers`，不进指纹。L0。
 
 ## [0.4.30] - 2026-11-09
