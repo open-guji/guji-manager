@@ -675,34 +675,80 @@ def dumps(obj: Any) -> str:
     return enc(obj, 0) + "\n"
 
 
-def apply_pending(char: dict, pending: dict) -> dict:
-    """按同版待审单给 char 的格写待审原因（guji-format char v0.4 §4.8，sheldon 11-03 定），原地改，返回计数。
+def first_choice(cell: dict) -> tuple[str | None, str]:
+    """待审单上一格的首选字（sheldon 2026-11-09 定：book-text 只录首选字）。返回 (字, 来源)，没有任何候选给 (None, "none")。
 
-    单上的格：加 `pending_reason`（单上没写的记 `unknown`），去掉 `lacuna`／`guess_c`（`lacuna` 只给审过定阙的格）；
-    图片格（`fig`）不动。不在单上的格原样（含已有的 `pending_reason`：去掉，单是现行口径）。
-    用到了就把 `$schema` 升到 v0.4。分行稿不变（待审 □ 与阙文同写 `[[]]`）。"""
-    want = {x["cell"]: (x.get("pending_reason") or "unknown") for x in pending.get("cells", [])}
-    n = {"stamped": 0, "lacuna_dropped": 0, "fig_skipped": 0, "missing": 0}
+    次序：旧人裁失效前的字 `stale.c`（网站预选它）→ 参校本 `ref.c`／`refc`（网站候选排第一，用户 09-06 定）
+    → 字形库 `lib_top[0]` → 相似字 `alt[0]` → 上下文 `ctx.c`。只认单字，□ 不算。"""
+    def one(x):
+        return x if isinstance(x, str) and len(x) == 1 and x != LACUNA_CHAR else None
+    for src, v in (("stale", (cell.get("stale") or {}).get("c")), ("ref", (cell.get("ref") or {}).get("c")),
+                   ("ref", cell.get("refc"))):
+        if one(v):
+            return v, src
+    for src in ("lib_top", "alt"):
+        for x in cell.get(src) or []:
+            if one((x or {}).get("c")):
+                return x["c"], src
+    if one((cell.get("ctx") or {}).get("c")):
+        return cell["ctx"]["c"], "ctx"
+    return None, "none"
+
+
+def char_schema_for(char: dict) -> str:
+    """按 char 里实际用到的写法取最低的 `$schema`：图片格／图列 v0.3，阙文推测字 v0.2，否则 v0.1（不再写 v0.4）。"""
+    cells = [c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []]
+    has_fig = any(c.get("fig") is not None for c in cells) or any(
+        col.get("kind") == "figure" for p in char.get("pages") or [] for col in p.get("columns") or [])
+    if has_fig:
+        return CHAR_SCHEMA_URL_V03
+    if any("guess_c" in c for c in cells):
+        return CHAR_SCHEMA_URL_V02
+    return CHAR_SCHEMA_URL
+
+
+def apply_pending(char: dict, pending: dict) -> dict:
+    """按同版待审单把待审格写成首选字，原地改，返回计数（sheldon 2026-11-09 定，取代 11-03 的 char v0.4 `pending_reason`）。
+
+    book-text 只录首选字，待审格与其他格看起来一样；待审原因、候选、人裁都只在中心库待审单／网站 KV 里。
+    - char 里所有格的 `pending_reason` 一律去掉（不再写进 book-text）；
+    - 单上的格、现字是 □：写首选字（`first_choice`），去 `lacuna`／`guess_c`（`lacuna` 只给审过定阙的格）；
+      一个候选都没有的保持 □（计 `no_choice`）；现字已是字的不动（计 `kept`）；图片格不动。
+    - `$schema` 按实际用到的写法取最低版（`char_schema_for`），原是 v0.4 的降下来。
+    分行稿随字变（待审格不再写 `[[]]`）。计数里 `stamped` 等于 `filled`，留给旧调用方打印。"""
+    want = {x["cell"]: x for x in pending.get("cells", [])}
+    n = {"filled": 0, "no_choice": 0, "kept": 0, "lacuna_dropped": 0, "fig_skipped": 0, "missing": 0,
+         "reason_dropped": 0, "by_src": {}}
     seen = set()
     for p in char["pages"]:
         for col in p["columns"]:
             for c in col["cells"]:
-                r = want.get(c["a"])
-                if r is None:
-                    c.pop("pending_reason", None)
+                if c.pop("pending_reason", None) is not None:
+                    n["reason_dropped"] += 1
+                x = want.get(c["a"])
+                if x is None:
                     continue
                 seen.add(c["a"])
                 if c.get("fig") is not None:
                     n["fig_skipped"] += 1
                     continue
+                if c["c"] != LACUNA_CHAR:
+                    n["kept"] += 1
+                    continue
+                ch, src = first_choice(x)
+                if ch is None:
+                    n["no_choice"] += 1
+                    continue
                 if c.pop("lacuna", None):
                     n["lacuna_dropped"] += 1
                 c.pop("guess_c", None)
-                c["pending_reason"] = r
-                n["stamped"] += 1
+                c["c"] = ch
+                n["filled"] += 1
+                n["by_src"][src] = n["by_src"].get(src, 0) + 1
     n["missing"] = len(set(want) - seen)
-    if n["stamped"]:
-        char["$schema"] = CHAR_SCHEMA_URL_V04
+    n["stamped"] = n["filled"]
+    if char.get("$schema") == CHAR_SCHEMA_URL_V04 or n["filled"] or n["reason_dropped"]:
+        char["$schema"] = char_schema_for(char)
     return n
 
 
