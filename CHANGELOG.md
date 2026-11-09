@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.26] - 2026-11-08
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 #393（待审原因 A01–A03）、#395（`guji closeout`，夹注 a／b 格号修补）及下列各条。
+- 标 main 后收尾 `guji closeout` 和换单叠改字（MINOR 新增命令，A32 11-09，方案 `ai-team domain/CV/质检/重跑轮次/标main后自动收尾-方案.md` 八节 8.8／8.9）：不另建余项表，对不上的锚点就是待审格，原因 A01 `anchor_miss`／A02 `add_del`／A03 `anchor_drift`（#393，deferred、不算人审率），一格多因主因不变、其余放 `pending_reason_also`、旧新锚放 `pending_reason_detail` 的 `anchor=` 段。新增 `guji_manager/closeout/`：`derive`（按当前 book-text 现算 A01–A03，不写清除事件，重挂后自然消失）、`anchors.stamp`（先清后写，幂等）、`redlines`（人裁丢失>1%、锚点余项>15%、报错／字形库 verify 不过）、`stats`、`writeback`（dev 上机器错位锚点的三条件自动写回，缺省只出计划）、`remap_lib`（调 book-text `remap_anchors.remap_data`）；`swap.py` 改成包 `swap/`（行为不变），新增 `swap/overlay_edits.py`（换单先叠人工改字再核对位，永不原样导出）。不动产物、指纹（L0）。
+- `cellvotes draft` 增加票的去向分流（PATCH，A34 11-08，Sheldon 定：所有投票结果写中心库，切分线自己按批次找）：除原有输出外，多出 `route.md`（改文本批／切分类／无字／挂起各几格，切分类按页汇总）和 `structure.tsv`（页、列、格、类、页面显示字、备注，切坏无字、错位、破损、带备注的看不出），交切分线用；不改落票逻辑、不动产物、指纹（L0）。
 - 任务库连接数满时退避重试（PATCH，A30 11-08；worker-13 重起报 `too many connections for role jobs_rw` 直接退出）：`jobsdb.connect` 遇到角色连接数满（SQLSTATE 53300）随机退避重试最多 8 次（单次最长约 60 秒，`GUJI_JOBSDB_FULL_RETRIES` 可调），别的连接错误仍短重试 10 次。不动产物、指纹（L0）。
 ## [0.4.25] - 2026-11-08
 

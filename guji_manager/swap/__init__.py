@@ -41,9 +41,9 @@ def parse_books(spec: str) -> list[str]:
             continue
         m = re.fullmatch(r"vol(\d+)-vol(\d+)", part)
         if m:
-            out += [f"vol{i}" for i in range(int(m[1]), int(m[2]) + 1)]
+            out += [f"vol{i:02d}" for i in range(int(m[1]), int(m[2]) + 1)]
         elif re.fullmatch(r"vol\d+", part):
-            out.append(part)
+            out.append(f"vol{int(part[3:]):02d}")
         else:
             raise SystemExit(f"--books 看不懂 {part!r}（如 vol20-vol99 或 vol23,vol24）")
     return list(dict.fromkeys(out))
@@ -72,7 +72,7 @@ def ledger_problem(now: dict[str, int], baseline: dict[str, int] | None) -> str 
 def data_problem(dd: Path) -> str | None:
     """出单要读的两样数据在不在（A31 11-06）：待收字登记表和语料。缺了 R03 待收字会被统计成 R01
     （出单报告 ``glyph_pending_registry_missing`` 会是 1），所以开跑前就核，缺了先 ``guji db pull``。"""
-    from .review.reasons import GLYPH_PENDING_REL
+    from ..review.reasons import GLYPH_PENDING_REL
     miss = []
     reg = Path(dd).joinpath(*GLYPH_PENDING_REL)
     if not reg.exists() or reg.stat().st_size == 0:
@@ -84,7 +84,7 @@ def data_problem(dd: Path) -> str | None:
 
 
 def precheck(ws: Path, state: dict) -> None:
-    from .datastore.workcopy import data_dir
+    from ..datastore.workcopy import data_dir
     if not os.environ.get("GUJI_ACTOR"):
         raise SystemExit("先 export GUJI_ACTOR=<你的名字>")
     free = shutil.disk_usage(ws).free / 2 ** 30
@@ -188,7 +188,7 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
     """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
 
     全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
-    from .cli_db import sync_workspace
+    from ..cli_db import sync_workspace
     audit_books(ws, done, book_text, text_id, state, sp)          # 产物包核过就清，所以在发布前出机器改字抽检数据
     sync_workspace(ws, admit=False, no_glyph=True)
     refresh_progress(done, text_id, cv, state)                       # 新单已进中心库，看板才算得对
@@ -213,7 +213,7 @@ def audit_books(ws: Path, books: list[str], book_text: Path | None, text_id: str
     """机器改字抽检（A31 11-06 定，每次换单报告固定附）：数据存进 state，最后一并写 md／tsv。读不全的册记 audit=None，不挡发布。"""
     if not book_text:
         return
-    from .machine_audit import audit_book
+    from ..machine_audit import audit_book
     for b in books:
         try:
             r = audit_book(ws, b, Path(book_text), text_id)
@@ -225,7 +225,7 @@ def audit_books(ws: Path, books: list[str], book_text: Path | None, text_id: str
 
 
 def write_audit_report(ws: Path, state: dict) -> Path | None:
-    from .machine_audit import write_report
+    from ..machine_audit import write_report
     res = {b: v["audit"] for b, v in state["books"].items() if v.get("audit")}
     return write_report(ws, res, "机器改字抽检表-" + time.strftime("%Y%m%d-%H%M")) if res else None
 
@@ -291,7 +291,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_audit(a) -> int:
     """只出机器改字抽检表：对已换完的册（产物包还在才读得到整理本字）。``guji swap audit --books vol20-vol30 …``"""
-    from .machine_audit import audit_book, write_report
+    from ..machine_audit import audit_book, write_report
     ws = Path(a.workspace).resolve()
     res = {}
     for b in parse_books(a.books):
