@@ -140,6 +140,11 @@ def test_version_label():
     assert lab == "cv0.5.10.dev12pg1a2b3c4d5e6f-c3-g2"
     PK.check_label(lab + "-20261023T1730")
     assert len(lab + "-20261023T1730") <= PK.LABEL_MAX_MAIN
+    # 2026-11-09 四库版本串：模型、书级代码有就接在后面，没有的标签不变
+    assert PK.version_label({"cv": "0.7.0", "corpus": 31, "glyph_pin": 19, "model": 2, "code": 3}) == \
+        "cv0.7.0-c31-g19-m2-k3"
+    assert PK.version_label({"cv": "0.7.0", "corpus": 31, "glyph_pin": 19, "code_digest": "abcdef0123"}) == \
+        "cv0.7.0-c31-g19-k-abcdef"
 
 
 def test_unpacked_note(tmp_path, monkeypatch):
