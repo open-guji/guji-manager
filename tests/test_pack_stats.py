@@ -60,3 +60,11 @@ def test_is_pending_excluded_with_human_char():
     assert PS.is_pending(ex(excluded="human:not_a_char")) is False
     assert PS.is_pending(ex(excluded="human:damaged", damaged=True)) is False
     assert PS.is_pending(ex(excluded="gate:crop_defect")) is True
+    assert PS.is_pending(ex(excluded="human:seg_defect")) is False      # 人判切坏没给字：人看过，交切分线
+
+
+def test_count_skips_human_ruled(tmp_path):
+    """格上有人裁事件（网站投「切坏」不进排除名单）的不算待审。"""
+    mk(tmp_path, "vol1", [[True, False, False]])
+    assert PS.count(tmp_path, "vol1")["review"] == 2
+    assert PS.count(tmp_path, "vol1", {"0:1"})["review"] == 1

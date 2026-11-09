@@ -8,6 +8,12 @@
 （cv `report/slots._to_slot`），不再算待审；人判原刻残（`damaged`）、非字（`not_a_char`）的也是人定过的。
 排除名单上没人给字的（多为管线 `gate:crop_defect`）仍算待审。vol01 g20 包 252 格里 203 格是前一种。
 
+11-09 再对齐线上单口径（A32 换单 001-r10 判 0 格）：「还要人看的格」＝没放行且**人没裁过**。所以
+① 排除名单上 `human:` 开头的（人判切坏／裁坏，没给字也算人看过，交切分线，不交人审）不算；
+② 格上已有人裁事件（confirm／seg_defect／damaged／not_a_char／figure，看图结论不算）的不算——网站投的「切坏」
+   不进排除名单，seed_admit 看不见，要从事件补（`human_ruled_keys`，读不到事件就不扣）。
+管线自己排除（`gate:`／`pipeline:`）又没人裁过的格仍算待审：文本层会直接丢掉这些字。
+
 `record(book, label, root)`：整册存包成功后调用（`datastore.packs.push_products`），把
   progress.volume.extra['cv.packs'][<包标签>] = {cells, review, rate, at}
 写进库（每册只留最近 8 个标签）。网站按 ★main 的标签取这一条，不用等任何事后统计；标 main 的钩子也据此直接收一轮。
@@ -32,13 +38,33 @@ def is_pending(c: dict) -> bool:
     if "excluded" in (c.get("doubts") or []):
         ev = c.get("evidence") or {}
         why = str(ev.get("excluded") or "")
-        if ev.get("human_char") or ev.get("damaged") or why in ("human:not_a_char", "human:damaged", "human:figure"):
+        if ev.get("human_char") or ev.get("damaged") or why.startswith("human:"):
             return False
     return True
 
 
-def count(root: Path | str, book: str) -> dict | None:
-    """本机产物目录里这册 seed_admit 的 {cells, review}；没有 seed_admit 返回 None。"""
+#: 算「人裁过」的事件结论
+_RULED = ("confirm", "seg_defect", "damaged", "not_a_char", "figure")
+
+
+def human_ruled_keys(book: str) -> set[str] | None:
+    """这册格上有人裁事件的格键（`vol01:87:7:4a`）；读不到事件日志返回 None（不扣）。"""
+    try:
+        from ._cv import EventLog, counts_as_human, iter_events_readonly
+        pre, out = f"{book}:", set()
+        for e in iter_events_readonly(EventLog()):
+            t = e.target
+            if e.kind != "confirm" or t.unit != "cell" or not t.key.startswith(pre) or not counts_as_human(e):
+                continue
+            if (e.payload or {}).get("v") in _RULED:
+                out.add(t.key)
+        return out
+    except Exception:  # noqa: BLE001 —— 统计是附带的
+        return None
+
+
+def count(root: Path | str, book: str, ruled: set[str] | None = None) -> dict | None:
+    """本机产物目录里这册 seed_admit 的 {cells, review}；没有 seed_admit 返回 None。`ruled`：人裁过的格键，不算待审。"""
     files = sorted((Path(root) / book / "seed_admit").glob("p*.json"))
     if not files:
         return None
@@ -51,7 +77,7 @@ def count(root: Path | str, book: str) -> dict | None:
         for col in sa.get("columns") or []:
             for c in col.get("chars") or []:
                 cells += 1
-                if is_pending(c):
+                if is_pending(c) and not (ruled and c.get("id") in ruled):
                     review += 1
     return {"cells": cells, "review": review}
 
@@ -74,7 +100,7 @@ def record(book: str, label: str, root: Path | str, steps: list[str] | None = No
             return False
         if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
             return False
-        stat = count(root, book)
+        stat = count(root, book, human_ruled_keys(book))
         if not stat or not stat["cells"]:
             return False
         from .online_lists import ident
