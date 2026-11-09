@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 字形库导出缩水闸（PATCH，ZM 11-09，用户要求）：`datastore/workcopy.py::_export_if_changed` 导出 glyph.db 前备份数据目录里的字形账本，导出后任一账本行数归零或不足原来一半就还原并停下（`db sync`／`push` 都经过它）；防止 `db pull --no-rebuild` 之后本机是空库、sync 把中心库字形表清掉。确要缩小设 `GUJI_ALLOW_GLYPH_SHRINK=1`。不动产物、指纹（L0）。
+
 - `guji opinions ingest --channels charfix,span`（PATCH，A34 11-09）：只入指定渠道，其余（如精校票 cellreview，走 cellvotes）留在来源里不动。原先入池命令不分渠道，夜间修订流程一入池就把 300 多条精校票带进来。缺省仍全入。不动产物、指纹（L0）。
 
 ## [0.4.29] - 2026-11-09
