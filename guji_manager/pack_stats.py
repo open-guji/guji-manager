@@ -2,7 +2,11 @@
 
 以前人审率是另一台机器上的统计脚本（ai-team `按包统计人审率/run.py`）事后下包重算再写的，哪一步没跑成看板就停在旧数
 （11-08：第 6／7 轮人审率「待统计」、顶栏停在第 5 轮）。其实这两个数存包的那一刻就在手边：
-  全册格 ＝ seed_admit 各页 `columns[].chars[]` 的格数，待审格 ＝ 其中 `admit` 为假的格数（与 run.py 口径逐格一致）。
+  全册格 ＝ seed_admit 各页 `columns[].chars[]` 的格数，待审格 ＝ 其中 `admit` 为假、且人没定过的格数（`is_pending`）。
+
+11-09 用户定：排除名单上的格（切坏／裁坏，图块不进库）人已给了字的（`evidence.human_char`），文本层照出人给的字
+（cv `report/slots._to_slot`），不再算待审；人判原刻残（`damaged`）、非字（`not_a_char`）的也是人定过的。
+排除名单上没人给字的（多为管线 `gate:crop_defect`）仍算待审。vol01 g20 包 252 格里 203 格是前一种。
 
 `record(book, label, root)`：整册存包成功后调用（`datastore.packs.push_products`），把
   progress.volume.extra['cv.packs'][<包标签>] = {cells, review, rate, at}
@@ -21,6 +25,18 @@ KEEP = 8                    # 每册看板里留最近几个包标签的数
 KEY = "cv.packs"
 
 
+def is_pending(c: dict) -> bool:
+    """seed_admit 的一格算不算待审：没放行，且不是「排除名单上人已定过」的格。口径见模块头。"""
+    if c.get("admit"):
+        return False
+    if "excluded" in (c.get("doubts") or []):
+        ev = c.get("evidence") or {}
+        why = str(ev.get("excluded") or "")
+        if ev.get("human_char") or ev.get("damaged") or why in ("human:not_a_char", "human:damaged", "human:figure"):
+            return False
+    return True
+
+
 def count(root: Path | str, book: str) -> dict | None:
     """本机产物目录里这册 seed_admit 的 {cells, review}；没有 seed_admit 返回 None。"""
     files = sorted((Path(root) / book / "seed_admit").glob("p*.json"))
@@ -35,7 +51,7 @@ def count(root: Path | str, book: str) -> dict | None:
         for col in sa.get("columns") or []:
             for c in col.get("chars") or []:
                 cells += 1
-                if not c.get("admit"):
+                if is_pending(c):
                     review += 1
     return {"cells": cells, "review": review}
 
