@@ -344,6 +344,11 @@ class Job:
         lines = [ln for ln in out.strip().splitlines() if not re.match(r"^\s*\S+ p\d+: 完成", ln)]
         tail = "\n".join(lines[-20:])
         self.db(S.add_result, self.id, self.aid, "output", "pipeline", data={"tail": redact(tail)[-4000:]})
+        # 页级失败不算成功（2026-11-09 Ops：人裁格字块图缺、human_chars 报错，页记 failed，单子却 succeeded）。
+        # cv 的 pipeline 页失败时返回 0，只打「⚠ N 页失败」行；这里看到就判单子失败
+        m = re.search(r"⚠ (\d+) 页失败[^\n]*", out)
+        if m:
+            raise StageError("failed", f"pipeline 有 {m.group(1)} 页失败（页级失败不算成功）：{redact(m.group(0))[:300]}")
 
     def run_commands(self) -> None:
         for i, argv in enumerate(self.spec["run"]):
