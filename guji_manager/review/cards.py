@@ -224,6 +224,13 @@ def _stale_shape(sv: dict | None) -> str:
     return ((sv or {}).get("verdict") or {}).get("shape") or ""
 
 
+def _unseen_excluded(r) -> bool:
+    """排除名单上没人看过的格：reason 不是 human:*，也没有人给的字／判残。口径同 `pack_stats.is_pending`。"""
+    ev = getattr(r, "evidence", None) or {}
+    why = str(ev.get("excluded") or "")
+    return not (ev.get("human_char") or ev.get("damaged") or why.startswith("human:"))
+
+
 def cards(book: str, pages: str = "dev_set", limit: int = 400,
           only: str = "review", store: ProductStore | None = None,
           gate_cut: bool = True, skip_decided: bool = True,
@@ -373,7 +380,10 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
                     # seg_defect 不再算裁过之后要显式挡，否则 bxgb 4 个「仍切坏」又冒出来。
                     # 例外：名单上人给过字、但那条裁决已失效（缺口 A）——Step7 不再挂 `human_char`，
                     # 文本出阙文；不放回来就又是两边都不管。只放「定过字」的，非字/只说切坏的照旧挡。
-                    if "excluded" in (r.doubts or []) and not _stale_shape(stale.get(r.id)):
+                    # 2026-11-09 A31：排除名单上「没人看过」的格（管线 gate:crop_defect 等，文本里会掉字）要放回待审，
+                    # 否则谁都不管。人看过的（human:*、已有人给的字／判残）照旧挡。
+                    if ("excluded" in (r.doubts or []) and not _stale_shape(stale.get(r.id))
+                            and not _unseen_excluded(r)):
                         continue
                     if only == "review" and r.admit and not _vf:
                         continue
