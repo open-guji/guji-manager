@@ -254,3 +254,19 @@ def test_subcell_ids_do_not_crash():
     assert add_del_sites(rows) == {"88:6:17b", "88:6:18b"}
     slots = [("88:6:17a", "甲"), ("88:6:17b", "乙"), ("88:6:18", "丙")]
     assert _nearest(slots, {}, "88:6:19b") == "88:6:18"
+
+
+def test_stamp_pending(tmp_path):
+    from guji_manager.closeout import plan as P
+    c = {"pages": [{"columns": [{"cells": [{"a": f"1:1:{i}", "c": ch} for i, ch in enumerate("甲乙丙", 1)]}]}]}
+    (tmp_path / "001.char.json").write_text(json.dumps(c), encoding="utf-8")
+    (tmp_path / "001.punct.json").write_text(json.dumps({"punctuations": [
+        {"mark": "，", "pre_char": "乙", "anchor": "1:1:2"}, {"mark": "。", "pre_char": "丁", "anchor": "1:1:9"}]}), encoding="utf-8")
+    pend = tmp_path / "001.pending.json"
+    pend.write_text(json.dumps({"cells": [{"cell": "1:1:3", "pending_reason": "group_abstain"}]}), encoding="utf-8")
+    n = P.stamp_pending(pend, tmp_path / "001.char.json", tmp_path, "001")
+    assert n["items"] == 1 and n["new"] == 0 and n["appended"] == 1                  # 无效锚点的落点正是单上已有的 1:1:3
+    cell = json.loads(pend.read_text(encoding="utf-8"))["cells"][0]
+    assert cell["pending_reason"] == "group_abstain" and cell["pending_reason_also"] == ["anchor_miss"]
+    assert P.stamp_pending(tmp_path / "none.json", tmp_path / "001.char.json", tmp_path, "001") == {}
+    assert P.stamp_pending(pend, tmp_path / "001.char.json", tmp_path, "002") == {}   # 无伴生层
