@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- `closeout.plan.stamp_pending`（PATCH，A32 11-09，方案 8.9）：出单时按新 char＋book-text 里的标点／专名现算 A01／A02 并写进待审单，供 cv `republish.py` 调用；A03 要比对 book-text 里 char 新旧版，出单时算不出，文本推 dev 后用 `guji closeout derive`。不动产物、指纹（L0）。
 ## [0.4.27] - 2026-11-09
 
 - 发版（PATCH，A31 11-09）：从 dev 切，含 #399。
