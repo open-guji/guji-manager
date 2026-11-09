@@ -223,3 +223,14 @@ def test_parse_drift():
     it = D.parse_drift(msg)
     assert it[2] == "3:1:2" and A.split_code(it[5])[0] == "ANCHOR_DRIFT" and it[5].endswith("3:1:3")
     assert D.parse_drift("乱七八糟") is None
+
+
+def test_subcell_ids_do_not_crash():
+    """夹注半格格号带 a／b 后缀（如 88:6:19b），增删格邻格、最近格都要认得。"""
+    from guji_manager.closeout.derive import add_del_sites, _nearest
+    rows = [{"类别": "同格", "旧格": "vol01:88:6:18b", "新格": "vol01:88:6:17b"},
+            {"类别": "删", "旧格": "vol01:88:6:19b", "新格": ""},
+            {"类别": "同格", "旧格": "vol01:88:6:20b", "新格": "vol01:88:6:18b"}]
+    assert add_del_sites(rows) == {"88:6:17b", "88:6:18b"}
+    slots = [("88:6:17a", "甲"), ("88:6:17b", "乙"), ("88:6:18", "丙")]
+    assert _nearest(slots, {}, "88:6:19b") == "88:6:18"

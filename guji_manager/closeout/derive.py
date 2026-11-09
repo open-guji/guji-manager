@@ -21,6 +21,15 @@ ENDS = set("。？！")
 KEEP = ("同格", "改号")
 
 
+_CELL_RE = re.compile(r"^(\d+):(\d+):(\d+)([a-z]?)$")
+
+
+def _parse(a: str):
+    """格号 `页:列:格[a|b]` → (页, 列, 格, 子格后缀)；认不出 → None（夹注半格带 a／b 后缀，不能直接 int）。"""
+    m = _CELL_RE.match(a or "")
+    return (int(m[1]), int(m[2]), int(m[3]), m[4]) if m else None
+
+
 def _strip(a: str) -> str:
     return a.split(":", 1)[1] if a and a.startswith("vol") else a
 
@@ -34,23 +43,30 @@ def add_del_sites(rows) -> set[str]:
     sites = {_strip(r["新格"]) for r in rows if r.get("类别") == "新增" and r.get("新格")}
     for r in rows:
         if r.get("类别") == "删" and r.get("旧格"):
-            p, c, i = _strip(r["旧格"]).split(":")
-            for j in (int(i) - 1, int(i) + 1):
-                n = m.get(f"{p}:{c}:{j}")
-                if n:
-                    sites.add(n)
+            q = _parse(_strip(r["旧格"]))
+            if not q:
+                continue
+            p, c, i, sub = q
+            for j in (i - 1, i + 1):
+                for suf in dict.fromkeys((sub, "", "a", "b")):
+                    n = m.get(f"{p}:{c}:{j}{suf}")
+                    if n:
+                        sites.add(n)
     return sites
 
 
 def _nearest(slots, pos, anchor: str) -> str | None:
     """不存在的格 → 同页最近的现有格（先比列差再比格序差）；整页都没有则取页号最近的页首格。"""
-    try:
-        p, c, i = (int(x) for x in anchor.split(":"))
-    except ValueError:
+    t = _parse(anchor)
+    if not t:
         return None
+    p, c, i, _sub = t
     best = None
     for a, _ch in slots:
-        q, cc, ii = (int(x) for x in a.split(":"))
+        u = _parse(a)
+        if not u:
+            continue
+        q, cc, ii, _s = u
         key = (abs(q - p), abs(cc - c), abs(ii - i))
         if best is None or key < best[0]:
             best = (key, a)
