@@ -8,7 +8,7 @@
     guji closeout stamp <待审单.json> --report <分流项.json> [--out 新单.json]
                                                            # 同上，但分流项来自 auto_remap 的 report 文件
     guji closeout redline <册> --human-total N --human-lost N --anchors-moved N --anchors-left N [--error …] [--glyph-verify-fail]
-    guji closeout fix-misplaced --repo <book-text 检出> --vdir <版本目录> --chapter NNN --cells <dev当前→正确 对照表.tsv[.gz]>
+    guji closeout fix-misplaced --repo <book-text 检出> --vdir <版本目录> --chapter NNN (--cells <dev当前→正确 对照表.tsv[.gz]> | --replay <A33回放不一致明细.tsv>)
                                 [--apply] [--audit 审计.tsv] [--sample 30]
                                                            # dev 上机器错位锚点的自动写回（三条件，缺省只出计划）
 
@@ -44,6 +44,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--chapter", default=None)
     p.add_argument("--cells", default=None, help="derive：旧→新格级对照表（给了才有 A02）；fix-misplaced：dev 当前→正确 的对照表")
     p.add_argument("--drift-base", default="origin/dev", help="derive：漂移检查的基准版")
+    p.add_argument("--replay", default=None, help="fix-misplaced：A33 回放不一致明细 tsv（取标点行，自动得 dev 当前→正确 对照表和旧 pre_char；与 --cells 二选一）")
     p.add_argument("--apply", action="store_true", help="fix-misplaced：真写 punct.json（缺省只出计划）")
     p.add_argument("--audit", default=None, help="fix-misplaced：审计 tsv")
     p.add_argument("--sample", type=int, default=30, help="fix-misplaced：抽审条数（固定种子）")
@@ -122,17 +123,28 @@ def _derive(a) -> int:
 
 
 def _fix_misplaced(a) -> int:
-    for k in ("repo", "vdir", "chapter", "cells"):
+    for k in ("repo", "vdir", "chapter"):
         if not getattr(a, k):
             sys.exit(f"fix-misplaced 要 --{k}")
+    if not (a.cells or a.replay):
+        sys.exit("fix-misplaced 要 --cells 或 --replay")
     from .closeout import remap_lib
     ra = remap_lib.load_ra(a.repo)
     vdir = Path(a.vdir)
     char = _load(str(vdir / f"{a.chapter}.char.json"))
     pf = vdir / f"{a.chapter}.punct.json"
     punct = _load(str(pf))
-    cellmap, _st = ra.build_map(ra.load_cells(a.cells))
-    ok, skip = writeback.plan_fixes(punct, char, cellmap)
+    old_pre = None
+    if a.replay:
+        import csv
+        with open(a.replay, encoding="utf-8", newline="") as f:
+            rows = list(csv.reader(f, delimiter="\t"))[1:]
+        cellmap, old_pre, notes = writeback.from_replay(rows, a.chapter)
+        for n in notes:
+            print(f"  冲突，不处理：{n}", file=sys.stderr)
+    else:
+        cellmap, _st = ra.build_map(ra.load_cells(a.cells))
+    ok, skip = writeback.plan_fixes(punct, char, cellmap, old_pre)
     print(f"{a.chapter}：可自动写 {len(ok)} 条，不满足三条件留待审 {len(skip)} 条")
     for s in skip:
         print(f"  跳过 #{s['idx']} {s['old']}→{s['new']}：{s['why']}", file=sys.stderr)
