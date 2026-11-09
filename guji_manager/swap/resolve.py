@@ -10,6 +10,9 @@
 - ``human``：绑定有效的最新人裁字（没有为 None）
 - ``human_invalid``：有旧人裁但绑定 review／void，不可采信（True 时 ``human`` 应为 None）
 - ``flaw``：机器错字检测命中（相邻重复字、字丢失等）
+- ``new_pending``：新包里这块图是待审。**待审时 ``new`` 填首选字**（sheldon 11-09 定：book-text 不因待审改成 □，
+  待审≠阙文）；没有首选字填 None／``""``。``new_lacuna``：新包认定是真阙文（审过定阙），此时 ``new`` 填 ``□``。
+  □ 只表示真阙文。
 """
 from __future__ import annotations
 
@@ -25,7 +28,9 @@ PROTECTED_CONFLICT = "protected_conflict"   # 新包与人裁不一致：保留�
 HUMAN_INVALID = "human_invalid"       # 旧人裁失效（图块变了）：不采信，进复审单
 NEW_ADMIT = "new_admit"               # 现行 □／缺格，新包有字
 MACHINE_CHANGE = "machine_change"     # 无人裁，机器改字：默认放行
-RETURN_TO_BLANK = "return_to_blank"   # 现行有字，新包退回 □：不改文本，进复审单
+RETURN_TO_BLANK = "return_to_blank"   # 现行有字，新包认定真阙文（□）：不改文本，进复审单
+PENDING_SAME = "pending_same"         # 新包待审但首选字与现行一致：文本不动，只多一张待审单
+PENDING_NO_CHOICE = "pending_no_choice"  # 新包待审且没有首选字：文本保持现行，待审单
 MACHINE_FLAW = "machine_flaw"         # 机器错字：回退现行字
 REMOVED = "removed"                   # 新包里该块图没有格：结构变化，交对照表处理
 
@@ -39,6 +44,7 @@ class Decision:
     result: str | None   # 落进文本的字
     auto: bool           # False＝必须报用户（保护格冲突）
     note: str = ""
+    to_review: bool = False   # 另外要出一张待审单（文本不因此改动）
 
 
 def _blank(c: str | None) -> bool:
@@ -46,9 +52,10 @@ def _blank(c: str | None) -> bool:
 
 
 def resolve(cur: str | None, new: str | None, human: str | None = None, *,
-            human_invalid: bool = False, flaw: bool = False) -> Decision:
+            human_invalid: bool = False, flaw: bool = False,
+            new_pending: bool = False, new_lacuna: bool = False) -> Decision:
     if human is not None:
-        if new is not None and new != human and new != BLANK:
+        if new is not None and new != human and new != BLANK and not new_pending:
             return Decision(PROTECTED_CONFLICT, REVIEW, human, False, f"新包「{new}」≠人裁「{human}」，保留人裁")
         if cur == human:
             return Decision(HUMAN_KEEP, KEEP, human, True)
@@ -56,6 +63,14 @@ def resolve(cur: str | None, new: str | None, human: str | None = None, *,
     if human_invalid:
         # 旧人裁不可采信：文本保持现行（缺格才取新包），旧裁字只作复审参考
         return Decision(HUMAN_INVALID, REVIEW, cur if cur is not None else new, True, "旧人裁绑定失效，进复审单")
+    if new_pending and not new_lacuna:
+        if not new or new == BLANK:
+            return Decision(PENDING_NO_CHOICE, KEEP, cur, True, "新包待审且无首选字，文本保持现行，出待审单", True)
+        if cur == new:
+            return Decision(PENDING_SAME, KEEP, cur, True, "待审但首选字与现行一致，文本不动，只出待审单", True)
+        # 首选字与现行不同：按下面常规差异处理（无人裁时机器改字默认放行），另出待审单
+        d = resolve(cur, new, None, flaw=flaw)
+        return Decision(d.kind, d.action, d.result, d.auto, d.note, True)
     if new is None:
         return Decision(REMOVED, KEEP, cur, True, "新包无对应格")
     if cur == new:

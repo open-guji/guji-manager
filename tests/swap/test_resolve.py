@@ -1,6 +1,6 @@
 from guji_manager.swap.resolve import (resolve, detect_flaws, SAME, HUMAN_KEEP, HUMAN_RESTORE, PROTECTED_CONFLICT,
                                        HUMAN_INVALID, NEW_ADMIT, MACHINE_CHANGE, RETURN_TO_BLANK, MACHINE_FLAW,
-                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT)
+                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT, PENDING_SAME, PENDING_NO_CHOICE)
 
 
 def test_human_beats_machine():
@@ -56,3 +56,29 @@ def test_detect_flaws():
     assert detect_flaws(list("甲雯乙"), list("甲雯雯")) == {2}
     assert detect_flaws(["甲", "乙"], ["甲", ""]) == {1}
     assert detect_flaws(list("甲乙"), list("甲乙")) == set()
+
+
+def test_pending_same_first_choice_no_text_change():
+    d = resolve("甲", "甲", new_pending=True)
+    assert (d.kind, d.action, d.result, d.to_review) == (PENDING_SAME, KEEP, "甲", True)
+
+
+def test_pending_without_first_choice_keeps_text():
+    for new in (None, "", "□"):
+        d = resolve("甲", new, new_pending=True)
+        assert (d.kind, d.result, d.to_review) == (PENDING_NO_CHOICE, "甲", True)
+
+
+def test_pending_different_first_choice_follows_machine_rule_and_reviews():
+    d = resolve("日", "曰", new_pending=True)
+    assert (d.kind, d.result, d.to_review) == (MACHINE_CHANGE, "曰", True)
+
+
+def test_pending_does_not_conflict_with_human():
+    d = resolve("甲", "乙", human="甲", new_pending=True)
+    assert d.kind == HUMAN_KEEP
+
+
+def test_true_lacuna_from_machine_goes_to_review():
+    d = resolve("字", "□", new_lacuna=True)
+    assert (d.kind, d.action, d.result) == (RETURN_TO_BLANK, REVIEW, "字")

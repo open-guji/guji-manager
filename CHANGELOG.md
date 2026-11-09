@@ -5,6 +5,7 @@
 
 ## [未发版]
 
+- `swap/resolve` 加待审口径（PATCH，A34 11-09，sheldon 定）：待审格 book-text 显示首选字，首选字与现行一致则文本不动、只多一张待审单；□ 只给真阙文。
 - 新增 `guji_manager/swap/resolve.py`（PATCH，A34 11-09）：重切发布批的覆盖优先级纯函数（人裁 > 机器新结果 > 现行机器字；无人裁机器改字默认放行，退回 □ 进复审单）与机器错字检测。尚未接命令。L0。
 - `guji code check` 不查书仓 `code/tests/` 的 import（PATCH，A20 11-09）：本书测试要借 cv 仓 `tests/helpers`，不进指纹。L0。
 
