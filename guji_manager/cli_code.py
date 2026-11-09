@@ -37,8 +37,8 @@ def import_problems(root: Path, name: str) -> list[str]:
     bad = []
     for f in sorted(root.rglob("*.py")):
         rel = f.relative_to(root).as_posix()
-        if rel.startswith("releases/") or "/." in "/" + rel:
-            continue
+        if rel.startswith(("releases/", "tests/")) or "/." in "/" + rel:
+            continue                  # tests/ 是本书测试，要借 cv 的 helpers，不进指纹，不查
         tree = ast.parse(f.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             mods = []

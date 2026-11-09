@@ -30,6 +30,9 @@ def test_import_guard(tmp_path):
                                     "from ...core import y\nimport guji_book.other.z\n"})
     bad = cli_code.import_problems(code, "tb")
     assert len(bad) == 3 and "open_guji_cv.steps" in bad[0]
+    (code / "tests").mkdir()
+    (code / "tests" / "test_a.py").write_text("from open_guji_cv.steps import x\n", encoding="utf-8")
+    assert len(cli_code.import_problems(code, "tb")) == 3          # tests/ 不查
 
 
 def test_release_verify(tmp_path, capsys):

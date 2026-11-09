@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- `guji code check` 不查书仓 `code/tests/` 的 import（PATCH，A20 11-09）：本书测试要借 cv 仓 `tests/helpers`，不进指纹。L0。
+
 ## [0.4.30] - 2026-11-09
 
 - 发版（PATCH，A31 11-09）：从 dev 切，含 GUJI-764 修复（#416）。
