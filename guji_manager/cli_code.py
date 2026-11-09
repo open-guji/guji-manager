@@ -6,7 +6,9 @@
     guji code verify  -w <书仓> [--version N]   # 工作副本 vs k<N>（缺省最新），退出码 1 = 有改动
     guji code check   -w <书仓>            # 护栏：书级模块只许 import open_guji_cv.seg / open_guji_cv.book_api / 本书模块
 
-`release` 只写清单文件，不提交、不打 tag：出完在书仓里 `git add code/ && git commit && git tag k<N> && git push --tags`，
+`release` 只写清单文件，不提交、不打 tag：出完在书仓里 `git add code/ && git commit && git push origin main`，
+再打 tag `k<N>`。本地有权限就 `git tag k<N> && git push origin k<N>`；云端会话推不了 tag，走中转站（只认书仓 main 上的提交）：
+`python3 process/tag.py guji-workspace/<书仓> <40 位提交号> k<N> "说明"`（ai-team 仓，2026-11-09 白名单加了 guji-workspace）。
 再把书配置（book_defaults.yaml）改成 `code: N` 推中心库。版本号不进指纹，升号本身不让任何产物过期。
 """
 from __future__ import annotations
@@ -108,7 +110,9 @@ def cmd_code(args) -> None:
             sys.exit(1)
         _out({"version": f"k{n}", "manifest": str(p),
               "next": [f"git -C {ws} add code/ && git -C {ws} commit -m 'code k{n}'",
-                       f"git -C {ws} tag k{n} && git -C {ws} push origin HEAD --tags",
+                       f"git -C {ws} push origin HEAD:main",
+                       f"打 tag k{n}：本地 git -C {ws} tag k{n} && git -C {ws} push origin k{n}；云端走中转站 "
+                       f"python3 <ai-team>/process/tag.py guji-workspace/<书仓> $(git -C {ws} rev-parse HEAD) k{n} '说明'",
                        f"书配置 book_defaults.yaml 写 code: {n}（或 pin: …-k{n}），guji db push"]})
 
 
