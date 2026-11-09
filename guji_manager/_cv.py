@@ -222,7 +222,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "load_current": ("clustering.emb_pack", "load_current"),
     "RunContext": ("core.step", "RunContext"),
     "ImageMissing": ("errors", "ImageMissing"),
-    "strip_column_rules": ("books.siku_zongmu.column", "strip_column_rules"),
+    "strip_column_rules": ("impl.keben.column", "strip_column_rules"),
     "column_row_profile": ("seg.profile", "column_row_profile"),
     "column_text_band": ("seg.profile", "column_text_band"),
     "denoise_column": ("seg.profile", "denoise_column"),
@@ -599,5 +599,10 @@ def __getattr__(name: str) -> Any:
     if api is not None and name in getattr(api, "__all__", ()):
         return getattr(api, name)
     mod, attr = _FALLBACK[name]
-    m = importlib.import_module(f"open_guji_cv.{mod}")
+    try:
+        m = importlib.import_module(f"open_guji_cv.{mod}")
+    except ModuleNotFoundError:
+        if not mod.startswith("impl.keben"):
+            raise
+        m = importlib.import_module(f"open_guji_cv.books.siku_zongmu{mod[len('impl.keben'):]}")   # cv < 0.7.0
     return m if attr is None else getattr(m, attr)

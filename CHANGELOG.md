@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- 跟 cv 缺省实现改名（PATCH，A20 11-09，cv#1327 起 `books/siku_zongmu` → `impl/keben`）：控制台门面、`_cv` 兜底表改写新名，取不到时退回旧名（新旧 cv 都能用）；搬来的测试经 `tests/from_cv/cv_paths.keben()` 取模块。L0。
 - `guji code`（PATCH，A20 11-09，cv v0.7.0 书级代码）：`status／release／verify／check` 管书仓 `code/`（出 `releases/k<N>.json`、比工作副本、查 import 越界）；产物包标签在钉了模型、有书级代码时接 `-m<N>`、`-k<N>`（没钉写 `-k-<摘要>`），manifest `versions` 记 `model`、`code`、`code_digest`、`code_commit`；都没有的册标签不变。需 cv 含 `core.book_code`（cv#1326）。L0。
 
 - 字形库导出缩水闸（PATCH，ZM 11-09，用户要求）：`datastore/workcopy.py::_export_if_changed` 导出 glyph.db 前备份数据目录里的字形账本，导出后任一账本行数归零或不足原来一半就还原并停下（`db sync`／`push` 都经过它）；防止 `db pull --no-rebuild` 之后本机是空库、sync 把中心库字形表清掉。确要缩小设 `GUJI_ALLOW_GLYPH_SHRINK=1`。不动产物、指纹（L0）。
