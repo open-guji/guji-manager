@@ -613,9 +613,19 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
         stale = db.conn.execute(
             "SELECT 1 FROM exemplars e JOIN glyphs g ON g.glyph_id = e.glyph_id "
             " WHERE e.instance_id = ? AND g.char != ?", (db_id, shape)).fetchone()
-        if stale or (prev is not None and (prev[2] != shape or prev[1] != shape)):
+        # 同字的机器刻例要升成人裁（GUJI-764，2026-11-09）：库里已有 provenance 非 human 的同字记录时，
+        # admit_instance 的主键幂等闸会把人裁挡掉（记 skipped），库里仍是 auto。所以同字也撤旧再进；
+        # 但这是「升级」不是「撤库」，撤例审计行要删掉，否则后面 glyph_store_sync 把它当成这一格被撤过。
+        upgrade = (prev is not None and not stale and prev[1] == shape and prev[2] == shape
+                   and not str(prev[0] or "").startswith("human"))
+        if stale or upgrade or (prev is not None and (prev[2] != shape or prev[1] != shape)):
             from .._cv import evict_instance
+            had_ev = upgrade and db.conn.execute(
+                "SELECT 1 FROM evictions WHERE instance_id = ?", (db_id,)).fetchone()
             evict_instance(db, db_id)
+            if upgrade and not had_ev:
+                db.conn.execute("DELETE FROM evictions WHERE instance_id = ?", (db_id,))
+                db.conn.commit()
             res.updated += 1
         # 同一格的机器副本（2026-09-25）：播种按 `<book>:p:c:s` 进库，人裁按
         # `v2:<book>:p:c:s` 进库，两者都是 v2 slot 坐标、是同一格。人裁到了就撤
