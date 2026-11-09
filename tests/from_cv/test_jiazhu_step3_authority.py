@@ -13,7 +13,8 @@ from __future__ import annotations
 import numpy as np
 
 from open_guji_cv.clustering.extractor import CharExtractor
-from open_guji_cv.books.siku_zongmu import row_boundaries as fit_mod
+from cv_paths import KEBEN, keben  # noqa: E402,F401  刻本缺省实现（新旧 cv 两种包名）
+fit_mod = keben("row_boundaries")
 
 W, P = 180, 115.0
 SEAM = 90
