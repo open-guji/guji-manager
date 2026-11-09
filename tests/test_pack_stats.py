@@ -48,3 +48,15 @@ def test_find_stale_marks_from_packs():
     assert st["packs"][0]["from_packs"] is True
     v["extra"].pop("cv.packs")
     assert SY.find_stale([v], {}, {})["packs"][0]["from_packs"] is False
+
+
+def test_is_pending_excluded_with_human_char():
+    """排除名单上人已给字／判残／判非字的不算待审；没人给字的排除格仍算（11-09 用户定）。"""
+    ex = lambda **ev: {"admit": False, "doubts": ["excluded"], "evidence": ev}
+    assert PS.is_pending({"admit": True}) is False
+    assert PS.is_pending({"admit": False, "doubts": ["库 unsure"]}) is True
+    assert PS.is_pending(ex(excluded="human:seg_defect", human_char="學")) is False
+    assert PS.is_pending(ex(excluded="gate:crop_defect", human_char="開")) is False
+    assert PS.is_pending(ex(excluded="human:not_a_char")) is False
+    assert PS.is_pending(ex(excluded="human:damaged", damaged=True)) is False
+    assert PS.is_pending(ex(excluded="gate:crop_defect")) is True
