@@ -4,6 +4,19 @@
 
 ## [未发版]
 
+## [0.4.30] - 2026-11-09
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 GUJI-764 修复（#416）。
+
+- `glyphdb_admit` 人裁同字升级（PATCH，A31 11-09，GUJI-764，QTW 报）：库里同一格已有同字 auto（provenance 非 human）刻例时，人裁 confirm 原先被主键幂等闸挡掉、记 skipped、库里仍是 auto；现在同字也撤旧再进（计 updated），并删掉这次撤旧留的 `evictions` 行（升级不是撤库）。字不同、已是 human 的路径不变。L0。
+
+- 跟 cv 缺省实现改名（PATCH，A20 11-09，cv#1327 起 `books/siku_zongmu` → `impl/keben`）：控制台门面、`_cv` 兜底表改写新名，取不到时退回旧名（新旧 cv 都能用）；搬来的测试经 `tests/from_cv/cv_paths.keben()` 取模块。L0。
+- `guji code`（PATCH，A20 11-09，cv v0.7.0 书级代码）：`status／release／verify／check` 管书仓 `code/`（出 `releases/k<N>.json`、比工作副本、查 import 越界）；产物包标签在钉了模型、有书级代码时接 `-m<N>`、`-k<N>`（没钉写 `-k-<摘要>`），manifest `versions` 记 `model`、`code`、`code_digest`、`code_commit`；都没有的册标签不变。需 cv 含 `core.book_code`（cv#1326）。L0。
+
+- 字形库导出缩水闸（PATCH，ZM 11-09，用户要求）：`datastore/workcopy.py::_export_if_changed` 导出 glyph.db 前备份数据目录里的字形账本，导出后任一账本行数归零或不足原来一半就还原并停下（`db sync`／`push` 都经过它）；防止 `db pull --no-rebuild` 之后本机是空库、sync 把中心库字形表清掉。确要缩小设 `GUJI_ALLOW_GLYPH_SHRINK=1`。不动产物、指纹（L0）。
+
+- `guji opinions ingest --channels charfix,span`（PATCH，A34 11-09）：只入指定渠道，其余（如精校票 cellreview，走 cellvotes）留在来源里不动。原先入池命令不分渠道，夜间修订流程一入池就把 300 多条精校票带进来。缺省仍全入。不动产物、指纹（L0）。
+
 ## [0.4.29] - 2026-11-09
 
 - 发版（PATCH，A32 11-09）：从 dev 切，含 #407。

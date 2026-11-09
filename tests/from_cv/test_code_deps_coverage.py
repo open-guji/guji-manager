@@ -24,6 +24,7 @@ from pathlib import Path
 
 import open_guji_cv.steps  # noqa: F401  —— 注册全部 Step
 from open_guji_cv.core.step import STEPS
+from cv_paths import KEBEN, keben  # noqa: E402,F401  刻本缺省实现（新旧 cv 两种包名）
 
 #: 框架层，进指纹的是 Step 本身对它们的用法，不单列
 _FRAMEWORK = ("open_guji_cv.core", "open_guji_cv.products", "guji_manager.formats", "open_guji_cv.errors")
@@ -49,7 +50,7 @@ EXISTING_GAPS: dict[str, set[str]] = {
         "open_guji_cv.pagetype_model.model",
     },
     "open_guji_cv.gates.column_gate": {
-        "open_guji_cv.books.siku_zongmu.jiazhu_split",
+        f"{KEBEN}.jiazhu_split",
     },
     "open_guji_cv.steps.align_ref": {
         "open_guji_cv.clustering.align_eval",
