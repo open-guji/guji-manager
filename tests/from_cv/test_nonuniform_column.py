@@ -17,7 +17,8 @@ from __future__ import annotations
 from guji_manager.feedback.consumers import _expected_of
 from open_guji_cv.feedback.events import EventTarget, make_event
 from open_guji_cv.feedback.lookup import ResolvedColumn
-from open_guji_cv.books.siku_zongmu.row_boundaries import NONUNIFORM_LAM
+from cv_paths import KEBEN, keben  # noqa: E402,F401  刻本缺省实现（新旧 cv 两种包名）
+NONUNIFORM_LAM = keben("row_boundaries").NONUNIFORM_LAM
 
 
 def _ev(payload: dict):
@@ -79,7 +80,7 @@ def test_only_flagged_columns_relax(monkeypatch):
         return None
 
     # row_segment 按册套书取 row_boundaries（2026-11-04 起），殿本册取到的是这个模块
-    from open_guji_cv.books.siku_zongmu import row_boundaries as RB
+    RB = keben("row_boundaries")
     monkeypatch.setattr(RB, "segment_column", fake_segment)
     # 直接验判据本身：row_segment 里那一行的逻辑
     for override, want in ((None, {}),

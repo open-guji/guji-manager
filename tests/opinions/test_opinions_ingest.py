@@ -146,3 +146,31 @@ def test_figure_from_three_paths():
          "note": "", "shown": "〇", "voter": "dd04f7895bf5d5d8", "ts": T0}
     op3 = I.from_cellreview(v, BOOK).op
     assert op3.category == "figure" and op3.proposal == {"choice": "figure", "alt": "圈点"}
+
+
+def test_cli_ingest_channels_filter(tmp_path, capsys):
+    """--channels charfix,span：精校票（cellreview）和反馈留在来源里不入池；不加则全入。"""
+    import argparse
+
+    from guji_manager import cli_opinions as C
+    d = tmp_path / "src"
+    d.mkdir()
+    (d / "fixes.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in _fixes()), encoding="utf-8")
+    (d / "001-r2.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in _votes()), encoding="utf-8")
+    sub = argparse.ArgumentParser().add_subparsers()
+    C.add_parser(sub)
+    top = argparse.ArgumentParser()
+    C.add_parser(top.add_subparsers(dest="cmd"))
+
+    def run(root, *extra):
+        a = top.parse_args(["opinions", "ingest", "--book", BOOK, "--root", str(root), "--from-dir", str(d),
+                            "--no-central", "--no-feedback", *extra])
+        a.func(a)
+        return OpinionStore(BOOK, LocalBackend(root / BOOK)).load()
+
+    only = run(tmp_path / "a", "--channels", "charfix,span")
+    assert only.opinions and {o.channel for o in only.opinions.values()} <= {"charfix", "span"}
+    assert not any(o.channel == "cellreview" for o in only.opinions.values())
+    full = run(tmp_path / "b")
+    assert any(o.channel == "cellreview" for o in full.opinions.values())
+    assert "只收渠道" in capsys.readouterr().out

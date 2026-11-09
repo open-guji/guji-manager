@@ -248,16 +248,16 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     # utils.binarized
     "binarize_page": ("utils.binarized", 'binarize_page'),
     "binarized_or_none": ("utils.binarized", 'binarized_or_none'),
-    # seg.profile、books.siku_zongmu.column（原 utils.column_projection）
+    # seg.profile、impl.keben.column（原 utils.column_projection）
     "column_profile": ("seg.profile", 'column_profile'),
     "column_row_profile": ("seg.profile", 'column_row_profile'),
     "column_text_band": ("seg.profile", 'column_text_band'),
     "denoise_column": ("seg.profile", 'denoise_column'),
-    "strip_column_rules": ("books.siku_zongmu.column", 'strip_column_rules'),
-    # books.siku_zongmu.column_triage
-    "BLOCKING": ("books.siku_zongmu.column_triage", 'BLOCKING'),
-    "REVIEW": ("books.siku_zongmu.column_triage", 'REVIEW'),
-    "triage_column": ("books.siku_zongmu.column_triage", 'triage_column'),
+    "strip_column_rules": ("impl.keben.column", 'strip_column_rules'),
+    # impl.keben.column_triage
+    "BLOCKING": ("impl.keben.column_triage", 'BLOCKING'),
+    "REVIEW": ("impl.keben.column_triage", 'REVIEW'),
+    "triage_column": ("impl.keben.column_triage", 'triage_column'),
     # utils.image_io
     "imread": ("utils.image_io", 'imread'),
     # utils.jiazhu_order
@@ -284,6 +284,19 @@ def __getattr__(name: str) -> Any:
 
 
 def _resolve_module(mod: str):
+    try:
+        return _resolve_module_now(mod)
+    except ModuleNotFoundError:
+        if not mod.startswith(_NEW_IMPL):
+            raise
+        # cv < 0.7.0：缺省实现还叫 books/siku_zongmu（2026-11-09 改名 impl/keben）
+        return _resolve_module_now(_OLD_IMPL + mod[len(_NEW_IMPL):])
+
+
+_NEW_IMPL, _OLD_IMPL = "impl.keben", "books.siku_zongmu"
+
+
+def _resolve_module_now(mod: str):
     """`guji_manager.` 开头的是本包的，其余是 cv（pipeline）内模块。"""
     if mod.startswith("guji_manager."):
         return importlib.import_module(mod)

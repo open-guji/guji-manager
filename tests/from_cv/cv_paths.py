@@ -10,3 +10,12 @@ import open_guji_cv
 CV_REPO = Path(open_guji_cv.__file__).resolve().parents[1]
 CV_TESTS = CV_REPO / "tests"
 HAVE_CV_TESTS = (CV_TESTS / "conftest.py").is_file()
+
+#: 刻本缺省实现的包名：cv 0.7.0 起 `impl.keben`，以前叫 `books.siku_zongmu`（2026-11-09 改名）。
+KEBEN = ("open_guji_cv.impl.keben" if (Path(open_guji_cv.__file__).parent / "impl" / "keben").is_dir()
+         else "open_guji_cv.books.siku_zongmu")
+
+
+def keben(mod: str):
+    import importlib
+    return importlib.import_module(f"{KEBEN}.{mod}")
