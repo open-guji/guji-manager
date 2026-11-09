@@ -59,6 +59,9 @@ class PendingReason(str, Enum):
     VISION_FLAGGED = "vision_flagged"
     MACHINE_CHANGED = "machine_changed"
     RECHECK = "recheck"
+    ANCHOR_MISS = "anchor_miss"          # A01 2026-11-09 标 main 后收尾：该格挂的标点／专名按格级对照表挪不过去
+    ADD_DEL = "add_del"                  # A02 同上：增删格处，标点／专名要重挂
+    ANCHOR_DRIFT = "anchor_drift"        # A03 同上：锚点挪过去了但位置存疑（格式检查「其他标点」漂移告警）
     UNKNOWN = "unknown"
 
     def __str__(self) -> str:  # 写 json、拼字符串时就是英文名
@@ -80,6 +83,7 @@ class Category(str, Enum):
     REFERENCE = "reference"
     MISMATCH = "mismatch"
     REVIEW = "review"
+    ANCHOR = "anchor"
 
 
 class Route(str, Enum):

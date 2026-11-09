@@ -41,6 +41,7 @@ categories:
   reference:    {code: R, label: 参校本缺位}
   mismatch:     {code: P, label: 与参校本不一致}
   review:       {code: X, label: 复审与其他}
+  anchor:       {code: A, label: 标点专名重挂}
 
 routes:
   human:    {label: 一定人审}
@@ -432,6 +433,45 @@ reasons:
     ui: pick
     detect: recheck=true（其余复审原因，含旧裁与新票不一致）
     legacy: {taxonomy: [P2]}
+  # ── A 标点专名重挂（2026-11-09 sheldon：标 main 后自动收尾，余项不另存，记成待审格的原因）──
+  # 字没问题、只是这格挂的标点／专名要重挂：route deferred＝留到点校阶段一起做，reviewer none＝不进人审字卡、不算人审率。
+  # 一格多因：pending_reason 只放主因（字的原因优先，这三条 priority 排在 X 类之后），其余命中的按 priority 放 pending_reason_also（列表）。
+  anchor_miss:
+    code: A01
+    category: anchor
+    route: deferred
+    owner: A33
+    reviewer: none
+    priority: 900
+    label: 标点专名要重挂
+    hint: 这一格的字已定，重跑后它挂的标点或专名没能按格号对照挪过来，点校时重挂
+    ui: page
+    detect: 收尾流水线按格级对照表（旧 ★main→新包）挪锚：旧格挂有标点／专名锚点，对照表里是「删」、IoU 低未配上，或挪过去后 auto_remap --cell-map 校验不过（字变了、专名被拆开）；写在新格（删的写在同页最近的新格）
+    legacy: {}
+  add_del:
+    code: A02
+    category: anchor
+    route: deferred
+    owner: A33
+    reviewer: none
+    priority: 901
+    label: 增删格处重挂
+    hint: 重跑后这里多了或少了格，附近的标点、专名要按新格重挂
+    ui: page
+    detect: 格级对照表里「新增」的格，或紧邻「删」格的新格，且所在句挂有标点／专名
+    legacy: {}
+  anchor_drift:
+    code: A03
+    category: anchor
+    route: deferred
+    owner: A33
+    reviewer: none
+    priority: 902
+    label: 标点位置存疑
+    hint: 标点已按格号挪过来，但位置可能偏了，点校时看一眼
+    ui: confirm
+    detect: auto_remap 挪锚后 book-text 格式检查报「其他标点」漂移告警（local_check --dev），且 auto_remap 解释不了（不是对齐后 +1 这类）
+    legacy: {}
   unknown:
     code: X99
     category: review
