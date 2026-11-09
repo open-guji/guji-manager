@@ -70,6 +70,11 @@ def cmd_ingest(args) -> None:
         notes.append(f"网站公开读 /api/feedback {len(src.feedback)} 条")
     st = _store(args, by=args.by)
     items = I.incoming(src, args.book)
+    if args.channels:
+        want = {c.strip() for c in args.channels.split(",") if c.strip()}
+        skipped = sum(1 for i in items if i.op is not None and i.op.channel not in want)
+        items = [i for i in items if i.op is None or i.op.channel in want]
+        notes.append(f"只收渠道 {','.join(sorted(want))}，其余 {skipped} 条没动")
     rep = I.ingest(st, items, by=args.by)
     for n in notes:
         _print("· " + n)
@@ -562,6 +567,7 @@ def add_parser(sub) -> None:
     p.add_argument("--no-central", action="store_true", help="不读中心库 feedback/lists/web/<书>/")
     p.add_argument("--web-token-env", default=None, help="读中心库网站意见用的令牌环境变量（缺省同 --token-env）")
     p.add_argument("--live-vols", default="", help="另从网站公开实时读 /api/fixes 取这些章（逗号分隔，如 001,002,003）")
+    p.add_argument("--channels", default="", help="只入这些渠道（逗号分隔，如 charfix,span）；缺省全入。夜间流程用 charfix,span，精校票 cellreview 走 cellvotes")
     p.add_argument("--no-feedback", action="store_true", help="不读网站公开 /api/feedback")
     p.add_argument("--site", default="https://www.openguji.com")
     p.add_argument("--by", default="ingest", help="log 里记谁入的池")
