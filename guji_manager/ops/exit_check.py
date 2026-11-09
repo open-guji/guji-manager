@@ -10,7 +10,7 @@ M10 总设计 G8（`doc/design/M10-精校流程-总设计.md` §6；GUJI-685）�
 |---|---|
 | E1 | 文本线 ≥1.0.0 时，index 章条目的 `proofing` 不是 true |
 | E2 | 文本线 ≥1.0.0 时，char.json 顶层有 `review`，含 date、signed_by、sample（M10 口径；VERSIONING 现只要求 ≥2） |
-| E3 | 有 `NNN.decision.json`（可以没有条目） |
+| E3 | （已废弃，恒为不适用）原要求有 `NNN.decision.json`；11-09 起 book-text 不再录 |
 | E4 | char 里没有「标了 lacuna 却有字」的格 |
 | E5 | 册 yaml 有 `freeze:`，写了 snapshot（或 manifest）、cv_commit、cv_version |
 | E6 | 册 yaml 顶层 `cv_version` 与 `freeze.cv_version` 相同（版本护栏只认顶层） |
@@ -137,8 +137,7 @@ def run(text_dir: Path, chapter: str, freeze: dict | None, cv_version: str | Non
         items.append(_item("E1", "proofing 已关", None, f"文本 {tv} <1.0.0，不适用"))
         items.append(_item("E2", "文本线 review 记录", None, f"文本 {tv} <1.0.0，不适用"))
 
-    dec = text_dir / f"{chapter}.decision.json"
-    items.append(_item("E3", "decision.json 存在", dec.exists(), "" if dec.exists() else f"没有 {dec.name}"))
+    items.append(_item("E3", "decision.json 存在", None, "不适用：11-09 起 book-text 只录首选字，不再录 decision.json"))
 
     bad = lacuna_with_char(char_doc)
     items.append(_item("E4", "阙文标记与字一致", not bad,
