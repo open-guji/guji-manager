@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import cli_closeout, cli_perf, cli_products, cli_runs, swap
+from . import cli_closeout, cli_code, cli_perf, cli_products, cli_runs, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
@@ -36,6 +36,7 @@ COMMANDS: dict = {
     **cli_glyph.COMMANDS,      # store、recheck、glyphlib、rekey-cells、promote、corpus
     **cli_glyph_db.COMMANDS,   # glyph-db
     **cli_model.COMMANDS,      # model、font
+    **cli_code.COMMANDS,       # code（书级代码，2026-11-09，cv v0.7.0）
     # P3 jobs（2026-11-04），原 cv jobs/cli.py
     **_jobs_cli.COMMANDS,      # job
     **cli_products.COMMANDS,   # products（拆分 P4）
