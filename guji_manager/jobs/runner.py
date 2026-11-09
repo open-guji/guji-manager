@@ -226,7 +226,7 @@ class Job:
         if not sp.get("book"):          # eval／command 不带册：只切 cv
             self.checkout()
             return
-        argv = ["bash", str(RUNNER_ROOT / "scripts" / "rerun_prep.sh"), sp["book"], "--cv", sp["cv"],
+        argv = ["bash", str(_prep_script()), sp["book"], "--cv", sp["cv"],
                 "--ws-glob", sp["ws_glob"]]
         ws_repo = resolve_ws_repo(sp)
         if ws_repo:
@@ -344,6 +344,11 @@ class Job:
         lines = [ln for ln in out.strip().splitlines() if not re.match(r"^\s*\S+ p\d+: 完成", ln)]
         tail = "\n".join(lines[-20:])
         self.db(S.add_result, self.id, self.aid, "output", "pipeline", data={"tail": redact(tail)[-4000:]})
+        # 页级失败不算成功（2026-11-09 Ops：人裁格字块图缺、human_chars 报错，页记 failed，单子却 succeeded）。
+        # cv 的 pipeline 页失败时返回 0，只打「⚠ N 页失败」行；这里看到就判单子失败
+        m = re.search(r"⚠ (\d+) 页失败[^\n]*", out)
+        if m:
+            raise StageError("failed", f"pipeline 有 {m.group(1)} 页失败（页级失败不算成功）：{redact(m.group(0))[:300]}")
 
     def run_commands(self) -> None:
         for i, argv in enumerate(self.spec["run"]):
@@ -454,6 +459,26 @@ class Job:
 # 执行方相关的 cv 路径。注意：jobs 模块拆分 P5（cv #1055）后已搬去本包，cv dev 上不再有 open_guji_cv/jobs；
 # 这里列了不存在的路径，git rev-parse 整体失败，_runner_outdated 就永远判不出 cv 侧的更新。
 _RUNNER_PATHS = ("scripts/rerun_prep.sh", "scripts/guji_jobs.sh")
+
+#: 准备脚本的副本目录（rerun_prep.sh 与它调用的 ensure_manager.sh 一起放这里）
+PREP_DIR = HOME / "prep"
+
+
+def _prep_script() -> Path:
+    """准备脚本取 cv dev 的最新副本，不跟 --cv 的 checkout 走：旧 tag（如 43af102）里的准备脚本没有后来的修复
+    （2026-11-09 #1746：准备跑的是 43af102 的脚本，工作区没 code/ 照样过了）。取不到 origin/dev 就退回执行方检出里的那份。"""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        subprocess.run(["git", "-C", str(RUNNER_ROOT), "fetch", "-q", "origin", "dev"], capture_output=True,
+                       timeout=120, env=env, check=True)
+        PREP_DIR.mkdir(parents=True, exist_ok=True)
+        for name in ("rerun_prep.sh", "ensure_manager.sh"):
+            r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "show", f"origin/dev:scripts/{name}"],
+                               capture_output=True, timeout=30, check=True)
+            (PREP_DIR / name).write_bytes(r.stdout)
+        return PREP_DIR / "rerun_prep.sh"
+    except (OSError, subprocess.SubprocessError):
+        return RUNNER_ROOT / "scripts" / "rerun_prep.sh"
 
 
 def _reexec_argv() -> list[str]:
