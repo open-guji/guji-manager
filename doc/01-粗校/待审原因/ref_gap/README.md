@@ -178,3 +178,21 @@ context 38 格抽看了 12 格的格图：**2 格明确放错**（vol27:137:7:3 
 - 不要把碎片格放成笔画少的字（「一」「六」）。
 
 数据、逐格表、脚本见 ai-team `domain/CV/质检/待审原因深挖/R02-参校本没字.md`、`R02-逐格-三书224格.tsv`、`R02-scripts/`。
+
+---
+## 附：文本层取字通道已进框架（cv#1332，2026-11-09，缺省关）
+sheldon 11-09 同意做；口径：**非异体字按文意录字**（文本层字就是文意读法，刻形「雨」、文意「兩」录「兩」）。
+册配置（殿本示例；放行前须 ZM 抽 30 格金标 0 错，第9轮才在殿本打开）：
+```yaml
+params:
+  seed_admit:
+    textlayer_ref_gap: siku-qiefen-v2        # 数据目录：$GUJI_DATA_HOME/config/textlayer/ 下，或绝对路径
+    # 以下为缺省值，各书可自己试：
+    textlayer_ref_area_min: 0.8              # 格框变到文本层坐标后与字框重叠面积占比
+    textlayer_ref_page_min: 0.8              # 文本层页与本页字串相似度
+    textlayer_ref_min_pairs: 20              # 仿射拟合最少配对字数
+    textlayer_ref_near_guard: true           # 库候选里有与文本层字成人裁形近对的字 → 留审
+    textlayer_ref_allow_pua: false           # 私用码弃权（放了 r6 错 6 格）
+```
+数据目录：`pagemap.json[.gz]`（`{册号: [{our, their:[章,页]}]}`）＋`<章>/text.jsonl.gz`（`{p,c,x,y,w,hgt}`）。取数脚本见 ai-team `domain/CV/质检/待审原因深挖/R02-scripts/fetch_qtext.py`。
+通道 `textlayer_ref`、provenance `align`、doubt `lane_textlayer_ref`，evidence.lane 记字／面积／页相似／配对数／残差。r7 殿本 vol20–99 预计放行 81/140（清单同目录 `R02-第7轮-文本层预计放行-殿本vol20-99.tsv`，未逐格核字）。
