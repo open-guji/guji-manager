@@ -38,7 +38,7 @@ def env(ws, tmp_path, monkeypatch):
         _rec("keben:1:1:3", 3, ["replace_form"]),
         _rec("keben:1:1:4", 4, ["库 unsure(cov=0.123)"]),        # 只有中文说明 → _none
         _rec("keben:1:1:5", 5, [], admit=True),                   # 自动档，only=review 不出
-        _rec("keben:1:1:6", 6, ["excluded"]),                     # 排除名单，不出也不计
+        _rec("keben:1:1:6", 6, ["excluded"], evidence={"excluded": "human:seg_defect"}),                   # 排除名单，不出也不计
     ]
     p2 = [
         _rec("keben:2:1:1", 1, ["channel_off", "variant_indirect"]),
