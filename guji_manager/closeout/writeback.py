@@ -26,17 +26,23 @@ def slots_of(char: dict) -> list[tuple[str, str]]:
             for c in col.get("cells") or []]
 
 
-def plan_fixes(punct: dict, char: dict, cellmap: dict[str, str]) -> tuple[list[dict], list[dict]]:
-    """返回 (可写, 不可写)。每项 {idx, mark, pre_char, source, old, new, why}；只读，不改 punct。"""
+def plan_fixes(punct: dict, char: dict, cellmap: dict[str, str],
+               old_pre: dict[tuple[str, str], str] | None = None) -> tuple[list[dict], list[dict]]:
+    """返回 (可写, 不可写)。每项 {idx, mark, pre_char, source, old, new, why}；只读，不改 punct。
+
+    `old_pre`：{(dev 当前锚点, mark): 旧 pre_char}。dev 上的 `pre_char` 常被「校验字同步」刷成错位处的字
+    （条件 3 说的「被刷新过」），所以三个条件里的 pre_char 要用**换图前的旧值**；不给就退回条目自带的 pre_char。"""
     slots = slots_of(char)
     pos = {a: i for i, (a, _c) in enumerate(slots)}
     ok, skip = [], []
     for i, p in enumerate(punct.get("punctuations") or []):
-        a, pc = p.get("anchor"), p.get("pre_char")
+        a = p.get("anchor")
+        pc = (old_pre or {}).get((a, p.get("mark", "")), p.get("pre_char"))
         n = cellmap.get(a) if a else None
         if not a or n is None or n == a:
             continue                                   # 表里没要挪的
-        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": p.get("source", ""), "old": a, "new": n}
+        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": p.get("source", ""), "old": a, "new": n,
+               "dev_pre_char": p.get("pre_char")}
         if pc is None:
             skip.append({**rec, "why": "无 pre_char，无从核对"})
         elif is_manual(p.get("source")):
@@ -61,6 +67,8 @@ def apply_fixes(punct: dict, char: dict, fixes: list[dict]) -> int:
         if p.get("anchor") != f["old"]:
             raise ValueError(f"#{f['idx']} 锚点已不是 {f['old']}，计划过期")
         p["anchor"], p["char_offset"] = f["new"], pos[f["new"]]
+        if "pre_char" in p:
+            p["pre_char"] = f["pre_char"]               # 校验字回到换图前的旧值（＝新锚点上的字，条件 2 已核）
         n += 1
     return n
 
@@ -75,3 +83,29 @@ def sample(fixes: list[dict], k: int = 30, seed: int = 0) -> list[dict]:
     if len(fixes) <= k:
         return list(fixes)
     return sorted(random.Random(seed).sample(fixes, k), key=lambda f: f["idx"])
+
+
+def from_replay(rows, vol: str) -> tuple[dict[str, str], dict[tuple[str, str], str], list[str]]:
+    """A33 回放不一致明细（`回放不一致明细-平移检验后-A33.tsv` 的行，列：册 层 条目 旧锚 表替换后的锚 金标位置 …）
+    → 某册的（dev 当前→正确 对照表, 旧 pre_char, 冲突说明）。只取标点；条目形如 `#4105 '，' 前字=史`。
+    同一 dev 锚点被指到不同目标的丢掉并记冲突（交人看）。"""
+    import re
+    m: dict[str, str] = {}
+    pre: dict[tuple[str, str], str] = {}
+    bad: set[str] = set()
+    notes: list[str] = []
+    for r in rows:
+        if len(r) < 6 or r[1] != "标点" or str(int(r[0])) != str(int(vol)):
+            continue
+        dev, corr = r[5], r[4]
+        mm = re.search(r"'(.*)' 前字=(.)", r[2])
+        if not dev or dev == corr or "-" in corr or not mm:
+            continue
+        if m.get(dev, corr) != corr:
+            bad.add(dev)
+            notes.append(f"{dev} 指向不止一处：{m[dev]} / {corr}")
+            continue
+        m[dev], pre[(dev, mm.group(1))] = corr, mm.group(2)
+    for d in bad:
+        m.pop(d, None)
+    return m, {k: v for k, v in pre.items() if k[0] in m}, notes

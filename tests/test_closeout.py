@@ -118,6 +118,26 @@ def test_writeback_three_conditions():
     assert len(writeback.audit_lines("081", ok)) == 2
 
 
+def test_writeback_old_pre_from_replay():
+    """dev 上 pre_char 被「校验字同步」刷成错位处的字：三条件要用换图前的旧 pre_char。"""
+    c = char("甲乙丙丁")
+    punct = {"punctuations": [{"mark": "，", "pre_char": "丁", "anchor": "1:1:4", "char_offset": 3, "source": "claude:A33"},
+                              {"mark": "。", "pre_char": "乙", "anchor": "1:1:2", "char_offset": 1, "source": "claude:A33"}]}
+    rows = [["15", "标点", "#0 '，' 前字=丙", "1:1:3", "1:1:3", "1:1:4", "丁", "丙", "丁", "ANCHOR_MISS"],
+            ["15", "标点", "#1 '。' 前字=乙", "1:1:2", "1:1:2", "1:1:2", "", "", "", "ANCHOR_MISS"],   # 没错位：同号不收
+            ["15", "实体", "e1", "1:1:1～1:1:2", "1:1:2～1:1:3", "1:1:1～1:1:2", "", "", "", "ANCHOR_MISS"],
+            ["16", "标点", "#9 '，' 前字=甲", "1:1:1", "1:1:2", "1:1:4", "", "", "", "ANCHOR_MISS"]]
+    m, pre, notes = writeback.from_replay(rows, "015")
+    assert m == {"1:1:4": "1:1:3"} and pre == {("1:1:4", "，"): "丙"} and notes == []
+    assert writeback.plan_fixes(punct, c, m)[0] == []                          # 不给旧值：dev 刷新过的 pre_char=丁，对不上
+    ok, skip = writeback.plan_fixes(punct, c, m, pre)
+    assert [f["idx"] for f in ok] == [0] and not skip
+    writeback.apply_fixes(punct, c, ok)
+    assert punct["punctuations"][0]["anchor"] == "1:1:3" and punct["punctuations"][0]["pre_char"] == "丙"
+    m2, _p, notes = writeback.from_replay(rows + [["15", "标点", "#2 '，' 前字=乙", "1:1:2", "1:1:2", "1:1:4", "", "", "", ""]], "15")
+    assert m2 == {} and len(notes) == 1                                        # 同一 dev 锚点指向两处 → 丢弃交人看
+
+
 def test_writeback_sample_deterministic():
     fx = [{"idx": i} for i in range(52)]
     s1, s2 = writeback.sample(fx, 30), writeback.sample(fx, 30)
