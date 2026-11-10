@@ -327,6 +327,25 @@ def test_apply_pending_first_choice(legacy):
     assert cc.validate(char, "char") == []
 
 
+def test_apply_pending_holds_current_text(legacy):
+    """待审格现行已有字、导出字不同：文本不动，人裁后再改（sheldon 11-10）；现行是 □ 才写首选字；已人审的格不拦。"""
+    files, _ = cc.from_pages_json(legacy["002.pages.json"], zi=legacy["002.zi.json"], norm=legacy["002.norm.json"])
+    char = files["002.char.json"]
+    cells = [c for c in _cells(char) if c.get("fig") is None]
+    a, b, d, e = cells[0], cells[1], cells[2], cells[3]
+    for c in (a, b, d, e):
+        c.pop("lacuna", None)
+        c["c"] = cc.LACUNA_CHAR
+    n = cc.apply_pending(char, {"cells": [
+        {"cell": a["a"], "ref": {"c": "曰"}},
+        {"cell": b["a"], "ref": {"c": "乙"}},
+        {"cell": d["a"], "ref": {"c": "丙"}, "review": "human"},
+        {"cell": e["a"], "ref": {"c": "丁"}}]},
+        current={a["a"]: "日", b["a"]: cc.LACUNA_CHAR, d["a"]: "甲"})
+    assert (a["c"], b["c"], d["c"], e["c"]) == ("日", "乙", "丙", "丁")
+    assert n["held_current"] == 1 and n["filled"] == 3
+
+
 def test_first_choice_order():
     assert cc.first_choice({"stale": {"c": "甲"}, "ref": {"c": "乙"}}) == ("甲", "stale")
     assert cc.first_choice({"refc": "日"}) == ("日", "ref")
