@@ -6,7 +6,7 @@
 |---|---|---|---|
 | ``decide_pending`` | S3 | ``to_user`` | log ``decided``（``by`` 是策略名），命中 ``park_reasons`` 或 C 类、看不清的留着 |
 | ``prepare`` | S4–S6 | ``accepted``／``auto_accepted`` 且还没进批 | book-text 里一个分支、一次提交、一行发布批（``releases.jsonl``）、log ``batched`` |
-| ``finish_pr`` | S6 | 已 push、已开 PR | 把 CHANGES 里的 ``#TBD`` 换成 PR 号，再提交一次；log ``pr_opened`` |
+| ``finish_pr`` | S6 | 已 push、已开 PR | log ``pr_opened``（不再有 CHANGES，不补 PR 号） |
 | ``finish_merged`` | S8 | PR 已合并 | log ``applied``、格谱系（``lineage.jsonl``）、度量（``metrics.jsonl``）、网站状态；log ``published`` |
 | ``digest`` | — | 全池 | 给人看的汇总（Markdown） |
 
@@ -211,7 +211,8 @@ def prepare(st, bt_root: str | Path, book: str, rules: dict, *, vols: list[str] 
         cells = _cell_rows(res.applied, st)
         title = f"四庫總目 {vol_key(vol)} 读者意见修订：文本 {res.old_version}→{new_v}（{len(cells)} 格）"
         _git(root, "add", "-A", "Book")
-        body = title + "\n\n" + res.note + ("\n\n" + "\n".join(trailers) if trailers else "")
+        body = title + "\n\n" + res.note + ("\n\n" + "\n".join(res.records) if res.records else "") \
+            + ("\n\n" + "\n".join(trailers) if trailers else "")
         _git(root, "commit", "-q", "-m", body)
         commit = _git(root, "rev-parse", "HEAD")
         pr_body = V.pr_body(res, book) + "\n\n本批由 `guji opinions auto prepare` 生成。本地检查：\n```\n" + checks["tail"] + "\n```"
@@ -255,28 +256,16 @@ def _release(st, rel_id: str) -> dict:
 
 
 def finish_pr(st, bt_root: str | Path, rel_id: str, pr: int | str) -> dict:
-    """PR 开好后：CHANGES 里这一批加的 ``#TBD`` 换成 PR 号，提交一次，记 ``pr_opened``。要在 push 之前的分支上做完再 push。"""
+    """PR 开好后：记 ``pr_opened``。book-text 不再有 CHANGES.md（2026-11-10），不需要补 PR 号，也不再提交。"""
     rel = _release(st, rel_id)
     root = Path(bt_root)
     pr_n = str(pr).lstrip("#")
     _git(root, "checkout", "-q", rel["branch"])
-    changes = BookText(rel["book"], root).path("CHANGES.md")
-    base_lines = set(_git(root, "show", f"{rel['base']}:{changes.relative_to(root).as_posix()}").splitlines())
-    lines = changes.read_text(encoding="utf-8").splitlines()
-    n = 0
-    for i, ln in enumerate(lines):
-        if ln not in base_lines and ln.rstrip().endswith("| #TBD |"):
-            lines[i] = ln.rstrip()[: -len("#TBD |")] + f"#{pr_n} |"
-            n += 1
-    if n:
-        changes.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-        _git(root, "add", changes.relative_to(root).as_posix())
-        _git(root, "commit", "-q", "-m", f"CHANGES 补 PR 号 #{pr_n}")
     commit = _git(root, "rev-parse", "HEAD")
     for oid in rel["opinions"]:
         st.log(oid, "pr_opened", {"release": rel_id, "pr": pr_n})
     st.add_row("releases", {**rel, "pr": pr_n, "commit": commit, "status": "pr_open", "ts": now_iso()})
-    return {"release": rel_id, "pr": pr_n, "changes_lines_fixed": n, "commit": commit}
+    return {"release": rel_id, "pr": pr_n, "changes_lines_fixed": 0, "commit": commit}
 
 
 def finish_merged(st, rel_id: str, commit: str, *, publish_status=None) -> dict:

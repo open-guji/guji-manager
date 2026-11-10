@@ -1,7 +1,7 @@
 """撤销一个已发布的修订批（M11 GUJI-734；设计 book-text ``docs/design/2026-10-已发1x文本修订流程.md``）。
 
 不 ``git revert``：撤销也是一次正式修订——book-text 里一个 ``auto/revert-…`` 分支、文本线再升一个 patch、
-CHANGES 写明撤销了哪个发布批、哪些意见、为什么；意见池里补 ``reverted`` 事件，原批标 ``reverted``。
+提交信息的版本记录写明撤销了哪个发布批、哪些意见、为什么；意见池里补 ``reverted`` 事件，原批标 ``reverted``。
 
 | 函数 | 输入 | 输出 |
 |---|---|---|
@@ -99,7 +99,7 @@ def prepare_revert(st, bt_root: str | Path, rel_id: str, reason: str, *, run_che
         script = root / "scripts" / "book-text" / "bump_original.py"
         (vdir / names["char"]).write_text(V.dump_like(texts["char"], char), encoding="utf-8", newline="\n")
         (vdir / names["cord"]).write_text(V.dump_like(texts["cord"], cord), encoding="utf-8", newline="\n")
-        V.bump(script, vdir, "text", v3, note, "TBD")
+        recs = V.records_of(V.bump(script, vdir, "text", v3, note, "TBD"))
         char_now = json.loads((vdir / names["char"]).read_text(encoding="utf-8"))
         new_v = char_now.get("version")
         for line in ("punct", "entity"):
@@ -111,7 +111,7 @@ def prepare_revert(st, bt_root: str | Path, rel_id: str, reason: str, *, run_che
             r = V.follow_companions(old_char, char_now, d if line == "punct" else None, d if line == "entity" else None, moves)
             if r[line]:
                 p.write_text(V.dump_like(t, d, default="indent"), encoding="utf-8", newline="\n")
-                V.bump(script, vdir, line, v3, f"跟随文本 {new_v}（撤销 {rel_id}）：{r[line]} 处锚点校验字／偏移更新", "TBD")
+                recs += V.records_of(V.bump(script, vdir, line, v3, f"跟随文本 {new_v}（撤销 {rel_id}）：{r[line]} 处锚点校验字／偏移更新", "TBD"))
         final = {k: (json.loads((vdir / n).read_text(encoding="utf-8")) if (vdir / n).is_file() else None) for k, n in names.items()}
         index = json.loads((vdir / "index.json").read_text(encoding="utf-8"))
         ich = next((c for c in index.get("chapters") or [] if str(c.get("file")) == v3), None)
@@ -129,7 +129,7 @@ def prepare_revert(st, bt_root: str | Path, rel_id: str, reason: str, *, run_che
         raise AutoError(str(e)) from e
     title = f"撤销发布批 {rel_id}：文本 {old_char.get('version')}→{new_v}"
     _git(root, "add", "-A", "Book")
-    _git(root, "commit", "-q", "-m", title + "\n\n" + note + ("\n\n" + "\n".join(trailers) if trailers else ""))
+    _git(root, "commit", "-q", "-m", title + "\n\n" + note + ("\n\n" + "\n".join(recs) if recs else "") + ("\n\n" + "\n".join(trailers) if trailers else ""))
     commit = _git(root, "rev-parse", "HEAD")
     new_id = f"rel_{book}_{v3}_{new_v}"
     row = {"schema": RELEASE_SCHEMA, "id": new_id, "kind": "revert", "reverts": rel_id, "reason": reason.strip(),

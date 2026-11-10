@@ -104,7 +104,7 @@ def bt_dir(bt: Path, text_id: str) -> Path:
 
 
 def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: str, note: str) -> None:
-    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件、改 index／manifest 章数、记 CHANGES。"""
+    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
     d = bt_dir(bt, text_id)
     dd = d / "default"
     for kind in ("char", "cord", "norm"):
@@ -131,9 +131,7 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
         if v.get("key") == "default":
             v["chapters_total"] = len(idx["chapters"])    # E14-2：写已入库章数，不写全书册数
     man_p.write_text(json.dumps(man, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    ch_p = dd / "CHANGES.md"
-    with ch_p.open("a", encoding="utf-8") as f:
-        f.write(f"| {date.today()} | {chapter} | 文本 | —→{tv} | {note} | — |\n")
+    print(f"版本记录: {text_id}/{chapter} | 文本 | →{tv} | {note}")
     print(f"book-text：{d} 加章 {chapter}（{ent['pages']}，text_version {tv}），总章数 {len(idx['chapters'])}")
 
 
