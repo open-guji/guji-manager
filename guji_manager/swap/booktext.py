@@ -164,7 +164,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
 def load_human(book: str) -> dict[str, str] | None:
     """事件里的定字人裁 {裁时格号: 字}（不过绑定表：云端没有产物算不了绑定）。取不到（没装 cv、没有事件目录）返回 None。"""
     try:
-        from open_guji_cv.feedback.lookup import human_chars
+        from .._cv import human_chars
         h = human_chars(book, bind=False)
     except Exception:  # noqa: BLE001
         return None
@@ -250,13 +250,14 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
-                  book: str | None = None) -> dict:
+                  book: str | None = None, require_human: bool = False) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
     受保护的格（有效人裁、char-edits 手改）先经对照表换到新格、按人裁最高判字；**账不平就停**：
     受保护的旧格在新包里没了（删），或落字≠人裁／手改字（新包与人裁冲突，按总纲保留人裁，但要人看）。
-    human 缺省从事件读（``load_human(book)``，book 缺省 ``vol<章>``）；读不到就只核手改并在 notes 里说明。
+    human 缺省从事件读（``load_human(book)``，book 缺省 ``vol<章>``）；读不到就只核手改并在 notes 里说明，
+    ``require_human``（1.x 册）时读不到就停。
 
     返回 {ok, problems, counts, chars, remap, table, left, review, notes, human_pre}。"""
     repo, vdir = Path(repo), Path(vdir)
@@ -269,10 +270,11 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     cf = vdir / f"{chapter}.char.json"
     new_char, new_cord = _load(cf), _load(vdir / f"{chapter}.cord.json")
     rows = cell_table(old["char"], old["cord"], new_char, new_cord)
-    notes = []
+    notes, human_missing = [], False
     if human is None:
         human = load_human(book or f"vol{int(chapter):02d}")
         if human is None:
+            human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
     prot_old, human_pre = protected_cells(old["char"], human, edits)
@@ -281,7 +283,6 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     ledger_probs += ledger_check(new_char, prot_new)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
-    chars = {k: v for k, v in chars.items()}
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
     out_dir = Path(out_dir or tempfile.mkdtemp(prefix="swap-bt-"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -293,6 +294,8 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     punct, entity = _load(pf), _load(ef)
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
     problems = guard(punct, res["punct"], entity, res["entity"])
+    if human_missing and require_human:
+        problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
     if ledger_probs:
         problems.append(f"人裁账不平 {len(ledger_probs)} 格：" + "；".join(ledger_probs[:8]))
     review = [r for r in res["report"] if r[0] == "entity-复核"]
@@ -447,7 +450,8 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             t = vdir / "fig" / ch / f.name
             if not t.exists() or t.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, t)
-    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir)
+    one_x = str(tv).split(".")[0] not in ("0", "")
+    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")
@@ -497,7 +501,6 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     msg = f"殿本 {book}：换包增删格，标点专名按对照表平移（patch）\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
     _git(wt, "add", "-A", "--", str(vdir.relative_to(wt)))
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
-    one_x = str(tv).split(".")[0] not in ("0", "")
     if push:
         dest = f"swap/{book}-1x" if one_x else "dev"
         for i in range(3):

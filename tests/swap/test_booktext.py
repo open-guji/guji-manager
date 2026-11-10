@@ -106,3 +106,39 @@ def test_merge_keeps_human_and_flags_conflict():
     assert "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"]) == "方苞在"
     assert rep["protected_conflict"] == [("1:1:2", "苞", "芭", "苞")]
     assert bt.ledger_check(new_c, {"1:1:2": "苞"}) == []
+
+
+def test_require_human_stops_1x_when_events_missing(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    repo = tmp_path / "bt"
+    vdir = repo / "Book" / "default"
+    vdir.mkdir(parents=True)
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "original_version.py").write_text(
+        "import json\ndef dump_json(p, d):\n    open(p, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False))\n",
+        encoding="utf-8")
+    c = _char({1: "方苞"})
+    d = _cord({1: "方苞"})
+    for t, x in (("char", c), ("cord", d), ("punct", {"punctuations": []}), ("entity", {"entities": []})):
+        (vdir / f"001.{t}.json").write_text(json.dumps(x, ensure_ascii=False), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b", "-c", "user.name=t", "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b", "-c", "user.name=t", "commit", "-qm", "x"], check=True)
+    monkeypatch.setattr(bt, "load_human", lambda book: None)
+    calls = {}
+
+    class _RA:
+        def load_cells(self, p):
+            return p
+
+    def _run(ra, ch, nc, p, e, cells):
+        calls["n"] = calls.get("n", 0) + 1
+        return {"punct": p, "entity": e, "report": [], "moved": 0, "left": 0}
+    from guji_manager.closeout import remap_lib
+    monkeypatch.setattr(remap_lib, "load_ra", lambda repo: _RA())
+    monkeypatch.setattr(remap_lib, "run", _run)
+    r0 = bt.remap_in_repo(repo, vdir, "001", out_dir=tmp_path / "o")
+    assert r0["ok"] and r0["notes"]
+    r1 = bt.remap_in_repo(repo, vdir, "001", out_dir=tmp_path / "o", require_human=True)
+    assert not r1["ok"] and any("1.x" in x for x in r1["problems"])
