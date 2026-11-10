@@ -208,3 +208,28 @@ def test_drop_stored_table_keeps_earlier_tables(tmp_path):
     assert old.exists() and not new.exists()
     bt.drop_stored_table(old)                 # 最后一张删完：空目录一并收掉
     assert not (tmp_path / "lineage").exists()
+
+
+def test_sync_headings_keeps_unreadable_chapters(tmp_path):
+    """只检出本章时，别章的 headings 不能被 sync_headings 删光（殿本 vol03 #437）。"""
+    import json
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "original_version.py").write_text(
+        "import json, os\n"
+        "def sync_headings(d):\n"
+        "    p = os.path.join(d, 'index.json'); x = json.load(open(p))\n"
+        "    for c in x['chapters']:\n"
+        "        if os.path.isfile(os.path.join(d, c['file'] + '.char.json')): c['headings'] = [{'label': 'new'}]\n"
+        "        else: c.pop('headings', None)\n"
+        "    json.dump(x, open(p, 'w'))\n", encoding="utf-8")
+    v = tmp_path / "Book" / "default"
+    v.mkdir(parents=True)
+    old = [{"level": 1, "label": "旧", "anchor": "1:1:1"}]
+    (v / "index.json").write_text(json.dumps({"chapters": [{"n": 1, "file": "001", "headings": old},
+                                                           {"n": 3, "file": "003", "headings": old}]}), encoding="utf-8")
+    for t in ("char", "punct"):
+        (v / f"003.{t}.json").write_text("{}", encoding="utf-8")
+    bt.sync_headings_keep_unreadable(tmp_path, v)
+    ch = json.loads((v / "index.json").read_text(encoding="utf-8"))["chapters"]
+    assert ch[0]["headings"] == old                       # 001 文件不在：原样保留
+    assert ch[1]["headings"] == [{"label": "new"}]        # 003 在盘上：照常重算

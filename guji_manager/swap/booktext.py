@@ -129,7 +129,7 @@ def table_counts(rows: list[dict]) -> dict[str, int]:
 # ───────────────────────── 字的取舍 ─────────────────────────
 
 def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[str] | frozenset[str] = frozenset(),
-                protected: dict[str, str] | None = None) -> dict:
+                protected: dict[str, str] | None = None, same=None) -> dict:
     """按对照表逐块图判字，**就地改 new_char**。pending：新单上待审的格（新格号）。
     protected：{新格号: 字}，有效人裁与 char-edits 手改经对照表换到新格后的字（人裁最高，`resolve` 的 human）。
 
@@ -148,7 +148,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
             continue
         cur, new = cur_seq[i], new_seq[i]
         d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
-                    new_lacuna=bool(x.get("lacuna")))
+                    new_lacuna=bool(x.get("lacuna")), same=same)
         if d.result != new and d.result is not None:
             x["c"] = d.result
             if d.result != BLANK:
@@ -171,13 +171,14 @@ def load_human(book: str) -> dict[str, str] | None:
     return {k.split(":", 1)[1] if k.startswith(f"{book}:") else k: c for k, c in h.items() if c}
 
 
-def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None) -> tuple[dict[str, str], list[tuple]]:
+def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None, same=None) -> tuple[dict[str, str], list[tuple]]:
     """旧版里受保护的格 {旧格号: 字}：有效人裁（旧 book-text 该格正是人裁字，才算绑得上）与 char-edits 手改（取改后字）。
     返回 (受保护, 原先就对不上的 [(格, 来源, 人裁或手改字, 旧文本字)])；后者多是异体／归一（删/刪），只报不停。"""
     och = {a: x.get("c") for a, x in _chars(old_char)}
+    eq = same or (lambda p, q: p == q)
     prot, pre = {}, []
     for a, c in (human or {}).items():
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "人裁", c, och.get(a)))
@@ -185,7 +186,7 @@ def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[di
         a, c = e.get("anchor"), e.get("new")
         if not a or not c:
             continue
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "手改", c, och.get(a)))
@@ -206,9 +207,10 @@ def human_ledger(rows: list[dict], prot_old: dict[str, str], new_char: dict) -> 
     return out, probs
 
 
-def ledger_check(new_char: dict, prot_new: dict[str, str]) -> list[str]:
+def ledger_check(new_char: dict, prot_new: dict[str, str], same=None) -> list[str]:
+    eq = same or (lambda p, q: p == q)
     cur = {a: x.get("c") for a, x in _chars(new_char)}
-    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if cur.get(a) != c]
+    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if not eq(cur.get(a), c)]
 
 
 # ───────────────────────── book-text 里落地 ─────────────────────────
@@ -313,10 +315,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
-    prot_old, human_pre = protected_cells(old["char"], human, edits)
+    from ..charnorm import load_norm
+    same = load_norm(book or f"vol{int(chapter):02d}").same     # 同字判定（别／別 不算冲突）
+    prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
-    chars = merge_chars(old["char"], new_char, rows, pending, prot_new) if merge else {}
-    ledger_probs += ledger_check(new_char, prot_new)
+    chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
+    ledger_probs += ledger_check(new_char, prot_new, same)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
@@ -587,7 +591,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             _git(wt, "clean", "-fdq", "--", "Book")
             return {"status": "blocked", "why": f"bump {ln} 失败：{(p.stdout + p.stderr).strip()[-300:]}", **r}
         records += [x.strip() for x in p.stdout.splitlines() if x.startswith("版本记录:")]
-    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    sync_headings_keep_unreadable(wt, vdir)
     ar = Path(wt) / "scripts" / "book-text"
     if str(ar) not in sys.path:
         sys.path.insert(0, str(ar))
@@ -652,6 +656,42 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 out["status"] = "pr-opened"
         return out
     return {"status": "committed", "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+
+
+def _unreadable_headings(vdir: Path) -> dict[int, list]:
+    """index.json 里 char／punct 文件不在盘上的章（稀疏检出、只取了本册）已有的 headings，按章序号 → 原值。"""
+    try:
+        idx = json.loads((Path(vdir) / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    keep = {}
+    for i, c in enumerate(idx.get("chapters") or []):
+        if not isinstance(c, dict) or "headings" not in c:
+            continue
+        stem = c.get("file") or (f"{c['n']:03d}" if isinstance(c.get("n"), int) else None)
+        if not stem or not (Path(vdir) / f"{stem}.char.json").is_file() or not (Path(vdir) / f"{stem}.punct.json").is_file():
+            keep[i] = c["headings"]
+    return keep
+
+
+def sync_headings_keep_unreadable(wt: Path, vdir: Path) -> None:
+    """跑 book-text ``OV.sync_headings`` 重算目录缓存 headings，但**别章读不到数据文件时不删它的 headings**。
+    ``sync_headings`` 把「char／punct 文件不在」当成「没有标题」而删键；工作树只检出本章时，会把别章（殿本 vol03 的 #437：98 章）
+    的 headings 全删光。这里先记下读不到数据的章的 headings，同步后原样放回。"""
+    keep = _unreadable_headings(vdir)
+    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    if not keep:
+        return
+    ip = Path(vdir) / "index.json"
+    idx = json.loads(ip.read_text(encoding="utf-8"))
+    changed = False
+    for i, h in keep.items():
+        chs = idx.get("chapters") or []
+        if i < len(chs) and chs[i].get("headings") != h:
+            chs[i]["headings"] = h
+            changed = True
+    if changed:
+        ip.write_text(json.dumps(idx, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def drop_stored_table(stored: Path) -> None:

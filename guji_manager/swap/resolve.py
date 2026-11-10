@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 BLANK = "□"
 
@@ -60,7 +61,10 @@ def _blank(c: str | None) -> bool:
 def resolve(cur: str | None, new: str | None, human: str | None = None, *,
             human_invalid: bool = False, flaw: bool = False,
             new_pending: bool = False, new_lacuna: bool = False,
-            new_not_char: bool = False) -> Decision:
+            new_not_char: bool = False, same: Callable[[str | None, str | None], bool] | None = None) -> Decision:
+    """``same(a, b)``：同字判定（``charnorm.CharNorm.same``），缺省字面 ``==``。归一后同字不算冲突、不算机器改字、不进复审
+    （审视文档 §二-4：别／別 不能被当成「机器推翻人裁」）。"""
+    eq = same or (lambda a, b: a == b)
     if new_not_char:
         if human is not None:
             return Decision(PROTECTED_CONFLICT, REVIEW, human, False, f"新包认定不是字（frame_line），人裁「{human}」，保留人裁")
@@ -70,9 +74,9 @@ def resolve(cur: str | None, new: str | None, human: str | None = None, *,
             return Decision(SAME, KEEP, None, True, "新包认定不是字，现行也没有字")
         return Decision(NOT_CHAR, ADOPT, None, True, f"新包认定不是字（frame_line），删去现行「{cur}」")
     if human is not None:
-        if new is not None and new != human and new != BLANK and not new_pending:
+        if new is not None and not eq(new, human) and new != BLANK and not new_pending:
             return Decision(PROTECTED_CONFLICT, REVIEW, human, False, f"新包「{new}」≠人裁「{human}」，保留人裁")
-        if cur == human:
+        if eq(cur, human):
             return Decision(HUMAN_KEEP, KEEP, human, True)
         return Decision(HUMAN_RESTORE, ADOPT, human, True, f"现行「{cur}」→人裁「{human}」")
     if human_invalid:
@@ -81,17 +85,17 @@ def resolve(cur: str | None, new: str | None, human: str | None = None, *,
     if new_pending and not new_lacuna:
         if not new or new == BLANK:
             return Decision(PENDING_NO_CHOICE, KEEP, cur, True, "新包待审且无首选字，文本保持现行，出待审单", True)
-        if cur == new:
+        if eq(cur, new):
             return Decision(PENDING_SAME, KEEP, cur, True, "待审但首选字与现行一致，文本不动，只出待审单", True)
         if not _blank(cur):
             # 现行有字、待审首选字不同：文本不动，等人裁定了确是另一字再改（sheldon 11-10 定）
             return Decision(PENDING_KEEP, KEEP, cur, True, f"待审，首选字「{new}」≠现行「{cur}」，文本不动，人裁后再改", True)
         # 现行 □／缺格：写首选字（走常规 NEW_ADMIT），另出待审单
-        d = resolve(cur, new, None, flaw=flaw)
+        d = resolve(cur, new, None, flaw=flaw, same=same)
         return Decision(d.kind, d.action, d.result, d.auto, d.note, True)
     if new is None:
         return Decision(REMOVED, KEEP, cur, True, "新包无对应格")
-    if cur == new:
+    if eq(cur, new):
         return Decision(SAME, KEEP, cur, True)
     if flaw:
         return Decision(MACHINE_FLAW, REVERT, cur, True, "机器错字检测命中，回退现行字")
