@@ -427,6 +427,51 @@ def structure_changed(old_char: dict, new_char: dict) -> bool:
     return [a for a, _ in _chars(old_char)] != [a for a, _ in _chars(new_char)]
 
 
+# ───────────────────────── R1 前置闸：字形库已 rekey ─────────────────────────
+
+def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int) -> dict:
+    """字形库刻例的键（`册:页:列:格`）是格号坐标，格号变了必须先 rekey（`ops/cell_rekey`），否则人裁刻例会投到别的块图（殿本 99:2:8 出两个「雯」）。
+    只读核对：本册字形库实例的格键，不在**新包格集合**里的就是没跟上的（停）；在新包里、但对照表说它改了号的（旧号被别的块图占用）
+    无法只靠键判断，只计数报出（``ambiguous``），要用 g 快照对比图字对（字形快速入库.md）。
+    返回 {ok, orphan: [键…], ambiguous: n, n_inst}。"""
+    import sqlite3
+    from ..ops.cell_rekey import _split_instance
+    pre = f"vol{vol:02d}:"
+    new_cells = {pre + r["new"] for r in rows if r["new"]}
+    renamed_old = {pre + r["old"] for r in rows if r["kind"] == "改号" and r["old"]}
+    c = sqlite3.connect(f"file:{glyph_db}?mode=ro", uri=True)
+    try:
+        ids = [r[0] for r in c.execute("SELECT instance_id FROM instances")]
+    finally:
+        c.close()
+    orphan, amb, n = [], 0, 0
+    for iid in ids:
+        sp = _split_instance(iid, f"vol{vol:02d}")
+        if sp is None:
+            continue
+        n += 1
+        key = sp[1]
+        if key not in new_cells:
+            orphan.append(iid)
+        elif key in renamed_old:
+            amb += 1
+    return {"ok": not orphan, "orphan": orphan, "ambiguous": amb, "n_inst": n}
+
+
+def open_pr(wt: Path, branch: str, title: str, body: str, base: str = "dev") -> str:
+    """R7：1.x 推了 ``swap/<册>-1x`` 分支后开 PR（草稿；需 ``gh`` 且已登录）。已有同分支的开 PR 就返回它。失败不抛，返回 ``failed：…``。"""
+    gh = shutil.which("gh")
+    if not gh:
+        return "failed：没有 gh 命令，手动开 PR"
+    ex = subprocess.run([gh, "pr", "list", "--head", branch, "--base", base, "--state", "open", "--json", "url", "-q", ".[0].url"],
+                        cwd=wt, capture_output=True, text=True)
+    if ex.returncode == 0 and ex.stdout.strip():
+        return ex.stdout.strip()
+    p = subprocess.run([gh, "pr", "create", "--draft", "--base", base, "--head", branch, "--title", title, "--body", body],
+                       cwd=wt, capture_output=True, text=True)
+    return p.stdout.strip().splitlines()[-1] if p.returncode == 0 and p.stdout.strip() else f"failed：{(p.stderr or p.stdout).strip()[-200:]}"
+
+
 # ───────────────────────── 命令 ─────────────────────────
 
 def _latest_export(ws: Path, book: str) -> Path | None:
@@ -461,7 +506,7 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
 
 
 def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: str, push: bool,
-            pending: set[str], out_dir: Path) -> dict:
+            pending: set[str], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True) -> dict:
     vdir = _bt_dir(wt, text_id) / "default"
     ch = f"{int(book[3:]):03d}"
     from ..formats.guji_char_cord import dumps
@@ -473,6 +518,14 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     new_char = _load(export / f"{ch}.char.json")
     if not new_char:
         return {"status": "blocked", "why": f"导出里没有 {ch}.char.json：{export}"}
+    gate_note = "R1 未核（没给 --glyph-db）"
+    if glyph_db:
+        old_cord, new_cord = _load(vdir / f"{ch}.cord.json"), _load(export / f"{ch}.cord.json")
+        if old_cord and new_cord:
+            g = rekey_gate(glyph_db, cell_table(old_char, old_cord, new_char, new_cord), int(book[3:]))
+            if not g["ok"]:
+                return {"status": "r1-stop", "why": f"字形库有 {len(g['orphan'])} 个刻例的格键不在新包里（没 rekey）：{g['orphan'][:5]}；先 rekey 再落"}
+            gate_note = f"R1 已核（实例 {g['n_inst']}，改号待核 {g['ambiguous']}）"
     new_char["version"] = old_char.get("version", new_char.get("version"))
     (vdir / f"{ch}.char.json").write_text(dumps(new_char), encoding="utf-8", newline="\n")
     for t in ("cord", "norm", "fig"):
@@ -534,6 +587,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         body.append(f"专名复核 {len(r['review'])} 条（改字落进专名）：" + "；".join(f"{x[1]} {x[4]}" for x in r["review"][:8]))
     if r["left"]:
         body.append(f"留待重标 {len(r['left'])} 条（closeout 现算为 A01–A03）：" + "；".join(f"{x[1]} {x[2]}" for x in r["left"][:6]))
+    body.append(gate_note)
     msg = f"殿本 {book}：换包增删格，标点专名按对照表平移（patch）\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
     _git(wt, "add", "-A", "--", str(vdir.relative_to(wt)))
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
@@ -547,7 +601,12 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 break
         else:
             return {"status": "push-fail", "why": p.stderr.strip()[-200:], **r}
-        return {"status": "pr-needed" if one_x else "pushed", "branch": dest, "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+        out = {"status": "pr-needed" if one_x else "pushed", "branch": dest, "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+        if one_x and open_pr_:
+            out["pr"] = open_pr(wt, dest, f"{book} 换包（1.x）：格号变动按格级对照表落 book-text（patch）", "\n".join(body) + "\n\n" + "\n".join(records))
+            if not out["pr"].startswith("failed"):
+                out["status"] = "pr-opened"
+        return out
     return {"status": "committed", "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
 
 
@@ -606,7 +665,8 @@ def cmd_book_text(a, books: list[str]) -> int:
         _worktree(src, wt)
         ch = f"{int(b[3:]):03d}"
         r = do_book(wt, ws, b, a.text_id, export, note=a.note or f"{b} 换包（{export.parent.name}），增删格按格级对照表落 book-text",
-                    push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b)
+                    push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b,
+                    glyph_db=Path(a.glyph_db) if getattr(a, "glyph_db", None) else None, open_pr_=not getattr(a, "no_pr", False))
         res[b] = {k: v for k, v in r.items() if k not in ("char_detail", "left", "review")}
         if getattr(a, "sheet", False) and r["status"] == "pushed":
             res[b]["sheet"] = push_sheet(ws, b, Path(a.cv))
@@ -615,4 +675,4 @@ def cmd_book_text(a, books: list[str]) -> int:
         ok = db_sync(ws, Path(a.cv))
         print(f"中心库同步：{'好' if ok else '失败，手动 guji db sync -w ' + str(ws)}；网站随 swap run 的发布或每日 proofing-sync 上线", file=sys.stderr)
     print(json.dumps(res, ensure_ascii=False, indent=1))
-    return 0 if all(v["status"] in ("pushed", "committed", "pr-needed") for v in res.values()) else 2
+    return 0 if all(v["status"] in ("pushed", "committed", "pr-needed", "pr-opened") for v in res.values()) else 2
