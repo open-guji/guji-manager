@@ -19,6 +19,8 @@
   pair-apply --results DIR [--min-rate 1.0] [--min-judged 30]            白名单页结果 → 每组同字率＋可入白名单的组
   cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
   build glyph_quality --items <分片>/items.jsonl --root <分片> ...   字块质量页；可直接吃 dataset 金标信封（--all-crops 连已标的也上）
+  cold-items --cells 待审.tsv --pack-dir '<包>/{vol}' --crops-dir '<图>/{cell}.png' --out-dir D   冷启动快审：按 5b 领先/cov/库例数分高、低把握 items（见 cold_start.py）
+  cold-pages --out-dir D --book B                                  出高/低把握两张页（高：带「本页其余都对」；低：一格一卡、没点不算对）
   gq-apply   --results DIR --out F [--shard items.jsonl --why …]   字块质量结果 → 标签 jsonl；给 --shard 则按（格号, sha）回写信封
 """
 from __future__ import annotations
@@ -82,6 +84,14 @@ def main(argv=None):
     p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
     p = sub.add_parser("closeout-sum"); p.add_argument("--results", required=True)
+    p = sub.add_parser("cold-items"); p.add_argument("--cells", required=True)
+    p.add_argument("--pack-dir", required=True, help="包目录，含 rare_candidates/；多册用 {vol}")
+    p.add_argument("--crops-dir", required=True, help="裁图路径模板，含 {cell}（格号冒号换下划线），如 /x/crops/{cell}.png")
+    p.add_argument("--out-dir", required=True); p.add_argument("--skip", nargs="*", default=[], help="已点过的格号文件")
+    p.add_argument("--skip-chars", default="", help="不上页的字（如 木入八己已巳）")
+    p.add_argument("--where", action="append", default=[], help="只取某列以某前缀开头的行，如 层=2（可重复）")
+    p = sub.add_parser("cold-pages"); p.add_argument("--out-dir", required=True); p.add_argument("--book", required=True)
+    p.add_argument("--tag", default="")
     p = sub.add_parser("pair-events"); p.add_argument("type", choices=["near_pair", "lib_audit"])
     p.add_argument("--items", required=True); p.add_argument("--results", required=True)
     p.add_argument("--book", required=True); p.add_argument("--out", required=True)
@@ -107,6 +117,19 @@ def main(argv=None):
                                          a.per_page, a.per_card, a.hint,
                                          build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok),
                          ensure_ascii=False))
+    elif a.cmd == "cold-items":
+        from . import cold_start
+        rows = cold_start._read_rows(a.cells)
+        for w in a.where:
+            k, _, v = w.partition("=")
+            rows = [r for r in rows if str(r.get(k, "")).startswith(v)]
+        hi, lo, st = cold_start.classify(rows, a.pack_dir, a.crops_dir, build_mod.read_ids(a.skip), a.skip_chars)
+        out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
+        _write_jsonl(out / "hi.jsonl", hi); _write_jsonl(out / "lo.jsonl", lo)
+        print(json.dumps(st, ensure_ascii=False))
+    elif a.cmd == "cold-pages":
+        from . import cold_start
+        print(json.dumps(cold_start.write_pages(a.out_dir, a.book, a.tag), ensure_ascii=False))
     elif a.cmd == "seg-cards":
         from . import seg_causes
         cs = seg_causes.build_cards(a.per_page, a.per_cell)
