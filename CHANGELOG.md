@@ -9,6 +9,30 @@
 
 - 冷启动高/低把握两张页固化（MINOR，人审页线 11-10，用户要求）：`review_pages/cold_start.py` 与 `review-pages cold-items`／`cold-pages`：按 5b 领先量、cov、库例数把「库缺样本」格分高把握（带「本页其余都对」）与低把握（一格一卡、没点不算对），一条命令出页；char_card 模板不变（1.5.4）。流程见 `doc/01-粗校/开书/冷启动快审入库.md`「高把握／低把握」一节（PR #412）。L0。
 
+- 新增 `guji closeout lib-disagree <产物包目录>`（MINOR 以下按 PATCH 记，ZM 11-10，缺省不跑）：出单前复核，列出「放行字＝整理本字、库首位是另一个字且 cov≥0.97、非人裁、不在已声明字组／异体里」的格，写成 `--recheck` 清单交 `republish.py`。不改 cv、不改产物。L0。
+
+## [0.4.36] - 测试中
+
+- `guji pending --kv`：改条目、导出、`db sync` 后把整张单直接写网站 KV（`/api/pending`，读者约 15 秒内可见；撤下一格、加一格不再等 proofing-sync 发 COS 和清 CDN）；单里图不在 COS、没令牌或写失败时自动退回 `--sync`。需网站 kaiyuanguji-web `/api/pending` 上线（PATCH，A31 11-10，sheldon 定）。L0。
+
+- `cellvotes draft`：网站新人裁直接覆盖旧人裁（不再挂起要求回网站复审；没给字的票不盖旧裁的字）；「无字」票缺省就写（`--no-none` 才挂起）（PATCH，ZM-殿本二册 11-10，sheldon 定）。
+
+## [0.4.35] - 2026-11-10
+
+- 发版（PATCH，A31 11-10）：从 dev 切，含待审条目化 #454、#455、#456（sheldon 11-10 定）与 A34 的 resolve 认「不是字」、A23 的撤库重审事件。配 cv ≥ v0.6.37。
+
+- 待审条目（一格一条，PATCH，A31 11-10，sheldon 定）：`review/pending_items.py` 条目日志 `feedback/lists/pending/<书>/<章>.items.jsonl`（只追加，`guji db sync` 按追加合并）；`guji pending ls/show/withdraw/restore/note/set/add/resolve/import/reconcile/export`；reconcile 先按图块指纹、再按格号认，只动有变化的，人工撤下的不放回，格号对上指纹变了记 `fp_changed`；整张 pending.json 从条目导出（每格带 `id`／`ver`，条目自带的字块图并进 `sprites[]`）；`cellvotes draft --items` 落网站按条目记的票（换成条目现在的格号），write 后条目标已裁。L0。
+
+- `swap/resolve` 认「不是字」：`resolve(new_not_char=True)`（cv#1358 列端框线格 `frame_line`）无人裁→`NOT_CHAR` 删格放行、有人裁→`PROTECTED_CONFLICT`；`detect_flaws(not_char=…)` 不把它们算字丢失。swap release 待建清单记下接线（PATCH，A34 11-10，A31 请）。L1。
+
+- 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
+
+## [0.4.34] - 2026-11-10
+
+- 发版（PATCH，A34 11-10，A31 请）：从 dev 切，含 #445；`doc/04-反馈迭代/全流程与覆盖优先级.md` 一·二与 5.3 并入 11-10 新规矩（待审且首选字≠现行字时文本不动，等人裁；撤库重审格同样保持现字）。
+
+- 待审格现行有字则文本不动（PATCH，A31 11-10，sheldon 定）：`apply_pending` 加可选 `current`，单上格（review≠human）现行已是字、导出字不同时写回现行字（计 `held_current`），现行是 □ 才写首选字；`swap/resolve` 待审且首选字≠现行字新增 `PENDING_KEEP`（原按机器改字放行）。L1。
+
 ## [0.4.33] - 2026-11-10
 
 - PATCH（A31 11-10，用户定删 book-text 各书 CHANGES.md）`opinions revise／auto prepare／revert` 把 bump_original 打印的「版本记录」行写进提交信息，`auto finish_pr` 不再补 #TBD；`opinions versions` 改从本地 book-text 的 git log 读版本记录并和已存的 text_versions 合并（旧 CHANGES.md 还在时照读）；`tools/开书/出v01.py` 改打印版本记录行。需 book-text 同名 PR 一起上线，必须先于它发版。

@@ -272,3 +272,38 @@ def test_stamp_pending(tmp_path):
     assert cell["pending_reason"] == "group_abstain" and cell["pending_reason_also"] == ["anchor_miss"]
     assert P.stamp_pending(tmp_path / "none.json", tmp_path / "001.char.json", tmp_path, "001") == {}
     assert P.stamp_pending(pend, tmp_path / "001.char.json", tmp_path, "002") == {}   # 无伴生层
+
+
+# ---------- 出单前复核：库首位≠放行字（缺省关，手动跑） ----------
+def _page3(rows):
+    """rows: (id, released, ref, top, cov, channel)"""
+    gm = {"columns": [{"chars": [{"id": i, "candidates": [[t, c], ["x", .5]]} for i, _r, _f, t, c, _h in rows]}]}
+    sa = {"columns": [{"chars": [{"id": i, "char": r, "admit": True, "channel": h} for i, r, _f, _t, _c, h in rows]}]}
+    ar = {"chars": [{"id": i, "align_char": f} for i, _r, f, _t, _c, _h in rows]}
+    return gm, sa, ar
+
+
+def test_lib_disagree_rules():
+    from guji_manager.closeout import lib_disagree as LD
+    rows = [("v:1:1:1", "刺", "刺", "剌", .98, "match_ref"),      # 要列
+            ("v:1:1:2", "采", "采", "釆", .99, "match_ref"),      # 已声明
+            ("v:1:1:3", "刺", "刺", "剌", .95, "match_ref"),      # cov 不够
+            ("v:1:1:4", "刺", "刺", "剌", .99, "human"),          # 人裁
+            ("v:1:1:5", "今", "令", "令", .99, "match_ref"),      # 放行字≠整理本字，另有别的流程
+            ("v:1:1:6", "安", "安", "安", .99, "match_ref")]      # 库首位同放行
+    out = LD.scan_page(*_page3(rows), declared=lambda a, b: {a, b} == {"采", "釆"})
+    assert [r["id"] for r in out] == ["v:1:1:1"]
+    ln = LD.recheck_lines(out)[0].split("\t")
+    assert ln[0] == "1:1:1" and len(ln) == 4 and ln[2] == "" and "剌" in ln[1]
+
+
+def test_lib_disagree_scan_pack(tmp_path):
+    from guji_manager.closeout import lib_disagree as LD
+    gm, sa, ar = _page3([("v:2:1:1", "刺", "刺", "剌", .98, "match_ref")])
+    for d, k, doc in (("glyph_match", "glyph_match", gm), ("seed_admit", "seed_admit", sa), ("align_ref", "align_ref", ar)):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "p0002.json").write_text(json.dumps({k: doc}), encoding="utf-8")
+    pair = tmp_path / "d.tsv"
+    pair.write_text("刺\t剌\n", encoding="utf-8")
+    assert len(LD.scan_pack(tmp_path, declared=lambda a, b: False)) == 1
+    assert LD.scan_pack(tmp_path, declared=LD.load_declared(pair)) == []

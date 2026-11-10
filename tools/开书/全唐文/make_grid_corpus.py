@@ -79,8 +79,8 @@ if len(USED)!=len(ERRATA): raise SystemExit("有勘误条目没用上："+",".jo
 if MIN_JUAN:
     sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
     from add_juan_header import add_headers
-    # 卷1–2（册003）2026-11-08 起也补；卷3–6（册004 已定稿）不补
-    res,k=add_headers(open(out,encoding="utf-8").read().split("\n"),MIN_JUAN,also=(1,2) if MIN_JUAN>2 else ())
+    # 卷1–2（册003）2026-11-08 起也补；卷3–6（册004）2026-11-10 起也补（004 待审 9 格卷名栏无参照）
+    res,k=add_headers(open(out,encoding="utf-8").read().split("\n"),MIN_JUAN,also=(1,2,3,4,5,6) if MIN_JUAN>2 else ())
     open(out,"w",encoding="utf-8").write("\n".join(res)); print("补卷名栏",k,"行")
 # 长双行小注：Kanripo 把一列的右行、左行各录一行，半叶超 9 行时并成 <右|左>（06p141/142，2026-11-03）
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))

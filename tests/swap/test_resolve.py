@@ -1,6 +1,6 @@
 from guji_manager.swap.resolve import (resolve, detect_flaws, SAME, HUMAN_KEEP, HUMAN_RESTORE, PROTECTED_CONFLICT,
                                        HUMAN_INVALID, NEW_ADMIT, MACHINE_CHANGE, RETURN_TO_BLANK, MACHINE_FLAW,
-                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT, PENDING_SAME, PENDING_NO_CHOICE)
+                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT, PENDING_SAME, PENDING_NO_CHOICE, PENDING_KEEP, NOT_CHAR)
 
 
 def test_human_beats_machine():
@@ -69,9 +69,16 @@ def test_pending_without_first_choice_keeps_text():
         assert (d.kind, d.result, d.to_review) == (PENDING_NO_CHOICE, "甲", True)
 
 
-def test_pending_different_first_choice_follows_machine_rule_and_reviews():
+def test_pending_different_first_choice_keeps_current_text():
+    """现行有字、待审首选字不同：文本不动，人裁后再改（sheldon 11-10）。"""
     d = resolve("日", "曰", new_pending=True)
-    assert (d.kind, d.result, d.to_review) == (MACHINE_CHANGE, "曰", True)
+    assert (d.kind, d.action, d.result, d.to_review) == (PENDING_KEEP, KEEP, "日", True)
+
+
+def test_pending_on_blank_writes_first_choice():
+    for cur in ("□", None):
+        d = resolve(cur, "曰", new_pending=True)
+        assert (d.result, d.to_review) == ("曰", True)
 
 
 def test_pending_does_not_conflict_with_human():
@@ -82,3 +89,16 @@ def test_pending_does_not_conflict_with_human():
 def test_true_lacuna_from_machine_goes_to_review():
     d = resolve("字", "□", new_lacuna=True)
     assert (d.kind, d.action, d.result) == (RETURN_TO_BLANK, REVIEW, "字")
+
+
+def test_not_char_frame_line():
+    # cv#1358：列端框线格新包认定不是字（frame_line）
+    d = resolve("一", None, new_not_char=True)
+    assert (d.kind, d.action, d.result, d.auto) == (NOT_CHAR, ADOPT, None, True)
+    d = resolve("一", None, human="一", new_not_char=True)
+    assert (d.kind, d.result, d.auto) == (PROTECTED_CONFLICT, "一", False)
+    d = resolve("一", None, human_invalid=True, new_not_char=True)
+    assert (d.kind, d.result) == (HUMAN_INVALID, "一")
+    assert resolve(None, None, new_not_char=True).kind == SAME
+    assert detect_flaws(["甲", "一"], ["甲", ""]) == {1}
+    assert detect_flaws(["甲", "一"], ["甲", ""], not_char={1}) == set()

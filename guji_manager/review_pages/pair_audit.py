@@ -91,8 +91,11 @@ def to_specs(decisions: list[dict], book: str, source: str) -> list[dict]:
             specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,
                           "payload": {"v": "relabel", "char": r["char"], "instance_id": r["id"], "source": source}})
         elif st == "evict":
+            # 审阅页上的撤库带 review（Sheldon 2026-11-09）：多半切坏、认不出字，除了出库，这一格文本也撤下、
+            # 重新人审——cv seed_admit `evict_review` 闸认这个标记（doubt evict_review，待审原因 seg_defect）。
             specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,
-                          "payload": {"v": "evict", "instance_id": r["id"], "source": source}})
+                          "payload": {"v": "evict", "instance_id": r["id"], "source": source,
+                                      "review": True, "char_self": r.get("cur")}})
         elif st == "near_form":
             p = {"v": "near_form", "instance_id": r["id"], "char_self": r.get("cur"), "source": source}
             if r.get("peer"):

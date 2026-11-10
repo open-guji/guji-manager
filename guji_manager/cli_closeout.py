@@ -7,6 +7,7 @@
                                                            # A01–A03 按当前 book-text 现算并写进待审单（先清上次的，幂等；方案 8.9）
     guji closeout stamp <待审单.json> --report <分流项.json> [--out 新单.json]
                                                            # 同上，但分流项来自 auto_remap 的 report 文件
+    guji closeout lib-disagree <产物包目录> [--out recheck.tsv] [--min-cov 0.97] [--declared 字对.tsv]   # 出单前复核（缺省不跑）
     guji closeout redline <册> --human-total N --human-lost N --anchors-moved N --anchors-left N [--error …] [--glyph-verify-fail]
     guji closeout fix-misplaced --repo <book-text 检出> --vdir <版本目录> --chapter NNN (--cells <dev当前→正确 对照表.tsv[.gz]> | --replay <A33回放不一致明细.tsv>)
                                 [--apply] [--audit 审计.tsv] [--sample 30]
@@ -27,7 +28,7 @@ from .closeout import redlines, stats, writeback
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("closeout", help="标 main 后收尾：锚点待审格、红线、dev 错位自动写回")
-    p.add_argument("action", choices=["stats", "list", "stamp", "derive", "redline", "fix-misplaced"])
+    p.add_argument("action", choices=["stats", "list", "stamp", "derive", "redline", "fix-misplaced", "lib-disagree"])
     p.add_argument("target", nargs="*", help="stats／list／stamp：待审单 json；redline：册号")
     p.add_argument("--json", action="store_true")
     p.add_argument("--reason", default=None, help="list：只列这个主因（add_del／anchor_miss／anchor_drift）")
@@ -48,6 +49,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--apply", action="store_true", help="fix-misplaced：真写 punct.json（缺省只出计划）")
     p.add_argument("--audit", default=None, help="fix-misplaced：审计 tsv")
     p.add_argument("--sample", type=int, default=30, help="fix-misplaced：抽审条数（固定种子）")
+    p.add_argument("--min-cov", type=float, default=0.97, help="lib-disagree：库首位覆盖率下限")
+    p.add_argument("--declared", default=None, help="lib-disagree：补充的已声明字对 tsv（每行 字<TAB>字）")
 
 
 def _load(path: str) -> dict:
@@ -89,6 +92,8 @@ def cmd_closeout(a) -> int:
         return 0
     if act == "derive":
         return _derive(a)
+    if act == "lib-disagree":
+        return _lib_disagree(a)
     if act == "redline":
         r = redlines.check(a.target[0] if a.target else "?", human_total=a.human_total, human_lost=a.human_lost,
                            anchors_moved=a.anchors_moved, anchors_left=a.anchors_left, errors=a.error,
@@ -119,6 +124,21 @@ def _derive(a) -> int:
         {"a": x, "c": y} for x, y in writeback.slots_of(char))})
     Path(a.out or a.target[0]).write_text(json.dumps(plan, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"{a.chapter}：A01–A03 现算 {len(items)} 条；清掉上次 {n['purged']} 处；并进已有待审格 {n['appended']}，新增 {n['new']}")
+    return 0
+
+
+def _lib_disagree(a) -> int:
+    """出单前复核（缺省关）：放行字＝整理本字、库首位覆盖率高且是另一个字、非人裁、不在已声明里的格 → recheck 清单。"""
+    if not a.target:
+        sys.exit("lib-disagree 要 <产物包目录>（含 glyph_match／seed_admit／align_ref）")
+    from .closeout import lib_disagree as LD
+    rows = LD.scan_pack(a.target[0], declared=LD.load_declared(a.declared), min_cov=a.min_cov)
+    lines = LD.recheck_lines(rows)
+    if a.out:
+        Path(a.out).write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    else:
+        print("\n".join(lines))
+    print(f"{a.target[0]}：{len(rows)} 格（库首位 cov≥{a.min_cov}）" + (f"，清单 → {a.out}" if a.out else ""), file=sys.stderr)
     return 0
 
 
