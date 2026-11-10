@@ -5,6 +5,9 @@
 
 ## [未发版]
 
+- `cellvotes` 三处陷阱（PATCH，A31 11-10，ai-team 审视 §四-1~3）：`draft --from-kv` 按格号读到 0 票自动改读条目票，仍为 0 则报错退出；`--pack` 出单版包缺页时核格位退回主产物；`write` 缺 `--batch`/`--reviewer` 报缺哪项并以退出码 2 退出。L0。
+- `swap run` 加 `--ack-unlanded-votes <原因>`，透传 auto_cycle（cv 同步加参数）→ proof_cycle apply（PATCH，审视陷阱 4，ZM 转）。L0。
+
 - 统一「同一个字」判法（PATCH，A31 11-10，ai-team 字的等价与归一审视）：新增 `guji_manager/charnorm.py`（`CharNorm.same/canon`、`load_norm(book)` 读书级 codepoints，读不到按字面比）；`swap/resolve.resolve`、`booktext.merge_chars／protected_cells／ledger_check`、`overlay_edits.overlay`、`apply_pending(current=)`、`web_votes.triage／same_verdict`、`cellvotes draft` 都接受 `same=` 并在 `swap book-text`／`cellvotes draft` 里传入，别／別 这类归一后同字不再算冲突、机器改字、推翻旧裁。不传 `same` 行为与旧版一致。测试 `tests/test_charnorm.py`。L0。
 
 ## [0.4.40] - 2026-11-10

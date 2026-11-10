@@ -50,11 +50,9 @@ def load_norm(book: str | None = None, extra: Mapping[str, str] | None = None) -
         try:
             from ._cv import load_book
             spec = load_book(book)
-            for attr in ("codepoints", "codepoint_map"):
-                v = getattr(spec, attr, None)
-                if isinstance(v, Mapping):
-                    m.update(v)
-                    break
+            cps = getattr(spec, "codepoints", None)      # BookSpec.codepoints（cv core/book.py；工作区 config < book_defaults < 册 yaml < 运行覆盖）
+            if isinstance(cps, Mapping):
+                m.update(cps)
         except Exception:  # noqa: BLE001
             pass
     m.update(extra or {})

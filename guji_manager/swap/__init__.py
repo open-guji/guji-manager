@@ -257,7 +257,8 @@ def cmd_run(a) -> int:
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "w", encoding="utf-8") as f:
             subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", ",".join(chunk),
-                            "-w", str(ws), "--book-text", a.book_text, "--no-publish"],
+                            "-w", str(ws), "--book-text", a.book_text, "--no-publish",
+                            *(["--ack-unlanded-votes", a.ack_unlanded_votes] if getattr(a, "ack_unlanded_votes", None) else [])],
                            cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
         res = parse_cycle_log(log.read_text(encoding="utf-8"))
         for b in chunk:
@@ -294,6 +295,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--note", help="book-text：文本线版本记录的说明")
     p.add_argument("--push", action="store_true", help="book-text：过了守卫和 local_check 就推（0.x 推 dev；1.x 推 swap/<册>-1x 分支待开 PR）")
     p.add_argument("--glyph-db", help="book-text：字形库 sqlite（R1 前置闸：库里刻例的格键须都在新包里，否则停 r1-stop；不给则只标「R1 未核」）")
+    p.add_argument("--ack-unlanded-votes", metavar="原因", default=None,
+                   help="run：旧单上的票没落完（如 ~r 迁移后已是人裁）也照换；写明原因，透传 auto_cycle → proof_cycle apply → republish issue")
     p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
     p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
     p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")

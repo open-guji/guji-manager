@@ -122,6 +122,12 @@ def _votes(args) -> tuple[list[dict], str]:
         if not tok:
             raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
         items = _fetch_kv(args.site_book, args.rev, tok)
+        if not items:
+            # 新网站按条目记票，旧口径读到 0 条：自动改读条目票（下游 meta／write 也按条目处理）
+            args.items = True
+            raw, where = _item_votes(args)
+            _print(f"按格号读到 0 票，自动改读条目票：{where}")
+            return raw, where
         return items, f"网站管理读 /api/cellreview（{len(items)} 条）"
     p = feedback_root() / "lists" / "web" / args.site_book / f"{args.rev}.jsonl"
     if not p.exists():
@@ -136,6 +142,7 @@ def _box_checker(book: str, cord_path: Path, tol: float):
     from ._cv import ProductStore
     cord = cord_boxes(json.loads(Path(cord_path).read_text(encoding="utf-8")))
     store = ProductStore()
+    main = ProductStore(_MAIN_ROOT[0]) if _MAIN_ROOT[0] else None
     cache: dict[int, dict | None] = {}
 
     def check(a: str) -> str | None:
@@ -143,11 +150,17 @@ def _box_checker(book: str, cord_path: Path, tol: float):
         width, old = cord.get(pg, (0, {}))
         if pg not in cache:
             raw = store.read_raw(book, "cell_shrink", page_key(pg))
+            if raw is None and main is not None:       # 出单版包没带这页（那页没重跑过）：用主产物
+                raw = main.read_raw(book, "cell_shrink", page_key(pg))
             cache[pg] = None if raw is None else shrink_boxes(raw.get("char_index") or {}, width)
         if cache[pg] is None:
             return f"现行产物缺第 {pg} 页（先 guji pipeline keben_body_v2 {book} --pages {pg} --to seed_admit）"
         return check_cell(a, old, cache[pg], tol)
     return check
+
+
+#: 用了 --pack 时记下主产物根（``_box_checker`` 对包里缺的页退回它）
+_MAIN_ROOT: list = [None]
 
 
 def _use_pack(book: str, label: str) -> Path:
@@ -157,6 +170,8 @@ def _use_pack(book: str, label: str) -> Path:
     pr = products_root()
     base = pr.parent.parent if pr.parent.name == "_packs" else pr.parent   # 已经指到某个包时，回到原产物根旁边
     root = base / "_packs" / label
+    if pr.parent.name != "_packs":
+        _MAIN_ROOT[0] = pr           # 出单版包只含重跑过的页；没重跑的页格位没变，核格位时退回这个主产物根
     if not (root / book).is_dir() or not any((root / book).iterdir()):
         info = PK.fetch_products(book, root, label=label, force=True)
         _print(f"已取出单版产物包 {info['name']} → {root}")
@@ -232,6 +247,8 @@ def cmd_draft(args) -> None:
     if not args.cord and not args.no_box_check and not pack_root:
         raise SystemExit("要给 --cord（出单那一版 book-text 的 <册>.cord.json）或 --pack（出单版产物包），或显式 --no-box-check")
     raw, where = _votes(args)
+    if not raw:
+        raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走")
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
     human = latest_human(EventLog(feedback_root()).iter_all())
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
@@ -452,7 +469,9 @@ def cmd_cellvotes(args) -> None:
         cmd_rebase(args)
     else:
         if not args.dir or not args.batch or not args.reviewer:
-            raise SystemExit("write 要 <目录> --batch --reviewer")
+            _print("错误：write 要 <目录> --batch --reviewer（缺：" + "、".join(
+                n for n, v in (("<目录>", args.dir), ("--batch", args.batch), ("--reviewer", args.reviewer)) if not v) + "）")
+            raise SystemExit(2)         # 非零退出码，脚本里别把一行用法当成功
         cmd_write(args)
 
 
