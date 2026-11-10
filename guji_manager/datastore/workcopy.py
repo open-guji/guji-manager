@@ -1216,7 +1216,8 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
             merged[rel], ren = _merge_events(lp.read_bytes(), rp.read_bytes())
             renamed.update(ren)
             continue
-        if classify(rel) in APPEND_ONLY and lp.exists() and rp.exists():
+        if (classify(rel) in APPEND_ONLY or rel.endswith(".items.jsonl")) and lp.exists() and rp.exists():
+            # 待审条目（feedback/lists/pending/…/<章>.items.jsonl）也只追加：两边各自追加的版本都留，当前状态取每条最后一行
             m = _merge_append(lp.read_bytes(), rp.read_bytes())
             if m is not None:
                 merged[rel] = m

@@ -25,6 +25,10 @@ cell_shrink 的框比，对不上的格挂起，不写——现行 cv 重切过�
 **`--pack <标签>`（GUJI-730 P1-1）**：出单时 `republish.py push --sync` 把那一版产物存成包 `rev-<rev>`。
 draft 给 `--pack rev-004-r6`，就取回这个包当产物根（缓存在 `<产物根>/../_packs/<标签>/`），锚和格位都按出单版算，
 不用重跑、格号也不会漂；`--cord` 可省。草稿 meta 记下产物根，write 自动用同一份。
+
+**`--items`（待审条目化，sheldon 11-10）**：网站按条目记的票（`feedback/lists/web/<site-book>/items.jsonl`，或 `--from-kv` 管理读
+`?items=1`）。每票按条目 id 换成条目**现在**的格号、`rev` 记成 `--rev`（现行单），其余同上——换单不丢票，不用「换单前先落完票」。
+`--rev` 给现行单的 rev，`--pack` 给现行单的产物包。write 时这些条目标 `resolved`（记事件 id），整张单随之重导。
 """
 from __future__ import annotations
 
@@ -61,9 +65,56 @@ def _fetch_kv(site_book: str, rev: str, token: str, site: str = SITE) -> list[di
             return items
 
 
+def _item_votes(args) -> tuple[list[dict], str]:
+    """按条目记的票 → 按现行格号记的票（a＝条目现在的格号，rev＝--rev）。条目找不到的丢掉（计数）。"""
+    from ._cv import feedback_root
+    from ._cv import load_votes
+    from .review import pending_items as P
+    if args.from_kv:
+        tok = os.environ.get(args.token_env)
+        if not tok:
+            raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
+        raw, where = _fetch_kv_items(args.site_book, tok), "网站管理读 /api/cellreview?items=1"
+    else:
+        p = Path(args.from_file) if args.from_file else feedback_root() / "lists" / "web" / args.site_book / "items.jsonl"
+        if not p.exists():
+            raise SystemExit(f"没有 {p}（先 guji db pull；票刚投、还没同步就用 --from-kv）")
+        raw, where = load_votes(p), str(p)
+    chap = args.rev.split("-r")[0]
+    store = P.ItemStore.open(feedback_root().parent, args.site_book, chap)
+    out, lost = [], 0
+    for v in raw:
+        if str(v.get("vol") or "").zfill(3) != chap.zfill(3):
+            continue
+        it = store.items.get(v.get("item") or "")
+        if it is None:
+            lost += 1
+            continue
+        out.append({**v, "a": it["cell"], "rev": args.rev, "item": it["id"]})
+    return out, f"{where}：条目票 {len(out)} 条" + (f"（{lost} 条找不到条目，丢掉）" if lost else "")
+
+
+def _fetch_kv_items(site_book: str, token: str, site: str = SITE) -> list[dict]:
+    items, cursor = [], ""
+    while True:
+        q = {"items": "1", "book": site_book, "limit": "256", **({"cursor": cursor} if cursor else {})}
+        req = urllib.request.Request(f"{site}/api/cellreview?{urllib.parse.urlencode(q)}",
+                                     headers={"Authorization": f"Bearer {token}", "User-Agent": "open-guji-cv/cellvotes"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            d = json.load(r)
+        if not d.get("success"):
+            raise SystemExit(f"管理读失败：{d.get('error')}")
+        items += d.get("items") or []
+        cursor = d.get("cursor") or ""
+        if not d.get("hasMore") or not cursor:
+            return items
+
+
 def _votes(args) -> tuple[list[dict], str]:
     from ._cv import feedback_root
     from ._cv import load_votes
+    if getattr(args, "items", False):
+        return _item_votes(args)
     if args.from_file:
         return load_votes(Path(args.from_file)), f"文件 {args.from_file}"
     if args.from_kv:
@@ -213,7 +264,7 @@ def cmd_draft(args) -> None:
     n_over = sum(1 for d in t.ready if d.payload.get("overrides"))
     meta = {"book": args.book, "site_book": args.site_book, "rev": args.rev, "votes_from": where,
             "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
-            "cord": str(args.cord) if args.cord else None, "pack": args.pack,
+            "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
             "dropped": dropped, "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -263,8 +314,29 @@ def cmd_write(args) -> None:
                        ProductStore(None), batch=args.batch, step="seed_admit", unit="cell", kind="confirm",
                        events=rows, request_id=rid, consume=not args.no_consume, reviewer=args.reviewer)
     _print(json.dumps(res, ensure_ascii=False, indent=1))
+    if meta.get("items") and not res.get("duplicate"):
+        _resolve_items(meta, rows, res, args.reviewer or "")
     if not res.get("duplicate"):
         _print("已写进数据目录；推库：guji db sync -w <工作区>（写中心库前先报告、等点头）")
+
+
+def _resolve_items(meta: dict, rows: list[dict], res: dict, by: str) -> None:
+    """落了票的条目标 resolved（待审条目化），并重导整张单。"""
+    from ._cv import feedback_root
+    from .review import pending_items as P
+    data = feedback_root().parent
+    store = P.ItemStore.open(data, meta["site_book"], meta["rev"].split("-r")[0])
+    ids = dict(zip([r.get("a") for r in rows], res.get("ids") or [None] * len(rows)))
+    n = 0
+    for r in rows:
+        hit = [x for x in store.find(r.get("a") or "") if x["state"] in ("open", "withdrawn")]
+        if hit:
+            store.resolve(hit[0]["id"], by=by or "cellvotes", event=ids.get(r.get("a")) or "", why=f"落票 {meta['rev']}")
+            n += 1
+    if n:
+        store.save()
+        from .cli_pending import export
+        _print(f"条目标已裁 {n} 条；整张单 → {export(store, data)}")
 
 
 def cmd_migrate(args) -> None:
@@ -348,6 +420,7 @@ def add_parser(sub) -> None:
     p.add_argument("--include-none", action="store_true", help="draft：「无字」也写（缺省挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
     p.add_argument("--from-kv", action="store_true", help="draft：票直接管理读网站")
+    p.add_argument("--items", action="store_true", help="draft：读按条目记的票（换成条目现在的格号；--rev 给现行单）")
     p.add_argument("--token-env", default="CELLREVIEW_TOKEN", help="draft --from-kv：令牌的环境变量名")
     p.add_argument("--source", default=DEFAULT_SOURCE, help="draft：写进 payload.source 的来源说明")
     p.add_argument("--out", default=None, help="draft：输出目录")

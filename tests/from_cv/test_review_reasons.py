@@ -220,6 +220,14 @@ def test_jiazhu_uneven_is_seg_defect():
     assert detail_of(R.SEG_DEFECT, c2) == "jiazhu_uneven"
 
 
+def test_evict_review_is_seg_defect():
+    """库内刻例审阅卡撤库的格（cv seed_admit evict_review 闸，Sheldon 11-09）归 seg_defect，细分 evict_review。"""
+    from guji_manager.review.reasons import detail_of
+    c = Cell(id="v:1:2:5", char="甲", ref="甲", doubts=["evict_review"], evidence={"seg_kind": "evict_review"})
+    assert _cls([c]) == [R.SEG_DEFECT]
+    assert detail_of(R.SEG_DEFECT, c) == "evict_review"
+
+
 def test_lib_missing_detail_split():
     """lib_missing 细分（A23，11-04）：整理本无字／本书借库都没有／借库有本书没有／本书已有，写成「细分:字」。"""
     from guji_manager.review.reasons import detail_of, lib_missing_kind

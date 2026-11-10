@@ -36,7 +36,7 @@
 - **统计**：`guji-manager pending-stats`（线上单口径：读出单时写进单子的值，判法改了要重新出单才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
 - **分流**：`route`／`reviewer` 决定进大模型统一审（`llm_queue`）、算法、人审页还是留后；`iterate leverage` 按它排杠杆。
 - **人审页与网站**：网站卡片按 `ui`、`hint` 出形态和说明（kaiyuanguji-web、guji-console 的 `pendingReasons.ts` 是副本，改 yaml 后要用 `--json` 导出同步）。
-- **book-text**：11-09 起不录 `pending_reason`（只录首选字，待审的字和别的字看起来一样）；原因在 KV／待审单里，网站从 KV 读。
+- **book-text**：11-09 起不录 `pending_reason`（只录首选字，待审的字和别的字看起来一样）；原因只在待审单里（中心库 → 网站）。三者分工见 [待审单-人裁事件-book-text格子](../../00-总览/待审单-人裁事件-book-text格子.md)。
 - **收口单**（S4）：每类剩余格定去向（放行／留人审／算法再处理）。
 
 ## 原因一览
