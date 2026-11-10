@@ -707,7 +707,7 @@ def char_schema_for(char: dict) -> str:
     return CHAR_SCHEMA_URL
 
 
-def apply_pending(char: dict, pending: dict) -> dict:
+def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = None) -> dict:
     """按同版待审单把待审格写成首选字，原地改，返回计数（sheldon 2026-11-09 定，取代 11-03 的 char v0.4 `pending_reason`）。
 
     book-text 只录首选字，待审格与其他格看起来一样；待审原因、候选、人裁都只在中心库待审单／网站 KV 里。
@@ -715,10 +715,12 @@ def apply_pending(char: dict, pending: dict) -> dict:
     - 单上的格、现字是 □：写首选字（`first_choice`），去 `lacuna`／`guess_c`（`lacuna` 只给审过定阙的格）；
       一个候选都没有的保持 □（计 `no_choice`）；现字已是字的不动（计 `kept`）；图片格不动。
     - `$schema` 按实际用到的写法取最低版（`char_schema_for`），原是 v0.4 的降下来。
+    - `current`（可选，{格位: book-text 现行字}）：单上的格（review≠human）现行已是字、而导出里的字不同（含 □）时，**文本不动**，
+      写回现行字（计 `held_current`），等人裁定了确是另一字再改（sheldon 11-10 定，少改 book-text 提交）；现行是 □／缺格才写首选字。
     分行稿随字变（待审格不再写 `[[]]`）。计数里 `stamped` 等于 `filled`，留给旧调用方打印。"""
     want = {x["cell"]: x for x in pending.get("cells", [])}
     n = {"filled": 0, "no_choice": 0, "kept": 0, "lacuna_dropped": 0, "fig_skipped": 0, "missing": 0,
-         "reason_dropped": 0, "by_src": {}}
+         "reason_dropped": 0, "held_current": 0, "by_src": {}}
     seen = set()
     for p in char["pages"]:
         for col in p["columns"]:
@@ -731,6 +733,16 @@ def apply_pending(char: dict, pending: dict) -> dict:
                 seen.add(c["a"])
                 if c.get("fig") is not None:
                     n["fig_skipped"] += 1
+                    continue
+                cur = (current or {}).get(c["a"])
+                if cur and cur != LACUNA_CHAR and x.get("review") != "human":
+                    if c["c"] != cur:
+                        c["c"] = cur
+                        c.pop("lacuna", None)
+                        c.pop("guess_c", None)
+                        n["held_current"] += 1
+                    else:
+                        n["kept"] += 1
                     continue
                 if c["c"] != LACUNA_CHAR:
                     n["kept"] += 1
@@ -747,7 +759,7 @@ def apply_pending(char: dict, pending: dict) -> dict:
                 n["by_src"][src] = n["by_src"].get(src, 0) + 1
     n["missing"] = len(set(want) - seen)
     n["stamped"] = n["filled"]
-    if char.get("$schema") == CHAR_SCHEMA_URL_V04 or n["filled"] or n["reason_dropped"]:
+    if char.get("$schema") == CHAR_SCHEMA_URL_V04 or n["filled"] or n["reason_dropped"] or n["held_current"]:
         char["$schema"] = char_schema_for(char)
     return n
 

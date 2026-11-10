@@ -5,6 +5,12 @@
 
 ## [未发版]
 
+## [0.4.34] - 2026-11-10
+
+- 发版（PATCH，A34 11-10，A31 请）：从 dev 切，含 #445；`doc/04-反馈迭代/全流程与覆盖优先级.md` 一·二与 5.3 并入 11-10 新规矩（待审且首选字≠现行字时文本不动，等人裁；撤库重审格同样保持现字）。
+
+- 待审格现行有字则文本不动（PATCH，A31 11-10，sheldon 定）：`apply_pending` 加可选 `current`，单上格（review≠human）现行已是字、导出字不同时写回现行字（计 `held_current`），现行是 □ 才写首选字；`swap/resolve` 待审且首选字≠现行字新增 `PENDING_KEEP`（原按机器改字放行）。L1。
+
 ## [0.4.33] - 2026-11-10
 
 - PATCH（A31 11-10，用户定删 book-text 各书 CHANGES.md）`opinions revise／auto prepare／revert` 把 bump_original 打印的「版本记录」行写进提交信息，`auto finish_pr` 不再补 #TBD；`opinions versions` 改从本地 book-text 的 git log 读版本记录并和已存的 text_versions 合并（旧 CHANGES.md 还在时照读）；`tools/开书/出v01.py` 改打印版本记录行。需 book-text 同名 PR 一起上线，必须先于它发版。
