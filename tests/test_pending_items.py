@@ -132,3 +132,11 @@ def test_cellvotes_item_votes_map_to_current_cell(tmp_path, monkeypatch):
     votes, where = CV._votes(args)
     assert [(v["a"], v["rev"]) for v in votes] == [("1:1:5", "004-r2")]
     assert "1 条找不到条目" in where
+
+
+def test_item_sprites_merge_into_sheet(tmp_path):
+    s = _store(tmp_path)
+    e = {"name": "c0123456789abcdef.webp", "sha256": "a" * 64, "md5": "b" * 32, "bytes": 10}
+    s.add("5:5:5", {"img": {"s": e["name"], "x": 0, "y": 0, "w": 40, "h": 40}}, by="x", src="human:x", sprites=[e])
+    doc = P.export_sheet(s, {"rev": "004-r1", "sprites": [{"name": "p1.webp", "sha256": "c" * 64, "md5": "d" * 32, "bytes": 5}]})
+    assert [x["name"] for x in doc["sprites"]] == ["c0123456789abcdef.webp", "p1.webp"]

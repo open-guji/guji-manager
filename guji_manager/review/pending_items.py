@@ -187,8 +187,11 @@ class ItemStore:
                 doc[k] = v
         return self.put(r, op=op, by=by, why=why, doc=doc)
 
-    def add(self, cell: str, doc: dict, *, by: str, src: str, why: str = "", fp: str = "", state: str = "open") -> dict:
-        """加一条（人工复审格、撤库重审、点校等）。这格已有活条目就并进去（改字段、重新打开），不重复开。"""
+    def add(self, cell: str, doc: dict, *, by: str, src: str, why: str = "", fp: str = "", state: str = "open",
+            sprites: list[dict] | None = None) -> dict:
+        """加一条（人工复审格、撤库重审、点校等）。这格已有活条目就并进去（改字段、重新打开），不重复开。
+        `sprites`：这条自带的字块图（按内容寻址的单图，`[{name, sha256, md5, bytes}]`，第 2 步），导出时并进单头 `sprites[]`。"""
+        extra = {"sprites": sprites} if sprites else {}
         cell = norm_cell(cell)
         if not _CELL.match(cell):
             raise ValueError(f"格号不对：{cell}")
@@ -198,10 +201,10 @@ class ItemStore:
             r = live[0]
             merged = {**(r.get("doc") or {}), **doc}
             st = r["state"] if r["state"] == "withdrawn" else state
-            return self.put(r, op="add", by=by, why=why, doc=merged, state=st, **({"fp": fp} if fp else {}))
+            return self.put(r, op="add", by=by, why=why, doc=merged, state=st, **({"fp": fp} if fp else {}), **extra)
         at = now()
         return self.put(None, op="open", by=by, why=why, at=at, id=new_id(self.text_id, self.chapter, cell, at, src),
-                        cell=cell, fp=fp, state=state, doc=doc, src=src)
+                        cell=cell, fp=fp, state=state, doc=doc, src=src, **extra)
 
     def resolve(self, ref: str, *, by: str, event: str = "", why: str = "") -> dict:
         r = self._one(ref)
@@ -346,6 +349,13 @@ def export_sheet(store: ItemStore, head: dict | None = None) -> dict:
         c.setdefault("review", "human" if r["state"] == "resolved" else "pending")
         cells.append(c)
     doc["cells"] = cells
+    # 条目自带的按内容寻址字块图（第 2 步）并进单头 sprites[]，网站发布时一并传
+    sp = {e["name"]: e for e in doc.get("sprites") or [] if isinstance(e, dict) and e.get("name")}
+    for r in store.by_state(*SHOWN, "withdrawn"):
+        for e in r.get("sprites") or []:
+            sp.setdefault(e["name"], e)
+    if sp:
+        doc["sprites"] = sorted(sp.values(), key=lambda e: e["name"])
     gone = [{"cell": r["cell"], **(r.get("doc") or {}), "id": r["id"], "ver": r["ver"],
              "withdrawn": {"by": r.get("by", ""), "at": r.get("at", ""), "why": r.get("why", "")}}
             for r in store.by_state("withdrawn")]
