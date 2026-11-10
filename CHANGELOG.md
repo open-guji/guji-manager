@@ -5,7 +5,7 @@
 
 ## [未发版]
 
-## [0.4.39] - 测试中
+## [0.4.39] - 2026-11-10
 
 - 新增 `guji swap finish-merged`（R8，PATCH，A31 11-10，ZM 答复）：`swap book-text` 把对照表存进 book-text `lineage/revisions/<册>-<run>.tsv`；合并后收尾出旧格号 redirect 表、对照表里改号格上的无锚人裁 recheck 清单、metrics.jsonl。L0。
 
