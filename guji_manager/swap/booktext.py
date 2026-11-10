@@ -565,12 +565,20 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         auto_remap.fix_heading_breaks(str(vdir), ch)
     except Exception as e:  # noqa: BLE001
         print(f"  标题符修正跳过：{e}", file=sys.stderr)
+    stored = None
     try:
         from .finish import store_table
-        store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
+        stored = store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
     except OSError as e:  # noqa: BLE001
         print(f"  对照表入库跳过：{e}", file=sys.stderr)
     lc = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
+    if lc.returncode and stored is not None:
+        # book-text 校验器还不认 lineage/ 目录时（需 book-text 把 lineage 加进 ORIGINAL_SIDECAR_FILES）：不带对照表再核一遍，别因此整册落不了
+        shutil.rmtree(vdir / "lineage", ignore_errors=True)
+        lc2 = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
+        if lc2.returncode == 0:
+            print("  对照表入库跳过：book-text 校验器不认 lineage/ 目录，已不带对照表落文本（对照表仍在 reports/_swap/book-text/）", file=sys.stderr)
+        lc = lc2
     if lc.returncode:
         keep = out_dir / f"local_check_{book}.txt"
         keep.write_text(lc.stdout + lc.stderr, encoding="utf-8")
