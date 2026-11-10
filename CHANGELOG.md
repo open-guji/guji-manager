@@ -5,7 +5,7 @@
 
 ## [未发版]
 
-## [0.4.37] - 测试中
+## [0.4.37] - 2026-11-10
 
 - `guji swap book-text`（PATCH，ZM 11-10，sheldon 同意；#472）：格号变动（增删格、改号）落 book-text 只走一条路——新旧 cord 框 IoU 出旧格→新格对照表，判字、挪标点专名、守卫都认它；swap run 不再报 need-A33。配套 cv republish（cv#1381）。L0。
 
