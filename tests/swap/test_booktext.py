@@ -1,0 +1,86 @@
+"""换包落 book-text（格号变动按格级对照表）：对照表、逐块图判字、专名两端对上的伸长、守卫。"""
+from guji_manager.swap import booktext as bt
+
+
+def _char(cols):
+    """cols: {列号: "字串"}，都在第 1 页；□ 照写。"""
+    return {"pages": [{"page": 1, "columns": [
+        {"col": k, "cells": [{"a": f"1:{k}:{i + 1}", "c": ch} for i, ch in enumerate(s)]} for k, s in cols.items()]}]}
+
+
+def _cord(cols, shift=None):
+    """每格 10×10 竖排；shift={列: 从第几格（1 起）起往下挪一格}，模拟中间插进一格。"""
+    cells = []
+    for k, s in cols.items():
+        for i, _ in enumerate(s):
+            cells.append({"a": f"1:{k}:{i + 1}", "box": [100 - 10 * k, 10 * i, 10, 10]})
+    return {"pages": [{"page": 1, "cells": cells}]}
+
+
+def test_cell_table_insert_shifts_numbers():
+    old_c, new_c = _char({1: "論語子集"}), _char({1: "論語孟子集"})
+    old_d = {"pages": [{"page": 1, "cells": [{"a": f"1:1:{i + 1}", "box": [90, y, 10, 10]} for i, y in enumerate((0, 10, 30, 40))]}]}
+    new_d = _cord({1: "論語孟子集"})
+    rows = bt.cell_table(old_c, old_d, new_c, new_d)
+    kinds = {(r["old"], r["new"]): r["kind"] for r in rows}
+    assert kinds[("1:1:3", "1:1:4")] == "改号"           # 子：格号挪了，块图同一块
+    assert kinds[("", "1:1:3")] == "新增"                # 孟：新增格
+    assert bt.table_counts(rows)["对上但改字"] == 0
+
+
+def test_merge_keeps_current_when_new_blank_or_pending_and_reverts_dup():
+    old_c = _char({1: "行苞在康煕中"})
+    new_c = _char({1: "□苞在康康中"})
+    rows = bt.cell_table(old_c, _cord({1: "行苞在康煕中"}), new_c, _cord({1: "□苞在康康中"}))
+    rep = bt.merge_chars(old_c, new_c, rows, pending={"1:1:2"})
+    got = "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"])
+    assert got == "行苞在康煕中"                          # □ 不覆盖现字；改出相邻重复字回退
+    assert rep["return_to_blank"] and rep["machine_flaw"]
+
+
+def test_merge_adopts_machine_change_and_new_admit():
+    old_c, new_c = _char({1: "□東巡"}), _char({1: "山東撫"})
+    rows = bt.cell_table(old_c, _cord({1: "□東巡"}), new_c, _cord({1: "山東撫"}))
+    rep = bt.merge_chars(old_c, new_c, rows)
+    assert "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"]) == "山東撫"
+    assert rep["new_admit"] and rep["machine_change"]
+
+
+def test_grow_span_when_cell_inserted_inside_entity():
+    new_c = _char({1: "論語孟子集"})
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格"), dict(old="1:1:2", new="1:1:2", kind="同格"),
+            dict(old="1:1:3", new="1:1:4", kind="改号"), dict(old="", new="1:1:3", kind="新增")]
+    ent = {"entities": [{"id": "e1", "type": "work", "text": "語子", "anchor": {"start": "1:1:2", "end": "1:1:3"},
+                         "span": {"start_offset": 1, "end_offset": 3}, "target": {"status": "new_candidate"}}]}
+    rep = [("entity", "e1", "1:1:2～1:1:3", "1:1:2～1:1:4", "語子", "ANCHOR_MISS｜新格不连续或长度变了（語孟子）")]
+    out = bt._grow_spans(ent, new_c, rows, rep)
+    e = ent["entities"][0]
+    assert out and e["text"] == "語孟子" and e["anchor"] == {"start": "1:1:2", "end": "1:1:4"}
+    assert e["span"] == {"start_offset": 1, "end_offset": 4}
+
+
+def test_guard_flags_lost_link_and_punct_change():
+    e0 = {"entities": [{"id": "e1", "type": "people", "text": "方苞", "target": {"entity_id": "x", "status": "matched"}}]}
+    e1 = {"entities": [{"id": "e1", "type": "people", "text": "方苞", "target": {"status": "new_candidate"}}]}
+    p0 = {"punctuations": [{"mark": "，", "kind": "point", "source": "claude:A33", "pos": "after"}]}
+    p1 = {"punctuations": []}
+    assert bt.guard(p0, p0, e0, e0) == []
+    probs = bt.guard(p0, p1, e0, e1)
+    assert any("挂法" in x for x in probs) and any("标点" in x for x in probs)
+
+
+def test_structure_changed():
+    assert bt.structure_changed(_char({1: "ab"}), _char({1: "abc"}))
+    assert not bt.structure_changed(_char({1: "ab"}), _char({1: "xy"}))
+
+
+def test_break_follows_heading_over_added_cells():
+    new_c = _char({1: "甲乙丙丁戊"})
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格"), dict(old="", new="1:1:2", kind="新增"),
+            dict(old="", new="1:1:3", kind="新增"), dict(old="1:1:2", new="1:1:4", kind="改号"),
+            dict(old="1:1:3", new="1:1:5", kind="改号")]
+    p = {"punctuations": [{"anchor": "1:1:1", "kind": "break", "pos": "after", "pre_char": "甲", "char_offset": 0},
+                          {"anchor": "1:1:4", "kind": "heading", "pos": "before", "char_offset": 3}]}
+    out = bt._breaks_follow_headings(p, new_c, rows)
+    b = p["punctuations"][0]
+    assert out == [("1:1:1", "1:1:3")] and b["anchor"] == "1:1:3" and b["pre_char"] == "丙" and b["char_offset"] == 2

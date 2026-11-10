@@ -5,6 +5,16 @@
 
 ## [未发版]
 
+## [0.4.37] - 2026-11-10
+
+- `guji swap book-text`（PATCH，ZM 11-10，sheldon 同意；#472）：格号变动（增删格、改号）落 book-text 只走一条路——新旧 cord 框 IoU 出旧格→新格对照表，判字、挪标点专名、守卫都认它；swap run 不再报 need-A33。配套 cv republish（cv#1381）。L0。
+
+- char_card 1.6.0（MINOR，人审页线 11-10，用户 Sheldon 要求）：①**只有难认字页**的格带**整列图**（低把握页不带，Sheldon 11-10 定，照原样一格一卡）（本格红框）、**左右邻列图**（折叠）、**同列 ±8 格上下文**（机器字＋整理本字），items 可带 `col_img`／`nb_imgs`／`ctx`，由新命令 `review-pages hard-items`（`crop.column_images`）从 cell_shrink＋页图＋包 seed_admit／align_ref 生成；②每格加「不入库」勾选框（定字照记人裁，格文档带 `no_glyph_lib: true`，`expand` 输出同字段，事件 payload 照写 `no_glyph_lib`，route／glyphdb_admit 已认）；旧本机暂存键（1.4/1.5）兜底。L0。
+
+- 冷启动高/低把握两张页固化（MINOR，人审页线 11-10，用户要求）：`review_pages/cold_start.py` 与 `review-pages cold-items`／`cold-pages`：按 5b 领先量、cov、库例数把「库缺样本」格分高把握（带「本页其余都对」）与低把握（一格一卡、没点不算对），一条命令出页；char_card 模板不变（1.5.4）。流程见 `doc/01-粗校/开书/冷启动快审入库.md`「高把握／低把握」一节（PR #412）。L0。
+
+- 新增 `guji closeout lib-disagree <产物包目录>`（MINOR 以下按 PATCH 记，ZM 11-10，缺省不跑）：出单前复核，列出「放行字＝整理本字、库首位是另一个字且 cov≥0.97、非人裁、不在已声明字组／异体里」的格，写成 `--recheck` 清单交 `republish.py`。不改 cv、不改产物。L0。
+
 ## [0.4.36] - 2026-11-10
 
 - `guji pending --kv`：改条目、导出、`db sync` 后把整张单直接写网站 KV（`/api/pending`，读者约 15 秒内可见；撤下一格、加一格不再等 proofing-sync 发 COS 和清 CDN）；单里图不在 COS、没令牌或写失败时自动退回 `--sync`。需网站 kaiyuanguji-web `/api/pending` 上线（PATCH，A31 11-10，sheldon 定）。L0。
