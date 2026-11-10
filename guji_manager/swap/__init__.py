@@ -278,7 +278,8 @@ def cmd_run(a) -> int:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("swap", help="换单 driver：出新单→同步→分批发布→核线上→清盘（断点续跑）")
-    p.add_argument("action", choices=["run", "audit"])
+    p.add_argument("action", choices=["run", "audit", "book-text"],
+                   help="run 换单；audit 机器改字抽检；book-text 把已导出的新包落 book-text（格号变了按格级对照表走，见 swap/booktext.py）")
     p.add_argument("--books", required=True, help="如 vol20-vol99 或 vol23,vol24")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True)
@@ -287,6 +288,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch-size", type=int, default=6, help="每批几册（全站一把发会超时）")
     p.add_argument("--state", default=None)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--export", help="book-text：导出目录（缺省取 reports/<册>/_cycle/ 下最新的 export）")
+    p.add_argument("--worktree", help="book-text：独立 worktree 路径（缺省 <book-text>-swap，每册重置到 origin/dev）")
+    p.add_argument("--note", help="book-text：文本线版本记录的说明")
+    p.add_argument("--push", action="store_true", help="book-text：过了守卫和 local_check 就推（0.x 推 dev；1.x 推 swap/<册>-1x 分支待开 PR）")
+    p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
 
 
 def cmd_audit(a) -> int:
@@ -306,6 +312,9 @@ def cmd_audit(a) -> int:
 
 
 def cmd_swap(args) -> int:
+    if args.action == "book-text":
+        from .booktext import cmd_book_text
+        return cmd_book_text(args, parse_books(args.books))
     return cmd_audit(args) if args.action == "audit" else cmd_run(args)
 
 
