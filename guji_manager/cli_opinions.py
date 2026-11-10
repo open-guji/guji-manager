@@ -3,7 +3,7 @@
     guji opinions ingest  --book B --ws W [--remote] [--dry-run] [--live-vols 001,002] [--from-dir D]   # 三源入池，幂等
     guji opinions list    --book B --ws W [--status S] [--vol V]
     guji opinions show    <id> --book B --ws W
-    guji opinions versions --book B --ws W --book-text <检出>      # 从 book-text CHANGES 生成 text_versions.json
+    guji opinions versions --book B --ws W --book-text <检出>      # 从 book-text 提交信息的版本记录（和旧 CHANGES）更新 text_versions.json
     guji opinions locate  <id> --book B --ws W [--book-text <检出>]
     guji opinions normalize <fb_id> --into <json> --book B --ws W  # 会话把自由文字规整成一条或多条
     guji opinions pack    <id…> --out <目录> --book B --ws W [--book-text <检出>]   # 证据包＋sheet.png／sheet.md
@@ -138,9 +138,9 @@ def _bt(args):
 
 
 def cmd_versions(args) -> None:
-    from .opinions.textsrc import parse_changes
+    from .opinions.textsrc import merge_versions, parse_changes
     bt = _bt(args)
-    tv = parse_changes(bt.changes(), args.book)
+    tv = parse_changes(bt.version_rows(), args.book)
     for vol in sorted(tv):
         for r in tv[vol]:
             miss = [k for k in ("rev", "snapshot", "cv_version") if not r.get(k)]
@@ -151,6 +151,7 @@ def cmd_versions(args) -> None:
     if args.dry_run:
         return
     st = _store(args, by="versions")
+    tv = merge_versions(st.text_versions, tv)     # 已存的在前：book-text 没有 CHANGES.md 后，老行只在这里
     if st.set_text_versions(tv):
         st.save(only=["versions"])
         _print(f"写入 text_versions.json（{st.backend.describe()}）")
@@ -585,7 +586,7 @@ def add_parser(sub) -> None:
     _common(p)
     p.set_defaults(func=cmd_show)
 
-    p = s.add_parser("versions", help="从 book-text CHANGES.md 生成 text_versions.json")
+    p = s.add_parser("versions", help="从 book-text 提交信息的版本记录（和旧 CHANGES.md）更新 text_versions.json")
     _common(p)
     p.add_argument("--book-text", default=None, help="book-text 本地检出（缺省环境变量 GUJI_BOOK_TEXT，再缺走 GitHub raw）")
     p.add_argument("--dry-run", action="store_true")

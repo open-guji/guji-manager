@@ -13,7 +13,7 @@ from guji_manager.opinions.schema import Opinion, make_id
 from guji_manager.opinions.store import LocalBackend, OpinionStore
 
 #: 桩：照 book-text bump_original.py 的 patch 口径升版本（文本线：char version、index text_version，
-#: 锚点全对得上的伴生层跟 text_version；伴生线：version 升、text_version 跟文本），并追加 CHANGES 一行。
+#: 锚点全对得上的伴生层跟 text_version；伴生线：version 升、text_version 跟文本），并打印一行「版本记录」。
 BUMP_STUB = r'''
 import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
@@ -49,8 +49,7 @@ else:
     open(p, "w", encoding="utf-8").write(json.dumps(cd, ensure_ascii=False, indent=2) + "\n")
     line = {"punct": "标点", "entity": "实体"}[a.line]
 json.dump(idx, open(os.path.join(d, "index.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-with open(os.path.join(d, "CHANGES.md"), "a", encoding="utf-8") as f:
-    f.write(f"| 2026-10-21 | bkxyz/{ch} | {line} | {old}→{new} | {a.note} | #{a.pr} |\n")
+print(f"版本记录: bkxyz/{ch} | {line} | {old}→{new} | {a.note}" + (f" | #{a.pr}" if str(a.pr).isdigit() else ""))
 print(f"{line} {old}→{new}")
 '''
 
@@ -92,7 +91,7 @@ def test_class_a_with_punct_follow_and_bump(bt):
     p = next(x for x in punct["punctuations"] if x.get("anchor") == "3:2:1")
     assert p["pre_char"] == "制" and punct["version"] == "1.1.1" and punct["text_version"] == "1.0.2"
     assert idx["chapters"][0]["text_version"] == "1.0.2" and idx["chapters"][0]["punct_version"] == "1.1.1"
-    ch = (_vd(bt) / "CHANGES.md").read_text(encoding="utf-8")
+    ch = "\n".join(res.records)
     assert _op().id in ch and "3:2:1 製→制" in ch
     # char 仍是一格一行
     assert '{"a": "3:2:1", "c": "制"}' in (_vd(bt) / "002.char.json").read_text(encoding="utf-8")
@@ -131,7 +130,7 @@ def test_class_b_prime_mark_to_lacuna_cell(bt):
     assert [p["char_offset"] for p in punct["punctuations"]] == [0, 3, 5, 7, 10]
     assert [(e["span"]["start_offset"], e["span"]["end_offset"]) for e in ent["entities"]] == [(6, 8), (10, 11)]
     assert punct["version"] == "1.1.1" and ent["version"] == "1.1.1"    # 偏移变了，两条伴生线各升 patch
-    assert "推测「一」" in (_vd(bt) / "CHANGES.md").read_text(encoding="utf-8")
+    assert "推测「一」" in "\n".join(res.records)
     # 缺省写法 guess-c（GUJI-717）：新格带 guess_c，char 的 $schema 改写成 v0.2
     new_cell = next(c for p in char["pages"] for col in p["columns"] for c in col["cells"] if c["a"] == "3:1:4")
     assert new_cell == {"a": "3:1:4", "c": "□", "lacuna": True, "guess_c": "一"}

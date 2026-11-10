@@ -50,9 +50,9 @@ def test_revert_round_trip(tmp_path, rules, bt):
         assert _pages(bt, r["branch"], name) == _pages(bt, orig, name), name
     pu_new, pu_old = _pages_punct(bt, r["branch"]), _pages_punct(bt, orig)
     assert [(x["anchor"], x["char_offset"]) for x in pu_new] == [(x["anchor"], x["char_offset"]) for x in pu_old]
-    ch = _git(bt, "show", f"{r['branch']}:Book/x/y/z/{BOOK}/default/CHANGES.md").splitlines()
-    ch = next(ln for ln in ch if "撤销发布批" in ln)
-    assert p["release"] in ch and o1.id in ch and "图上其实是" in ch and "#TBD" in ch
+    ch = _git(bt, "log", "-1", "--format=%B", r["branch"]).splitlines()
+    ch = next(ln for ln in ch if ln.startswith("版本记录:") and "撤销发布批" in ln)
+    assert p["release"] in ch and o1.id in ch and "图上其实是" in ch
     row = st.release_latest()[r["release"]]
     assert row["kind"] == "revert" and row["status"] == "checked" and row["from"]["text"] == "1.0.2" and row["to"]["text"] == "1.0.3"
     # 同一批不能重复撤销
