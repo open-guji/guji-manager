@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- 新增 `guji closeout lib-disagree <产物包目录>`（MINOR 以下按 PATCH 记，ZM 11-10，缺省不跑）：出单前复核，列出「放行字＝整理本字、库首位是另一个字且 cov≥0.97、非人裁、不在已声明字组／异体里」的格，写成 `--recheck` 清单交 `republish.py`。不改 cv、不改产物。L0。
+
 ## [0.4.36] - 测试中
 
 - `guji pending --kv`：改条目、导出、`db sync` 后把整张单直接写网站 KV（`/api/pending`，读者约 15 秒内可见；撤下一格、加一格不再等 proofing-sync 发 COS 和清 CDN）；单里图不在 COS、没令牌或写失败时自动退回 `--sync`。需网站 kaiyuanguji-web `/api/pending` 上线（PATCH，A31 11-10，sheldon 定）。L0。
