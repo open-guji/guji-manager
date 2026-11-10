@@ -27,15 +27,16 @@ class DeleteRefused(RuntimeError):
 
 #: 字形库账本表：本地一整张表突然是空的、库里却有一大批，多半是本机 glyph.db／glyph_store 被删后重建成了空壳
 #: （2026-11-04 殿本账本被清空，GUJI-事故）。这类删除即使是「整表缺」也不放行，除非 ``allow_delete``。
-GLYPH_LEDGER_TABLES = frozenset({"glyphs", "glyph_exemplars", "glyph_admissions"})
+GLYPH_LEDGER_TABLES = frozenset({"glyphs", "glyph_exemplars", "glyph_admissions", "glyph_instances", "glyph_sources"})
 LEDGER_EMPTIED_MIN = 50
 
 
 def emptied_ledger(tbl: str, n_existing: int, n_local: int, n_deletes: int) -> bool:
     """库里 ``n_existing`` 行、本地只剩 ``n_local`` 行、要删 ``n_deletes`` 行：是不是「账本被清空」。
-    改键重写（删得多但插得也多）不算：本地行数不到库里一半、且删了一半以上才算。"""
+    改键重写（删得多但插得也多）不算：本地行数比库里少了 5% 以上、且删的行也到 5% 以上才算
+    （2026-11-10 史記 6,465→3,554 是 55%，原先「一半」的门槛没拦住）。"""
     return (tbl in GLYPH_LEDGER_TABLES and n_existing >= LEDGER_EMPTIED_MIN
-            and n_deletes * 2 >= n_existing and n_local * 2 < n_existing)
+            and n_deletes * 20 >= n_existing and n_local * 20 < n_existing * 19)
 
 
 def apply_schema(conn) -> None:

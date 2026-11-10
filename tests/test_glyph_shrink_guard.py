@@ -32,7 +32,10 @@ def _seed(data: Path, rows: dict[str, int]) -> Path:
 def test_problems_pure():
     assert W.glyph_shrink_problems({"a.jsonl": 10}, {"a.jsonl": 0}) == ["a.jsonl：10 → 0 行"]
     assert W.glyph_shrink_problems({"a.jsonl": 10}, {"a.jsonl": 4})
-    assert not W.glyph_shrink_problems({"a.jsonl": 10}, {"a.jsonl": 6})
+    assert W.glyph_shrink_problems({"a.jsonl": 6465}, {"a.jsonl": 3554})      # 2026-11-10 史記：55% 也要拦
+    assert W.glyph_shrink_problems({"a.jsonl": 100}, {"a.jsonl": 90})
+    assert not W.glyph_shrink_problems({"a.jsonl": 100}, {"a.jsonl": 96})     # 缩不到 5%
+    assert not W.glyph_shrink_problems({"a.jsonl": 10}, {"a.jsonl": 8})       # 少不到 3 行
     assert not W.glyph_shrink_problems({"a.jsonl": 0}, {"a.jsonl": 0})        # 原来就空：不拦
     assert not W.glyph_shrink_problems({}, {"a.jsonl": 3})
 
