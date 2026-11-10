@@ -5,6 +5,12 @@
 
 ## [未发版]
 
+## [0.4.35] - 2026-11-10
+
+- 发版（PATCH，A31 11-10）：从 dev 切，含待审条目化 #454、#455、#456（sheldon 11-10 定）与 A34 的 resolve 认「不是字」、A23 的撤库重审事件。配 cv ≥ v0.6.37。
+
+- 待审条目（一格一条，PATCH，A31 11-10，sheldon 定）：`review/pending_items.py` 条目日志 `feedback/lists/pending/<书>/<章>.items.jsonl`（只追加，`guji db sync` 按追加合并）；`guji pending ls/show/withdraw/restore/note/set/add/resolve/import/reconcile/export`；reconcile 先按图块指纹、再按格号认，只动有变化的，人工撤下的不放回，格号对上指纹变了记 `fp_changed`；整张 pending.json 从条目导出（每格带 `id`／`ver`，条目自带的字块图并进 `sprites[]`）；`cellvotes draft --items` 落网站按条目记的票（换成条目现在的格号），write 后条目标已裁。L0。
+
 - `swap/resolve` 认「不是字」：`resolve(new_not_char=True)`（cv#1358 列端框线格 `frame_line`）无人裁→`NOT_CHAR` 删格放行、有人裁→`PROTECTED_CONFLICT`；`detect_flaws(not_char=…)` 不把它们算字丢失。swap release 待建清单记下接线（PATCH，A34 11-10，A31 请）。L1。
 
 - 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
