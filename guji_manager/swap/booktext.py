@@ -505,8 +505,34 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
     return wt
 
 
+def _copy_cord(src: Path, dst: Path, cv: Path | None) -> str | None:
+    """导出的 cord 写进 book-text。给了 cv 就用 cv ``republish.copy_cord_for_site`` 换到网站页图坐标（换过图源的书，
+    与 swap run 的自动路径同一口径）；没给 cv 原样拷（殿本页表未换，坐标相同）。返回 None＝成功，否则是停下的原因。"""
+    if not src.exists():
+        return None
+    if cv is None:
+        shutil.copyfile(src, dst)
+        return None
+    import importlib.util
+    f = Path(cv) / "scripts" / "zhengli" / "republish.py"
+    try:
+        for d in (str(Path(cv)), str(f.parent)):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+        spec = importlib.util.spec_from_file_location("_cv_republish", f)
+        rp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rp)
+        rp.copy_cord_for_site(src, dst)
+    except SystemExit as e:
+        return f"cord 换不到网站页图坐标：{e}"
+    except Exception as e:  # noqa: BLE001 —— cv 不在或读不了页表：不拿错坐标落库
+        return f"cord 换坐标失败（cv {cv}）：{e}"
+    return None
+
+
 def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: str, push: bool,
-            pending: set[str], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True) -> dict:
+            pending: set[str], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True,
+            cv: Path | None = None) -> dict:
     vdir = _bt_dir(wt, text_id) / "default"
     ch = f"{int(book[3:]):03d}"
     from ..formats.guji_char_cord import dumps
@@ -518,9 +544,14 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     new_char = _load(export / f"{ch}.char.json")
     if not new_char:
         return {"status": "blocked", "why": f"导出里没有 {ch}.char.json：{export}"}
+    old_cord = _load(vdir / f"{ch}.cord.json")
+    why = _copy_cord(export / f"{ch}.cord.json", vdir / f"{ch}.cord.json", cv)     # 换过图源的书换到网站页图坐标
+    if why:
+        _git(wt, "checkout", "-q", "--", ".")
+        return {"status": "blocked", "why": why}
     gate_note = "R1 未核（没给 --glyph-db）"
     if glyph_db:
-        old_cord, new_cord = _load(vdir / f"{ch}.cord.json"), _load(export / f"{ch}.cord.json")
+        new_cord = _load(vdir / f"{ch}.cord.json")
         if old_cord and new_cord:
             g = rekey_gate(glyph_db, cell_table(old_char, old_cord, new_char, new_cord), int(book[3:]))
             if not g["ok"]:
@@ -528,7 +559,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             gate_note = f"R1 已核（实例 {g['n_inst']}，改号待核 {g['ambiguous']}）"
     new_char["version"] = old_char.get("version", new_char.get("version"))
     (vdir / f"{ch}.char.json").write_text(dumps(new_char), encoding="utf-8", newline="\n")
-    for t in ("cord", "norm", "fig"):
+    for t in ("norm", "fig"):
         p = export / f"{ch}.{t}.json"
         if p.exists():
             shutil.copyfile(p, vdir / f"{ch}.{t}.json")
@@ -666,7 +697,8 @@ def cmd_book_text(a, books: list[str]) -> int:
         ch = f"{int(b[3:]):03d}"
         r = do_book(wt, ws, b, a.text_id, export, note=a.note or f"{b} 换包（{export.parent.name}），增删格按格级对照表落 book-text",
                     push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b,
-                    glyph_db=Path(a.glyph_db) if getattr(a, "glyph_db", None) else None, open_pr_=not getattr(a, "no_pr", False))
+                    glyph_db=Path(a.glyph_db) if getattr(a, "glyph_db", None) else None, open_pr_=not getattr(a, "no_pr", False),
+                    cv=Path(a.cv) if getattr(a, "cv", None) and (Path(a.cv) / "scripts" / "zhengli" / "republish.py").exists() else None)
         res[b] = {k: v for k, v in r.items() if k not in ("char_detail", "left", "review")}
         if getattr(a, "sheet", False) and r["status"] == "pushed":
             res[b]["sheet"] = push_sheet(ws, b, Path(a.cv))

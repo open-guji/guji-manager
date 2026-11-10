@@ -171,3 +171,15 @@ def test_rekey_gate_orphan_and_ok(tmp_path):
     assert not g["ok"] and g["orphan"] == ["v2:vol04:1:1:2"] and g["n_inst"] == 2
     rows[1] = dict(old="1:1:2", new="1:1:2", kind="同格", oc="", nc="", iou=1, note="")
     assert rekey_gate(db, rows, 4)["ok"]
+
+
+def test_copy_cord_plain_and_via_cv(tmp_path):
+    src = tmp_path / "001.cord.json"
+    src.write_text('{"pages": []}', encoding="utf-8")
+    assert bt._copy_cord(src, tmp_path / "a.json", None) is None and (tmp_path / "a.json").read_text(encoding="utf-8") == '{"pages": []}'
+    cv = tmp_path / "cv"
+    (cv / "scripts" / "zhengli").mkdir(parents=True)
+    (cv / "scripts" / "zhengli" / "republish.py").write_text(
+        "import sys\ndef copy_cord_for_site(s, d):\n    sys.exit('页表对不上')\n", encoding="utf-8")
+    why = bt._copy_cord(src, tmp_path / "b.json", cv)
+    assert why and "页表对不上" in why and not (tmp_path / "b.json").exists()
