@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- 测试 `test_code_deps_coverage` 登记 glyph_match → clustering.sim_cnn 不进指纹（cv #1394 `sim_model` 开关，缺省关；开着时经 sim_model_sha 进参数指纹）。只改测试（A23，11-10）。
+
 ## [0.4.37] - 2026-11-10
 
 - `guji swap book-text`（PATCH，ZM 11-10，sheldon 同意；#472）：格号变动（增删格、改号）落 book-text 只走一条路——新旧 cord 框 IoU 出旧格→新格对照表，判字、挪标点专名、守卫都认它；swap run 不再报 need-A33。配套 cv republish（cv#1381）。L0。
