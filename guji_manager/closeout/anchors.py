@@ -19,7 +19,7 @@ from ..review.pending_reason import specs
 
 SEP = " | "
 MARK = "anchor="
-CELL_RE = re.compile(r"(?:vol\d+:)?\d+:\d+:\d+")
+CELL_RE = re.compile(r"(?:vol\d+:)?\d+:\d+:\d+[ab]?")   # 双栏格带 a／b 后缀（殿本职名页 88:6:15b），丢了网站就找不到格
 
 #: auto_remap／local_check 的原因码 → 待审原因。认不出的码按 anchor_miss 处理（并在 detail 里带着原码）。
 CODE_TO_REASON = {

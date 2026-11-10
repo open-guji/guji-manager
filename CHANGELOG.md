@@ -7,6 +7,27 @@
 
 - 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
 
+- 待审格现行有字则文本不动（PATCH，A31 11-10，sheldon 定）：`apply_pending` 加可选 `current`，单上格（review≠human）现行已是字、导出字不同时写回现行字（计 `held_current`），现行是 □ 才写首选字；`swap/resolve` 待审且首选字≠现行字新增 `PENDING_KEEP`（原按机器改字放行）。L1。
+
+## [0.4.33] - 2026-11-10
+
+- PATCH（A31 11-10，用户定删 book-text 各书 CHANGES.md）`opinions revise／auto prepare／revert` 把 bump_original 打印的「版本记录」行写进提交信息，`auto finish_pr` 不再补 #TBD；`opinions versions` 改从本地 book-text 的 git log 读版本记录并和已存的 text_versions 合并（旧 CHANGES.md 还在时照读）；`tools/开书/出v01.py` 改打印版本记录行。需 book-text 同名 PR 一起上线，必须先于它发版。
+
+## [0.4.32] - 2026-11-10
+
+- 发版（PATCH，A34 11-10，ZM 请）：从 dev 切，含 #436。
+
+- 修：收尾锚点检查（`closeout/anchors.py` 的 `CELL_RE`）丢了双栏格的 a／b 后缀，`88:6:15b` 写成 `88:6:15` 上单，网站找不到格、无图、按邻格推框错位（殿本 vol01 001-r13 有 7 格）。
+
+## [0.4.31] - 2026-11-09
+
+- 发版（PATCH，A34 11-09）：从 dev 切，含 book-text 只录首选字的导出改动（#429）、A31 的 exit-check E3（#432）。
+
+- `exit-check` E3（decision.json 存在）改为恒「不适用」（PATCH，A31 11-09，book-text 只录首选字，不再录 decision.json）。L0。
+
+- `formats/guji_char_cord.apply_pending` 改口径（PATCH，A34 11-09，sheldon 定 book-text 只录首选字）：不再给 char 写 `pending_reason`（已有的一律去掉）；待审单上现字是 □ 的格写首选字（新增 `first_choice`：stale → 参校本 → lib_top → alt → ctx），去 lacuna；`$schema` 按实际写法取最低版（新增 `char_schema_for`，不再写 v0.4）。cv `export_guji_format --pending`、`republish.py` 入库调用不用改参数，打印的「待审原因 N 格」现在是写首选字的格数。L1。
+- `swap/resolve` 加待审口径（PATCH，A34 11-09，sheldon 定）：待审格 book-text 显示首选字，首选字与现行一致则文本不动、只多一张待审单；□ 只给真阙文。
+- 新增 `guji_manager/swap/resolve.py`（PATCH，A34 11-09）：重切发布批的覆盖优先级纯函数（人裁 > 机器新结果 > 现行机器字；无人裁机器改字默认放行，退回 □ 进复审单）与机器错字检测。尚未接命令。L0。
 - `guji code check` 不查书仓 `code/tests/` 的 import（PATCH，A20 11-09）：本书测试要借 cv 仓 `tests/helpers`，不进指纹。L0。
 
 ## [0.4.30] - 2026-11-09

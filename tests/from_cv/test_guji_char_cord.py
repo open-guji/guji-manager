@@ -296,26 +296,60 @@ def test_exporter_char_cord(tmp_path):
     assert cc.char_to_lines_md(char) == (tmp_path / "old" / "002.lines.md").read_text(encoding="utf-8")
 
 
-def test_apply_pending_char_v04(legacy):
-    """待审单上的格写 pending_reason、去 lacuna，`$schema` 升 v0.4、过 schema；分行稿逐字节不变（待审 □ 与阙文同写）。"""
+def test_apply_pending_first_choice(legacy):
+    """待审格写首选字、去 lacuna，char 里不留 pending_reason，`$schema` 不升 v0.4（sheldon 11-09 定）。"""
     files, _ = cc.from_pages_json(legacy["002.pages.json"], zi=legacy["002.zi.json"], norm=legacy["002.norm.json"])
     char = files["002.char.json"]
-    before = cc.char_to_lines_md(char)
     cells = [c for c in _cells(char) if c.get("fig") is None]
-    lac = next((c for c in cells if c.get("lacuna")), None)
-    if lac is None:                              # 夹具没有阙文就造一格
-        lac = cells[0]
-        lac.update(c=cc.LACUNA_CHAR, lacuna=True)
-        before = cc.char_to_lines_md(char)
-    plain = next(c for c in cells if not c.get("lacuna") and c["c"] != cc.LACUNA_CHAR and c is not lac)
-    n = cc.apply_pending(char, {"cells": [{"cell": lac["a"], "pending_reason": "group_abstain"},
-                                          {"cell": plain["a"]}, {"cell": "999:1:1"}]})
-    assert n == {"stamped": 2, "lacuna_dropped": 1, "fig_skipped": 0, "missing": 1}
-    assert lac["pending_reason"] == "group_abstain" and "lacuna" not in lac
-    assert plain["pending_reason"] == "unknown"
-    assert char["$schema"] == cc.CHAR_SCHEMA_URL_V04
+    lac, blank, plain, nochoice = cells[0], cells[1], cells[2], cells[3]
+    lac.update(c=cc.LACUNA_CHAR, lacuna=True)
+    for c in (blank, nochoice):
+        c.update(c=cc.LACUNA_CHAR)
+        c.pop("lacuna", None)
+    blank["pending_reason"] = "old"
+    plain.pop("lacuna", None)
+    plain["c"] = "甲"
+    n = cc.apply_pending(char, {"cells": [
+        {"cell": lac["a"], "pending_reason": "group_abstain", "ref": {"c": "曰"}, "lib_top": [{"c": "日", "s": .9}]},
+        {"cell": blank["a"], "lib_top": [{"c": "□", "s": .9}, {"c": "乙", "s": .8}]},
+        {"cell": plain["a"], "ref": {"c": "丙"}},
+        {"cell": nochoice["a"]},
+        {"cell": "999:1:1"}]})
+    assert (lac["c"], "lacuna" in lac) == ("曰", False)
+    assert blank["c"] == "乙" and "pending_reason" not in blank
+    assert plain["c"] == "甲"
+    assert nochoice["c"] == cc.LACUNA_CHAR
+    assert {k: n[k] for k in ("filled", "no_choice", "kept", "lacuna_dropped", "missing", "reason_dropped")} == \
+        {"filled": 2, "no_choice": 1, "kept": 1, "lacuna_dropped": 1, "missing": 1, "reason_dropped": 1}
+    assert n["by_src"] == {"ref": 1, "lib_top": 1}
+    assert char["$schema"] != cc.CHAR_SCHEMA_URL_V04
+    assert not any("pending_reason" in c for c in _cells(char))
     assert cc.validate(char, "char") == []
-    assert cc.char_to_lines_md(char) == before
-    bad = copy.deepcopy(char)                    # 与 lacuna 互斥
-    next(c for c in _cells(bad) if c["a"] == lac["a"])["lacuna"] = True
-    assert cc.validate(bad, "char")
+
+
+def test_apply_pending_holds_current_text(legacy):
+    """待审格现行已有字、导出字不同：文本不动，人裁后再改（sheldon 11-10）；现行是 □ 才写首选字；已人审的格不拦。"""
+    files, _ = cc.from_pages_json(legacy["002.pages.json"], zi=legacy["002.zi.json"], norm=legacy["002.norm.json"])
+    char = files["002.char.json"]
+    cells = [c for c in _cells(char) if c.get("fig") is None]
+    a, b, d, e = cells[0], cells[1], cells[2], cells[3]
+    for c in (a, b, d, e):
+        c.pop("lacuna", None)
+        c["c"] = cc.LACUNA_CHAR
+    n = cc.apply_pending(char, {"cells": [
+        {"cell": a["a"], "ref": {"c": "曰"}},
+        {"cell": b["a"], "ref": {"c": "乙"}},
+        {"cell": d["a"], "ref": {"c": "丙"}, "review": "human"},
+        {"cell": e["a"], "ref": {"c": "丁"}}]},
+        current={a["a"]: "日", b["a"]: cc.LACUNA_CHAR, d["a"]: "甲"})
+    assert (a["c"], b["c"], d["c"], e["c"]) == ("日", "乙", "丙", "丁")
+    assert n["held_current"] == 1 and n["filled"] == 3
+
+
+def test_first_choice_order():
+    assert cc.first_choice({"stale": {"c": "甲"}, "ref": {"c": "乙"}}) == ("甲", "stale")
+    assert cc.first_choice({"refc": "日"}) == ("日", "ref")
+    assert cc.first_choice({"ref": {"c": "兩字"}, "lib_top": [{"c": "丙"}]}) == ("丙", "lib_top")
+    assert cc.first_choice({"alt": [{"c": "丁"}]}) == ("丁", "alt")
+    assert cc.first_choice({"ctx": {"c": "戊"}}) == ("戊", "ctx")
+    assert cc.first_choice({}) == (None, "none")

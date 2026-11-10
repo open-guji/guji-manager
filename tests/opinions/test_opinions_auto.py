@@ -110,9 +110,10 @@ def test_prepare_finish_pr_and_merged(tmp_path, rules, bt):
     assert A.prepare(st, bt, BOOK, rules, run_checks=False, base="main") == []
 
     fp = A.finish_pr(st, bt, p["release"], 304)
-    assert fp["changes_lines_fixed"] == 2                  # 文本、标点各一行（这格没有实体）
-    ch = _git(bt, "show", f"{p['branch']}:Book/x/y/z/{BOOK}/default/CHANGES.md")
-    assert "#TBD" not in ch and "#304" in ch and "#300" not in ch.splitlines()[-1]
+    assert fp["changes_lines_fixed"] == 0                  # 不再有 CHANGES.md，没有 PR 号要补
+    msg = _git(bt, "log", "-1", "--format=%B", p["branch"])
+    recs = [ln for ln in msg.splitlines() if ln.startswith("版本记录:")]
+    assert len(recs) == 2 and f"{BOOK}/002 | 文本 | 1.0.1→1.0.2" in recs[0]    # 文本、标点各一行（这格没有实体）
     assert st.release_latest()[p["release"]]["status"] == "pr_open"
     assert st.last(o.id, "pr_opened").data["pr"] == "304"
 

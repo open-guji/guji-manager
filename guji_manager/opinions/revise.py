@@ -11,12 +11,12 @@
 锚在 ``after`` 那格、``pos: after`` 的点号与分段符挪到新格（插进来的字接在前一个字后面，「卷」+「一」后才分段）。
 
 升版本一律调 book-text 的 ``scripts/book-text/bump_original.py``（不手改版本号）：先文本线 patch，
-再对改过的标点、实体线各升 patch（它会把 text_version 跟到新文本）。CHANGES 的说明里列意见 id。
+再对改过的标点、实体线各升 patch（它会把 text_version 跟到新文本）。版本记录行的说明里列意见 id。
 
 阙文带推测字的写法（``guess_style``）：
 - ``guess-c``（缺省，guji-char v0.2，GUJI-717 用户 10-20 定）：``{"c": "□", "lacuna": true, "guess_c": "一"}``，
   阅读器照阙文显示 □、悬停给推测字；用到它的章 ``$schema`` 写 char v0.2（guji-format#21）；
-- ``lacuna``（guji-char v0.1）：``{"c": "□", "lacuna": true}``，推测字只记在 CHANGES 与意见池；
+- ``lacuna``（guji-char v0.1）：``{"c": "□", "lacuna": true}``，推测字只记在版本记录与意见池；
 - ``guess-char``（v0.1 的残字写法）：``{"c": "一", "guess": true}``，阅读器显示灰字加点线。
 """
 from __future__ import annotations
@@ -337,6 +337,14 @@ def bump(bump_script: Path, vdir: Path, line: str, chapter: str, note: str, pr: 
     return (r.stdout + r.stderr).strip()
 
 
+RECORD_PREFIX = "版本记录:"
+
+
+def records_of(*logs: str) -> list[str]:
+    """bump_original 打印的「版本记录: …」行（book-text 不再有 CHANGES.md，这些行要原样写进提交信息）。"""
+    return [ln.strip() for lg in logs for ln in (lg or "").splitlines() if ln.strip().startswith(RECORD_PREFIX)]
+
+
 @dataclass
 class Result:
     vol: str
@@ -349,6 +357,10 @@ class Result:
     note: str
     bump_log: list = field(default_factory=list)
     files: list = field(default_factory=list)
+
+    @property
+    def records(self) -> list[str]:
+        return records_of(*self.bump_log)
 
 
 def revise(bt_root: str | Path, book: str, vol: str, todo: list, *, dry_run: bool = True, pr: str | None = None,
@@ -409,7 +421,7 @@ def revise(bt_root: str | Path, book: str, vol: str, todo: list, *, dry_run: boo
     index = json.loads((vdir / "index.json").read_text(encoding="utf-8"))
     ich = next((c for c in index.get("chapters") or [] if str(c.get("file")) == v3), None)
     res.problems = check_chapter(final["char"], final["cord"], final["punct"], final["entity"], ich)
-    res.files += ["index.json", "CHANGES.md"]
+    res.files += ["index.json"]
     return res
 
 
