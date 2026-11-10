@@ -40,3 +40,19 @@ def test_cold_start_items_have_no_column_fields():
     from guji_manager.review_pages import cold_start
     src = inspect.getsource(cold_start)
     assert "col_img" not in src and "nb_imgs" not in src and "column_images" not in src
+
+
+def test_char_grid_embeds_font_subset(tmp_path):
+    """char_grid 1.3：出页默认内嵌 Jigmo 子集（扩展 H 的 𲨹 也能显示）；没字体时页上改显码位。"""
+    import pytest
+    pytest.importorskip("fontTools"); pytest.importorskip("brotli")
+    from guji_manager.review_pages import build as b
+    if not b.auto_fonts():
+        pytest.skip("no fonts")
+    items = [{"id": "001:1:1:1", "pre": "\U00032A39", "cov": .95, "img": None, "n": 1}]
+    out = tmp_path / "g.html"
+    st = b.build("char_grid", items, "995ejelvk0", out, per_page=40)
+    html = out.read_text(encoding="utf-8")
+    assert "@font-face" in html and "GujiSub" in html
+    assert st["bytes"] < 800_000
+    assert "\\u32a39" not in html.lower()

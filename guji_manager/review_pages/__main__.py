@@ -134,7 +134,7 @@ def main(argv=None):
         print(json.dumps(build_mod.build(a.type, build_mod.read_items(a.items), a.book, a.out,
                                          a.per_page, a.per_card, a.hint,
                                          build_mod.read_ids(a.exclude), a.mode, a.root, a.all_crops, a.box, rest_ok=not a.no_rest_ok,
-                                         fonts=list(a.font or []) + (build_mod.default_fonts(a.font_dir) if a.font_dir else [])),
+                                         fonts=((list(a.font or []) + (build_mod.default_fonts(a.font_dir) if a.font_dir else [])) or None)),
                          ensure_ascii=False))
     elif a.cmd == "cold-items":
         from . import cold_start

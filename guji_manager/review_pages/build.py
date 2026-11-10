@@ -85,6 +85,30 @@ def default_fonts(font_dir) -> list[str]:
     return out
 
 
+def _bundled_fonts() -> list[str]:
+    """本包自带 Jigmo3 20250912（CC0，补到 Unicode 17 扩展 J，如 U+32A39）；排在最后，只补前面字体没有的字。"""
+    p = Path(__file__).parent / "fonts" / "Jigmo3-20250912.ttf"
+    return [str(p)] if p.exists() else []
+
+
+def auto_fonts() -> list[str]:
+    """没显式给 --font/--font-dir 时自动找字体：环境变量 GUJI_FONT_DIR，或已装 open_guji_cv 旁的 fonts/（Jigmo CC0 覆盖到扩展 H、I.Ming）。
+    找不到返回空表（页上缺字改显码位，不会空白）。"""
+    import os
+    cands = [os.environ.get("GUJI_FONT_DIR")]
+    try:
+        import open_guji_cv
+        cands.append(str(Path(open_guji_cv.__file__).resolve().parent.parent / "fonts"))
+    except ImportError:
+        pass
+    for d in cands:
+        if d and Path(d).is_dir():
+            fs = default_fonts(d)
+            if fs:
+                return fs + _bundled_fonts()
+    return _bundled_fonts()
+
+
 def _strings(o):
     if isinstance(o, str):
         if not o.startswith("data:"):
@@ -154,6 +178,8 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。
     rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。"""
     pt = get(page_type)
+    if fonts is None and page_type in ("char_card", "char_grid"):
+        fonts = auto_fonts()      # 1.3/1.7：扩展 G/H 等字系统字体常缺，默认内嵌子集（Jigmo）
     n0 = len(items)
     excluded_n = None
     if page_type == "glyph_quality":
@@ -200,6 +226,9 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         chars = {t[1] for t in tiles}
         data = {"book": book, "per_page": pp, "n_chars": len(chars),
                 "n_cells": sum(t[4] for t in tiles), "tiles": tiles}
+        if fonts:   # 页上字（字头）子集化内嵌；字体都没有的字页上显示码位
+            font_css, nofont = font_subset_css({"chars": sorted(chars)}, fonts)
+            data["font_css"], data["nofont"] = font_css, nofont
         stat = {"tiles": len(tiles), "chars": len(chars), "pages": -(-len(tiles) // pp)}
     elif page_type == "codepoint":
         pp = per_page or 8
