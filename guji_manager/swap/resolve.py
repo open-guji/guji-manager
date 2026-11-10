@@ -15,9 +15,6 @@
   □ 只表示真阙文。
   **待审且首选字≠现行字（现行有字）时文本不动**（sheldon 11-10 定）：等人裁定了确是另一字再改，少改 book-text 提交；
   现行是 □／缺格时才写首选字。
-- ``evict_review``：撤库重审格（字形库撤库、人还没再裁；cv#1333 起出单作「撤库重审」复审格，sheldon 11-10 定）。
-  **不论新包放行什么字、哪个版本，现行有字就保持现字**，进复审单，等人裁定了再改；现行 □／缺格按待审处理。
-  有绑定有效的新人裁时按人裁走（人已再裁）。
 """
 from __future__ import annotations
 
@@ -37,7 +34,6 @@ RETURN_TO_BLANK = "return_to_blank"   # 现行有字，新包认定真阙文（�
 PENDING_SAME = "pending_same"         # 新包待审但首选字与现行一致：文本不动，只多一张待审单
 PENDING_KEEP = "pending_keep"         # 新包待审、首选字≠现行字：文本不动，等人裁定了再改（sheldon 11-10 定，少改 book-text 提交）
 PENDING_NO_CHOICE = "pending_no_choice"  # 新包待审且没有首选字：文本保持现行，待审单
-EVICT_REVIEW = "evict_review"         # 撤库重审格、现行有字：保持现字，不按机器改字放行，进复审单（sheldon 11-10 定）
 MACHINE_FLAW = "machine_flaw"         # 机器错字：回退现行字
 REMOVED = "removed"                   # 新包里该块图没有格：结构变化，交对照表处理
 
@@ -60,8 +56,7 @@ def _blank(c: str | None) -> bool:
 
 def resolve(cur: str | None, new: str | None, human: str | None = None, *,
             human_invalid: bool = False, flaw: bool = False,
-            new_pending: bool = False, new_lacuna: bool = False,
-            evict_review: bool = False) -> Decision:
+            new_pending: bool = False, new_lacuna: bool = False) -> Decision:
     if human is not None:
         if new is not None and new != human and new != BLANK and not new_pending:
             return Decision(PROTECTED_CONFLICT, REVIEW, human, False, f"新包「{new}」≠人裁「{human}」，保留人裁")
@@ -71,13 +66,6 @@ def resolve(cur: str | None, new: str | None, human: str | None = None, *,
     if human_invalid:
         # 旧人裁不可采信：文本保持现行（缺格才取新包），旧裁字只作复审参考
         return Decision(HUMAN_INVALID, REVIEW, cur if cur is not None else new, True, "旧人裁绑定失效，进复审单")
-    if evict_review:
-        if not _blank(cur):
-            return Decision(EVICT_REVIEW, KEEP, cur, True, f"撤库重审格，保持现字「{cur}」，人裁后再改", True)
-        # 现行 □／缺格：按待审处理（有首选字就写，另出待审单）
-        if new_lacuna:
-            new = None
-        return resolve(cur, new, None, flaw=flaw, new_pending=True)
     if new_pending and not new_lacuna:
         if not new or new == BLANK:
             return Decision(PENDING_NO_CHOICE, KEEP, cur, True, "新包待审且无首选字，文本保持现行，出待审单", True)
