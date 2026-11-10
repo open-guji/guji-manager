@@ -1,10 +1,139 @@
 # Changelog
 
-版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
+版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` - `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
+下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
 
 - 冷启动高/低把握两张页固化（MINOR，人审页线 11-10，用户要求）：`review_pages/cold_start.py` 与 `review-pages cold-items`／`cold-pages`：按 5b 领先量、cov、库例数把「库缺样本」格分高把握（带「本页其余都对」）与低把握（一格一卡、没点不算对），一条命令出页；char_card 模板不变（1.5.4）。流程见 `doc/01-粗校/开书/冷启动快审入库.md`「高把握／低把握」一节（PR #412）。L0。
+
+## [0.4.33] - 2026-11-10
+
+- PATCH（A31 11-10，用户定删 book-text 各书 CHANGES.md）`opinions revise／auto prepare／revert` 把 bump_original 打印的「版本记录」行写进提交信息，`auto finish_pr` 不再补 #TBD；`opinions versions` 改从本地 book-text 的 git log 读版本记录并和已存的 text_versions 合并（旧 CHANGES.md 还在时照读）；`tools/开书/出v01.py` 改打印版本记录行。需 book-text 同名 PR 一起上线，必须先于它发版。
+
+## [0.4.32] - 2026-11-10
+
+- 发版（PATCH，A34 11-10，ZM 请）：从 dev 切，含 #436。
+
+- 修：收尾锚点检查（`closeout/anchors.py` 的 `CELL_RE`）丢了双栏格的 a／b 后缀，`88:6:15b` 写成 `88:6:15` 上单，网站找不到格、无图、按邻格推框错位（殿本 vol01 001-r13 有 7 格）。
+
+## [0.4.31] - 2026-11-09
+
+- 发版（PATCH，A34 11-09）：从 dev 切，含 book-text 只录首选字的导出改动（#429）、A31 的 exit-check E3（#432）。
+
+- `exit-check` E3（decision.json 存在）改为恒「不适用」（PATCH，A31 11-09，book-text 只录首选字，不再录 decision.json）。L0。
+
+- `formats/guji_char_cord.apply_pending` 改口径（PATCH，A34 11-09，sheldon 定 book-text 只录首选字）：不再给 char 写 `pending_reason`（已有的一律去掉）；待审单上现字是 □ 的格写首选字（新增 `first_choice`：stale → 参校本 → lib_top → alt → ctx），去 lacuna；`$schema` 按实际写法取最低版（新增 `char_schema_for`，不再写 v0.4）。cv `export_guji_format --pending`、`republish.py` 入库调用不用改参数，打印的「待审原因 N 格」现在是写首选字的格数。L1。
+- `swap/resolve` 加待审口径（PATCH，A34 11-09，sheldon 定）：待审格 book-text 显示首选字，首选字与现行一致则文本不动、只多一张待审单；□ 只给真阙文。
+- 新增 `guji_manager/swap/resolve.py`（PATCH，A34 11-09）：重切发布批的覆盖优先级纯函数（人裁 > 机器新结果 > 现行机器字；无人裁机器改字默认放行，退回 □ 进复审单）与机器错字检测。尚未接命令。L0。
+- `guji code check` 不查书仓 `code/tests/` 的 import（PATCH，A20 11-09）：本书测试要借 cv 仓 `tests/helpers`，不进指纹。L0。
+
+## [0.4.30] - 2026-11-09
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 GUJI-764 修复（#416）。
+
+- `glyphdb_admit` 人裁同字升级（PATCH，A31 11-09，GUJI-764，QTW 报）：库里同一格已有同字 auto（provenance 非 human）刻例时，人裁 confirm 原先被主键幂等闸挡掉、记 skipped、库里仍是 auto；现在同字也撤旧再进（计 updated），并删掉这次撤旧留的 `evictions` 行（升级不是撤库）。字不同、已是 human 的路径不变。L0。
+
+- 跟 cv 缺省实现改名（PATCH，A20 11-09，cv#1327 起 `books/siku_zongmu` → `impl/keben`）：控制台门面、`_cv` 兜底表改写新名，取不到时退回旧名（新旧 cv 都能用）；搬来的测试经 `tests/from_cv/cv_paths.keben()` 取模块。L0。
+- `guji code`（PATCH，A20 11-09，cv v0.7.0 书级代码）：`status／release／verify／check` 管书仓 `code/`（出 `releases/k<N>.json`、比工作副本、查 import 越界）；产物包标签在钉了模型、有书级代码时接 `-m<N>`、`-k<N>`（没钉写 `-k-<摘要>`），manifest `versions` 记 `model`、`code`、`code_digest`、`code_commit`；都没有的册标签不变。需 cv 含 `core.book_code`（cv#1326）。L0。
+
+- 字形库导出缩水闸（PATCH，ZM 11-09，用户要求）：`datastore/workcopy.py::_export_if_changed` 导出 glyph.db 前备份数据目录里的字形账本，导出后任一账本行数归零或不足原来一半就还原并停下（`db sync`／`push` 都经过它）；防止 `db pull --no-rebuild` 之后本机是空库、sync 把中心库字形表清掉。确要缩小设 `GUJI_ALLOW_GLYPH_SHRINK=1`。不动产物、指纹（L0）。
+
+- `guji opinions ingest --channels charfix,span`（PATCH，A34 11-09）：只入指定渠道，其余（如精校票 cellreview，走 cellvotes）留在来源里不动。原先入池命令不分渠道，夜间修订流程一入池就把 300 多条精校票带进来。缺省仍全入。不动产物、指纹（L0）。
+
+## [0.4.29] - 2026-11-09
+
+- 发版（PATCH，A32 11-09）：从 dev 切，含 #407。
+- 出卡把「排除名单上没人看过」的格放回待审（PATCH，A32 11-09，A31 要求，#407）：`review/cards.py` 的出卡闸原先挡掉全部排除名单格；现在 reason 不是 `human:*`、也没有人给的字／判残的格（管线 `gate:crop_defect` 等，文本里整格掉字）照常出卡，口径同 `pack_stats.is_pending`。配套 cv `pending_list.py`、`sprite_build.py`（cord 无框的排除格按同列邻格估框并写 `box`／`box_est`）。不动产物、指纹（L0）。
+
+## [0.4.28] - 2026-11-09
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 #402、#403。
+- 包口径人审率对齐线上单（PATCH，A31 11-09，#403）：排除名单上 `human:` 开头的格，以及格上已有人裁事件的格（网站投「切坏」不进排除名单），都不算待审；管线自己排除又没人裁过的格仍算。总目第一册 g21w9 从 19 格降到 5 格（141:1 五格，管线排除、没人看过）。只改看板统计，不动产物、指纹（L0）。
+- `closeout.plan.stamp_pending`（PATCH，A32 11-09，方案 8.9）：出单时按新 char＋book-text 里的标点／专名现算 A01／A02 并写进待审单，供 cv `republish.py` 调用；A03 要比对 book-text 里 char 新旧版，出单时算不出，文本推 dev 后用 `guji closeout derive`。不动产物、指纹（L0）。
+
+## [0.4.27] - 2026-11-09
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 #399。
+- 包口径人审率不再把「排除名单上人已定过」的格算待审（PATCH，A31 11-09，用户定，#399）：切坏／裁坏格人已给字（`evidence.human_char`，文本层照出）、人判残／非字／图形的，`pack_stats.is_pending` 判不待审；没人给字的排除格仍算。总目第一册 g20 包 252 → 47 格。只改看板统计，不动产物、指纹（L0）。
+
+## [0.4.26] - 2026-11-08
+
+- 发版（PATCH，A31 11-09）：从 dev 切，含 #393（待审原因 A01–A03）、#395（`guji closeout`，夹注 a／b 格号修补）及下列各条。
+- 标 main 后收尾 `guji closeout` 和换单叠改字（MINOR 新增命令，A32 11-09，方案 `ai-team domain/CV/质检/重跑轮次/标main后自动收尾-方案.md` 八节 8.8／8.9）：不另建余项表，对不上的锚点就是待审格，原因 A01 `anchor_miss`／A02 `add_del`／A03 `anchor_drift`（#393，deferred、不算人审率），一格多因主因不变、其余放 `pending_reason_also`、旧新锚放 `pending_reason_detail` 的 `anchor=` 段。新增 `guji_manager/closeout/`：`derive`（按当前 book-text 现算 A01–A03，不写清除事件，重挂后自然消失）、`anchors.stamp`（先清后写，幂等）、`redlines`（人裁丢失>1%、锚点余项>15%、报错／字形库 verify 不过）、`stats`、`writeback`（dev 上机器错位锚点的三条件自动写回，缺省只出计划）、`remap_lib`（调 book-text `remap_anchors.remap_data`）；`swap.py` 改成包 `swap/`（行为不变），新增 `swap/overlay_edits.py`（换单先叠人工改字再核对位，永不原样导出）。不动产物、指纹（L0）。
+- `cellvotes draft` 增加票的去向分流（PATCH，A34 11-08，Sheldon 定：所有投票结果写中心库，切分线自己按批次找）：除原有输出外，多出 `route.md`（改文本批／切分类／无字／挂起各几格，切分类按页汇总）和 `structure.tsv`（页、列、格、类、页面显示字、备注，切坏无字、错位、破损、带备注的看不出），交切分线用；不改落票逻辑、不动产物、指纹（L0）。
+- 任务库连接数满时退避重试（PATCH，A30 11-08；worker-13 重起报 `too many connections for role jobs_rw` 直接退出）：`jobsdb.connect` 遇到角色连接数满（SQLSTATE 53300）随机退避重试最多 8 次（单次最长约 60 秒，`GUJI_JOBSDB_FULL_RETRIES` 可调），别的连接错误仍短重试 10 次。不动产物、指纹（L0）。
+## [0.4.25] - 2026-11-08
+
+- 中心库备份大文件切片上传＋失败重试（PATCH，A31 11-08，Sheldon/协调者定）：`datastore backup` 把整表 gz 一次 PUT 上传，`files` 表压缩后 220 MB 被边缘掐断（`Connection reset`），备份连续失败。现在 `upload` 把超过 64 MB 的文件切成 `<表>.copy.gz.partNNN`，清单该表记 `parts`；单个文件上传失败重试 4 次；`fetch`（含 `restore-check`）按 `parts` 拼回，旧备份（无 `parts`）照读。不动产物、指纹（L0）。
+
+## [0.4.24] - 测试中
+
+- 存包时随包写人审率 `pack_stats`（PATCH，A31 11-08，Sheldon 定：数据随 pipeline 跑完自动更新，网站直接读中心库）：整册存包成功后按 seed_admit 数全册格与待审格，写进 `progress.volume.extra['cv.packs'][<包标签>]`（每册留最近 8 个）；标 main 钩子据此直接收一轮、`progress-sync --fix` 也优先用它；不连库、无 seed_admit、只打几步的包静默跳过，永远不抛。
+- 后台看板自动对账 `guji-manager progress-sync`（PATCH，A31 11-08，Sheldon 定：看板必须自动更新到最新，不能靠手动）：对一遍中心库里的事实——线上单 rev ≠ 看板 `pending_rev`（重跑 cv `progress_report`）、`a31.main` ≠ `cv.pack`（取 ★main 包重算写看板）、已标 main 的轮次在「迭代轮次」里还是占位（`auto_round` 汇总）——落后的就补，幂等，可每小时跑；不带 `--fix` 只报告（有落后退出码 1）。同时：标 main 钩子 `push_pack_rate` 缺 ai-team 检出时改为自己浅克隆一份（原来静默跳过，11-08 第 6／7 轮包口径和轮次因此停在「待统计」）；`auto_round` 汇总后把占位的 `verdict=pending`／备注升成 main（原来永远停在待统计）。不动产物、指纹（L0）。
+- 执行方成功存包后清本机该册的 `cache/<册>` 和 `products/<册>`（PATCH，A30 11-08，Sheldon 同意）：执行机磁盘被各册缓存和产物副本堆满（殿本工作区 14 GB，cache 7.3 GB、products 4.4 GB），剩余低于 3 GB 就不领单。包已推中心库，这两处可重建；`cache/_judge`、`cache/glyph-derived`、工作区仓、册 yaml、feedback、output 不动，失败单和没存包的单不清。`GUJI_JOBS_KEEP_ARTIFACTS=1` 关闭。不动产物、指纹（L0）。
+- `_cv._FALLBACK` 补登记参校本属性三个名字 `RefProfile`、`load_reference_profile`、`ref_profile_lint`（PATCH，cv #1273 manager_api 新导出，test_cv_surface 红；A22 11-08）。
+- 「整理本读不到」的页也算本就没参照（PATCH，QTW 11-08：全唐文 002 册里没写 references，208 页备注全是它）：并入 `ref_by_design`，同 #351 不判 S01／S02／R02。
+- 本页本就没配参校本不判整页／整列对不上（PATCH，QTW 经 A31 11-08 报；用户 11-06/07 定待审原因改分类直接改）：全唐文 001–003 故意不带参校本，首跑约 1.9 万格被记成 S01。对位层 note 是「未配置整理本／未配置证人」的页，`Cell.ref_by_design`＝真，不判 S01／S02／R02，落 L04 `lib_unrecognized`（细分 `no_ref`，带 `lib_miss` 码的仍 `lib_diff`）。只改分类，不动产物、指纹。
+- 新页型 `seg_cut` 1.0.0 人裁切线（PATCH，缺省不影响旧页；SJ 需求）：一格一段列图叠两套格网，点图画切线或标不切/看不出，结果带列图与页图坐标；CLI `build seg_cut`、`segcut-apply`。
+- 带框重的字块不进字形库（PATCH，Sheldon 11-08 定；只在 `SELFCHECK_BOOKS` 开了 frame 的书，即殿本）：`glyphdb_admit` 人裁进库前按库里同字刻例比「端区比字身宽多少」（`seg_defect.lib_frame_heavy`），带框重的计入 `no_lib`／`frame_heavy`，格键与特征记进 `frame_heavy_keys` 反馈切分；库里同字不到 5 个照收。
+## [0.4.22] - 2026-11-07
+
+- `guji corpus pin` 崩溃（PATCH，A31 11-07 报）：`cmd_corpus` 读 `args.shift_book_ver`，parser 只有 `--book-ver`，一跑就 AttributeError；`guji recheck` 同病（读 `args.shift_book`，应为位置参数 `book`）。都是 #145 给 rekey-cells 加 `--shift-book` 时整词替换带坏的。改回后新增守卫 `tests/test_cli_args_guard.py`：每条子命令处理函数读的 `args.X` 都要是真 parser 定义过的参数。不动产物、指纹（L0）。
+
+## [0.4.21] - 2026-11-07
+
+- 第 7 轮冻结版（PATCH）：含 #297 S04 碎片格、#302 标 main 钩子找 guji、#304 #310 Z 类重分、#316 R01 图片格提示、#319 #321 字库类重分与私用码落 R01 等，均只改分类/工具，不改放行。
+
+- 待审原因 Z 类「同字异形」折叠收窄（PATCH，A24 Z03 深挖；Sheldon 11-06 定改分类可直接做，合后经收件箱告知 A31）：折叠解法给字改用新增的 `Context.same_writing`（cv 暂归一表 `PROVISIONAL.forms` 并集＋宫宮），不再用宽异体表 `are_variants`（大／太、傳／傅、玉／王、戊／戌 都有边）；这些文意与字形路各执一字的格由 Z03 改落 Z02（三书 ★main 现算 Z03 247→236，Z02 +11，全唐文 Z03 11→2）。没给 `same_writing` 时退回 `are_variants`。只改分类、不放行。
+- 待审原因 Z 类按「解法给出了什么」重分（MINOR，A24 Z 类梳理；Sheldon 11-07 同意，已经协调者通知 A31–A34）：新增 Z07 `group_unconfirmed`「形近字·差一路确认」（一个字、why=weak 或联合判共字组没表态，原落 Z01／Z02）；Z06 `group_form_open` 改名 `variant_form_open`、码 V02、归异体类（yaml renamed，旧名照读）；ref／coord_dissent 而参校字是〓的落 R01；复核 `group_flow_ref_dissent` 归 Z04、复核两字归 Z02、复核没字归 Z01；字组已定字（含解法全弃权的 keep）不归 Z；Z 类 detail 改写「组:lift|joint|review」。只改分类、不放行。网站、控制台 pendingReasons 副本要按 `--json` 同步。
+
+## [0.4.20] - 2026-11-06
+
+- 待审原因 Z02 `group_conflict` 分类（PATCH，A24；Sheldon 11-07 授权先改后通知）：`reasons._group_kind` 解法只差写法（`are_variants` 判同字异形：象／𧰼、寇／㓂、會／㑹）不再算 Z02，落 Z03（降审）或 Z01（Z05 已停用）；只改分类、不放行；没给 `are_variants` 时行为不变。
+## [0.4.19] - 2026-11-06
+
+- 待审原因 Z05 `group_weak` 停用（PATCH，A24 #285；Sheldon 11-06 定）：字组已定字（admit/keep/provisional）仍待审的格不归字组、按后面的原因落（L05、L04…）；why=ref_missing／solo_weak 落 R 类；其余并入 Z01。枚举与 yaml 保留，旧数据读得出，不再产出。只改分类，不放行。另含 Z06、R03 深挖文档（#292）。
+
+## [0.4.18] - 2026-11-06
+
+- 待审原因 L01–L03 边界（PATCH，A23 #287；Sheldon 11-06 同意）：刻例只算本书版本（`lib_own_counts`）；参校字本书库 0 例一律归 L01，1～2 例按机器字是否＝参校字分 L03／L02；leverage 里 L03 也按参校字并卡。P02 说明改写（#284）。只改归类，不放行。
+
+- 待审原因 L05 `garble_gate` 要有整理本字（A24，Sheldon 11-06 同意）：`reasons.py` 无对位的糊格（框线碎片、并格、圈点）不再判 L05，落 R02 `ref_gap`；殿本约 −29、史記 −13、全唐文 0（★main 现算）。只改原因，不改放行。
+
+- 待审原因 L05 `garble_gate` 深挖（PATCH，A24；Sheldon 11-06）：新增 `tools/l05_profile.py`（体检＋按 `rare_ref_coord_min_cov`／`rare_ref_coord_group_top` 离线回放，分 A1／A2／A3／B／C 五类）；`doc/01-粗校/待审原因/garble_gate/` 重写 README（判定条件、现状、五类配图）、流程与参数、benchmark。不改原因码、不改分类逻辑；对应 cv #1204（seed_admit 1.45，缺省关）。
+
+## [0.4.17] - 2026-11-06
+
+- 待审原因 L04 `lib_unrecognized` 理流程（PATCH，A23；Sheldon 11-06「理清整个流程、定 benchmark、下一本书能快速做」）：`pending_reason_detail` 改写成 `<细分>:<参校字>`，细分按 `ref_lib_coord` 逐关看哪一关没过（`lib_other`／`human_unbound`／`doubt_blocked`／`low_cov`／`near_rival`／`clear`，`reasons.lib_unrecognized_kind`）；yaml detect 文案改成与代码一致（兜底，不看刻例数与库认不认）；`pending-stats` 的 cells.tsv 末尾加 `detail` 列；新增 `review/vis_review.py`（看图裁定导出对照图与窗口、答案写成 vis-o1 裁定）。只改分类细节与统计，不放行、不改原因取值。说明见 `doc/01-粗校/待审原因/lib_unrecognized/`。
+
+## [0.4.16] - 2026-11-06
+
+- 待审原因 V01 `variant_pair` 收窄（PATCH，A31；A24 V01 深挖 11-06，#261）：只看整理本字与库首位或机器字的异体边，不再看前五里其它候选；边分型（cv `variants.edge_tier`）只认 T1／T2，T3（通假、形近、简繁）不算。只改分类，不放行；V01 预计 388→约 172，其余落 P01／P02／N01／L04。
+- 人审页 `char_card` 1.5.4（PATCH 修 bug，A24；Sheldon 11-06 报「后台存档失败」）：逐格文档 id `c_<格号>` 里的 `#`、`:`、`+` 被后台库拒收（只认 ASCII 字母数字和 `_`），格号带 `#`（私用码页 `daizhige:U+EAC0#20-31-148`）时每一格都存档失败、只落在浏览器本地。改成 `c_`＋`safeId(格号)`；读回按文档里的 `id` 字段，不依赖文档名；已在本地点的结果加载后自动补存。普通格号（`vol01:5:2:10`）的文档名跟着变，老文档读回时不受影响（读的是 `id` 字段），但会补存一份新名的。
+
+- review-pages 新页型 `ref_check`（整理本真错复核，A32 11-06，A31 定）：`ref-check-items`（待审格 → 带邻格条与裁图的 items，按 `ref_suspect` 排序 ref 最前）、`ref-check-apply`（结果 → 改字 tsv）；cell_pick 模板核对模式加「改作 库首位」按钮（`cell_pick` 1.2.0）。只读，不放行。
+- 待审单加只读标记 `ref_suspect`（PATCH，A31；A32 D01 深挖 11-06 提）：出单时在本册整理本里比库首位字与整理本字放进这一格上下文（前一字＋X、X＋后一字）的相邻二字次数（整理本这一格自己不算），库首位明显更通顺写 `ref`（疑整理本错，人审页置顶），整理本更通顺写 `lib`（疑库错），分不出不写；出单统计记 `ref_suspect_ref`／`ref_suspect_lib`。只排序用，不放行、不改字、不改原因。
+
+- 待审原因 N01 `near_form_guard` 收窄（PATCH，A31；A24 N01 深挖 11-06）：只留库护栏 conflict／never_match，或参校字与机器字／库候选前三构成 cv 手工形近表 `NEVER_MATCH_FAMILIES` 里一对的格；仅疑问码 near_form（家族字碰巧在候选前三）的格改落 lib_sparse_dissent／ref_ocr_diff／ref_final_diff 等后续原因。只改分类，不放行；殿本 N01 预计约 273→24，L02、P01、P02 相应增加。
+
+- `guji swap run` 开跑前和每批之间核数据目录有待收字登记表 `config/pua/glyph_pending_codes.json` 和语料 `corpus/daizhige/`（PATCH，A32，A31 11-06 要求）：缺了 R03 待收字会被统计成 R01、出单报告 `glyph_pending_registry_missing`＝1，缺就停下提示 `guji db pull`。
+
+- 新增 `guji swap run`／`guji swap audit`：换单 driver（MINOR，A32，用户 11-05「讲一下换单…做得自动」）。每批 N 册（缺省 6）：`auto_cycle --no-publish` → `sync_workspace(no_glyph)` → 对这批 `proofing-sync only=` 发布并等跑完 → 逐册取线上 `NNN.pending.json` 核版本 → 核过的清掉本地产物包；开跑前、每批之间核字形库账本不空且不比基准少一成、磁盘 ≥3GB；全程 `GUJI_DB_NO_GLYPH=1`；状态写 `<工作区>/reports/_swap/state.json`，同一条命令断点续跑；need-A33／blocked 的册只记入状态并最后列出。
+- 换单报告固定附「机器改字抽检表」（`machine_audit.py`，A32，A31 11-06 要求）：换单时机器无票改字（新字≠book-text 现文）按新字≠整理本字分 A（己已巳、日曰折叠组）／B（形近误读）／C（其它不同字，多为异体表漏）／D（整理本无字）四档，新字＝整理本与异体只计数；人裁定的格不算。每册在发布前（产物包清掉前）出数据，全批跑完写 `reports/_swap/机器改字抽检表-<时间>.md` 与同名 tsv；单独出用 `guji swap audit --books … -w … --book-text …`。
+
+- 待审原因 P01、P02 改英文名（PATCH，QTW；Sheldon 11-06 嫌旧名看不出区别）：P01 `ref_replaced`→`ref_ocr_diff`（识别字与参校本不同：Step6 对位时识别字就≠参校字），P02 `ref_mismatch`→`ref_final_diff`（定字与参校本不同：对位相同、最后定字≠参校字），中文名、hint、说明文件夹跟着改。码不变；yaml 新增 `renamed`，`parse()` 和 `--json` 导出带旧名映射，旧单、旧事件照认。网站／控制台 `pendingReasons.ts` 副本要重新导出同步。
+
+- 人审页 `char_card` 1.5.3（PATCH，A24；Sheldon 11-06 反馈）：样本没有本书切图（`img` 为空）时不再渲染空图，改显灰框「本书无切图（没对上 v2）」，其余（维基图、上下文、输入框）照常；存档键只看前两段，已点的不丢。
+
+- 人审页 `char_card` 1.5.2（PATCH，A24；Sheldon 11-06）：难认字页每格「这格是什么字」和「认不出：部件／IDS」两个输入框常显，认不出的字可直接输入；输入即存，规则同前（填字＝改字，填部件＝认不出＋部件）。
+
+- 人审页 `char_card` 1.5.1（PATCH 外观，A24；Sheldon 11-06 反馈）：①`--font`／`--font-dir`（cv 的 fonts/）把本页用到的字按 I.Ming→Jigmo 三档子集化成 woff2 内嵌，排在 `--font-glyph` 最前，不依赖外网；字体都没有的字页上改显码位（U+XXXXX），不留空白；没装 fonttools 时不嵌字体。②难认字页（`--no-rest-ok`）卡片改网格排（列宽 ≥250px，宽屏 5 列），卡头压成一行，上下文／说明字号再小一档，`per_page` 缺省 24（原 8）；存档键只看 tpl_version 前两段，已点的不丢。
+
+- 新命令 `guji cellvotes rebase`（PATCH，A20）：页号格号不变的换图源（殿本四庫總目换文淵閣本）后，人裁事件锚里的框按页表 `from_rev.H` 换到新页、`source_rev` 改新 rev，出 `~r` 事件、待办清单和报告（只读，不写库）；旧页图 sha 与新页表 `from_rev.sha256` 对不上的不迁。逻辑 `feedback/source_rebase.py`，说明见 `doc/案例/殿本四库总目.md`。
+- 人审页 `char_card` 1.5.0（MINOR 外观，A24，私用码映射第一步）：items 可带 `ref_img`（标准字形图，如维基 SKQS 僻字图）和 `ref_label`，格上与本书切图并排显示、各带小字；不带的格不变。
+
+## [0.4.15] - 2026-11-05
 
 - 人审页 `closeout` 1.2.0（MINOR 外观，QTW 替 A31 做；Sheldon 11-06 定收口口径）：去向只留三个——放行／留人审／算法再处理，缺省预选「算法再处理」；还有任何一格是「算法再处理」时页顶提示不能出 v0.1；选项说明、registry options 同步改；旧选项名（人审底／留后／精校待办／再处理）不再出现。同步改 S3、S4、人审页模板文档与 round_report 收口归宿文字。
 

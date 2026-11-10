@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 import numpy as np
+from cv_paths import KEBEN, keben  # noqa: E402,F401  刻本缺省实现（新旧 cv 两种包名）
 
-from open_guji_cv.books.siku_zongmu import jiazhu_split as jz
-from open_guji_cv.books.siku_zongmu import row_boundaries as fit_mod
+jz = keben("jiazhu_split")
+fit_mod = keben("row_boundaries")
 
 COL_W, SLOT_H, N_SLOTS, GRID_Y0, RULE_W = 185, 110, 21, 10, 4
 

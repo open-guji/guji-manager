@@ -40,10 +40,11 @@ class PendingReason(str, Enum):
     GROUP_CONFLICT = "group_conflict"
     GROUP_DEMOTED = "group_demoted"
     GROUP_REF_DISSENT = "group_ref_dissent"
-    GROUP_WEAK = "group_weak"
-    GROUP_FORM_OPEN = "group_form_open"
+    GROUP_WEAK = "group_weak"            # Z05 2026-11-06 停用，旧数据照读
+    GROUP_UNCONFIRMED = "group_unconfirmed"  # Z07 2026-11-07 新增：一个字，缺规定的第二路确认
     NEAR_FORM_GUARD = "near_form_guard"
     VARIANT_PAIR = "variant_pair"
+    VARIANT_FORM_OPEN = "variant_form_open"  # V02 写法待定；旧名 group_form_open（Z06，2026-11-07 改归异体类）
     LIB_MISSING = "lib_missing"
     LIB_SPARSE_DISSENT = "lib_sparse_dissent"
     LIB_SPARSE_AGREE = "lib_sparse_agree"
@@ -52,12 +53,15 @@ class PendingReason(str, Enum):
     GLYPH_PENDING = "glyph_pending"
     REF_LACUNA = "ref_lacuna"
     REF_GAP = "ref_gap"
-    REF_REPLACED = "ref_replaced"
-    REF_MISMATCH = "ref_mismatch"
+    REF_OCR_DIFF = "ref_ocr_diff"        # P01 Step6 对位时识别字（字形库首位）就≠参校字（replace 段）；旧名 ref_replaced
+    REF_FINAL_DIFF = "ref_final_diff"    # P02 文本对位没给标签、整理本字只来自坐标对位，机器字≠参校字；旧名 ref_mismatch
     RULING_CONFLICT = "ruling_conflict"
     VISION_FLAGGED = "vision_flagged"
     MACHINE_CHANGED = "machine_changed"
     RECHECK = "recheck"
+    ANCHOR_MISS = "anchor_miss"          # A01 2026-11-09 标 main 后收尾：该格挂的标点／专名按格级对照表挪不过去
+    ADD_DEL = "add_del"                  # A02 同上：增删格处，标点／专名要重挂
+    ANCHOR_DRIFT = "anchor_drift"        # A03 同上：锚点挪过去了但位置存疑（格式检查「其他标点」漂移告警）
     UNKNOWN = "unknown"
 
     def __str__(self) -> str:  # 写 json、拼字符串时就是英文名
@@ -79,6 +83,7 @@ class Category(str, Enum):
     REFERENCE = "reference"
     MISMATCH = "mismatch"
     REVIEW = "review"
+    ANCHOR = "anchor"
 
 
 class Route(str, Enum):
@@ -146,12 +151,21 @@ def specs() -> dict[PendingReason, ReasonSpec]:
     return out
 
 
+@lru_cache(maxsize=1)
+def renamed() -> dict[str, PendingReason]:
+    """改过名的旧名 → 新 enum（yaml `renamed`）。旧数据里的旧名照样认。"""
+    return {old: PendingReason(new) for old, new in (_load().get("renamed") or {}).items()}
+
+
 def parse(value) -> PendingReason:
-    """数据里读到的值 → enum。空、None、认不出的一律 `UNKNOWN`（不确定就写 unknown）。"""
+    """数据里读到的值 → enum。改过名的旧名换成新名；空、None、认不出的一律 `UNKNOWN`（不确定就写 unknown）。"""
     if isinstance(value, PendingReason):
         return value
+    v = str(value).strip() if value else ""
+    if v in renamed():
+        return renamed()[v]
     try:
-        return PendingReason(str(value).strip()) if value else PendingReason.UNKNOWN
+        return PendingReason(v) if v else PendingReason.UNKNOWN
     except ValueError:
         return PendingReason.UNKNOWN
 
@@ -180,6 +194,7 @@ def export() -> dict:
         "version": d["version"],
         "field": FIELD,
         "categories": d["categories"],
+        "renamed": d.get("renamed") or {},
         "routes": d["routes"],
         "reasons": {r.value: {k: (v.value if isinstance(v, Enum) else v) for k, v in asdict(s).items() if k != "reason"}
                     for r, s in specs().items()},

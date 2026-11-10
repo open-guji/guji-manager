@@ -163,6 +163,9 @@ def auto_round(book: str, label: str, write_db: bool = True) -> dict | None:
     if not rec:
         return None
     merged = dict(old.get(key) or {})
+    if merged.get("verdict") == "pending":      # 标 main 时占位的「待统计」：统计出来了，占位的结论和备注不再保留（否则永远停在待统计）
+        merged.pop("verdict", None)
+        merged.pop("note", None)
     keep = ("date", "verdict") if merged else ()       # 已有记录的日期、结论不被自动覆盖
     merged.update({k: v for k, v in rec.items() if k not in ("key", "label", "rate") + tuple(k2 for k2 in keep if k2 in merged)})
     out = dict(merged, key=key, label=labels.get(key) or label_of(key), rate=rec["rate"])

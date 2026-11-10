@@ -20,7 +20,7 @@ class PageType:
 
 
 PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
-    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.4.0",
+    PageType("char_card", "一字一卡（第一次进库字确认）", "char_card.tpl.html", "1.5.4",
              "L01、L03 冷启动；同字头一张卡，看 3–5 个样例，其余跟随；逐格点选（切分/改字/看不清/对），每点即存"),
     PageType("char_grid", "字形快审表（全对点错）", "char_grid.tpl.html", "1.2.0",
              "参校字＝库首位的格；默认全对只点不对（史记冷启动 GUJI-750）"),
@@ -28,15 +28,23 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "N01、V01、越过参校本；按字组各抽 30 格带前后文，逐格点同字/不同字/看不清，每组页尾显示同字率，再定组结论（pair.py）",
              options=("同字", "不同字", "不确定"), doc_prefix="review_pair"),
     PageType("codepoint", "码位定夺", "codepoint.tpl.html", "2.2.0",
-             "Z06、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
+             "V02（原 Z06）、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
              "／分开·不同字／合并到别的字（全唐文码位页 11-01–11-04 并入，见 codepoint.py）；2.2 起字体缺字的候选可带字形图 glyphs",
              options=("unify", "other", "split_follow", "split_distinct"), doc_prefix="review_cp"),
-    PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.1.0",
+    PageType("gold_sample", "金标抽样（含上下文，文意判读）", "cell_pick.tpl.html", "1.2.0",
              "新放行类别上线前（R3）；终审标注页的通用版，保留 cell/pick/other/note/review 字段；点即存、读回、切分错/看不清/库里无此字、整理本字入上下文、横向邻格条、按 kind 筛选",
+             doc_prefix="labels"),
+    PageType("ref_check", "整理本真错复核（快速确认整理本字，疑整理本错置顶）", "cell_pick.tpl.html", "1.0.0",
+             "待审里「整理本字对不对」：D01 库否决、L02、X01 等；预选整理本字，库首位并排一键改作；按 ref_suspect 排序（ref 最前）；"
+             "横向邻格条＋整理本前后文；结果 `ref-check-apply` 出改字 tsv，喂 book-text 改字流程",
              doc_prefix="labels"),
     PageType("seg_cause", "切分归因看图", "seg_cause.tpl.html", "1.1.0",
              "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 A22 seg_causes",
              options=("切分错", "切对了不是切分", "特殊页型", "看不出"), doc_prefix="review_seg"),
+    PageType("seg_cut", "人裁切线（小字被并成一格，点哪里该切开）", "seg_cut.tpl.html", "1.0.0",
+             "两套格网都切错、夹注小字被并成整字格；每格一段列图叠两套格界，点图画切线、或标不切/看不出；"
+             "结果存列图与页图坐标，用 segcut-apply 导出交重切（见 seg_cut.py）",
+             options=("cut", "keep", "unsure"), doc_prefix="review_segcut"),
     PageType("near_pair", "形近字对比卡（两字各摆库刻例，待审格居中）", "near_pair.tpl.html", "1.0.1",
              "L4 同字聚合后的形近对（畫/書、全/今、文/又…）；选 A/B/都不是/看不清/切分有问题，点即存；"
              "可带 near_shape 差异区高亮；结果经 `pair_audit` 出 relabel/confirm 事件",

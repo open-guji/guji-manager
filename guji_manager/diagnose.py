@@ -24,7 +24,7 @@ OCC_SHARE = 0.05
 
 SEG = {"seg_page_unaligned", "seg_col_unaligned", "col_width_out_of_band", "seg_defect"}
 OCC = {"occluded_with_ref", "occluded_no_ref"}
-GROUP = {"group_abstain", "group_conflict", "group_demoted", "group_ref_dissent", "group_weak"}
+GROUP = {"group_abstain", "group_conflict", "group_demoted", "group_ref_dissent", "group_weak", "group_unconfirmed"}
 PAIR = {"variant_pair", "near_form_guard"}
 _SHAPE_TOK = ("ids", "margin", "hog", "unet", "shape", "stroke")
 _CTX_TOK = ("ctx", "l1", "l2", "llm", "context")
@@ -113,9 +113,9 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
         add("其他极难形近", len(hp) - len(fold), "`hard_pair`", "近形决胜 near_shape 等（A24 定开不开）", "B", "A24")
 
     for reason, sig, todo, tier, who in (
-        ("group_form_open", "同义写法待定", "出码位看图页请 sheldon 定码位结局（暂归一／照录／按参校本取字）", "A", "书项目"),
+        ("variant_form_open", "同义写法待定", "出码位看图页请 sheldon 定码位结局（暂归一／照录／按参校本取字）", "A", "书项目"),
         ("ref_lacuna", "整理本缺字（〓／私用码）", "新图源文本层取字、私用码统一码表；剩下的人审", "A–B", "A24"),
-        ("lib_sparse_agree", "刻例太少但与整理本一致", "第一次进库原则上人裁：走成批审页", "C", "人审"),
+        ("lib_sparse_agree", "刻例太少但与整理本一致（本书库 1～2 例）", "人裁：同字全书一卡，走成批审页；放行规则待 L03 benchmark", "C", "人审"),
     ):
         if by.get(reason):
             add(sig, by[reason], f"`{reason}`", todo, tier, who)

@@ -226,7 +226,7 @@ class Job:
         if not sp.get("book"):          # eval／command 不带册：只切 cv
             self.checkout()
             return
-        argv = ["bash", str(RUNNER_ROOT / "scripts" / "rerun_prep.sh"), sp["book"], "--cv", sp["cv"],
+        argv = ["bash", str(_prep_script()), sp["book"], "--cv", sp["cv"],
                 "--ws-glob", sp["ws_glob"]]
         ws_repo = resolve_ws_repo(sp)
         if ws_repo:
@@ -344,6 +344,11 @@ class Job:
         lines = [ln for ln in out.strip().splitlines() if not re.match(r"^\s*\S+ p\d+: 完成", ln)]
         tail = "\n".join(lines[-20:])
         self.db(S.add_result, self.id, self.aid, "output", "pipeline", data={"tail": redact(tail)[-4000:]})
+        # 页级失败不算成功（2026-11-09 Ops：人裁格字块图缺、human_chars 报错，页记 failed，单子却 succeeded）。
+        # cv 的 pipeline 页失败时返回 0，只打「⚠ N 页失败」行；这里看到就判单子失败
+        m = re.search(r"⚠ (\d+) 页失败[^\n]*", out)
+        if m:
+            raise StageError("failed", f"pipeline 有 {m.group(1)} 页失败（页级失败不算成功）：{redact(m.group(0))[:300]}")
 
     def run_commands(self) -> None:
         for i, argv in enumerate(self.spec["run"]):
@@ -396,6 +401,7 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "pack", label, location=name and f"r2:{name}",
                      data={"change": change, "info": m.group(2) if m else None})
         self.ev(f"已存包 {label}" + (f"（{m.group(2)}）" if m else ""))
+        self.pushed = True
 
     # ── 总流程 ──
     def run(self) -> str:
@@ -443,12 +449,36 @@ class Job:
         self.db(S.finish, self.id, self.aid, outcome, error=err and redact(err)[:4000], exit_code=code,
                  log_tail=tail)
         _retire_dir(self.dir, outcome, self.id, self.att["n"])     # 结果（含日志尾巴）已落库、产物已推完
+        if outcome == "succeeded" and getattr(self, "pushed", False) and self.ws and sp.get("book"):
+            freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
+            if freed:
+                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存和产物副本，释放 {freed / 2**20:.0f} MB")
         return outcome
 
 
 # 执行方相关的 cv 路径。注意：jobs 模块拆分 P5（cv #1055）后已搬去本包，cv dev 上不再有 open_guji_cv/jobs；
 # 这里列了不存在的路径，git rev-parse 整体失败，_runner_outdated 就永远判不出 cv 侧的更新。
 _RUNNER_PATHS = ("scripts/rerun_prep.sh", "scripts/guji_jobs.sh")
+
+#: 准备脚本的副本目录（rerun_prep.sh 与它调用的 ensure_manager.sh 一起放这里）
+PREP_DIR = HOME / "prep"
+
+
+def _prep_script() -> Path:
+    """准备脚本取 cv dev 的最新副本，不跟 --cv 的 checkout 走：旧 tag（如 43af102）里的准备脚本没有后来的修复
+    （2026-11-09 #1746：准备跑的是 43af102 的脚本，工作区没 code/ 照样过了）。取不到 origin/dev 就退回执行方检出里的那份。"""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        subprocess.run(["git", "-C", str(RUNNER_ROOT), "fetch", "-q", "origin", "dev"], capture_output=True,
+                       timeout=120, env=env, check=True)
+        PREP_DIR.mkdir(parents=True, exist_ok=True)
+        for name in ("rerun_prep.sh", "ensure_manager.sh"):
+            r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "show", f"origin/dev:scripts/{name}"],
+                               capture_output=True, timeout=30, check=True)
+            (PREP_DIR / name).write_bytes(r.stdout)
+        return PREP_DIR / "rerun_prep.sh"
+    except (OSError, subprocess.SubprocessError):
+        return RUNNER_ROOT / "scripts" / "rerun_prep.sh"
 
 
 def _reexec_argv() -> list[str]:
@@ -693,6 +723,34 @@ def _retire_dir(d: Path, outcome: str, job_id: int, n: int) -> None:
         for old in kept[FAILED_LOGS_KEEP:]:
             old.unlink(missing_ok=True)
     shutil.rmtree(d, ignore_errors=True)
+
+
+def _say_clean(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def _clean_book_artifacts(ws: str, book: str) -> int:
+    """成功存包后清这一册在工作区里的 cache/<册> 和 products/<册>，返回释放的字节数。
+
+    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，包已推完，下一张单会重新生成或 fetch。
+    只删这两个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
+    册 yaml、feedback、output 都不动。路径必须落在工作区的 cache、products 之内。
+    设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
+    if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
+        return 0
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book or ""):
+        return 0
+    root = Path(ws)
+    freed = 0
+    for rel in ("cache", "products"):
+        base = (root / rel).resolve()
+        d = (base / book).resolve()
+        if d.parent != base or not d.is_dir() or d.is_symlink():
+            continue
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file() and not f.is_symlink())
+        shutil.rmtree(d, ignore_errors=True)
+        freed += size
+    return freed
 
 
 #: 空间不够时依次清的本地缓存（可重建，总授权里的「清本地缓存」）：先 uv，还不够再 guji-data

@@ -1,0 +1,133 @@
+idx	book	vol	cell	group	mode	M放行字	R整理本	T库首位	解法	目视真字(Claude,待sheldon复核)
+0	siku	vol87	222:1:9a	chu	joint	岀	山	岀	codepoint=出 ids=-	山
+1	siku	vol81	84:4:9a	chuo	joint	進	巡	進	ids=- ctx=巡 ctx=- ids=遺 vis=-	巡
+2	siku	vol18	112:3:10a	chuo	joint	遺	巡	遺	ids=巡 ctx=- ids=遺	巡
+3	siku	vol98	74:1:1	cp_shu4	joint	述	逃	述	codepoint=述 ids=- ctx=-	逃
+4	siku	vol15	24:2:6	em	review	而	而	而	ctx=而 ids=面	而
+5	siku	vol18	115:3:20	em	review	面	面	而	ctx=面 ids=而	面
+6	siku	vol40	70:4:13	em	review	面	面	而	ctx=面 ids=而	面
+7	siku	vol16	15:1:6	fc	review	傳	傳	傳	ctx=傳 ids=傅	傳
+8	sj	09	176:3:7	js	review	甲	甲	甲	ctx=申 ids=甲	甲
+9	siku	vol21	190:3:7	js	review	甲	甲	甲	ctx=申 ids=甲	甲
+10	siku	vol66	115:5:4	js	review	甲	甲	甲	ctx=申 ids=甲	甲
+11	siku	vol53	97:5:10	js	review	申	申	申	ctx=申 ids=甲	申
+12	siku	vol62	80:8:15	kgc	lift	寇	㓂	冠	ctx=㓂 canon=寇	寇
+13	siku	vol80	61:5:14	kgc	lift	寇	㓂	冠	ctx=㓂 canon=寇	寇
+14	siku	vol28	106:6:11	ly	review	諭	諭	諭	ctx=諭 ids=論	諭
+15	siku	vol39	157:3:2	ly	review	諭	諭	諭	ctx=諭 ids=論	諭
+16	siku	vol14	175:6:13	men	joint	間	閣	間	ids=閣 ctx=問 ids=-	閣
+17	siku	vol95	66:4:7	men	joint	間	問	間	ids=間 ctx=- ids=- vis=-	間
+18	siku	vol68	64:9:13	men	joint	閨	閩	閨	ids=- ctx=閩 ctx=- ids=- vis=-	閩
+19	siku	vol10	40:8:13	men	joint	闡	關	闡	ids=- ctx=闕 ctx=- ids=-	闕
+20	siku	vol73	70:2:6	men	joint	闢	闕	闢	ids=闕 ctx=- ids=- vis=-	闕
+21	siku	vol46	112:8:3	qin	joint	會	㑹	會	ids=會 ctx=- ids=-	會
+22	siku	vol41	69:8:19	rm	joint	目	曰	目	ctx=目 ctx=- ry_shape=- ctx=-	目
+23	siku	vol41	75:5:19	rm	joint	目	曰	目	ctx=目 ctx=- ry_shape=-	目
+24	siku	vol42	40:1:9	rm	joint	目	日	目	ctx=目 ctx=- ry_shape=- ctx=-	目
+25	siku	vol50	6:8:3	rm	joint	目	日	目	ctx=目 ctx=- ry_shape=-	?
+26	siku	vol62	89:5:20	rm	joint	目	日	目	ctx=目 ctx=- ry_shape=-	目
+27	siku	vol65	40:1:4	rm	joint	目	目	目	ctx=目 ctx=- ry_shape=-	目
+28	siku	vol68	12:6:12	rm	joint	目	曰	目	ctx=目 ctx=- ry_shape=-	目
+29	siku	vol68	12:6:20	rm	joint	目	曰	目	ctx=目 ctx=- ry_shape=-	目
+30	siku	vol80	67:4:11	rm	joint	目	自	目	ctx=目 ctx=- ry_shape=-	?
+31	siku	vol99	62:1:14	rm	joint	目	曰	目	ctx=目 ctx=- ry_shape=-	目
+32	sj	02	50:1:8a	rr	lift	人	八	人	ctx=- rr_img=人 ids=八	?
+33	siku	vol47	88:6:14	rr	lift	人	人	入	ctx=入 rr_img=人 ids=-	?
+34	siku	vol67	45:2:18	rr	lift	人	人	入	ctx=- rr_img=人 ids=入	?
+35	siku	vol67	47:2:20	rr	lift	人	入	人	ctx=入 rr_img=人 ids=-	入
+36	siku	vol73	134:9:7	rr	lift	人	入	人	ctx=入 rr_img=人 ids=入	入
+37	sj	09	6:3:9a	rr	lift	入	八	入	ctx=- rr_img=八 ids=人	?
+38	siku	vol65	43:9:5	rr	lift	入	人	入	ctx=人 rr_img=入 ids=人	人
+39	sj	02	61:8:21a	rr	review	人	人	人	ctx=八 rr_img=人 ids=人 ctx_over=-	人
+40	siku	vol09	218:5:19	rr	review	人	人	人	ctx=入 rr_img=人 ids=-	人
+41	siku	vol15	148:2:10	rr	review	人	人	人	ctx=入 rr_img=人 ids=人	人
+42	siku	vol21	223:9:8	rr	review	人	人	人	ctx=- rr_img=人 ids=入	?
+43	siku	vol30	10:6:20b	rr	review	人	人	人	ctx=入 rr_img=人 ids=人	?
+44	siku	vol37	35:7:15	rr	review	人	人	人	ctx=八 rr_img=人 ids=人	?
+45	siku	vol51	53:9:18	rr	review	人	人	人	ctx=入 rr_img=人 ids=人	人
+46	siku	vol53	96:4:13	rr	review	人	人	人	ctx=八 rr_img=人 ids=人	人
+47	siku	vol58	3:7:13	rr	review	人	人	人	ctx=入 rr_img=人 ids=人	?
+48	siku	vol93	77:7:6	rr	review	人	人	人	ctx=八 rr_img=人 ids=人	?
+49	siku	vol94	126:4:6	rr	review	人	人	人	ctx=- rr_img=人 ids=八	人
+50	siku	vol94	58:1:17	rr	review	人	人	人	ctx=八 rr_img=人 ids=人	人
+51	siku	vol94	66:1:21	rr	review	人	人	人	ctx=入 rr_img=人 ids=人	入
+52	siku	vol11	88:1:16	rr	review	入	入	入	ctx=八 rr_img=入 ids=入	入
+53	siku	vol16	24:9:6	rr	review	入	入	入	ctx=人 rr_img=入 ids=-	?
+54	siku	vol50	88:5:13	rr	review	入	入	入	ctx=八 rr_img=入 ids=入	入
+55	siku	vol52	80:3:18	rr	review	入	入	入	ctx=八 rr_img=入 ids=入	入
+56	siku	vol80	89:1:5	rr	review	入	入	入	ctx=八 rr_img=入 ids=入	?
+57	siku	vol82	156:6:12	rr	review	入	入	入	ctx=入 rr_img=- ids=人	入
+58	siku	vol84	68:8:18	rr	review	入	入	入	ctx=入 rr_img=入 ids=八	入
+59	siku	vol96	175:4:16	rr	review	入	入	入	ctx=人 rr_img=入 ids=入	?
+60	siku	vol28	85:5:5	rr	review	八	八	八	ctx=八 rr_img=- ids=入	八
+61	siku	vol42	30:7:19	rr	review	八	八	八	ctx=- rr_img=八 ids=入	八
+62	siku	vol59	78:2:14	rr	review	八	八	八	ctx=八 rr_img=八 ids=入	八
+63	siku	vol77	38:1:4	rr	review	八	八	八	ctx=八 rr_img=- ids=入	八
+64	siku	vol82	195:9:16	rr	review	八	八	八	ctx=入 rr_img=八 ids=八	八
+65	siku	vol97	72:2:15	ry	joint	日	目	日	ctx=曰 ry_shape=- ctx=目	?
+66	siku	vol67	114:6:12	ry	lift	自	曰	自	ctx=曰 ry_shape=日	曰
+67	siku	vol38	182:8:15	sy	joint	由	山	由	ids=山 codepoint=出	山
+68	siku	vol67	116:3:20	sy	joint	由	山	由	ids=山 codepoint=出	山
+69	siku	vol75	126:9:9	ts	joint	士	土	士	ctx=土 bars=土 ids=士 clear_over=土 ss_bars=士	土
+70	siku	vol79	92:7:14	ts	joint	士	土	士	ctx=- bars=- ids=士 ss_bars=-	土
+71	siku	vol13	10:5:15	ts	lift	土	士	土	ctx=- bars=土 ids=士	土
+72	siku	vol13	8:7:15	ts	lift	土	士	土	ctx=- bars=土 ids=士	土
+73	siku	vol13	9:1:8	ts	lift	土	士	土	ctx=- bars=土 ids=士	土
+74	siku	vol50	230:4:20	ts	lift	士	土	士	ctx=- bars=土 ids=士	土
+75	siku	vol09	202:1:3	wj	review	間	間	間	ctx=問 ids=間	間
+76	siku	vol82	133:8:9	wj	review	間	間	問	ctx=間 ids=問 vis=-	間
+77	siku	vol10	113:1:21	wm	joint	未	末	未	ctx=末 bars=未	末
+78	siku	vol26	49:2:16	wm	lift	末	未	末	ctx=未 bars=末	未
+79	siku	vol93	161:8:21	wm	lift	末	未	末	ctx=未 bars=末	未
+80	siku	vol02	132:8:6	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+81	siku	vol03	72:2:20	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+82	siku	vol05	108:6:19	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+83	siku	vol05	164:2:6	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+84	siku	vol05	167:4:2	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+85	siku	vol05	184:4:19	xz	review	象	象	象	ctx=象 freq=- ids=𧰼	象
+86	siku	vol39	106:1:5	yh	review	遺	遺	遺	ctx=還 ids=遺 vis=-	遺
+87	siku	vol76	19:5:21	yh	review	遺	遺	遺	ctx=還 ids=遺 vis=-	遺
+88	siku	vol97	43:3:15	yh	review	遺	遺	遺	ctx=還 ids=遺 vis=-	遺
+89	siku	vol23	68:9:19	yh	review	還	還	還	ctx=遺 ids=還 vis=-	還
+90	siku	vol76	105:1:7	yh	review	還	還	還	ctx=遺 ids=還 vis=-	還
+91	siku	vol81	35:1:18	yh	review	還	還	還	ctx=還 ids=遺 vis=-	還
+92	siku	vol44	10:5:21	yr	lift	一	二	一	ctx=二 ids=一 yr_bars=一	二
+93	siku	vol68	1:7:20	yr	lift	一	二	一	ctx=二 ids=一 yr_bars=一	二
+94	siku	vol69	80:2:10	yr	lift	一	二	一	ctx=二 ids=一 yr_bars=一	二
+95	siku	vol33	14:7:13	yr	lift	二	一	二	ctx=一 ids=- yr_bars=二	一
+96	siku	vol49	6:3:11	yr	lift	二	一	二	ctx=一 ids=- yr_bars=二	?
+97	siku	vol52	23:7:7	yr	lift	二	一	二	ctx=二 ids=一 yr_bars=-	?
+98	siku	vol70	151:1:9	yr	lift	二	一	二	ctx=一 ids=- yr_bars=二	?
+99	siku	vol31	197:2:14	yr	review	一	一	一	ctx=一 ids=一 yr_bars=二	一
+100	siku	vol39	76:9:20	yr	review	一	一	一	ctx=一 ids=- yr_bars=二	一
+101	siku	vol46	82:9:8	yr	review	一	一	一	ctx=一 ids=一 yr_bars=二	一
+102	siku	vol52	20:7:19	yr	review	一	一	一	ctx=- ids=一 yr_bars=二	一
+103	siku	vol74	116:2:6	yr	review	一	一	一	ctx=- ids=一 yr_bars=二	一
+104	siku	vol84	91:2:21	yr	review	一	一	一	ctx=一 ids=- yr_bars=二	一
+105	siku	vol88	23:2:8	yr	review	一	一	一	ctx=一 ids=一 yr_bars=二	一
+106	siku	vol54	64:2:6	yr	review	二	二	二	ctx=一 ids=二 yr_bars=二	二
+107	siku	vol19	80:8:15	yt	review	圓	圓	圓	ctx=圓 ids=圖	圓
+108	siku	vol49	100:3:14	yt	review	圓	圓	圓	ctx=圖 ids=圓	圓
+109	siku	vol53	73:4:15	yt	review	圓	圓	圓	ctx=圓 ids=圖	圓
+110	siku	vol04	60:9:12	yt	review	圖	圖	圖	ctx=圖 ids=圓	圖
+111	siku	vol14	155:7:14	yt	review	圖	圖	刪	ctx=圖 ids=圓	圖
+112	siku	vol16	21:3:15	yt	review	圖	圖	圖	ctx=圓 ids=圖	圖
+113	siku	vol49	49:1:12	yt	review	圖	圖	圖	ctx=圓 ids=圖	圖
+114	siku	vol59	70:9:7	yt	review	圖	圖	圖	ctx=圓 ids=圖	圖
+115	siku	vol40	54:2:12	zh	joint	會	㑹	會	ctx=會 ids=會 freq=- top1=會 ids=-	會
+116	siku	vol74	122:9:2	zh	joint	會	倉	會	ctx=- ids=會 freq=- top1=會 ids=-	倉
+117	sj	08	118:2:7	zh	lift	㑹	曾	㑹	ctx=曾 ids=會	曾
+118	sj	08	6:5:5b	zh	lift	㑹	曾	㑹	ctx=曾 ids=會	?
+119	sj	05	23:2:16	zh	review	㑹	㑹	㑹	ctx=曾 ids=會	會
+120	siku	vol15	10:9:19	zh	review	曾	曾	曾	ctx=會 ids=曾	曾
+121	siku	vol48	53:3:10	zh	review	曾	曾	曾	ctx=會 ids=曾	曾
+122	sj	06	3:2:4b	zh	review	會	會	㑹	ctx=- ids=會 freq=- top1=㑹	?
+123	siku	vol10	85:2:11	zh	review	會	會	會	ctx=曾 ids=會	會
+124	siku	vol16	162:9:19	zh	review	會	會	會	ctx=曾 ids=會	會
+125	siku	vol08	35:1:17	zy	joint	千	于	千	ctx=于 ids=- ctx=-	于
+126	siku	vol10	111:2:17	zy	joint	千	于	千	ctx=于 ids=- ctx=-	于
+127	siku	vol13	11:4:17	zy	joint	千	于	千	zy_strokes=- ctx=于 ids=- ctx=-	于
+128	siku	vol14	56:1:10	zy	joint	千	于	千	zy_strokes=- ctx=于 ids=- ctx=-	于
+129	siku	vol14	95:9:16	zy	joint	千	于	千	zy_strokes=- ctx=于 ids=- ctx=-	于
+130	siku	vol89	20:7:6	zy	joint	千	于	千	zy_strokes=- ctx=于 ids=- ctx=- vis=-	于
+131	siku	vol10	147:1:4	zy	joint	干	于	干	ctx=于 ids=- ctx=-	于

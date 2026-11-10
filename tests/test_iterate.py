@@ -110,6 +110,21 @@ def test_leverage(tmp_path):
     assert len(rows) == 15
 
 
+def test_leverage_l02_by_ref():
+    """L02 只按参校本字并卡：库首位乱选，不拆卡（A23 11-06）。别的原因照旧按字对。"""
+    cells = [{"vol": "035", "cell": f"1:1:{i}", "pending_reason": "lib_sparse_dissent", "ref": "𮪍", "top": t}
+             for i, t in enumerate("驎關駉駒隋", 1)]
+    cells += [{"vol": "005", "cell": f"2:1:{i}", "pending_reason": "group_abstain", "ref": "以", "top": t} for i, t in enumerate("已巳", 1)]
+    cards, _ = leverage.rank(cells)
+    l2 = [c for c in cards if c["reason"] == "lib_sparse_dissent"]
+    assert len(l2) == 1 and l2[0]["n_cells"] == 5 and l2[0]["ref"] == "𮪍" and l2[0]["top"] == ""
+    assert len([c for c in cards if c["reason"] == "group_abstain"]) == 2
+    # L03 同样按参校字并卡（A23 L03 深挖 11-06）
+    l3 = [{"vol": "057", "cell": f"9:1:{i}", "pending_reason": "lib_sparse_agree", "ref": "耆", "top": t} for i, t in enumerate("者書者", 1)]
+    cards3, _ = leverage.rank(l3)
+    assert len(cards3) == 1 and cards3[0]["n_cells"] == 3 and cards3[0]["tier"] == 0
+
+
 def test_freeze(tmp_path):
     f = tmp_path / "cal.yaml"
     freeze.main(["add", "--file", str(f), "--book", "dianben", "--from", "2026-11-05 10:00", "--to", "2026-11-05 20:00"])
@@ -203,3 +218,27 @@ def test_note_main_round_placeholder(monkeypatch):
     monkeypatch.setattr(cv, "connect", lambda: Conn(True), raising=False)
     assert pr.note_main_round("b1", "r5") and not written          # 已有就不动
     assert not pr.note_main_round("b1", "job207")                  # 没有轮次的标签不占
+
+
+def test_auto_round_upgrades_pending_placeholder(monkeypatch):
+    """标 main 时占位的「待统计」（verdict=pending＋备注）被汇总后要升成 main，不能永远停在待统计（11-08 第 6／7 轮踩过）。"""
+    from guji_manager.iterate import progress_rounds as pr
+
+    class Cur:
+        def __init__(self, rows): self.rows = rows
+        def fetchall(self): return self.rows
+
+    class Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, q, args=()):
+            if "FROM progress.volume" in q:
+                return Cur([("11", {"a31.main": {"label": "r5"}, "cv.pack": {"label": "cv0.6.3-c30-g19-r5", "cells": 2000, "review": 3, "pick": "main"}}, None)])
+            if "FROM progress.metric" in q:
+                return Cur([("r5", {"verdict": "pending", "note": "已标 main，人审率待统计（占位）", "date": "2026-11-07"}, "第5轮")])
+            return Cur([])
+
+    import guji_manager._cv as cv
+    monkeypatch.setattr(cv, "connect", lambda: Conn(), raising=False)
+    out = pr.auto_round("bk", "r5", write_db=False)
+    assert out["verdict"] == "main" and "note" not in out and out["date"] == "2026-11-07" and out["pending"] == 3

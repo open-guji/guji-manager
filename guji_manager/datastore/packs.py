@@ -109,7 +109,8 @@ LABEL_MAX_MAIN = 96 - len("20261020T004800Z-") - len(".json")
 
 
 def version_label(v: dict) -> str:
-    """`cv0.4.7-c1-g2`：cv 版本、语料库号、字形库号。没钉的写 `c-`；字形库没钉写 `g-` 加人裁指纹前 6 位。"""
+    """`cv0.4.7-c1-g2[-m2][-k3]`：cv 版本、语料库号、字形库号（、模型号、书级代码号）。没钉的写 `c-`；
+    字形库没钉写 `g-` 加人裁指纹前 6 位。"""
     cv = re.sub(r"[^A-Za-z0-9.]", "p", str(v.get("cv") or "unknown"))     # 0.4.7+3 → 0.4.7p3
     c = f"c{v['corpus']}" if v.get("corpus") is not None else "c-"
     if v.get("glyph_pin") is not None:
@@ -118,7 +119,16 @@ def version_label(v: dict) -> str:
         fp = str(v.get("human_fp") or "")
         h = re.sub(r"[^0-9a-f]", "", fp.split(":")[-1].lower())[:6] if fp.startswith("h1:") else ""
         g = f"g-{h}" if h else "g-"
-    return f"cv{cv}-{c}-{g}"
+    out = f"cv{cv}-{c}-{g}"
+    # 2026-11-09（cv v0.7.0）四库版本串：钉了模型加 -m<N>；有书级代码加 -k<N>（没钉写 k-<工作副本摘要6位>）。
+    # 都没有的册标签与以前逐字相同。
+    if v.get("model") is not None:
+        out += f"-m{v['model']}"
+    if v.get("code") is not None:
+        out += f"-k{v['code']}"
+    elif v.get("code_digest"):
+        out += f"-k-{str(v['code_digest'])[:6]}"
+    return out
 
 
 def check_label(label: str) -> None:
@@ -204,6 +214,8 @@ def push_products(book: str, root: Path, label: str | None = None, steps: list[s
           content_type="application/json", tries=3)
     if not steps:                       # 只打了几步的包不算整册存过
         write_mark(root, book, label, "push")
+    from ..pack_stats import record     # 存包的同时把这册的人审率分子分母写进看板（不再靠事后统计脚本）；写不了只提示
+    record(book, label, root, steps)
     return man
 
 

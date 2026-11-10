@@ -1,0 +1,133 @@
+序号	书	册	格(页:列:行)	字组	模式	复核决定	放行字	整理本字	库首位	解法给的字	分类	目视真字(Claude,待sheldon复核)	前后文
+0	siku	vol87	222:1:9a	chu	joint	review	岀	山	岀	codepoint=出 sy:ids=-(0.32)	A	山	草無廵卷撫數採進[岀]本東明劉士驥撰士
+1	siku	vol81	84:4:9a	chuo	joint	review	進	巡	進	ids=-(0.59) ctx=巡 yh:ctx=- yh:ids=遺(0.55) vis=-	D1	巡	亭稿七卷浙採江進[進]本採明童軒撰軒有
+2	siku	vol18	112:3:10a	chuo	joint	review	遺	巡	遺	ids=巡(1.38) yh:ctx=- yh:ids=遺(0.64)	D1	巡	抄十六卷山採西進[遺]本撫國朝王國瑚撰
+3	siku	vol98	74:1:1	cp_shu4	joint	review	述	逃	述	codepoint=述 chuo:ids=-(0.10) chuo:ctx=-	D2	逃	[述]禪詞一卷安採徽進
+4	siku	vol15	24:2:6	em	review	demote	而	而	而	ctx=而 ids=面(0.60)	B1	而	盡之藴然有無庸疑[而]疑者如謂司馬法一
+5	siku	vol18	115:3:20	em	review	demote	面	面	而	ctx=面 ids=而(0.63)	B1	面	者十恒逾九一𠮓其[面]貌則必一獲其贏餘
+6	siku	vol40	70:4:13	em	review	demote	面	面	而	ctx=面 ids=而(0.65)	B1	面	廟之制畧似明堂四[面]且皆有牖又何獨於
+7	siku	vol16	15:1:6	fc	review	demote	傳	傳	傳	ctx=傳 ids=傅(0.95)	B1	傳	及外傳[傳]寫者見第一條爲公
+8	sj	09	176:3:7	js	review	demote	甲	甲	甲	ctx=申 ids=甲(1.37)	C	甲	晉人秦人圍鄭左傳[甲]午晉侯秦伯圍鄭佚
+9	siku	vol21	190:3:7	js	review	demote	甲	甲	甲	ctx=申 ids=甲(1.03)	B2	甲	至如萆椑卑聲卑又[甲]聲則萆椑皆當讀若
+10	siku	vol66	115:5:4	js	review	demote	甲	甲	甲	ctx=申 ids=甲(0.62)	B2	甲	太平御覽諸書所引[甲]帳珠簾王母靑雀茂
+11	siku	vol53	97:5:10	js	review	demote	申	申	申	ctx=申 ids=甲(0.76)	B1	申	以資考核惟成化戊[申]一段成化實無戊申
+12	siku	vol62	80:8:15	kgc	lift	admit	寇	㓂	冠	ctx=㓂 form:canon=寇	A	寇	幢小品曰吕新吾司[寇]廉察山西纂閨範一
+13	siku	vol80	61:5:14	kgc	lift	admit	寇	㓂	冠	ctx=㓂 form:canon=寇	A	寇	與弟煜結里閈相保[寇]至輙却走依余闕於
+14	siku	vol28	106:6:11	ly	review	demote	諭	諭	諭	ctx=諭 ids=論(0.78)	B1	諭	熙元年八月初六日[諭]吏部申明薦舉勅自
+15	siku	vol39	157:3:2	ly	review	demote	諭	諭	諭	ctx=諭 ids=論(0.67)	B1	諭	沿訛之失乃恪遵聖[諭]別立羣廟一門增原
+16	siku	vol14	175:6:13	men	joint	review	間	閣	間	ids=閣(1.17) wj:ctx=問 wj:ids=-(0.20)	D3	閣	丞寶慶初始加龍圖[間]學士此序旣曰乾道
+17	siku	vol95	66:4:7	men	joint	review	間	問	間	ids=間(0.68) wj:ctx=- wj:ids=-(0.09) vis=-	D2	間	然至今□□行鄕塾[間]亦可異□□□尺牘
+18	siku	vol68	64:9:13	men	joint	review	閨	閩	閨	ids=-(0.26) ctx=閩 wj:ctx=- wj:ids=-(0.23) vis=-	D1	閩	長庚撰長庚字白叟[閨]淸人爲道士居武夷
+19	siku	vol10	40:8:13	men	joint	review	闡	關	闡	ids=-(0.43) ctx=闕 wj:ctx=- wj:ids=-(0.11)	D2	闕	未之見亦姑仍其舊[闡]之焉周官集傳十六
+20	siku	vol73	70:2:6	men	joint	review	闢	闕	闢	ids=闕(0.70) wj:ctx=- wj:ids=-(0.34) vis=-	D1	闕	闕卷一至卷十二又[闢]卷三十一又闕卷三
+21	siku	vol46	112:8:3	qin	joint	review	會	㑹	會	ids=會(0.63) zh:ctx=- zh:ids=-(0.34)	D2	會	物說及楊東明興學[會]約八條旣曰附錄不
+22	siku	vol41	69:8:19	rm	joint	review	目	曰	目	ctx=目 ry:ctx=- ry:ry_shape=- mz:ctx=-	D2	目	勘歐陽修等校正條[目]討論撰次定著三萬
+23	siku	vol41	75:5:19	rm	joint	review	目	曰	目	ctx=目 ry:ctx=- ry:ry_shape=-	D3	目	保然數千年著作之[目]總滙於斯百世而下
+24	siku	vol42	40:1:9	rm	joint	review	目	日	目	ctx=目 ry:ctx=- ry:ry_shape=- mz:ctx=-	D2	目	列所蓄碑帖之[目]前有自序稱余行塞
+25	siku	vol50	6:8:3	rm	joint	review	目	日	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	?	商功均輸盈不足之[目]往往相符而要在得
+26	siku	vol62	89:5:20	rm	joint	review	目	日	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	目	次每類之下各分子[目]每條下悉注原書然
+27	siku	vol65	40:1:4	rm	joint	review	目	目	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	目	附存[目]
+28	siku	vol68	12:6:12	rm	joint	review	目	曰	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	目	經之總數而不列其[目]唐志以下頗載經曰
+29	siku	vol68	12:6:20	rm	joint	review	目	曰	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	目	曰唐志以下頗載經[目]而挂漏實多今於二
+30	siku	vol80	67:4:11	rm	joint	review	目	自	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	?	不能猝辨歟智集原[目]己不可考觀焦竑經
+31	siku	vol99	62:1:14	rm	joint	review	目	曰	目	ctx=目 ry:ctx=- ry:ry_shape=-	D2	目	及般渉二調則有其[目]而無其詞葢闕佚也
+32	sj	02	50:1:8a	rr	lift	review	人	八	人	ctx=- rr_img=人 ids=八(0.87)	D3	?	位堯凡𦵏九濟十隂[人]丘年壠駰山案呂皇
+33	siku	vol47	88:6:14	rr	lift	review	人	人	入	ctx=入 rr_img=人 ids=-(0.62)	D3	?	廣西按察使時値倭[人]寇萬年擊破之因增
+34	siku	vol67	45:2:18	rr	lift	review	人	人	入	ctx=- rr_img=人 ids=入(0.96)	D3	?	師常遇春愬於帝達[人]自疑㧞劍斬閽而出
+35	siku	vol67	47:2:20	rr	lift	review	人	入	人	ctx=入 rr_img=人 ids=-(0.10)	D1	入	由此可通蜀已而得[人]蜀之命追數先徴信
+36	siku	vol73	134:9:7	rr	lift	review	人	入	人	ctx=入 rr_img=人 ids=入(1.02)	D1	入	東堂詞則毛晉已刋[人]六十家詞中世多有
+37	sj	09	6:3:9a	rr	lift	review	入	八	入	ctx=- rr_img=八 ids=人(1.56)	D3	?	義云按十其五文篇[入]虞篇卿藝撰文亦上
+38	siku	vol65	43:9:5	rr	lift	review	入	人	入	ctx=人 rr_img=入 ids=人(1.75)	D1	人	載此書二卷不著撰[入]名氏漢書匡衡傳顔
+39	sj	02	61:8:21a	rr	review	demote	人	人	人	ctx=八 rr_img=人 ids=人(1.84) ctx_over=-	C	人	毛名長檮二杌尺一[人]名
+40	siku	vol09	218:5:19	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=-(0.63)	C	人	自序知其學從郝敬[人]也宜其臆斷矣詩觸
+41	siku	vol15	148:2:10	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=人(1.73)	C	人	因本文見戴記而後[人]於此除其文也按熊
+42	siku	vol21	223:9:8	rr	review	demote	人	人	人	ctx=- rr_img=人 ids=入(0.95)	B1	?	上爲𨑊邵以𨑊爲平[人]乃母蟹攝來母雷上
+43	siku	vol30	10:6:20b	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=人(1.61)	C	?	錄顧曰炎昔武時日[人]知覲之必官刻其一
+44	siku	vol37	35:7:15	rr	review	demote	人	人	人	ctx=八 rr_img=人 ids=人(1.53)	C	?	一官〓後尙有二十[人]則又續有增益非〓
+45	siku	vol51	53:9:18	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=人(1.79)	C	人	合上意是年九月敵[人]圍蔡亢
+46	siku	vol53	96:4:13	rr	review	demote	人	人	人	ctx=八 rr_img=人 ids=人(1.39)	C	人	中有嘉靖丁巳正月[人]日記所觀書畫事考
+47	siku	vol58	3:7:13	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=人(1.78)	C	?	海棠詩有花甲重周[人]八十之句則壎入元
+48	siku	vol93	77:7:6	rr	review	demote	人	人	人	ctx=八 rr_img=人 ids=人(1.78)	C	?	觴之始不至是也十[人]遺集已不盡傳傳者
+49	siku	vol94	126:4:6	rr	review	demote	人	人	人	ctx=- rr_img=人 ids=八(1.00)	B1	人	維集實由此誤至風[人]類中相思一首實王
+50	siku	vol94	58:1:17	rr	review	demote	人	人	人	ctx=八 rr_img=人 ids=人(1.64)	C	人	病其未備因又有宋[人]百家詩存之刻以補
+51	siku	vol94	66:1:21	rr	review	demote	人	人	人	ctx=入 rr_img=人 ids=人(1.67)	C	入	詩下香山九老詩不[人]自列名而附於白居
+52	siku	vol11	88:1:16	rr	review	demote	入	入	入	ctx=八 rr_img=入 ids=入(0.96)	C	入	設飱亦云堂上之饌[入]西夾六葢數饌於賔
+53	siku	vol16	24:9:6	rr	review	demote	入	入	入	ctx=人 rr_img=入 ids=-(0.21)	C	?	書皆未確又禮大行[入]立當前疾疾乃侯字
+54	siku	vol50	88:5:13	rr	review	demote	入	入	入	ctx=八 rr_img=入 ids=入(1.36)	C	入	所列恒星過官年干[入]卦二表以星次遞相
+55	siku	vol52	80:3:18	rr	review	demote	入	入	入	ctx=八 rr_img=入 ids=入(1.75)	C	入	載惟陰陽十八局及[入]門凡例而餘法皆不
+56	siku	vol80	89:1:5	rr	review	demote	入	入	入	ctx=八 rr_img=入 ids=入(1.36)	C	?	嘗刻[入]十元人集劉體仁七
+57	siku	vol82	156:6:12	rr	review	demote	入	入	入	ctx=入 rr_img=- ids=人(0.71)	B1	入	祖謙選宋文鑑亦載[入]總集初刻兼錄制義
+58	siku	vol84	68:8:18	rr	review	demote	入	入	入	ctx=入 rr_img=入 ids=八(0.71)	B1	入	人所謂不踐迹亦不[入]室者歟雲川文集六
+59	siku	vol96	175:4:16	rr	review	demote	入	入	入	ctx=人 rr_img=入 ids=入(1.44)	C	?	大家數特出其名餘[入]雜紀以年代爲後先
+60	siku	vol28	85:5:5	rr	review	demote	八	八	八	ctx=八 rr_img=- ids=入(0.78)	B1	八	時之盛焉文襄奏疏[八]卷直採𨽾進總本督
+61	siku	vol42	30:7:19	rr	review	demote	八	八	八	ctx=- rr_img=八 ids=入(0.96)	B1	八	僅於董黃之外復得[八]字至陳鵬年始出此
+62	siku	vol59	78:2:14	rr	review	demote	八	八	八	ctx=八 rr_img=八 ids=入(0.69)	B1	八	此本題曰明道錄作[八]卷又每卷但題會語
+63	siku	vol77	38:1:4	rr	review	demote	八	八	八	ctx=八 rr_img=- ids=入(0.73)	B1	八	爲[八]卷卽詩中所自紀㕘
+64	siku	vol82	195:9:16	rr	review	demote	八	八	八	ctx=入 rr_img=八 ids=八(1.77)	C	八	知黃州府時稿也曰[八]閩書厯任福
+65	siku	vol97	72:2:15	ry	joint	review	日	目	日	ctx=曰 ry_shape=- rm:ctx=目	D3	?	象其繫以六十六子[日]皆預擬對䇿活法如
+66	siku	vol67	114:6:12	ry	lift	review	自	曰	自	ctx=曰 ry_shape=日	D1	曰	靈怪曰麗情曰竒異[自]神仙共八卷末有後
+67	siku	vol38	182:8:15	sy	joint	review	由	山	由	ids=山(1.29) chu:codepoint=出	D3	山	池東山獲之卽名其[由]曰金馬長子名福邦
+68	siku	vol67	116:3:20	sy	joint	review	由	山	由	ids=山(1.68) chu:codepoint=出	D3	山	予備員西征始聞峽[由]非常可駭之事始猶
+69	siku	vol75	126:9:9	ts	joint	review	士	土	士	ctx=土 bars=土 ids=士(0.78) clear_over=土 ss:ss_bars=士	D1	土	游西泝僰道樂其風[士]有終焉之志宿留殆
+70	siku	vol79	92:7:14	ts	joint	review	士	土	士	ctx=- bars=- ids=士(0.95) ss:ss_bars=-	D3	土	二首云種田南山下[士]薄良苗稀稊稗日以
+71	siku	vol13	10:5:15	ts	lift	review	土	士	土	ctx=- bars=土 ids=士(1.03)	D3	土	三宗殊爲踈舛况相[土]本在毁廟之列而長
+72	siku	vol13	8:7:15	ts	lift	review	土	士	土	ctx=- bars=土 ids=士(0.84)	D3	土	謂自太甲逆溯至相[土]爲七世所謂七世之
+73	siku	vol13	9:1:8	ts	lift	review	土	士	土	ctx=- bars=土 ids=士(0.56)	D3	土	湯而獨舉相[土]又考殷本紀相士以
+74	siku	vol50	230:4:20	ts	lift	review	士	土	士	ctx=- bars=土 ids=士(0.44)	D3	土	喬廟一說其說以火[士]一星相反而相成晝
+75	siku	vol09	202:1:3	wj	review	demote	間	間	間	ctx=問 ids=間(0.69)	C	間	[間]其自序云朱注所不
+76	siku	vol82	133:8:9	wj	review	demote	間	間	問	ctx=間 ids=問(0.68) vis=-	B1	間	九卽戰鬬於流寇之[間]死時年僅三十九葢
+77	siku	vol10	113:1:21	wm	joint	review	未	末	未	ctx=末 bars=未	D1	末	子夏作皆未免南宋[未]年務詆漢儒之餘習
+78	siku	vol26	49:2:16	wm	lift	review	末	未	末	ctx=未 bars=末	D1	未	謗較作南燼錄者猶[末]減焉自序云四卷元
+79	siku	vol93	161:8:21	wm	lift	review	末	未	末	ctx=未 bars=末	D1	未	篇之類是也有采摭[末]盡者如束晳集所錄
+80	siku	vol02	132:8:6	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(1.04)	A	象	卦序卦義彖義爻義[象]占諸目縷析條分至
+81	siku	vol03	72:2:20	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(0.34)	A	象	後人併而一之槪稱[象]數於是喜爲杳冥之
+82	siku	vol05	108:6:19	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(0.33)	A	象	今本耶其說詳於取[象]近錢一本之學然皆
+83	siku	vol05	164:2:6	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(0.48)	A	象	臯從子鑑跋大旨斥[象]數而明義理故名曰
+84	siku	vol05	167:4:2	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(0.41)	A	象	本義原旨而失之易[象]數鉤深圖三卷山採
+85	siku	vol05	184:4:19	xz	review	demote	象	象	象	ctx=象 form:freq=- form:ids=𧰼(0.47)	A	象	之象數非漢以來之[象]數故不離乎圖書之
+86	siku	vol39	106:1:5	yh	review	demote	遺	遺	遺	ctx=還 ids=遺(1.01) vis=-	B2x	遺	之[遺]至儀注條格舊皆別
+87	siku	vol76	19:5:21	yh	review	demote	遺	遺	遺	ctx=還 ids=遺(0.51) vis=-	B2	遺	公矣論張浚者往往[遺]議於朱子葢未核是
+88	siku	vol97	43:3:15	yh	review	demote	遺	遺	遺	ctx=還 ids=遺(0.84) vis=-	B2	遺	無關詩事乃錄之不[遺]原本方干鄭谷唐球
+89	siku	vol23	68:9:19	yh	review	demote	還	還	還	ctx=遺 ids=還(0.62) vis=-	B2x	還	雍州刺史高洋誤漏[還]晉陽
+90	siku	vol76	105:1:7	yh	review	demote	還	還	還	ctx=遺 ids=還(0.81) vis=-	B2x	還	留杜範乞[還]言官言蜀事四條請
+91	siku	vol81	35:1:18	yh	review	demote	還	還	還	ctx=還 ids=遺(0.49) vis=-	B1	還	循遺人訪求倍價贖[還]今鋟梓以傳者循所
+92	siku	vol44	10:5:21	yr	lift	review	一	二	一	ctx=二 ids=一(1.08) yr_bars=一	D1	二	定著三十三篇爲十[一]卷題日新書唐楊倞
+93	siku	vol68	1:7:20	yr	lift	review	一	二	一	ctx=二 ids=一(1.17) yr_bars=一	D1	二	爲二氏作者而不錄[一]氏之經典則其義可
+94	siku	vol69	80:2:10	yr	lift	review	一	二	一	ctx=二 ids=一(1.24) yr_bars=一	D1	二	縣汪士賢太倉張溥[一]本此本乃乾隆戊寅
+95	siku	vol33	14:7:13	yr	lift	review	二	一	二	ctx=一 ids=-(0.28) yr_bars=二	D1	一	鄴中記舊有二本其[二]本二卷見隋書經籍
+96	siku	vol49	6:3:11	yr	lift	review	二	一	二	ctx=一 ids=-(0.43) yr_bars=二	D1	?	圍少而北政之多也[二]□之中天氣晝南而
+97	siku	vol52	23:7:7	yr	lift	review	二	一	二	ctx=二 ids=一(0.97) yr_bars=-	D3	?	支而爲平分六十龍[二]則甲子起壬之半從
+98	siku	vol70	151:1:9	yr	lift	review	二	一	二	ctx=一 ids=-(0.60) yr_bars=二	D1	?	碎日高花影重[二]聯而歐陽修六一詩
+99	siku	vol31	197:2:14	yr	review	demote	一	一	一	ctx=一 ids=一(0.94) yr_bars=二	B1	一	侗謝良佐尹焞人各[一]傳述其言行而以總
+100	siku	vol39	76:9:20	yr	review	demote	一	一	一	ctx=一 ids=-(0.72) yr_bars=二	B1	一	置院中入館者人給[一]冊
+101	siku	vol46	82:9:8	yr	review	demote	一	一	一	ctx=一 ids=一(1.51) yr_bars=二	B1	一	一章次列禮記學記[一]篇次列白鹿洞規五
+102	siku	vol52	20:7:19	yr	review	demote	一	一	一	ctx=- ids=一(1.10) yr_bars=二	B1	一	各有詳說後附圖解[一]卷則其門人朱之相
+103	siku	vol74	116:2:6	yr	review	demote	一	一	一	ctx=- ids=一(0.94) yr_bars=二	B1	一	文頗雅飭有法賓對[一]賦爲集中巨篇語特
+104	siku	vol84	91:2:21	yr	review	demote	一	一	一	ctx=一 ids=-(0.84) yr_bars=二	B1	一	謂寜詩如小櫂急流[一]瞬而過無復雅觀也
+105	siku	vol88	23:2:8	yr	review	demote	一	一	一	ctx=一 ids=一(1.13) yr_bars=二	B1	一	合豈彞尊所見又別[一]本歟段黃甫詩稿無
+106	siku	vol54	64:2:6	yr	review	demote	二	二	二	ctx=一 ids=二(0.87) yr_bars=二	C	二	爲依託顯然明白末[二]行附題所製印色之
+107	siku	vol19	80:8:15	yt	review	demote	圓	圓	圓	ctx=圓 ids=圖(0.65)	B1	圓	㽔賔倍律之率葢方[圓]相函之理方之内圓
+108	siku	vol49	100:3:14	yt	review	demote	圓	圓	圓	ctx=圖 ids=圓(0.63)	B2	圓	號爲精密然其言地[圓]卽周髀所謂地法覆
+109	siku	vol53	73:4:15	yt	review	demote	圓	圓	圓	ctx=圓 ids=圖(0.66)	B1	圓	臨摹以下則九曰方[圓]十曰向背十一曰位
+110	siku	vol04	60:9:12	yt	review	demote	圖	圖	圖	ctx=圖 ids=圓(0.51)	B1	圖	於圖書之學卷首河[圖]說二篇一謂河圖之
+111	siku	vol14	155:7:14	yt	review	demote	圖	圖	刪	ctx=圖 ids=圓(0.65)	B1	圖	俾學者按現在之輿[圖]卽可以驗當時列國
+112	siku	vol16	21:3:15	yt	review	demote	圖	圖	圖	ctx=圓 ids=圖(0.52)	B2x	圖	有五圖詩四十有七[圖]周禮六十有五圖禮
+113	siku	vol49	49:1:12	yt	review	demote	圖	圖	圖	ctx=圓 ids=圖(0.58)	B2	圖	草所未詳特爲具其[圖]形述其功效然藥類
+114	siku	vol59	70:9:7	yt	review	demote	圖	圖	圖	ctx=圓 ids=圖(0.90)	B2	圖	敷文所傳蜀中太極[圖]形以黑白互包象陰
+115	siku	vol40	54:2:12	zh	joint	review	會	㑹	會	ctx=會 ids=會(0.84) form:freq=- form:top1=會 qin:ids=-(0.24)	D1	會	巡方岳江浙東南都[會]民物蕃庶吏事殷繁
+116	siku	vol74	122:9:2	zh	joint	review	會	倉	會	ctx=- ids=會(0.81) form:freq=- form:top1=會 qin:ids=-(0.34)	D3	倉	稱其天才超逸云太[會]稊米集七十卷編家
+117	sj	08	118:2:7	zh	lift	review	㑹	曾	㑹	ctx=曾 ids=會(0.41)	D1	曾	父名高辛高辛黃帝[㑹]孫黃帝終始傳曰索
+118	sj	08	6:5:5b	zh	lift	review	㑹	曾	㑹	ctx=曾 ids=會(0.58)	D1	?	即昭向云之平從陸[㑹]西祖河王縣父禮也
+119	sj	05	23:2:16	zh	review	demote	㑹	㑹	㑹	ctx=曾 ids=會(0.67)	C	會	軍無見糧乃飲酒髙[㑹]不引兵渡河正云義
+120	siku	vol15	10:9:19	zh	review	demote	曾	曾	曾	ctx=會 ids=曾(0.93)	B2x	曾	儀禮商已著錄斯大[曾]編纂
+121	siku	vol48	53:3:10	zh	review	demote	曾	曾	曾	ctx=會 ids=曾(1.54)	B2x	曾	寶中節度使高繼冲[曾]編錄進上其文理舛
+122	sj	06	3:2:4b	zh	review	demote	會	會	㑹	ctx=- ids=會(0.80) form:freq=- form:top1=㑹	A	?	孟康於曰范後士沛[會]為之郡裔豐留為秦
+123	siku	vol10	85:2:11	zh	review	demote	會	會	會	ctx=曾 ids=會(0.68)	C	會	一木於車箱内葢未[會]鄭注式深二字之義
+124	siku	vol16	162:9:19	zh	review	demote	會	會	會	ctx=曾 ids=會(0.96)	B2	會	妾不得有牲總由誤[會]經文
+125	siku	vol08	35:1:17	zy	joint	review	千	于	千	ctx=于 ids=- yz:ctx=-	D1	于	於導漾節過三澨至[千]大別亦爲禹取陸路
+126	siku	vol10	111:2:17	zy	joint	review	千	于	千	ctx=于 ids=- yz:ctx=-	D1	于	廟妻之黨于寢朋友[千]寢門外壹哭而已不
+127	siku	vol13	11:4:17	zy	joint	review	千	于	千	zy_strokes=- ctx=于 ids=- yz:ctx=-	D1	于	夫人不薨于寢不殯[千]廟不赴於同盟不祔
+128	siku	vol14	56:1:10	zy	joint	review	千	于	千	zy_strokes=- ctx=于 ids=- yz:ctx=-	D1	于	者尤甚如以邢遷[千]夷儀爲邢自遷非桓
+129	siku	vol14	95:9:16	zy	joint	review	千	于	千	zy_strokes=- ctx=于 ids=- yz:ctx=-	D1	于	聘魯歸周而戎伐之[千]楚丘則凡伯
+130	siku	vol89	20:7:6	zy	joint	review	千	于	千	zy_strokes=- ctx=于 ids=- yz:ctx=- vis=-	D1	于	王風曰大車之淫甚[千]丘麻丘麻淫人大車
+131	siku	vol10	147:1:4	zy	joint	review	干	于	干	ctx=于 ids=- yz:ctx=-	D1	于	退[干]廂下公受宰夫束帛

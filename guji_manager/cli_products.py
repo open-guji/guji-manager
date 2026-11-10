@@ -73,7 +73,23 @@ def book_versions(book: str, root: Path | None = None) -> dict:
         b = load_book(book)
         out["corpus"] = getattr(b, "corpus", None)
         out["glyph_pin"] = getattr(b, "glyph_pin", None)
+        if getattr(b, "model", None) is not None:
+            out["model"] = b.model
+        if getattr(b, "code", None) is not None:
+            out["code"] = b.code
     except Exception:          # noqa: BLE001 —— 读不到册配置：只记 cv
+        pass
+    try:                       # 书级代码（书仓 code/，cv ≥0.7.0）：记工作副本摘要与书仓提交，不进指纹
+        from ._cv import core_book_code as bcm
+        from ._cv import workspace_root
+        root = bcm.code_root(workspace_root())
+        if root is not None:
+            out["code_digest"] = bcm.digest(bcm.file_table(root))
+            import subprocess
+            r = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+            if r.returncode == 0:
+                out["code_commit"] = r.stdout.strip()
+    except Exception:          # noqa: BLE001 —— 旧 cv 没有 core.book_code
         pass
     if out["corpus"] is not None:
         try:

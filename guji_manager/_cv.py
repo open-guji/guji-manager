@@ -97,6 +97,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "semantic_disagreements": ("clustering.glyph_ledger", "semantic_disagreements"),
     "library_summary": ("clustering.glyph_ledger", "library_summary"),
     "core_model_pack": ("core.model_pack", None),
+    "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
+    "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
     "groups_registry": ("groups.registry", None),
     "GROUPS": ("groups", "GROUPS"),
@@ -186,6 +188,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "K_MIN": ("clustering.glyph_db", "K_MIN"),
     "KIND_PARAM": ("core.page_kinds", "KIND_PARAM"),
     "load_page_kinds": ("core.page_kinds", "load_page_kinds"),
+    # 参校本属性（cv #1273，A 块）
+    "RefProfile": ("core.ref_profile", "RefProfile"),
+    "load_reference_profile": ("core.ref_profile", "load_reference_profile"),
+    "ref_profile_lint": ("core.ref_profile", "lint"),
     "params_hash": ("core.engine", "params_hash"),
     "core_corpus_pin_REPO_ROOT": ("core.corpus_pin", "REPO_ROOT"),
     "ADMIT_KIND": ("report.slots", "ADMIT_KIND"),
@@ -216,7 +222,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "load_current": ("clustering.emb_pack", "load_current"),
     "RunContext": ("core.step", "RunContext"),
     "ImageMissing": ("errors", "ImageMissing"),
-    "strip_column_rules": ("books.siku_zongmu.column", "strip_column_rules"),
+    "strip_column_rules": ("impl.keben.column", "strip_column_rules"),
     "column_row_profile": ("seg.profile", "column_row_profile"),
     "column_text_band": ("seg.profile", "column_text_band"),
     "denoise_column": ("seg.profile", "denoise_column"),
@@ -230,6 +236,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "edition_for": ("core.ledger_edition", "edition_for"),
     "ledger_path": ("variant_ledger", "ledger_path"),
     "are_variants": ("variants", "are_variants"),
+    "edge_tier": ("variants", "edge_tier"),
     "NotFound": ("errors", "NotFound"),
     "colgeom_stamp": ("eval.colgeom", "stamp"),
     "enrich_events": ("feedback.anchor", "enrich_events"),
@@ -592,5 +599,10 @@ def __getattr__(name: str) -> Any:
     if api is not None and name in getattr(api, "__all__", ()):
         return getattr(api, name)
     mod, attr = _FALLBACK[name]
-    m = importlib.import_module(f"open_guji_cv.{mod}")
+    try:
+        m = importlib.import_module(f"open_guji_cv.{mod}")
+    except ModuleNotFoundError:
+        if not mod.startswith("impl.keben"):
+            raise
+        m = importlib.import_module(f"open_guji_cv.books.siku_zongmu{mod[len('impl.keben'):]}")   # cv < 0.7.0
     return m if attr is None else getattr(m, attr)

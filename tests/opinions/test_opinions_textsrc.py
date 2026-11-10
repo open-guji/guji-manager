@@ -63,3 +63,25 @@ def test_textsrc_keeps_dev_version_whole():
     assert _CV_VER.search("cv v0.5.9 重跑").group(1) == "v0.5.9"
     assert _CV_VER.search("cv 0.5.10.dev12+g1a2b3c4d5e6f 重跑").group(1) == "0.5.10.dev12+g1a2b3c4d5e6f"
     assert _CV_VER.search("cv dev+g1a2b3c4d5e6f").group(1) == "dev+g1a2b3c4d5e6f"
+
+
+def test_version_rows_from_commit_records(tmp_path):
+    """book-text 不再有 CHANGES.md：版本从提交信息的「版本记录」行读（行末 #n 或提交标题 (#n) 给 PR 号）。"""
+    import subprocess
+    from guji_manager.opinions.textsrc import merge_versions
+    make(tmp_path, changes=CHANGES_101)
+    g = lambda *a: subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@x", *a],
+                                  check=True, capture_output=True, text=True)
+    g("init", "-q"); g("add", "-A"); g("commit", "-qm", "init")
+    (tmp_path / "x").write_text("1")
+    bt = BookText(BOOK, tmp_path)
+    (tmp_path / bt.entry() / "touch").write_text("1"); g("add", "-A")
+    g("commit", "-qm", "读者意见修订 (#321)\n\n版本记录: %s/002 | 文本 | 1.0.1→1.0.2 | 读者意见 op_x_0123456789 | cv v0.6.23 commit 4a9388ac" % BOOK)
+    rows = parse_changes(bt.version_rows(), BOOK)["002"]
+    last = rows[-1]
+    assert last["text_version"] == "1.0.2" and last["from"] == "1.0.1" and last["pr"] == "#321" and last["date"]
+    # 已存的行在前，重复 (版本, from) 不再加
+    old = parse_changes(CHANGES_101, BOOK)
+    merged = merge_versions(old, parse_changes(bt.version_rows(), BOOK))
+    assert [r["text_version"] for r in merged["002"]][-1] == "1.0.2"
+    assert len(merge_versions(merged, merged)["002"]) == len(merged["002"])

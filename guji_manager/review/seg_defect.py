@@ -242,6 +242,61 @@ def same_char_frame(patch: np.ndarray | None, ref: tuple | None, period: float, 
     return None
 
 
+#: 进库闸（`lib_frame_heavy`）：库里同字刻例至少几个才判（同 SAME_MIN_REF），最多取几个算参照
+LIB_REF_MAX = 60
+#: 进库闸的端区宽：字块端区跨度 ≥ 字身跨度×LIB_SPREAD_FLOOR，且 ≥ 同字同一头中位×LIB_SPREAD_REL。
+#: 11-05 看图单 150 块（人判带框 69）上量：1.0／1.5 拦 38 块、其中带框 30（查准 0.79），Sheldon 点名的严重 4 格全拦；
+#: 原出单「重」档（墨宽比 ≥1.20）同一批拦 34 块、带框 24（0.71）、严重 4 格也全中。1.2／1.2 只拦 30（23 带框）、严重漏 2。
+LIB_SPREAD_FLOOR, LIB_SPREAD_REL = 1.0, 1.5
+
+
+def end_spread(patch: np.ndarray | None, bottom: bool) -> tuple[float, float] | None:
+    """靠版框那头的端区比字身宽多少（与尺度无关，库里的刻例是归一化图也能比）：
+    端区＝最外一行有墨起 max(6, 0.15 墨高) 行；字身＝`end_band` 同一段（端条往里到墨高一半）。
+    返回 (端区墨列跨度 ÷ 字身墨列跨度, `end_band` 的 gap)；量不出 None。"""
+    if patch is None or patch.size == 0:
+        return None
+    m = patch < INK_THR
+    if bottom:
+        m = m[::-1]
+    rows = np.nonzero(m.sum(axis=1) >= 2)[0]
+    if rows.size == 0:
+        return None
+    r0, ih = int(rows[0]), int(rows[-1] - rows[0] + 1)
+    e = max(6, int(0.15 * ih))
+    zone = np.nonzero(m[r0:r0 + e].any(axis=0))[0]
+    body = np.nonzero(m[r0 + END_BAND + max(2, int(0.05 * ih)):r0 + ih // 2].any(axis=0))[0]
+    if zone.size == 0 or body.size < 2:
+        return None
+    eb = end_band(patch, bottom)
+    return float((zone[-1] - zone[0] + 1) / (body[-1] - body[0] + 1)), (eb[0] if eb else 1.0)
+
+
+def lib_frame_heavy(patch: np.ndarray | None, refs: list) -> str | None:
+    """人裁进字形库前的带框闸（Sheldon 11-08：带框重的字块不进字库）。库里的刻例是归一化图、和字块尺度不同，
+    所以不比绝对墨宽，比「端区比字身宽多少」（`end_spread`）：字块某一头端区跨度 ÷ 字身跨度 ≥ `LIB_SPREAD_FLOOR`，
+    且 ≥ 库里同字（`refs`）同一头中位数的 `LIB_SPREAD_REL` 倍（「上」「三」末横本来就宽，同字比掉），
+    且端条和字身隔开（gap ≤ `FRAME_GAP`）或端区有碎线（`end_debris` ≥ `FRAME_DEBRIS`）——就返回特征说明，否则 None。
+    库里同字不到 `SAME_MIN_REF` 个不判、照收（本书仅此一例的字不能因带框缺样本）。"""
+    if patch is None or patch.size == 0:
+        return None
+    for bottom in (False, True):
+        sp = end_spread(patch, bottom)
+        if sp is None or sp[0] < LIB_SPREAD_FLOOR:
+            continue
+        rs = [x[0] for x in (end_spread(r, bottom) for r in refs[:LIB_REF_MAX]) if x is not None]
+        if len(rs) < SAME_MIN_REF:
+            return None
+        med = statistics.median(rs)
+        if sp[0] < LIB_SPREAD_REL * med:
+            continue
+        ds, k = end_debris(patch, bottom)
+        if sp[1] <= FRAME_GAP or ds >= FRAME_DEBRIS:
+            return (f"{'列尾' if bottom else '列首'}端区宽 {sp[0]:.2f} 倍字身（同字 {med:.2f}，参照 {len(rs)} 个）"
+                    + (f"端区碎线占宽 {ds:.2f}" if ds >= FRAME_DEBRIS else f"端条隔开 {sp[1]:.2f}"))
+    return None
+
+
 def frame_grade(feature: str) -> str:
     """同字带框特征的程度：墨宽比 ≥ `FRAME_HEAVY_W` 为「重」，否则「轻」；不是同字带框特征返回空串。"""
     m = re.match(rf"{SAME_PREFIX}墨高 [\d.]+ 宽 ([\d.]+)", feature or "")

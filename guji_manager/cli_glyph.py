@@ -44,7 +44,7 @@ def cmd_recheck(args) -> None:
     只标不跑——跑还是 `guji pipeline <p> <book> --from glyph_match`，只重算点名格。"""
     from ._cv import page_key
     from ._cv import live_exemplars, recheck_reasons
-    eng = cli_v2._engine(args.shift_book, args.pipeline, params=getattr(args, "params", None), quiet=True)
+    eng = cli_v2._engine(args.book, args.pipeline, params=getattr(args, "params", None), quiet=True)
     step = eng.pipeline.producer_of("glyph_match")
     sid = step.spec.id
     p = eng.ctx.params_for(step)
@@ -210,7 +210,7 @@ def cmd_corpus(args) -> None:
         if not args.vol:
             print("✗ pin 要给 --vol <册 id>", file=sys.stderr)
             sys.exit(2)
-        kw = {k: v for k, v in (("global_ver", args.global_ver), ("book_ver", args.shift_book_ver),
+        kw = {k: v for k, v in (("global_ver", args.global_ver), ("book_ver", args.book_ver),
                                 ("vol_ver", args.vol_ver)) if v is not None}
         try:
             row = append_pin(ws, args.vol, from_n=args.from_n, note=args.note, dev=args.dev, **kw)

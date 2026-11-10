@@ -72,6 +72,41 @@ def parse_changes(text: str, book: str) -> dict[str, list[dict]]:
     return out
 
 
+_RECORD = "版本记录:"
+_PR_IN_SUBJECT = re.compile(r"\(#(\d+)\)|[Mm]erge pull request #(\d+)")
+
+
+def records_to_table(entries: list[tuple[str, str, str]]) -> str:
+    """提交里的「版本记录: <书>/<章> | <线> | <旧→新> | <说明>[ | #PR]」行 → 和旧 CHANGES.md 同形的表格行，好复用 ``parse_changes``。
+
+    ``entries`` 是 (日期, 提交标题, 记录行) 按时间从旧到新；PR 号取记录行末尾的 ``#n``，没有就从提交标题的 ``(#n)`` 取。"""
+    out = []
+    for date, subject, line in entries:
+        parts = [x.strip() for x in line.split(_RECORD, 1)[1].split(" | ")]
+        if len(parts) < 4:
+            continue
+        pr = ""
+        if re.fullmatch(r"#\d+", parts[-1]) and len(parts) > 4:
+            pr = parts.pop()
+        elif (m := _PR_IN_SUBJECT.search(subject)):
+            pr = "#" + (m.group(1) or m.group(2))
+        vol, line_, chg, note = parts[0], parts[1], parts[2], " | ".join(parts[3:])
+        out.append("| " + " | ".join(x.replace("|", "\\|") for x in (date, vol, line_, chg, note, pr)) + " |")
+    return "\n".join(out)
+
+
+def merge_versions(old: dict, new: dict) -> dict:
+    """已存的 text_versions 在前、新解析出的在后；同一章里 (text_version, from) 相同的行只留已存的那条。"""
+    out = {v: list(rows) for v, rows in (old or {}).items()}
+    for vol, rows in (new or {}).items():
+        have = {(r.get("text_version"), r.get("from")) for r in out.get(vol, [])}
+        for r in rows:
+            if (r.get("text_version"), r.get("from")) not in have:
+                out.setdefault(vol, []).append(r)
+                have.add((r.get("text_version"), r.get("from")))
+    return out
+
+
 class BookText:
     """一本书在 book-text 里的文件。``root`` 是本地检出；为 None 时走 GitHub raw。"""
 
@@ -133,7 +168,28 @@ class BookText:
         return self.json(f"{vol_key(vol)}.cord.json")
 
     def changes(self) -> str:
+        """旧的 CHANGES.md（2026-11-10 起 book-text 不再有；历史版本的行还在时照读）。"""
         return self.text("CHANGES.md") or ""
+
+    def version_records(self) -> str:
+        """本地 book-text 检出的 git log 里的「版本记录」行 → 表格行文本（要检出带历史；没有检出或没历史返回空）。"""
+        if not self.root:
+            return ""
+        import subprocess
+        r = subprocess.run(["git", "-C", str(self.root), "log", "--reverse", "--format=%x1e%cs%x1f%s%x1f%b", "--",
+                            self.entry()], capture_output=True, text=True)
+        if r.returncode != 0:
+            return ""
+        entries = []
+        for blk in r.stdout.split("\x1e")[1:]:
+            date, subject, body = (blk.split("\x1f") + ["", ""])[:3]
+            entries += [(date.strip(), subject.strip(), ln.strip()) for ln in body.splitlines()
+                        if ln.strip().startswith(_RECORD)]
+        return records_to_table(entries)
+
+    def version_rows(self) -> str:
+        """``parse_changes`` 吃的文本：旧 CHANGES.md（若还有）＋提交信息里的版本记录。"""
+        return self.changes() + "\n" + self.version_records()
 
     def index(self) -> dict:
         return self.json("index.json") or {}

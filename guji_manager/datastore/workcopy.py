@@ -122,14 +122,54 @@ def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
     return sorted(k for k in set(base) | set(cur) if base.get(k) != cur.get(k))
 
 
+ALLOW_GLYPH_SHRINK_ENV = "GUJI_ALLOW_GLYPH_SHRINK"      # 设 1：确要缩小字形库（人为清理）时放行
+GLYPH_SHRINK_RATIO = 0.5                                 # 导出后某个账本行数 < 原来的这个比例就拦
+
+
+def _jsonl_rows(store: Path) -> dict[str, int]:
+    """字形库目录顶层各 .jsonl 账本的行数（不数子目录）。"""
+    out: dict[str, int] = {}
+    if store.is_dir():
+        for f in sorted(store.glob("*.jsonl")):
+            with f.open("rb") as fh:
+                out[f.name] = sum(1 for ln in fh if ln.strip())
+    return out
+
+
+def glyph_shrink_problems(before: dict[str, int], after: dict[str, int], ratio: float = GLYPH_SHRINK_RATIO) -> list[str]:
+    """导出前后账本行数对比：原来有行、导出后归零或掉到不足 ratio 的，每个报一条（纯函数，便于测）。"""
+    bad = []
+    for name, n0 in before.items():
+        n1 = after.get(name, 0)
+        if n0 > 0 and (n1 == 0 or n1 < n0 * ratio):
+            bad.append(f"{name}：{n0} → {n1} 行")
+    return bad
+
+
 def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None) -> bool:
-    """glyph.db 自上次记录后变过就导出进数据目录的字形库。返回是否导出了。"""
+    """glyph.db 自上次记录后变过就导出进数据目录的字形库。返回是否导出了。
+
+    缩水闸（2026-11-09，用户要求）：本机 glyph.db 是空的或没重建（`db pull --no-rebuild` 之后、或只跑过别的
+    pin 的库）时，导出会把数据目录里原有的字形账本写成空，随后 sync／push 就把中心库的字形表清掉
+    （2026-11-04 事故同类）。导出前备份账本，导出后任一账本行数归零或不足原来的一半就还原备份并停下；
+    确要缩小的人为清理设环境变量 `GUJI_ALLOW_GLYPH_SHRINK=1`。"""
     if glyph is None or not Path(glyph.db_path).exists():
         return False
     fp = glyph.fingerprint(glyph.db_path)
     if state is not None and fp == state.get("glyph_db_fp"):
         return False
-    glyph.export(glyph.db_path, data / GS.rstrip("/"))
+    store = data / GS.rstrip("/")
+    before = _jsonl_rows(store)
+    backup: dict[str, bytes] = {f.name: f.read_bytes() for f in store.glob("*.jsonl")} if store.is_dir() else {}
+    glyph.export(glyph.db_path, store)
+    bad = glyph_shrink_problems(before, _jsonl_rows(store))
+    if bad and os.environ.get(ALLOW_GLYPH_SHRINK_ENV) != "1":
+        for name, raw in backup.items():                 # 还原：不让缩水的账本留在数据目录里
+            (store / name).write_bytes(raw)
+        raise SystemExit(
+            "✗ 导出字形库会让账本缩水，已还原、没推：" + "；".join(bad) + "。多半是本机 glyph.db 没重建或是空库："
+            "先 `guji db pull --force -w <工作区>`（会重建字形库，约 2 分钟）再 sync／push；"
+            f"确要缩小的人为清理设 {ALLOW_GLYPH_SHRINK_ENV}=1。")
     return True
 
 

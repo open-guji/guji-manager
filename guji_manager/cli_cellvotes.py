@@ -7,6 +7,9 @@
     guji cellvotes migrate vol04 --cells <old_new_cells/vol04.tsv[.gz]> --source-rev <新页表rev> --out <目录> -w <工作区>
                                                   # 换图源迁票（GUJI-748）：只读，按格级对照表把每格最新人裁（和给了 --rev 的票）
                                                   # 迁到新格，出 events.jsonl／votes.jsonl／pending.tsv（没迁的）／report.md
+    guji cellvotes rebase vol05 --book-id 96mid1ogzk --source-rev 4 --out <目录> -w <工作区>
+                                                  # 换图源（页号格号不变，只换像素）后的人裁事件换算：只读，锚里的框按页表 from_rev.H
+                                                  # 换到新页、source_rev 改成新页表 rev，出 events.jsonl（id 加 ~r）／pending.tsv／report.md
     guji cellvotes write vol04 <目录> --batch H-web-vol04-2026-10-20 --reviewer Sheldon -w <工作区>
                                                   # 写进数据目录（锚按现行产物算）并消费；推库另跑 guji db sync
 
@@ -125,6 +128,51 @@ def _sheet(args) -> dict | None:
     return {**doc, "_path": str(p)}
 
 
+def _route(t, out: Path, rev: str) -> dict:
+    """票按去向分流（A34 11-08）：text＝改文本批（□→字，走 1.x revise）；structure＝切分类（切坏无字、错位、破损、
+    带备注的看不出），写成按页按列的清单交切分线（A22/A31）；exclude＝无字（排除名单）；recheck＝推翻旧裁回网站复审。
+    人裁事件照常全写进中心库（切分线自己去库里按批次找），这里只给出人读的去向清单 route.md 与 structure.tsv。"""
+    text, structure, exclude, held = [], [], [], []
+    for d in t.drafts:
+        v, pl = d.payload.get("v"), d.payload
+        note = "；".join(x.get("note") or "" for x in d.votes if x.get("note"))
+        shown = next((x.get("shown") for x in d.votes if x.get("shown")), "")
+        if d.held:
+            held.append((d.a, d.held))
+        elif v == "confirm":
+            text.append((d.a, pl.get("shape", "")))
+        elif v == "seg_defect":
+            if pl.get("shape"):
+                text.append((d.a, pl["shape"]))
+            structure.append((d.a, "切坏" + ("（字对，已入文本批）" if pl.get("shape") else "（无字）"), shown, note))
+        elif v == "damaged":
+            structure.append((d.a, "破损/无整页坐标", shown, note))
+        elif v == "not_a_char":
+            exclude.append(d.a)
+    for a, why in t.skipped:
+        if "看不出" in why:                    # 与已有人裁一致等跳过项不进清单（那是重跑 draft 时的幂等）
+            structure.append((a, "看不出/错位：" + why, "", ""))
+    from .opinions.schema import cell_key
+    structure.sort(key=lambda r: cell_key(r[0]))
+    with open(out / "structure.tsv", "w", encoding="utf-8") as f:
+        f.write("页\t列\t格\t类\t页面显示字\t备注\n")
+        for a, kind, shown, note in structure:
+            pg, col, slot = a.split(":")
+            f.write(f"{pg}\t{col}\t{slot}\t{kind}\t{shown}\t{note}\n")
+    L = [f"# {rev} 票的去向", "", f"- 改文本批：{len(text)} 格（□→字，走 1.x revise 一批一 PR）",
+         f"- 切分类清单：{len(structure)} 格（structure.tsv，按页按列；事件已写中心库，切分线按批次自取）",
+         f"- 无字（排除名单，需 --include-none）：{len(exclude)} 格", f"- 挂起：{len(held)} 格", ""]
+    pages: dict[str, list] = {}
+    for a, kind, shown, note in structure:
+        pages.setdefault(a.split(":")[0], []).append(f"{a} {kind}")
+    if pages:
+        L.append("## 切分类按页")
+        for pg in sorted(pages, key=int):
+            L.append(f"- 第 {pg} 页（{len(pages[pg])} 格）：" + "；".join(pages[pg]))
+    (out / "route.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    return {"text": len(text), "structure": len(structure), "exclude": len(exclude), "held": len(held)}
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -186,7 +234,9 @@ def cmd_draft(args) -> None:
            f"（回网站再看 {len(rc)}）、跳过 {len(t.skipped)}")
     for d in t.held:
         _print(f"  挂起 {d.a}：{d.held}")
-    _print(f"→ {out}/drafts.jsonl、held.tsv、report.md")
+    r = _route(t, out, args.rev)
+    _print(f"去向：改文本 {r['text']}、切分类 {r['structure']}、无字 {r['exclude']}、挂起 {r['held']}")
+    _print(f"→ {out}/drafts.jsonl、held.tsv、report.md、route.md、structure.tsv")
 
 
 def cmd_write(args) -> None:
@@ -249,9 +299,42 @@ def cmd_migrate(args) -> None:
            f"票 {res.n_votes_in} → 迁出 {len(res.votes)}、没迁 {sum(res.reasons('票').values())}  → {args.out}/report.md")
 
 
+def cmd_rebase(args) -> None:
+    """换图源（页号格号不变）后的人裁事件换算提案（逻辑在 `feedback/source_rebase.py`）。只读：不写事件、不写库。"""
+    import re
+    from ._cv import feedback_root
+    from ._cv import EventLog
+    from .datastore import sources as S
+    from .feedback import source_rebase as R
+    miss = [k for k in ("book_id", "source_rev", "out") if not getattr(args, k)]
+    if miss:
+        raise SystemExit("rebase 要 " + "、".join("--" + k.replace("_", "-") for k in miss))
+    m = re.fullmatch(r"vol(\d+)", args.book)
+    if not m:
+        raise SystemExit(f"rebase 的册 id 要像 vol05：{args.book}")
+    vol, src = S.norm_vol(m[1]), S._client()
+    if args.events:
+        events = [json.loads(line) for f in args.events
+                  for line in Path(f).read_text(encoding="utf-8").splitlines() if line.strip()]
+        where = "、".join(args.events)
+    else:
+        events = [e.model_dump(mode="json") for e in EventLog(feedback_root()).iter_all(raw=True)]   # 读旧页号：不过页表 rev 闸
+        where = f"数据目录 {feedback_root()}"
+
+    def get_table(rev: int):
+        try:
+            return S.read_table(src, args.book_id, vol, rev)
+        except FileNotFoundError:
+            return None
+
+    res = R.rebase_events(events, args.book, int(args.source_rev), get_table)
+    R.write_report(res, Path(args.out), extra={"事件来源": where})
+    _print(f"事件 {res.n_in} → 迁出 {len(res.events)}、不迁 {sum(res.skipped.values())}、待办 {len(res.pending)}  → {args.out}/report.md")
+
+
 def add_parser(sub) -> None:
-    p = sub.add_parser("cellvotes", help="网站精校页投票 → 人裁事件：draft（只读出草稿）| write（写入并消费）| migrate（换图源迁票提案，只读）")
-    p.add_argument("action", choices=["draft", "write", "migrate"])
+    p = sub.add_parser("cellvotes", help="网站精校页投票 → 人裁事件：draft（只读出草稿）| write（写入并消费）| migrate（换图源迁票提案，只读）| rebase（页号不变的换图源：人裁锚换算提案，只读）")
+    p.add_argument("action", choices=["draft", "write", "migrate", "rebase"])
     p.add_argument("book", help="cv 册 id，如 vol04")
     p.add_argument("dir", nargs="?", default=None, help="write：draft 的输出目录")
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
@@ -277,6 +360,7 @@ def add_parser(sub) -> None:
                                                 "`bindings.book_bindings` 的输出）；给了就按绑定格查表，没认上格的不迁")
     p.add_argument("--min-iou", type=float, default=0.5, help="migrate：IoU 门槛，低于它的不迁（缺省 0.5）")
     p.add_argument("--new-rev", default=None, help="migrate：迁出的票改写成这个待审单 rev（缺省不改）")
+    p.add_argument("--book-id", default=None, help="rebase：网站书 id（页表在 R2 的 <书>/<册>/r<rev>.json），如 96mid1ogzk")
     p.add_argument("--no-consume", action="store_true", help="write：只写不消费")
 
 
@@ -288,6 +372,8 @@ def cmd_cellvotes(args) -> None:
         cmd_draft(args)
     elif args.action == "migrate":
         cmd_migrate(args)
+    elif args.action == "rebase":
+        cmd_rebase(args)
     else:
         if not args.dir or not args.batch or not args.reviewer:
             raise SystemExit("write 要 <目录> --batch --reviewer")
