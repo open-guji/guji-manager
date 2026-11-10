@@ -5,9 +5,17 @@
 
 ## [未发版]
 
+## [0.4.39] - 2026-11-10
+
+- 新增 `guji swap finish-merged`（R8，PATCH，A31 11-10，ZM 答复）：`swap book-text` 把对照表存进 book-text `lineage/revisions/<册>-<run>.tsv`；合并后收尾出旧格号 redirect 表、对照表里改号格上的无锚人裁 recheck 清单、metrics.jsonl。L0。
+
+- `guji swap book-text`：cord 经 cv `republish.copy_cord_for_site` 换到网站页图坐标再落（与 swap run 自动路径同口径，换过图源的书不再拷原坐标）；R1 闸用换好的 cord 比（PATCH，ZM 11-10）。L0。
+
 ## [0.4.38] - 2026-11-10
 
 - `guji swap book-text` R1 前置闸与 R7（PATCH，A31 11-10，coordinator 转 ZM）：`--glyph-db` 给字形库就核「刻例格键须都在新包里」，不在则停 `r1-stop`（改号待核数只报不停）；1.x 推 `swap/<册>-1x` 后自动开草稿 PR（`gh`，`--no-pr` 关）。L0。
+
+- `guji swap book-text` 守卫补齐（PATCH，ZM 11-10；#478、#479）：①人裁账平——有效人裁与 `char-edits` 手改经对照表换到新格、按人裁最高判字，旧格被删或新包与人裁冲突就停（原先就不同的多为异体／归一，只报），1.x 册取不到人裁事件也停；②专名守卫加 `decomposition`／`targets`／`level`／`coarse`／`note`、条数、「被切短」（少的字数超过锚区间里被删格数就拒写，A33 建议）。人裁改走 `_cv` 门面。L0。
 
 ## [0.4.37] - 2026-11-10
 

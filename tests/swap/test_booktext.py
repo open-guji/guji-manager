@@ -171,3 +171,29 @@ def test_rekey_gate_orphan_and_ok(tmp_path):
     assert not g["ok"] and g["orphan"] == ["v2:vol04:1:1:2"] and g["n_inst"] == 2
     rows[1] = dict(old="1:1:2", new="1:1:2", kind="同格", oc="", nc="", iou=1, note="")
     assert rekey_gate(db, rows, 4)["ok"]
+
+
+def test_finish_redirect_and_unanchored(tmp_path):
+    from guji_manager.swap import finish as F
+    t1 = [{"旧格": "vol01:1:1:1", "新格": "vol01:1:1:2", "类别": "改号"}, {"旧格": "vol01:1:1:2", "新格": "", "类别": "删"},
+          {"旧格": "vol01:1:1:3", "新格": "vol01:1:1:3", "类别": "同格"}]
+    t2 = [{"旧格": "vol01:1:1:2", "新格": "vol01:1:1:5", "类别": "改号"}]
+    red = F.redirect_map([t1, t2])
+    assert red["vol01:1:1:1"] == "vol01:1:1:5" and red["vol01:1:1:2"] == "vol01:1:1:5" and "vol01:1:1:3" not in red
+    rows = [dict(old="1:1:1", new="1:1:2", kind="改号"), dict(old="1:1:2", new="", kind="删"), dict(old="1:1:3", new="1:1:3", kind="同格")]
+    lines, gone = F.unanchored_human(rows, {"1:1:1": "甲", "1:1:2": "乙", "1:1:3": "丙", "9:9:9": "丁"}, 1)
+    assert len(lines) == 1 and lines[0].startswith("vol01:1:1:2\t") and lines[0].endswith("\t甲")
+    assert gone == [("1:1:2", "乙"), ("9:9:9", "丁")]
+    rep = F.finish(tmp_path, "vol01", rows, {"1:1:1": "甲"}, run="abc")
+    assert rep["recheck"]["n"] == 1 and (tmp_path / "reports/_swap/metrics.jsonl").exists()
+
+def test_copy_cord_plain_and_via_cv(tmp_path):
+    src = tmp_path / "001.cord.json"
+    src.write_text('{"pages": []}', encoding="utf-8")
+    assert bt._copy_cord(src, tmp_path / "a.json", None) is None and (tmp_path / "a.json").read_text(encoding="utf-8") == '{"pages": []}'
+    cv = tmp_path / "cv"
+    (cv / "scripts" / "zhengli").mkdir(parents=True)
+    (cv / "scripts" / "zhengli" / "republish.py").write_text(
+        "import sys\ndef copy_cord_for_site(s, d):\n    sys.exit('页表对不上')\n", encoding="utf-8")
+    why = bt._copy_cord(src, tmp_path / "b.json", cv)
+    assert why and "页表对不上" in why and not (tmp_path / "b.json").exists()

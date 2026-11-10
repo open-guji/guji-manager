@@ -9,7 +9,8 @@
 * 每批 ``--batch-size`` 册：auto_cycle（``--no-publish``）→ ``sync_workspace(no_glyph)`` → 对这批 ``proofing-sync only=`` 发布并等跑完
   → 逐册取线上 ``NNN.pending.json`` 核版本 → 核过的清掉本地产物包。全站一把发会撞 40 分钟超时，所以只发这一批。
 * 状态写 ``<工作区>/reports/_swap/state.json``，崩了/容器重启后同样的命令接着做（已核对的册跳过）。
-* 被标点锚点拦的册（need-A33）、出单失败的册（blocked）只记入状态并在最后列出，交接给 A33／A31；不在这里自动重试。
+* 格号变动（增删格、改号）由 cv republish 交 ``swap.booktext`` 按格级对照表自动落 book-text；守卫拦下的册（guard-stop）、
+  出单失败的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 A33，修好后 ``guji swap book-text --sheet``。不在这里自动重试。
 """
 
 from __future__ import annotations
@@ -278,7 +279,7 @@ def cmd_run(a) -> int:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("swap", help="换单 driver：出新单→同步→分批发布→核线上→清盘（断点续跑）")
-    p.add_argument("action", choices=["run", "audit", "book-text"],
+    p.add_argument("action", choices=["run", "audit", "book-text", "finish-merged"],
                    help="run 换单；audit 机器改字抽检；book-text 把已导出的新包落 book-text（格号变了按格级对照表走，见 swap/booktext.py）")
     p.add_argument("--books", required=True, help="如 vol20-vol99 或 vol23,vol24")
     p.add_argument("-w", "--workspace", required=True)
@@ -294,6 +295,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--push", action="store_true", help="book-text：过了守卫和 local_check 就推（0.x 推 dev；1.x 推 swap/<册>-1x 分支待开 PR）")
     p.add_argument("--glyph-db", help="book-text：字形库 sqlite（R1 前置闸：库里刻例的格键须都在新包里，否则停 r1-stop；不给则只标「R1 未核」）")
     p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
+    p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
+    p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")
     p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
 
 
@@ -314,6 +317,9 @@ def cmd_audit(a) -> int:
 
 
 def cmd_swap(args) -> int:
+    if args.action == "finish-merged":
+        from .booktext import cmd_finish_merged
+        return cmd_finish_merged(args, parse_books(args.books))
     if args.action == "book-text":
         from .booktext import cmd_book_text
         return cmd_book_text(args, parse_books(args.books))

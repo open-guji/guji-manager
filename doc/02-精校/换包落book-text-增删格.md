@@ -12,8 +12,8 @@
 ## 什么时候自动走
 
 `guji swap run`（auto_cycle → proof_cycle → `republish issue/push --book-text`）里，导出的 char 与 book-text 现文**格号集合或次序不同**时，
-`bump_book_text` 不再走「待重标清单」、不再报 need-A33，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
-只换字（格号不变）的册仍走原路。
+`bump_book_text` 不再走「待重标清单」，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
+只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时 auto_cycle 报 **guard-stop**（旧称 need-A33），线上单不换：切坏的交切分线重出包，锚点挪不了的交 A33，修好后用下面的命令补落、补推单。
 
 ## 手动补（已导出、没落成的册）
 
@@ -24,7 +24,7 @@ guji swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text �
 - 导出缺省取 `reports/<册>/_cycle/` 下最新的 `export/`（`--export` 指定）。
 - 在独立 worktree 里做（缺省 `<book-text>-swap`，稀疏检出，每册重置到 origin/dev）：swap run 在共享目录里会 `checkout -- .`，不能混用。
 - `--push`：0.x 推 dev；1.x 推 `swap/<册>-1x` 分支，PR 由人或会话开（全流程第七节 C 类通道）。
-- `--sheet`：need-A33 时 auto_cycle 停在推库之前，新单（`reports/<册>/_publish/<rev>`）没换上线；落好文本后补推这张单并 `guji db sync`。网站随下一次发布上线。
+- `--sheet`：guard-stop 时 auto_cycle 停在推库之前，新单（`reports/<册>/_publish/<rev>`）没换上线；落好文本后补推这张单并 `guji db sync`。网站随下一次发布上线。
 
 ## 每册做什么（顺序）
 
@@ -40,6 +40,18 @@ guji swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text �
 
 挪不了的锚点不改不删，提交信息列出，由 closeout 现算成待审格 A01–A03（[标main后收尾](标main后收尾.md)）。
 bump 时校验器发现锚点对不上就停（例：vol18 31:3 卷端题名整行新包切成四个 □、框也对不上，交切分线）。
+
+## 合并后收尾（R8）：`guji swap finish-merged`
+
+```
+guji swap finish-merged --books vol17,vol19 -w <工作区> --book-text <book-text 仓> [--table <tsv>] [--commit <合并提交>]
+```
+
+- **对照表入库**：`swap book-text` 提交前把对照表放进 `<版本目录>/lineage/revisions/<册>-<run>.tsv`（随文本提交走，中心库不另存）。
+- **旧格号 redirect**：就是这些对照表。`finish-merged` 沿历次表串成 `reports/_swap/finish/<册>/redirects.tsv`（旧格→现行格，删了的现行格为空），网站链接与意见池里的旧格号按它迁。册1 #419、#436 等更早的增删格没有对照表，补不出来。
+- **无锚人裁**（ZM 11-10）：人裁按旧格号挂，改号的格上 iou=0 的 backfill 旧人裁会错位还被优先采信。命令把「对照表里改号的格上的人裁」写成 `republish --recheck` 清单 `reports/_swap/finish/<册>/recheck_unanchored.tsv`，进下一张单让用户重投覆盖；删掉的格（及对照表里没有的人裁格）没有新格号，只在报告里列。
+- **度量**：`reports/_swap/metrics.jsonl` 追加一行。
+- **票要先落库**：网站已投未落的票须在换包**前**用 `guji cellvotes` 落库；本命令不替做。
 
 ## 坑
 
