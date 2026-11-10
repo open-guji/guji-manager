@@ -238,7 +238,9 @@ def cmd_draft(args) -> None:
     sheet = _sheet(args)
     sheet_prior = {c["cell"]: (c.get("prior") or {}).get("id") for c in (sheet or {}).get("cells", [])
                    if (c.get("prior") or {}).get("id")}
-    t = triage(votes, args.book, human, include_none=args.include_none, check=check, sheet_prior=sheet_prior)
+    from .charnorm import load_norm
+    t = triage(votes, args.book, human, include_none=args.include_none, check=check, sheet_prior=sheet_prior,
+               same=load_norm(args.book).same)
     # 待审原因（sheldon 11-03 定）：照投票时那张单上的 pending_reason 写进事件；单对不上或格不在单上就 unknown
     sheet_reason = {c["cell"]: c.get("pending_reason") or "unknown" for c in (sheet or {}).get("cells", [])}
     for d in t.drafts:

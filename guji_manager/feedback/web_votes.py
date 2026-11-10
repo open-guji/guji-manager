@@ -145,9 +145,11 @@ def latest_human(events) -> dict[str, object]:
     return last
 
 
-def same_verdict(p: dict, q: dict) -> bool:
-    keys = ("v", "shape", "quality", "reason")
-    return all((p.get(k) or "") == (q.get(k) or "") for k in keys)
+def same_verdict(p: dict, q: dict, same=None) -> bool:
+    """``same``：同字判定（charnorm）；``shape`` 归一后相同算一致（别／別），其余字段照旧字面比。"""
+    eq = same or (lambda a, b: a == b)
+    keys = ("v", "quality", "reason")
+    return all((p.get(k) or "") == (q.get(k) or "") for k in keys) and eq(p.get("shape") or "", q.get("shape") or "")
 
 
 # ───────────────────────── 格位核对 ─────────────────────────
@@ -226,7 +228,8 @@ class Triage:
 
 
 def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool = True,
-           check: Callable[[str], str | None] | None = None, sheet_prior: dict[str, str] | None = None) -> Triage:
+           check: Callable[[str], str | None] | None = None, sheet_prior: dict[str, str] | None = None,
+           same: Callable[[str | None, str | None], bool] | None = None) -> Triage:
     """``votes`` 已经过 latest_votes；``human`` 是 latest_human 的结果；
     ``check(a)`` 核格位（对得上返回 None，否则理由；只对要写的格调用），给 None 表示不核（调用方要自己担保）；
     ``sheet_prior`` {格位: 单上 prior.id}：投票人看过的旧人裁，票就是有意推翻它（见模块说明）。"""
@@ -262,7 +265,7 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
             continue
         h = human.get(key)
         if h is not None:
-            if same_verdict(h.payload, p):
+            if same_verdict(h.payload, p, same):
                 out.skipped.append((a, f"与已有人裁 {h.id} 一致"))
                 continue
             # 用户 11-10 定：网站上的新人裁直接覆盖旧人裁，不用回网站再选一次。

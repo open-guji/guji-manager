@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- 统一「同一个字」判法（PATCH，A31 11-10，ai-team 字的等价与归一审视）：新增 `guji_manager/charnorm.py`（`CharNorm.same/canon`、`load_norm(book)` 读书级 codepoints，读不到按字面比）；`swap/resolve.resolve`、`booktext.merge_chars／protected_cells／ledger_check`、`overlay_edits.overlay`、`apply_pending(current=)`、`web_votes.triage／same_verdict`、`cellvotes draft` 都接受 `same=` 并在 `swap book-text`／`cellvotes draft` 里传入，别／別 这类归一后同字不再算冲突、机器改字、推翻旧裁。不传 `same` 行为与旧版一致。测试 `tests/test_charnorm.py`。L0。
+
 ## [0.4.40] - 2026-11-10
 
 - `swap book-text` 修隐患（PATCH，A31 11-10，专家审 v0.4.39）：校验器不认 lineage/ 时退回不带表落文本，原先 `rmtree(lineage)` 会把同版本目录早先已提交的对照表一并删掉；改成只删刚放进去的那张（`drop_stored_table`）。L0。
