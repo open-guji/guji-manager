@@ -587,7 +587,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             _git(wt, "clean", "-fdq", "--", "Book")
             return {"status": "blocked", "why": f"bump {ln} 失败：{(p.stdout + p.stderr).strip()[-300:]}", **r}
         records += [x.strip() for x in p.stdout.splitlines() if x.startswith("版本记录:")]
-    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    sync_headings_keep_unreadable(wt, vdir)
     ar = Path(wt) / "scripts" / "book-text"
     if str(ar) not in sys.path:
         sys.path.insert(0, str(ar))
@@ -652,6 +652,42 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 out["status"] = "pr-opened"
         return out
     return {"status": "committed", "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+
+
+def _unreadable_headings(vdir: Path) -> dict[int, list]:
+    """index.json 里 char／punct 文件不在盘上的章（稀疏检出、只取了本册）已有的 headings，按章序号 → 原值。"""
+    try:
+        idx = json.loads((Path(vdir) / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    keep = {}
+    for i, c in enumerate(idx.get("chapters") or []):
+        if not isinstance(c, dict) or "headings" not in c:
+            continue
+        stem = c.get("file") or (f"{c['n']:03d}" if isinstance(c.get("n"), int) else None)
+        if not stem or not (Path(vdir) / f"{stem}.char.json").is_file() or not (Path(vdir) / f"{stem}.punct.json").is_file():
+            keep[i] = c["headings"]
+    return keep
+
+
+def sync_headings_keep_unreadable(wt: Path, vdir: Path) -> None:
+    """跑 book-text ``OV.sync_headings`` 重算目录缓存 headings，但**别章读不到数据文件时不删它的 headings**。
+    ``sync_headings`` 把「char／punct 文件不在」当成「没有标题」而删键；工作树只检出本章时，会把别章（殿本 vol03 的 #437：98 章）
+    的 headings 全删光。这里先记下读不到数据的章的 headings，同步后原样放回。"""
+    keep = _unreadable_headings(vdir)
+    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    if not keep:
+        return
+    ip = Path(vdir) / "index.json"
+    idx = json.loads(ip.read_text(encoding="utf-8"))
+    changed = False
+    for i, h in keep.items():
+        chs = idx.get("chapters") or []
+        if i < len(chs) and chs[i].get("headings") != h:
+            chs[i]["headings"] = h
+            changed = True
+    if changed:
+        ip.write_text(json.dumps(idx, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def drop_stored_table(stored: Path) -> None:
