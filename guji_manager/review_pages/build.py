@@ -96,11 +96,10 @@ def auto_fonts() -> list[str]:
     找不到返回空表（页上缺字改显码位，不会空白）。"""
     import os
     cands = [os.environ.get("GUJI_FONT_DIR")]
-    try:
-        import open_guji_cv
-        cands.append(str(Path(open_guji_cv.__file__).resolve().parent.parent / "fonts"))
-    except ImportError:
-        pass
+    import importlib.util          # 只查位置、不 import cv（本包只经 _cv 门面碰 cv）
+    spec = importlib.util.find_spec("open_guji_cv")
+    if spec and spec.origin:
+        cands.append(str(Path(spec.origin).resolve().parent.parent / "fonts"))
     for d in cands:
         if d and Path(d).is_dir():
             fs = default_fonts(d)
