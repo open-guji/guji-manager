@@ -9,7 +9,7 @@
 - 一格只有一个主原因：按 `priority` 从小到大逐条试，第一条命中的就是。原始疑问码照旧放 `why[]` 当证据。
 - 它**不是判定依据**，只说为什么停在这里；判定依据是 `why[]`、`evidence`。
 - 判不出的一律写 `unknown`（X99），出现就要补规则。
-- 所有数据（待审单、人裁事件、裁定库、网站票、book-text）字段名一律 `pending_reason`，值只写英文名，不写中文、不写码（sheldon 11-03 定）。
+- 所有数据（待审单、人裁事件、裁定库、网站票；book-text 不录，见下）字段名一律 `pending_reason`，值只写英文名，不写中文、不写码（sheldon 11-03 定）。
 - 改名走弃用流程：yaml `renamed` 记旧名→新名，`parse()` 照认旧名；码永不复用。2026-11-06 P01 `ref_replaced`→`ref_ocr_diff`、P02 `ref_mismatch`→`ref_final_diff`。
 
 每个原因带这些配置：大类、去向 `route`（human 一定人审／llm 大模型统一过一遍／algo 先改算法／deferred 留后）、负责人 `owner`、最终谁看 `reviewer`、网页卡片形态 `ui`、卡片说明 `hint`、判定依据 `detect`。
@@ -36,7 +36,7 @@
 - **统计**：`guji-manager pending-stats`（线上单口径：读出单时写进单子的值，判法改了要重新出单才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
 - **分流**：`route`／`reviewer` 决定进大模型统一审（`llm_queue`）、算法、人审页还是留后；`iterate leverage` 按它排杠杆。
 - **人审页与网站**：网站卡片按 `ui`、`hint` 出形态和说明（kaiyuanguji-web、guji-console 的 `pendingReasons.ts` 是副本，改 yaml 后要用 `--json` 导出同步）。
-- **book-text**：待审格的 `char.json` 带 `pending_reason`，网站凭它显示字图。
+- **book-text**：11-09 起不录 `pending_reason`（只录首选字，待审的字和别的字看起来一样）；原因在 KV／待审单里，网站从 KV 读。
 - **收口单**（S4）：每类剩余格定去向（放行／留人审／算法再处理）。
 
 ## 原因一览
