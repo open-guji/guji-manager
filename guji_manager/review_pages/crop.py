@@ -60,7 +60,7 @@ def crop_cells(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str = "
     return {"ok": ok, "missing": missing}
 
 
-# ---- 难认字页：整列图（本格红框）＋左右邻列图＋同列上下文（1.6 起 char_card 缺省带） ----
+# ---- 难认字页：整列图（本格红框）＋左右邻列图＋同列上下文（1.6 起 char_card 支持；只用于难认字页，低把握页不带） ----
 
 def _col_boxes(shrink_json) -> dict[int, list[tuple[str, list]]]:
     """页内 {列号: [(格号, bbox_page), …]}（按格序）。"""

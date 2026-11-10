@@ -32,3 +32,11 @@ def test_skip(tmp_path):
     rows = [_row("001:1:1:1", "木", "木", 0.95, 3), _row("001:2:1:2", "甲", "甲", 0.95, 3)]
     hi, lo, st = cs.classify(rows, str(tmp_path / "{vol}"), "/c/{cell}.png", {"001:2:1:2"}, "木")
     assert not hi and not lo and st["skip_cell"] == 1 and st["skip_char"] == 1
+
+
+def test_cold_start_items_have_no_column_fields():
+    """低把握页照原样（Sheldon 11-10）：cold-items 出的 items 不带整列图／邻列图／上下文。"""
+    import inspect
+    from guji_manager.review_pages import cold_start
+    src = inspect.getsource(cold_start)
+    assert "col_img" not in src and "nb_imgs" not in src and "column_images" not in src
