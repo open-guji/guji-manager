@@ -5,10 +5,11 @@
 
 ## [未发版]
 
-## [0.4.41] - 2026-11-10
-
 - review-pages 字体顺序调整（PATCH，人审页线 11-10，Sheldon 要求）：char_card 1.6.2／char_grid 1.3.1：内嵌的全字库子集（Jigmo、I.Ming，非大陆标准字形）排到系统原字体（Noto Serif SC／Songti SC／SimSun）之后，只给系统字体没有的冷僻字兜底。L0。
 - review-pages 窄屏版式（PATCH，人审页线 11-10，总览要求）：char_card 1.6.3：屏宽 ≤700px 时难认字／形近字卡的候选按钮、前后文、操作按钮排在上面，整列图缩小放到最下面、点一下放大；宽屏不变。L0。
+
+## [0.4.41] - 2026-11-10
+
 - `cellvotes` 三处陷阱（PATCH，A31 11-10，ai-team 审视 §四-1~3）：`draft --from-kv` 按格号读到 0 票自动改读条目票，仍为 0 则报错退出；`--pack` 出单版包缺页时核格位退回主产物；`write` 缺 `--batch`/`--reviewer` 报缺哪项并以退出码 2 退出。L0。
 - `swap run` 加 `--ack-unlanded-votes <原因>`，透传 auto_cycle（cv 同步加参数）→ proof_cycle apply（PATCH，审视陷阱 4，ZM 转）。L0。
 
