@@ -5,6 +5,12 @@
 
 ## [未发版]
 
+## [0.4.36] - 2026-11-10
+
+- `guji pending --kv`：改条目、导出、`db sync` 后把整张单直接写网站 KV（`/api/pending`，读者约 15 秒内可见；撤下一格、加一格不再等 proofing-sync 发 COS 和清 CDN）；单里图不在 COS、没令牌或写失败时自动退回 `--sync`。需网站 kaiyuanguji-web `/api/pending` 上线（PATCH，A31 11-10，sheldon 定）。L0。
+
+- `cellvotes draft`：网站新人裁直接覆盖旧人裁（不再挂起要求回网站复审；没给字的票不盖旧裁的字）；「无字」票缺省就写（`--no-none` 才挂起）（PATCH，ZM-殿本二册 11-10，sheldon 定）。
+
 ## [0.4.35] - 2026-11-10
 
 - 发版（PATCH，A31 11-10）：从 dev 切，含待审条目化 #454、#455、#456（sheldon 11-10 定）与 A34 的 resolve 认「不是字」、A23 的撤库重审事件。配 cv ≥ v0.6.37。
