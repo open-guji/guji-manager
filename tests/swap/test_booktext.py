@@ -142,3 +142,17 @@ def test_require_human_stops_1x_when_events_missing(tmp_path, monkeypatch):
     assert r0["ok"] and r0["notes"]
     r1 = bt.remap_in_repo(repo, vdir, "001", out_dir=tmp_path / "o", require_human=True)
     assert not r1["ok"] and any("1.x" in x for x in r1["problems"])
+
+
+def test_guard_other_fields_count_and_shortened():
+    old_c = _char({1: "梁國治在"})
+    e0 = {"entities": [{"id": "e1", "type": "people", "text": "梁國治", "anchor": {"start": "1:1:1", "end": "1:1:3"},
+                        "group": "g1", "decomposition": [{"text": "梁"}], "target": {"entity_id": "x", "status": "matched"}}]}
+    short = {"entities": [{**e0["entities"][0], "text": "國治"}]}
+    assert any("切短" in p for p in bt.guard(None, None, e0, short, old_c, []))
+    rows = [dict(old="1:1:1", new="", kind="删")]
+    assert bt.guard(None, None, e0, short, old_c, rows) == []          # 少的那格是被删的：放行
+    nodec = {"entities": [{k: v for k, v in e0["entities"][0].items() if k != "decomposition"}]}
+    assert any("字段" in p for p in bt.guard(None, None, e0, nodec))
+    dup = {"entities": e0["entities"] * 2}
+    assert any("条数" in p for p in bt.guard(None, None, e0, dup))

@@ -229,18 +229,54 @@ def _load(p: Path) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | None, new_entity: dict | None) -> list[str]:
-    """平移不该改的东西改了就返回问题列表（空＝通过）。"""
+#: 平移不该动的专名字段（A33 11-10：remap_data 平移时不改，守卫补上防别的路径误改）
+_ENTITY_KEEP = ("type", "group", "decomposition", "targets", "level", "coarse", "note")
+
+
+def _entity_key(x: dict) -> str:
+    t = x.get("target") or {}
+    return json.dumps([[k, x.get(k)] for k in _ENTITY_KEEP] + [t.get("entity_id"), t.get("status"), t.get("targets")],
+                      ensure_ascii=False, sort_keys=True)
+
+
+def _shortened(A: dict, B: dict, old_char: dict | None, rows: list[dict] | None) -> list[str]:
+    """专名被切短：新 text 比旧短，且短的量超过旧锚区间里被删的格数（被删格以外不该少字）。"""
+    pos = {a: i for i, (a, _) in enumerate(_chars(old_char))} if old_char else {}
+    gone = sorted(pos[r["old"]] for r in rows or [] if r.get("kind") == "删" and r.get("old") in pos)
+    out = []
+    for i, a in A.items():
+        b = B.get(i)
+        if b is None:
+            continue
+        d = len(a.get("text") or "") - len(b.get("text") or "")
+        if d <= 0:
+            continue
+        an = a.get("anchor") or {}
+        s, e = pos.get(an.get("start")), pos.get(an.get("end"))
+        n_del = sum(1 for g in gone if s is not None and e is not None and s <= g <= e)
+        if d > n_del:
+            out.append(f"{i}（{a.get('text')}→{b.get('text')}）")
+    return out
+
+
+def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | None, new_entity: dict | None,
+          old_char: dict | None = None, rows: list[dict] | None = None) -> list[str]:
+    """平移不该改的东西改了就返回问题列表（空＝通过）。给了 old_char 与对照表 rows 才查「专名被切短」时扣掉被删格。"""
     bad = []
     if old_entity is not None and new_entity is not None:
-        A = {x["id"]: x for x in old_entity.get("entities", [])}
-        B = {x["id"]: x for x in new_entity.get("entities", [])}
+        LA, LB = old_entity.get("entities", []), new_entity.get("entities", [])
+        A = {x["id"]: x for x in LA}
+        B = {x["id"]: x for x in LB}
         if set(A) != set(B):
             bad.append(f"专名条目 id 变了：少 {len(set(A) - set(B))}、多 {len(set(B) - set(A))}")
-        k = lambda x: (x.get("type"), (x.get("target") or {}).get("entity_id"), (x.get("target") or {}).get("status"), x.get("group"))
-        ch = [i for i in A if i in B and k(A[i]) != k(B[i])]
+        if len(LA) != len(LB):
+            bad.append(f"专名条数变了：{len(LA)}→{len(LB)}")
+        ch = [i for i in A if i in B and _entity_key(A[i]) != _entity_key(B[i])]
         if ch:
-            bad.append(f"专名挂法变了 {len(ch)} 条：{', '.join(ch[:8])}")
+            bad.append(f"专名挂法或字段变了 {len(ch)} 条：{', '.join(ch[:8])}")
+        short = _shortened(A, B, old_char, rows)
+        if short:
+            bad.append(f"专名被切短 {len(short)} 条：{'；'.join(short[:8])}")
     if old_punct is not None and new_punct is not None:
         k = lambda x: (x.get("mark"), x.get("kind"), x.get("source"), x.get("pos"))
         if collections.Counter(map(k, old_punct.get("punctuations", []))) != collections.Counter(map(k, new_punct.get("punctuations", []))):
@@ -293,7 +329,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     pf, ef = vdir / f"{chapter}.punct.json", vdir / f"{chapter}.entity.json"
     punct, entity = _load(pf), _load(ef)
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
-    problems = guard(punct, res["punct"], entity, res["entity"])
+    problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
         problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
     if ledger_probs:
