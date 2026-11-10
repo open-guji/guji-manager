@@ -12,7 +12,8 @@
                                                                   # 机器一轮：按新单逐格比，只动有变化的条目
     guji pending export vol04 -w <工作区> [--out <文件>]          # 条目 → 整张 pending.json（缺省写回中心库的那份）
 
-改条目、导出之后跑 `guji db sync -w <工作区>`；加 `--sync` 顺带同步并触发网站 proofing-sync（只发这一章）。
+改条目、导出之后跑 `guji db sync -w <工作区>`；加 `--sync` 顺带同步并触发网站 proofing-sync（只发这一章）；
+加 `--kv` 同步后直接把整张单写进网站 KV（/api/pending，需 CELLREVIEW_TOKEN；单里的图都已在 COS 才走这条，否则退回 --sync）。
 人改条目缺省同时导出整张单（网站照旧按整张单读），`--no-export` 不导。
 条目文件在数据目录 `feedback/lists/pending/<书>/<章>.items.jsonl`（只追加），随 `guji db sync` 进中心库。
 """
@@ -24,6 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 from .review import pending_items as P
@@ -55,6 +57,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--out", default=None, help="export：写到这里（缺省写回数据目录的整张单）")
     p.add_argument("--no-export", action="store_true", help="人改条目后不重导整张单")
     p.add_argument("--sync", action="store_true", help="改完 guji db sync 并触发网站发布这一章")
+    p.add_argument("--kv", action="store_true",
+                   help="改完 guji db sync，再把整张单直接写进网站 KV（/api/pending，15 秒内读者可见，不跑 workflow、不等 CDN）；"
+                        "单里有图还不在 COS 上，或没令牌／写失败，就退回 --sync 的做法")
+    p.add_argument("--token-env", default="CELLREVIEW_TOKEN", help="--kv：网站管理令牌所在环境变量（缺省 CELLREVIEW_TOKEN）")
     p.add_argument("--dry-run", action="store_true", help="只看结果，不写")
 
 
@@ -87,7 +93,67 @@ def _brief(r: dict) -> str:
     return f"{r['id']}\t{r['cell']}\t{r['state']}\tv{r['ver']}\t{why}{extra}"
 
 
-def _publish(a, ws: Path | None, chapter: str) -> None:
+SITE = "https://www.openguji.com"
+DATA = "https://data.openguji.com"
+_UA = {"User-Agent": "open-guji-cv/pending"}   # 站点拒收 urllib 缺省 UA
+
+
+def missing_sprites(doc: dict, text_id: str, chapter: str, data: str = DATA, opener=urllib.request.urlopen) -> list[str]:
+    """单头 sprites[] 里还不在 COS（读者取不到）的图名。数据域名对没进缓存的图 HEAD 回 403，所以用 GET 首字节。"""
+    out = []
+    for e in doc.get("sprites") or []:
+        name = e.get("name") if isinstance(e, dict) else None
+        if not name:
+            continue
+        req = urllib.request.Request(f"{data}/proof/{text_id}/{chapter}/{name}", headers={**_UA, "Range": "bytes=0-0"})
+        try:
+            with opener(req, timeout=30) as r:
+                r.read(1)
+        except Exception:
+            out.append(name)
+    return out
+
+
+def kv_put(doc: dict, text_id: str, chapter: str, token: str, site: str = SITE, opener=urllib.request.urlopen) -> dict:
+    """POST /api/pending op=put；失败抛异常。"""
+    body = json.dumps({"op": "put", "book": text_id, "vol": chapter, "doc": doc}, ensure_ascii=False).encode()
+    req = urllib.request.Request(f"{site}/api/pending", data=body, method="POST",
+                                 headers={**_UA, "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    with opener(req, timeout=60) as r:
+        d = json.load(r)
+    if not d.get("success"):
+        raise RuntimeError(d.get("error") or str(d))
+    return d
+
+
+def _publish_kv(a, ws: Path | None, chapter: str, data: Path) -> bool:
+    """--kv：整张单直接写网站 KV。返回是否已写成；没写成由调用方退回 proofing-sync。"""
+    tok = os.environ.get(a.token_env)
+    if not tok:
+        print(f"⚠ 没有环境变量 {a.token_env}（网站管理令牌），退回 proofing-sync 发布")
+        return False
+    text_id = a.text_id_resolved
+    sheet = P.sheet_path(data, text_id, chapter)
+    if not sheet.exists():
+        print(f"⚠ 没有整张单 {sheet}，退回 proofing-sync 发布")
+        return False
+    doc = json.loads(sheet.read_text(encoding="utf-8"))
+    miss = missing_sprites(doc, text_id, chapter)
+    if miss:
+        print(f"ⓘ 单里 {len(miss)} 张图还不在 COS（{miss[0]} 等），先走 proofing-sync 把图传上去")
+        return False
+    try:
+        r = kv_put(doc, text_id, chapter, tok)
+    except Exception as e:
+        print(f"⚠ 写网站 KV 失败（{e}），退回 proofing-sync 发布")
+        return False
+    print(f"✓ 已写网站 KV：{text_id}/{chapter} rev {r.get('rev')}，{r.get('cells')} 格（约 15 秒内读者可见）")
+    return True
+
+
+def _publish(a, ws: Path | None, chapter: str, data: Path | None = None) -> None:
+    if getattr(a, "kv", False):
+        a.sync = True   # --kv 先 db sync（中心库是真源），KV 写成了就不再触发网站 workflow
     if not a.sync:
         print(f"还要：guji db sync -w {ws or '<工作区>'}（加 --sync 会顺带触发网站发布这一章）")
         return
@@ -98,6 +164,8 @@ def _publish(a, ws: Path | None, chapter: str) -> None:
                        env={**os.environ, "GUJI_WORKSPACE": str(ws)})
     if p.returncode:
         print("✗ guji db sync 失败，没触发网站发布")
+        return
+    if getattr(a, "kv", False) and data is not None and _publish_kv(a, ws, chapter, data):
         return
     if not shutil.which("gh"):
         print("⚠ 没有 gh：网站等每日定时发布，或手动跑 proofing-sync.yml")
@@ -180,11 +248,11 @@ def cmd_pending(a) -> int:
             else:
                 dst = export(store, data, a.out)
             print(f"整张单 → {dst}")
-        _publish(a, ws, chapter)
+        _publish(a, ws, chapter, data)
         return 0
     if act == "export":
         print(f"整张单 → {export(store, data, a.out)}")
-        _publish(a, ws, chapter)
+        _publish(a, ws, chapter, data)
         return 0
     # 人工操作
     try:
@@ -219,7 +287,7 @@ def cmd_pending(a) -> int:
     store.save()
     if not a.no_export:
         print(f"整张单 → {export(store, data)}")
-    _publish(a, ws, chapter)
+    _publish(a, ws, chapter, data)
     return 0
 
 
