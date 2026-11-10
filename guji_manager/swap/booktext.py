@@ -129,7 +129,7 @@ def table_counts(rows: list[dict]) -> dict[str, int]:
 # ───────────────────────── 字的取舍 ─────────────────────────
 
 def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[str] | frozenset[str] = frozenset(),
-                protected: dict[str, str] | None = None) -> dict:
+                protected: dict[str, str] | None = None, same=None) -> dict:
     """按对照表逐块图判字，**就地改 new_char**。pending：新单上待审的格（新格号）。
     protected：{新格号: 字}，有效人裁与 char-edits 手改经对照表换到新格后的字（人裁最高，`resolve` 的 human）。
 
@@ -148,7 +148,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
             continue
         cur, new = cur_seq[i], new_seq[i]
         d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
-                    new_lacuna=bool(x.get("lacuna")))
+                    new_lacuna=bool(x.get("lacuna")), same=same)
         if d.result != new and d.result is not None:
             x["c"] = d.result
             if d.result != BLANK:
@@ -171,13 +171,14 @@ def load_human(book: str) -> dict[str, str] | None:
     return {k.split(":", 1)[1] if k.startswith(f"{book}:") else k: c for k, c in h.items() if c}
 
 
-def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None) -> tuple[dict[str, str], list[tuple]]:
+def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None, same=None) -> tuple[dict[str, str], list[tuple]]:
     """旧版里受保护的格 {旧格号: 字}：有效人裁（旧 book-text 该格正是人裁字，才算绑得上）与 char-edits 手改（取改后字）。
     返回 (受保护, 原先就对不上的 [(格, 来源, 人裁或手改字, 旧文本字)])；后者多是异体／归一（删/刪），只报不停。"""
     och = {a: x.get("c") for a, x in _chars(old_char)}
+    eq = same or (lambda p, q: p == q)
     prot, pre = {}, []
     for a, c in (human or {}).items():
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "人裁", c, och.get(a)))
@@ -185,7 +186,7 @@ def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[di
         a, c = e.get("anchor"), e.get("new")
         if not a or not c:
             continue
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "手改", c, och.get(a)))
@@ -206,9 +207,10 @@ def human_ledger(rows: list[dict], prot_old: dict[str, str], new_char: dict) -> 
     return out, probs
 
 
-def ledger_check(new_char: dict, prot_new: dict[str, str]) -> list[str]:
+def ledger_check(new_char: dict, prot_new: dict[str, str], same=None) -> list[str]:
+    eq = same or (lambda p, q: p == q)
     cur = {a: x.get("c") for a, x in _chars(new_char)}
-    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if cur.get(a) != c]
+    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if not eq(cur.get(a), c)]
 
 
 # ───────────────────────── book-text 里落地 ─────────────────────────
@@ -313,10 +315,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
-    prot_old, human_pre = protected_cells(old["char"], human, edits)
+    from ..charnorm import load_norm
+    same = load_norm(book or f"vol{int(chapter):02d}").same     # 同字判定（别／別 不算冲突）
+    prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
-    chars = merge_chars(old["char"], new_char, rows, pending, prot_new) if merge else {}
-    ledger_probs += ledger_check(new_char, prot_new)
+    chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
+    ledger_probs += ledger_check(new_char, prot_new, same)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
