@@ -197,3 +197,14 @@ def test_copy_cord_plain_and_via_cv(tmp_path):
         "import sys\ndef copy_cord_for_site(s, d):\n    sys.exit('页表对不上')\n", encoding="utf-8")
     why = bt._copy_cord(src, tmp_path / "b.json", cv)
     assert why and "页表对不上" in why and not (tmp_path / "b.json").exists()
+
+
+def test_drop_stored_table_keeps_earlier_tables(tmp_path):
+    rev = tmp_path / "lineage" / "revisions"
+    rev.mkdir(parents=True)
+    old, new = rev / "vol01-aaa.tsv", rev / "vol01-bbb.tsv"
+    old.write_text("x"), new.write_text("y")
+    bt.drop_stored_table(new)
+    assert old.exists() and not new.exists()
+    bt.drop_stored_table(old)                 # 最后一张删完：空目录一并收掉
+    assert not (tmp_path / "lineage").exists()
