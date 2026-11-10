@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- PATCH（A31 11-10，用户定删 book-text 各书 CHANGES.md）`opinions revise／auto prepare／revert` 把 bump_original 打印的「版本记录」行写进提交信息，`auto finish_pr` 不再补 #TBD；`opinions versions` 改从本地 book-text 的 git log 读版本记录并和已存的 text_versions 合并（旧 CHANGES.md 还在时照读）；`tools/开书/出v01.py` 改打印版本记录行。需 book-text 同名 PR 一起上线，必须先于它发版。
+
 ## [0.4.32] - 2026-11-10
 
 - 发版（PATCH，A34 11-10，ZM 请）：从 dev 切，含 #436。
