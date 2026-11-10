@@ -316,7 +316,8 @@ def cmd_db(args) -> None:
     if args.action == "pull":
         from ._cv import workcopy_pull as pull, pull_exclude
         res = pull(src, ws_dir, cache=BlobCache(), bucket=args.bucket, force=args.force,
-                   glyph=None if args.no_rebuild else glyph_hooks(ws_dir), exclude=pull_exclude(args.exclude or ()))
+                   glyph=None if args.no_rebuild else glyph_hooks(ws_dir), exclude=pull_exclude(args.exclude or ()),
+                   repair_gaps=args.repair_gaps)
         res["worker_requests"] = src.requests
         if not args.no_rebuild:
             _ensure_glyph_pins(ws_dir, res)
@@ -377,6 +378,9 @@ def add_parser(sub) -> None:
                    help="读写哪个分支（缺省 GUJI_DATA_BRANCH 或 main）；exp/* 时数据目录、glyph.db、products 换到该分支自己的")
     p.add_argument("--against", default="main", help="diff：和哪个分支比（缺省 main）")
     p.add_argument("--show", type=int, default=20, help="diff：每类最多列几个路径")
+    p.add_argument("--repair-gaps", action="store_true",
+                   help="pull：库里某逐行文件缺了几行（旧 push 把同主键重复行覆盖丢了）、还原后 sha 对不上时，按库里现有的行还原并列在 "
+                        "repaired；之后 db push 会把修好的文件推回去（史記 anchors/04.jsonl，2026-11-10）")
     p.add_argument("--no-rebuild", action="store_true", help="pull：不重建 glyph.db")
     p.add_argument("--force", action="store_true", help="pull：丢掉本地没推的改动")
     p.add_argument("--exclude", action="append", default=None, metavar="前缀",
