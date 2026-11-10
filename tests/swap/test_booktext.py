@@ -156,3 +156,18 @@ def test_guard_other_fields_count_and_shortened():
     assert any("字段" in p for p in bt.guard(None, None, e0, nodec))
     dup = {"entities": e0["entities"] * 2}
     assert any("条数" in p for p in bt.guard(None, None, e0, dup))
+
+def test_rekey_gate_orphan_and_ok(tmp_path):
+    import sqlite3
+    from guji_manager.swap.booktext import rekey_gate
+    db = tmp_path / "g.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE instances(instance_id TEXT, source_id TEXT, label TEXT)")
+    c.executemany("INSERT INTO instances VALUES(?,?,?)", [("v2:vol04:1:1:1", "s", "甲"), ("v2:vol04:1:1:2", "s", "乙"), ("v2:vol05:1:1:1", "s", "丙")])
+    c.commit(); c.close()
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格", oc="", nc="", iou=1, note=""),
+            dict(old="1:1:2", new="", kind="删", oc="", nc="", iou=0, note="")]
+    g = rekey_gate(db, rows, 4)
+    assert not g["ok"] and g["orphan"] == ["v2:vol04:1:1:2"] and g["n_inst"] == 2
+    rows[1] = dict(old="1:1:2", new="1:1:2", kind="同格", oc="", nc="", iou=1, note="")
+    assert rekey_gate(db, rows, 4)["ok"]
