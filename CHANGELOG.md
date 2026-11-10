@@ -5,6 +5,10 @@
 
 ## [未发版]
 
+## [0.4.38] - 测试中
+
+- `guji swap book-text` 守卫补齐（PATCH，ZM 11-10；#478、#479）：①人裁账平——有效人裁与 `char-edits` 手改经对照表换到新格、按人裁最高判字，旧格被删或新包与人裁冲突就停（原先就不同的多为异体／归一，只报），1.x 册取不到人裁事件也停；②专名守卫加 `decomposition`／`targets`／`level`／`coarse`／`note`、条数、「被切短」（少的字数超过锚区间里被删格数就拒写，A33 建议）。人裁改走 `_cv` 门面。L0。
+
 ## [0.4.37] - 2026-11-10
 
 - `guji swap book-text`（PATCH，ZM 11-10，sheldon 同意；#472）：格号变动（增删格、改号）落 book-text 只走一条路——新旧 cord 框 IoU 出旧格→新格对照表，判字、挪标点专名、守卫都认它；swap run 不再报 need-A33。配套 cv republish（cv#1381）。L0。
