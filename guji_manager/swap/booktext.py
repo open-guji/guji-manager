@@ -565,6 +565,11 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         auto_remap.fix_heading_breaks(str(vdir), ch)
     except Exception as e:  # noqa: BLE001
         print(f"  标题符修正跳过：{e}", file=sys.stderr)
+    try:
+        from .finish import store_table
+        store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
+    except OSError as e:  # noqa: BLE001
+        print(f"  对照表入库跳过：{e}", file=sys.stderr)
     lc = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
     if lc.returncode:
         keep = out_dir / f"local_check_{book}.txt"
@@ -676,3 +681,31 @@ def cmd_book_text(a, books: list[str]) -> int:
         print(f"中心库同步：{'好' if ok else '失败，手动 guji db sync -w ' + str(ws)}；网站随 swap run 的发布或每日 proofing-sync 上线", file=sys.stderr)
     print(json.dumps(res, ensure_ascii=False, indent=1))
     return 0 if all(v["status"] in ("pushed", "committed", "pr-needed", "pr-opened") for v in res.values()) else 2
+
+
+def cmd_finish_merged(a, books: list[str]) -> int:
+    """R8：合并后收尾。对照表取 book-text 版本目录 ``lineage/revisions/<册>-*.tsv`` 里最新的一张（含 ``--table`` 指定）。"""
+    from . import finish as F
+    ws, src = Path(a.workspace).resolve(), Path(a.book_text).resolve()
+    vdir = _bt_dir(src, a.text_id) / "default"
+    res = {}
+    for b in books:
+        tabs = sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)
+        tp = Path(a.table) if getattr(a, "table", None) else (tabs[-1] if tabs else None)
+        if not tp or not tp.exists():
+            res[b] = {"status": "blocked", "why": f"book-text 里没有 {F.REV_DIR}/{b}-*.tsv（先 guji swap book-text 落文本并合并）"}
+            continue
+        raw = F.read_table(tp)
+        rows = [dict(old=(r["旧格"].split(":", 1)[1] if r["旧格"] else ""), new=(r["新格"].split(":", 1)[1] if r["新格"] else ""),
+                     kind=r["类别"], oc=r["旧字"], nc=r["新字"]) for r in raw]
+        res[b] = {"status": "done", **F.finish(ws, b, rows, load_human(b), run=tp.stem.split("-", 1)[1], commit=getattr(a, "commit", "") or ""),
+                  "table": str(tp)}
+        allt = [F.read_table(p) for p in sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)]
+        red = F.redirect_map(allt)
+        rp = ws / "reports" / "_swap" / "finish" / b / "redirects.tsv"
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("旧格\t现行格\n" + "".join(f"{o}\t{n or ''}\n" for o, n in sorted(red.items())), encoding="utf-8")
+        res[b]["redirects"] = {"file": str(rp), "n": len(red)}
+        print(f"{b}\tdone\t无锚人裁 {res[b].get('recheck', {}).get('n', '-')}\tredirect {len(red)}", file=sys.stderr)
+    print(json.dumps(res, ensure_ascii=False, indent=1, default=str))
+    return 0 if all(v["status"] == "done" for v in res.values()) else 2
