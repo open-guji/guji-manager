@@ -5,7 +5,7 @@
 
 ## [未发版]
 
-## [0.4.36] - 测试中
+## [0.4.36] - 2026-11-10
 
 - `guji pending --kv`：改条目、导出、`db sync` 后把整张单直接写网站 KV（`/api/pending`，读者约 15 秒内可见；撤下一格、加一格不再等 proofing-sync 发 COS 和清 CDN）；单里图不在 COS、没令牌或写失败时自动退回 `--sync`。需网站 kaiyuanguji-web `/api/pending` 上线（PATCH，A31 11-10，sheldon 定）。L0。
 
