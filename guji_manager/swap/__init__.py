@@ -9,7 +9,8 @@
 * 每批 ``--batch-size`` 册：auto_cycle（``--no-publish``）→ ``sync_workspace(no_glyph)`` → 对这批 ``proofing-sync only=`` 发布并等跑完
   → 逐册取线上 ``NNN.pending.json`` 核版本 → 核过的清掉本地产物包。全站一把发会撞 40 分钟超时，所以只发这一批。
 * 状态写 ``<工作区>/reports/_swap/state.json``，崩了/容器重启后同样的命令接着做（已核对的册跳过）。
-* 被标点锚点拦的册（need-A33）、出单失败的册（blocked）只记入状态并在最后列出，交接给 A33／A31；不在这里自动重试。
+* 格号变动（增删格、改号）由 cv republish 交 ``swap.booktext`` 按格级对照表自动落 book-text；守卫拦下的册（guard-stop）、
+  出单失败的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 A33，修好后 ``guji swap book-text --sheet``。不在这里自动重试。
 """
 
 from __future__ import annotations

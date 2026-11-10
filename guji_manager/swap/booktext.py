@@ -621,7 +621,7 @@ def pending_cells_of(ws: Path, text_id: str, ch: str) -> set[str]:
 
 
 def push_sheet(ws: Path, book: str, cv: Path) -> str:
-    """need-A33 时 auto_cycle 停在推库之前：新单已出（reports/<册>/_publish/<rev>）但没换上线。book-text 落好后补推这张单
+    """book-text 这步没过（guard-stop，旧称 need-A33）时 auto_cycle 停在推库之前：新单已出（reports/<册>/_publish/<rev>）但没换上线。book-text 落好后补推这张单
     （cv `republish.py push --yes --no-pack`，不带 --book-text：文本已由本命令落好）。只写本机数据目录，最后统一 db sync。"""
     ch = f"{int(book[3:]):03d}"
     pubs = sorted((ws / "reports" / book / "_publish").glob(f"{ch}-r*"), key=lambda p: int(p.name.rsplit("-r", 1)[1]))
