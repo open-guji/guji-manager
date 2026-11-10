@@ -28,15 +28,14 @@
 figure 同格几票只是说明不同，算同一意见：取最新一票的说明（同格同来源本就只留最新）。和已有人裁比也只比「是不是图」，
 说明改了不算推翻。
 
-挂起（不写，交人看）的情形：同格意见不一致；要推翻已有人裁；格位对不上（现行 cv 重切过这一列，旧格号已不是那个字）；
+挂起（不写，交人看）的情形：同格意见不一致；格位对不上（现行 cv 重切过这一列，旧格号已不是那个字）；
 无字（缺省）。和已有人裁一致的直接跳过，不重写。
 
-**在网站上推翻旧人裁（M10 复盘第 5 项，10-23）**：复审单（`republish.py prep --recheck`）上的格带 `prior`
-（{c, id}），网站卡片写明「已有判断：判为 X。这次提交的选择会替代它」。票投在这样的格上、且 `prior.id` 就是该格
-现在最新的那条人裁，就是投票人看过旧裁、有意推翻：照写，payload 记 `overrides: <旧人裁 id>`（最新的人裁按时间生效）。
-出单之后该格又来了新人裁（`prior.id` 不是最新那条）照旧挂起。`triage(sheet_prior=…)` 传 {格位: prior.id}。
+**新人裁直接覆盖旧人裁（sheldon 11-10 定，取代 10-23 的「复审单带 prior 才算有意推翻」）**：票和已有人裁不同，
+不再挂起、不必回网站再选一次，照写，payload 记 `overrides: <被推翻的人裁 id>`（最新的人裁按时间生效）。
+与全流程与覆盖优先级文档一致：新明确推翻 > 旧人裁。`sheet_prior` 参数保留以兼容旧调用，不再影响结果。
 
-挂起里能回网站让人再看的几类（`Draft.kind`：overturn 推翻旧裁、disagree 意见不一致、guess 说无字又给字、moved 格位变了）
+挂起里能回网站让人再看的几类（`Draft.kind`：disagree 意见不一致、guess 说无字又给字、moved 格位变了）
 由 `recheck_rows` 写成复审清单（`cellvotes draft` 的 `recheck.tsv`），直接交 `republish.py prep --recheck`。
 
 **为什么要对格位**：票上的格号是出单那一版产物的格号。云端／别的机器上能拿到的是**现行**产物，现行 cv 可能把那一列
@@ -261,11 +260,8 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
             if same_verdict(h.payload, p):
                 out.skipped.append((a, f"与已有人裁 {h.id} 一致"))
                 continue
-            if sheet_prior.get(a) != h.id:
-                out.drafts.append(Draft(key, a, p, real, held=f"要推翻已有人裁 {h.id}（{h.payload.get('v')} "
-                                                              f"{h.payload.get('shape') or ''}）", kind="overturn", prior=h))
-                continue
-            p = {**p, "overrides": h.id}         # 单上写明了旧裁、投票人有意推翻
+            # 新人裁直接覆盖旧人裁（sheldon 11-10 定）：不论单上 prior 是否最新，照写，payload 记被推翻的人裁 id
+            p = {**p, "overrides": h.id}
         d = Draft(key, a, p, real)
         if p["v"] == "not_a_char" and not include_none:
             d.held, d.kind = "无字：排除名单只增不删、不带锚，缺省不落（要落加 --include-none）", "none"

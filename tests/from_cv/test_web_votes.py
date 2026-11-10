@@ -69,19 +69,19 @@ def test_triage_routes():
         vote("2:1:3", "unsure"),                                         # 只有看不出：跳过
         vote("2:1:4", "char", "甲"), vote("2:1:4", "char", "乙", voter="v2"),   # 意见不一致：挂起
         vote("2:1:5", "char", "丙"),                                     # 与已有人裁一致：跳过
-        vote("2:1:6", "char", "丁"),                                     # 推翻已有人裁：挂起
+        vote("2:1:6", "char", "丁"),                                     # 新人裁覆盖旧人裁：可写（记 overrides）
         vote("2:1:7", "char", "戊"),                                     # 只有看图结论（不算人裁）：可写
     ], BOOK, REV)
     human = latest_human([human_ev("vol04:2:1:5", shape="丙"), human_ev("vol04:2:1:6", shape="己"),
                           human_ev("vol04:2:1:7", v="wrong", kind="vision_check", source="vision")])
     t = triage(votes, "vol04", human)
-    assert [d.a for d in t.ready] == ["2:1:1", "2:1:7"]
+    assert [d.a for d in t.ready] == ["2:1:1", "2:1:6", "2:1:7"]
+    assert t.ready[1].payload["overrides"] == human["vol04:2:1:6"].id
     held = {d.a: d.held for d in t.held}
-    assert set(held) == {"2:1:2", "2:1:4", "2:1:6"}
-    assert held["2:1:2"].startswith("无字") and held["2:1:4"].startswith("意见不一致") \
-        and held["2:1:6"].startswith("要推翻已有人裁")
+    assert set(held) == {"2:1:2", "2:1:4"}
+    assert held["2:1:2"].startswith("无字") and held["2:1:4"].startswith("意见不一致")
     assert {a for a, _ in t.skipped} == {"2:1:3", "2:1:5"}
-    assert [d.a for d in triage(votes, "vol04", human, include_none=True).ready] == ["2:1:1", "2:1:2", "2:1:7"]
+    assert [d.a for d in triage(votes, "vol04", human, include_none=True).ready] == ["2:1:1", "2:1:2", "2:1:6", "2:1:7"]
     row = t.ready[0].row("网站精校意见（004-r3）")
     assert row["id"] == "vol04:2:1:1" and row["v"] == "confirm" and row["shape"] == "象"
     assert "v1" in row["source"]
@@ -136,8 +136,8 @@ def test_triage_holds_resegmented_cells():
 
 
 def test_overturn_on_recheck_sheet_and_recheck_rows():
-    """复审单上写明了旧裁（prior.id）的格，投了不同的字＝有意推翻：照写并记 overrides；
-    旧裁不是单上那条（出单后又来了新裁）照旧挂起；挂起里能回网站的写成复审清单。"""
+    """新人裁直接覆盖旧人裁（11-10）：投了不同的字一律照写并记 overrides，不看单上 prior；
+    意见不一致、说无字又给字仍挂起，能回网站的写成复审清单。"""
     from guji_manager.feedback.web_votes import recheck_rows
     old = human_ev("vol04:2:1:6", shape="己")
     newer = human_ev("vol04:2:1:8", shape="庚", ts="2026-10-03T00:00:00Z")
@@ -151,11 +151,13 @@ def test_overturn_on_recheck_sheet_and_recheck_rows():
     human = latest_human([old, newer])
     t = triage(votes, "vol04", human, sheet_prior={"2:1:6": old.id, "2:1:8": "older-event"})
     ready = {d.a: d.payload for d in t.ready}
-    assert ready == {"2:1:6": {"v": "confirm", "shape": "丁", "overrides": old.id}}
+    assert ready == {"2:1:6": {"v": "confirm", "shape": "丁", "overrides": old.id},
+                     "2:1:8": {"v": "confirm", "shape": "辛", "overrides": newer.id}}
     kinds = {d.a: d.kind for d in t.held}
-    assert kinds == {"2:1:8": "overturn", "2:1:4": "disagree", "3:1:2": "guess", "2:1:2": "none"}
+    assert kinds == {"2:1:4": "disagree", "3:1:2": "guess", "2:1:2": "none"}
     rows = {r[0]: r for r in recheck_rows(t)}
-    assert set(rows) == {"2:1:8", "2:1:4", "3:1:2"}
-    assert rows["2:1:8"][2:4] == (newer.id, "庚") and "「辛」" in rows["2:1:8"][1]
+    assert set(rows) == {"2:1:4", "3:1:2"}
+    t2 = triage(votes, "vol04", human)                                   # 不给 sheet_prior 也照写
+    assert {d.a for d in t2.ready} == {"2:1:6", "2:1:8"}
     assert "「甲」" in rows["2:1:4"][1] and "「乙」" in rows["2:1:4"][1]
     assert "没有字「口」" in rows["3:1:2"][1]

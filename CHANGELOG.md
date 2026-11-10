@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- `cellvotes draft`：新人裁直接覆盖旧人裁（PATCH，A34 11-10，sheldon 第二册线定）：`triage` 不再因「要推翻已有人裁」挂起，票与现行人裁不同一律照写、payload 记 `overrides: <旧人裁 id>`；`sheet_prior` 参数保留但不影响结果。L0。
+
 ## [0.4.35] - 2026-11-10
 
 - 发版（PATCH，A31 11-10）：从 dev 切，含待审条目化 #454、#455、#456（sheldon 11-10 定）与 A34 的 resolve 认「不是字」、A23 的撤库重审事件。配 cv ≥ v0.6.37。
