@@ -5,6 +5,12 @@
 
 ## [未发版]
 
+## [0.4.42] - 2026-11-10
+
+- 字形库推库防缩水（PATCH，A31 11-10，史記事故 GUJI-750：`db push` 连带导出本机旧 glyph.db，中心库字形库 6,465→3,554）：①`guji db push` 缺省不再导出 glyph.db、不推字形库账本，要推显式 `--with-glyph`（或 `GUJI_DB_WITH_GLYPH=1`；`store commit`、`db sync` 不变）；②导出缩水闸 0.5→0.95（任一账本缩水超 5% 且少 ≥3 行即还原并停）；③入库删除闸 `emptied_ledger` 门槛一半→5%，并把 glyph_instances／glyph_sources 也纳入。L0。
+- review-pages 字体顺序调整（PATCH，人审页线 11-10，Sheldon 要求）：char_card 1.6.2／char_grid 1.3.1：内嵌的全字库子集（Jigmo、I.Ming，非大陆标准字形）排到系统原字体（Noto Serif SC／Songti SC／SimSun）之后，只给系统字体没有的冷僻字兜底。L0。
+- review-pages 窄屏版式（PATCH，人审页线 11-10，总览要求）：char_card 1.6.3：屏宽 ≤700px 时难认字／形近字卡的候选按钮、前后文、操作按钮排在上面，整列图缩小放到最下面、点一下放大；宽屏不变。L0。
+
 ## [0.4.41] - 2026-11-10
 
 - `cellvotes` 三处陷阱（PATCH，A31 11-10，ai-team 审视 §四-1~3）：`draft --from-kv` 按格号读到 0 票自动改读条目票，仍为 0 则报错退出；`--pack` 出单版包缺页时核格位退回主产物；`write` 缺 `--batch`/`--reviewer` 报缺哪项并以退出码 2 退出。L0。

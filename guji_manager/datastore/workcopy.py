@@ -123,7 +123,7 @@ def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
 
 
 ALLOW_GLYPH_SHRINK_ENV = "GUJI_ALLOW_GLYPH_SHRINK"      # 设 1：确要缩小字形库（人为清理）时放行
-GLYPH_SHRINK_RATIO = 0.5                                 # 导出后某个账本行数 < 原来的这个比例就拦
+GLYPH_SHRINK_RATIO = 0.95                                # 导出后某个账本行数 < 原来的这个比例（且少 ≥3 行）就拦：缩水超 5% 即停（2026-11-10 史記 6,465→3,554 没被「一半」拦住）
 
 
 def _jsonl_rows(store: Path) -> dict[str, int]:
@@ -141,7 +141,7 @@ def glyph_shrink_problems(before: dict[str, int], after: dict[str, int], ratio: 
     bad = []
     for name, n0 in before.items():
         n1 = after.get(name, 0)
-        if n0 > 0 and (n1 == 0 or n1 < n0 * ratio):
+        if n0 > 0 and (n1 == 0 or (n1 < n0 * ratio and n0 - n1 >= 3)):
             bad.append(f"{name}：{n0} → {n1} 行")
     return bad
 
@@ -151,7 +151,7 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
 
     缩水闸（2026-11-09，用户要求）：本机 glyph.db 是空的或没重建（`db pull --no-rebuild` 之后、或只跑过别的
     pin 的库）时，导出会把数据目录里原有的字形账本写成空，随后 sync／push 就把中心库的字形表清掉
-    （2026-11-04 事故同类）。导出前备份账本，导出后任一账本行数归零或不足原来的一半就还原备份并停下；
+    （2026-11-04 事故同类）。导出前备份账本，导出后任一账本行数归零或缩水超 5% 就还原备份并停下；
     确要缩小的人为清理设环境变量 `GUJI_ALLOW_GLYPH_SHRINK=1`。"""
     if glyph is None or not Path(glyph.db_path).exists():
         return False
