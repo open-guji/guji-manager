@@ -7,6 +7,10 @@
 
 - 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
 
+## [0.4.34] - 2026-11-10
+
+- 发版（PATCH，A34 11-10，A31 请）：从 dev 切，含 #445；`doc/04-反馈迭代/全流程与覆盖优先级.md` 一·二与 5.3 并入 11-10 新规矩（待审且首选字≠现行字时文本不动，等人裁；撤库重审格同样保持现字）。
+
 - 待审格现行有字则文本不动（PATCH，A31 11-10，sheldon 定）：`apply_pending` 加可选 `current`，单上格（review≠human）现行已是字、导出字不同时写回现行字（计 `held_current`），现行是 □ 才写首选字；`swap/resolve` 待审且首选字≠现行字新增 `PENDING_KEEP`（原按机器改字放行）。L1。
 
 ## [0.4.33] - 2026-11-10
