@@ -186,3 +186,14 @@ def test_finish_redirect_and_unanchored(tmp_path):
     assert gone == [("1:1:2", "乙"), ("9:9:9", "丁")]
     rep = F.finish(tmp_path, "vol01", rows, {"1:1:1": "甲"}, run="abc")
     assert rep["recheck"]["n"] == 1 and (tmp_path / "reports/_swap/metrics.jsonl").exists()
+
+def test_copy_cord_plain_and_via_cv(tmp_path):
+    src = tmp_path / "001.cord.json"
+    src.write_text('{"pages": []}', encoding="utf-8")
+    assert bt._copy_cord(src, tmp_path / "a.json", None) is None and (tmp_path / "a.json").read_text(encoding="utf-8") == '{"pages": []}'
+    cv = tmp_path / "cv"
+    (cv / "scripts" / "zhengli").mkdir(parents=True)
+    (cv / "scripts" / "zhengli" / "republish.py").write_text(
+        "import sys\ndef copy_cord_for_site(s, d):\n    sys.exit('页表对不上')\n", encoding="utf-8")
+    why = bt._copy_cord(src, tmp_path / "b.json", cv)
+    assert why and "页表对不上" in why and not (tmp_path / "b.json").exists()

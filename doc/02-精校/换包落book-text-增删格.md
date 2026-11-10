@@ -12,8 +12,8 @@
 ## 什么时候自动走
 
 `guji swap run`（auto_cycle → proof_cycle → `republish issue/push --book-text`）里，导出的 char 与 book-text 现文**格号集合或次序不同**时，
-`bump_book_text` 不再走「待重标清单」、不再报 need-A33，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
-只换字（格号不变）的册仍走原路。
+`bump_book_text` 不再走「待重标清单」，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
+只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时 auto_cycle 报 **guard-stop**（旧称 need-A33），线上单不换：切坏的交切分线重出包，锚点挪不了的交 A33，修好后用下面的命令补落、补推单。
 
 ## 手动补（已导出、没落成的册）
 
@@ -24,7 +24,7 @@ guji swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text �
 - 导出缺省取 `reports/<册>/_cycle/` 下最新的 `export/`（`--export` 指定）。
 - 在独立 worktree 里做（缺省 `<book-text>-swap`，稀疏检出，每册重置到 origin/dev）：swap run 在共享目录里会 `checkout -- .`，不能混用。
 - `--push`：0.x 推 dev；1.x 推 `swap/<册>-1x` 分支，PR 由人或会话开（全流程第七节 C 类通道）。
-- `--sheet`：need-A33 时 auto_cycle 停在推库之前，新单（`reports/<册>/_publish/<rev>`）没换上线；落好文本后补推这张单并 `guji db sync`。网站随下一次发布上线。
+- `--sheet`：guard-stop 时 auto_cycle 停在推库之前，新单（`reports/<册>/_publish/<rev>`）没换上线；落好文本后补推这张单并 `guji db sync`。网站随下一次发布上线。
 
 ## 每册做什么（顺序）
 
