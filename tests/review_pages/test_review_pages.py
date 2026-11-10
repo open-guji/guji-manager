@@ -474,6 +474,8 @@ def test_lib_audit_build_and_events(tmp_path):
     assert [d["status"] for d in decs] == ["relabel", "evict", "near_form"]
     sp = PA.to_specs(decs, "b1", "t")
     assert [s["payload"]["v"] for s in sp] == ["relabel", "evict", "near_form"]
+    ev = sp[1]["payload"]
+    assert ev["review"] is True and ev["char_self"] == "官"     # 审阅页撤库 → cv evict_review 闸：文本撤下、重新人审
     assert sp[0]["payload"]["char"] == "宫" and sp[2]["payload"]["peer_char"] == "宮"
     assert all(s["kind"] == "glyph_audit" and s["payload"]["instance_id"] == s["key"] for s in sp)
 
