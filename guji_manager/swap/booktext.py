@@ -700,13 +700,18 @@ def cmd_finish_merged(a, books: list[str]) -> int:
     for b in books:
         tabs = sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)
         tp = Path(a.table) if getattr(a, "table", None) else (tabs[-1] if tabs else None)
+        if tp is None:      # book-text 校验器还不认 lineage/ 时表没入库：退到本机 reports 里的那张
+            loc = ws / "reports" / "_swap" / "book-text" / b / f"old_new_cells_vol{int(b[3:]):02d}.tsv"
+            tp = loc if loc.exists() else None
+            if tp is not None:
+                tp = tp.with_name(f"{b}-local.tsv") if tp.with_name(f"{b}-local.tsv").exists() else tp
         if not tp or not tp.exists():
             res[b] = {"status": "blocked", "why": f"book-text 里没有 {F.REV_DIR}/{b}-*.tsv（先 guji swap book-text 落文本并合并）"}
             continue
         raw = F.read_table(tp)
         rows = [dict(old=(r["旧格"].split(":", 1)[1] if r["旧格"] else ""), new=(r["新格"].split(":", 1)[1] if r["新格"] else ""),
                      kind=r["类别"], oc=r["旧字"], nc=r["新字"]) for r in raw]
-        res[b] = {"status": "done", **F.finish(ws, b, rows, load_human(b), run=tp.stem.split("-", 1)[1], commit=getattr(a, "commit", "") or ""),
+        res[b] = {"status": "done", **F.finish(ws, b, rows, load_human(b), run=(tp.stem.split("-", 1)[1] if "-" in tp.stem else "local"), commit=getattr(a, "commit", "") or ""),
                   "table": str(tp)}
         allt = [F.read_table(p) for p in sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)]
         red = F.redirect_map(allt)
