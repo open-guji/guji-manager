@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- `swap/resolve` 认「不是字」：`resolve(new_not_char=True)`（cv#1358 列端框线格 `frame_line`）无人裁→`NOT_CHAR` 删格放行、有人裁→`PROTECTED_CONFLICT`；`detect_flaws(not_char=…)` 不把它们算字丢失。swap release 待建清单记下接线（PATCH，A34 11-10，A31 请）。L1。
+
 - 库内刻例审阅卡撤库要求重审（PATCH，A23 11-09，Sheldon 定）：`review-pages pair-events lib_audit` 出的 evict 事件带 `review: true`、`char_self`，cv seed_admit `evict_review` 闸据此把这一格文本撤下、退回人审；待审原因 doubt `evict_review` 归 seg_defect、细分 evict_review。L0。
 
 ## [0.4.34] - 2026-11-10
