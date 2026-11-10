@@ -28,7 +28,7 @@
 .hard .cardhead .stat{font-size:10px;word-break:break-all;flex:1 1 100px}.hard .cardhead .tags{flex-basis:100%}
 .hard .tile .pk,.hard .tile .ids{width:92%;box-sizing:border-box;font-size:18px;text-align:center}.hard .tile input::placeholder{font-size:12px}
 .hard .tile .ctx{font-size:12px}
-.colwrap{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:6px 0}.tile .colwrap img.colimg,.tile .nb img.colimg{height:360px;width:auto;max-height:none;max-width:none;flex:none;object-fit:contain;border:1px solid var(--border,#ccc);background:#fff}.nb figure{margin:6px 0}.nb figcaption{font-size:11px;color:var(--muted,#666)}.nb summary{cursor:pointer;font-size:12px}label.nl{display:block;font-size:12px;margin-top:6px;color:var(--muted,#555)}.hard .tile .note{font-size:10px}.hard .tile .sug{font-size:22px}
+.colwrap{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:6px 0}.tile .colwrap img.colimg,.tile .nb img.colimg{height:360px;width:auto;max-height:none;max-width:none;flex:none;object-fit:contain;border:1px solid var(--border,#ccc);background:#fff}.nb figure{margin:6px 0}.nb figcaption{font-size:11px;color:var(--muted,#666)}.nb summary{cursor:pointer;font-size:12px}label.nl{display:block;font-size:12px;margin-top:6px;color:var(--muted,#555)}.hard .tile .note{font-size:10px}@media(max-width:700px){.hard .tile{display:flex;flex-direction:column}.hard .tile>*{order:5}.hard .tile>.sug,.hard .tile>.img{order:0}.hard .tile>.m,.hard .tile>.pk{order:1}.hard .tile>.ctx{order:2}.hard .tile>.cs{order:3}.hard .tile>.acts,.hard .tile>.ids{order:4}.hard .tile>.nl,.hard .tile>.note{order:6}.hard .tile>.colwrap{order:7}.tile .colwrap img.colimg,.tile .nb img.colimg{height:140px}.tile .colwrap img.colimg.big,.tile .nb img.colimg.big{height:420px}}.colimg{cursor:zoom-in}.hard .tile .sug{font-size:22px}
 .nofont{font:600 10px/1.2 var(--font-ui);color:var(--muted)}
 /*FONT_CSS*/
 .tile.v-notchar{border-color:#b7791f;border-style:dashed}.tile.v-unknown{border-color:var(--muted)}
@@ -120,9 +120,9 @@ function render(){
         const cb=document.createElement("figcaption");cb.textContent="本书";const cr=document.createElement("figcaption");cr.textContent=s.ref_label||"标准";
         fb.append(im,cb);fr.append(rm,cr);w.append(fb,fr)}else w.appendChild(im);
       const cw=document.createElement("div");cw.className="colwrap";
-      if(s.col_img){const ci=document.createElement("img");ci.src=s.col_img;ci.className="colimg";ci.alt="整列图";ci.title="整列图，红框是本格；看有没有切分问题";cw.append(ci)}
+      if(s.col_img){const ci=document.createElement("img");ci.src=s.col_img;ci.className="colimg";ci.alt="整列图";ci.title="整列图，红框是本格；点一下放大／缩小";ci.onclick=e=>{e.stopPropagation();ci.classList.toggle("big")};cw.append(ci)}
       if(s.nb_imgs&&s.nb_imgs.length){const dt=document.createElement("details");dt.className="nb";const sm=document.createElement("summary");sm.textContent="列图看不清？看左右邻列";dt.append(sm);
-        for(const n of s.nb_imgs){const fg=document.createElement("figure");const ni=document.createElement("img");ni.src=n.img;ni.className="colimg";const fc=document.createElement("figcaption");fc.textContent=n.label||"";fg.append(ni,fc);dt.append(fg)}
+        for(const n of s.nb_imgs){const fg=document.createElement("figure");const ni=document.createElement("img");ni.src=n.img;ni.className="colimg";ni.onclick=e=>{e.stopPropagation();ni.classList.toggle("big")};const fc=document.createElement("figcaption");fc.textContent=n.label||"";fg.append(ni,fc);dt.append(fg)}
         dt.onclick=e=>e.stopPropagation();cw.append(dt)}
       const nlb=document.createElement("label");nlb.className="nl";const nlc=document.createElement("input");nlc.type="checkbox";nlc.checked=!!st.nl[s.id];
       nlc.onclick=e=>{e.stopPropagation();setNL(c,s.id,nlc.checked)};nlc.onkeydown=e=>e.stopPropagation();nlb.onclick=e=>e.stopPropagation();nlb.append(nlc,document.createTextNode(" 不入库（定字，但这张图不进字形库，如污渍多）"));
