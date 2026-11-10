@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+## [0.4.39] - 测试中
+
 - 新增 `guji swap finish-merged`（R8，PATCH，A31 11-10，ZM 答复）：`swap book-text` 把对照表存进 book-text `lineage/revisions/<册>-<run>.tsv`；合并后收尾出旧格号 redirect 表、对照表里改号格上的无锚人裁 recheck 清单、metrics.jsonl。L0。
 
 - `guji swap book-text`：cord 经 cv `republish.copy_cord_for_site` 换到网站页图坐标再落（与 swap run 自动路径同口径，换过图源的书不再拷原坐标）；R1 闸用换好的 cord 比（PATCH，ZM 11-10）。L0。
