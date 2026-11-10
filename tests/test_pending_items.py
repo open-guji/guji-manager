@@ -111,3 +111,24 @@ def test_cli_import_withdraw_export(tmp_path, capsys):
     assert [c["cell"] for c in doc["cells"]] == ["1:1:1"] and doc["withdrawn"][0]["cell"] == "1:1:2"
     run(["pending", "ls", "vol04", "--state", "all", *base])
     assert "withdrawn" in capsys.readouterr().out
+
+
+def test_cellvotes_item_votes_map_to_current_cell(tmp_path, monkeypatch):
+    import argparse
+    from guji_manager import cli_cellvotes as CV
+    monkeypatch.setenv("GUJI_FEEDBACK_DIR", str(tmp_path / "feedback"))
+    s = P.ItemStore.open(tmp_path, "bk", "004")
+    P.reconcile(s, _cells(("1:1:1", "a")), src="r1", fps={"1:1:1": "f1"})
+    P.reconcile(s, _cells(("1:1:5", "a")), src="r2", fps={"1:1:5": "f1"})   # 重切后挪到 1:1:5
+    s.save()
+    iid = s.find("1:1:5")[0]["id"]
+    snap = tmp_path / "feedback" / "lists" / "web" / "bk" / "items.jsonl"
+    snap.parent.mkdir(parents=True)
+    vote = {"v": 1, "book": "bk", "vol": "004", "a": "1:1:1", "rev": "004-r1", "item": iid, "ver": 1,
+            "choice": "char", "char": "於", "voter": "aa", "ts": 1}
+    other = {**vote, "item": "pi_ffffffffffff", "voter": "bb"}
+    snap.write_text(json.dumps(vote) + "\n" + json.dumps(other) + "\n", encoding="utf-8")
+    args = argparse.Namespace(items=True, from_kv=False, from_file=None, site_book="bk", rev="004-r2", token_env="X")
+    votes, where = CV._votes(args)
+    assert [(v["a"], v["rev"]) for v in votes] == [("1:1:5", "004-r2")]
+    assert "1 条找不到条目" in where
