@@ -25,6 +25,7 @@
   segcut-apply --results DIR --out F                               人裁切线结果 → jsonl（格号、结论、列图/页图切线坐标）
   cold-items --cells 待审.tsv --pack-dir '<包>/{vol}' --crops-dir '<图>/{cell}.png' --out-dir D   冷启动快审：按 5b 领先/cov/库例数分高、低把握 items（见 cold_start.py）
   cold-pages --out-dir D --book B                                  出高/低把握两张页（高：带「本页其余都对」；低：一格一卡、没点不算对）
+  hard-items --items items.jsonl --shrink-dir D --pages-dir D --out items2.jsonl [--pack-dir '<包>/{vol}']   难认字/低把握页：给每格加整列图（本格红框）、左右邻列图、同列 ±8 格上下文（char_card 1.6 渲染）
   gq-apply   --results DIR --out F [--shard items.jsonl --why …]   字块质量结果 → 标签 jsonl；给 --shard 则按（格号, sha）回写信封
 """
 from __future__ import annotations
@@ -103,6 +104,10 @@ def main(argv=None):
     p.add_argument("--out-dir", required=True); p.add_argument("--skip", nargs="*", default=[], help="已点过的格号文件")
     p.add_argument("--skip-chars", default="", help="不上页的字（如 木入八己已巳）")
     p.add_argument("--where", action="append", default=[], help="只取某列以某前缀开头的行，如 层=2（可重复）")
+    p = sub.add_parser("hard-items"); p.add_argument("--items", required=True)
+    p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
+    p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
+    p.add_argument("--pack-dir"); p.add_argument("--ctx-n", type=int, default=8); p.add_argument("--img-dir")
     p = sub.add_parser("cold-pages"); p.add_argument("--out-dir", required=True); p.add_argument("--book", required=True)
     p.add_argument("--tag", default="")
     p = sub.add_parser("pair-events"); p.add_argument("type", choices=["near_pair", "lib_audit"])
@@ -141,6 +146,21 @@ def main(argv=None):
         out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
         _write_jsonl(out / "hi.jsonl", hi); _write_jsonl(out / "lo.jsonl", lo)
         print(json.dumps(st, ensure_ascii=False))
+    elif a.cmd == "hard-items":
+        from . import crop
+        its = build_mod.read_items(a.items)
+        img_dir = a.img_dir or str(Path(a.out).with_suffix("")) + "_col"
+        extra = crop.column_images([r["id"] for r in its], a.shrink_dir, a.pages_dir, img_dir, a.page_name,
+                                   ctx_n=a.ctx_n, pack_dir=a.pack_dir)
+        rows = []
+        for r in its:
+            e = extra.get(r["id"], {})
+            r = dict(r, **{k: v for k, v in e.items() if k != "ctx"})
+            if e.get("ctx") and not r.get("ctx"):
+                r["ctx"] = e["ctx"]
+            rows.append(r)
+        _write_jsonl(a.out, rows)
+        print(f"{len(rows)} 格，{len(extra)} 格有整列图 → {a.out}（图在 {img_dir}）")
     elif a.cmd == "cold-pages":
         from . import cold_start
         print(json.dumps(cold_start.write_pages(a.out_dir, a.book, a.tag), ensure_ascii=False))
@@ -176,9 +196,13 @@ def main(argv=None):
         for ch in pages.keys() | cells.keys():
             if ch in cs:
                 rows += cards.expand_card_result(cs[ch], pages.get(ch), cells.get(ch))
+        nl = {d["id"] for d in docs if d.get("no_glyph_lib") and "id" in d}   # 1.6「不入库」勾选
+        for r in rows:
+            if r["id"] in nl:
+                r["no_glyph_lib"] = True
         _write_jsonl(a.out, rows)
         from collections import Counter
-        print(dict(Counter(r["status"] for r in rows)))
+        print(dict(Counter(r["status"] for r in rows)), f"不入库 {sum(1 for r in rows if r.get('no_glyph_lib'))} 格" if nl else "")
     elif a.cmd == "cp-items":
         from . import codepoint as cp
         its = cp.items_from_groups(json.loads(Path(a.groups).read_text(encoding="utf-8")), a.cache)

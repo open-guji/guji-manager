@@ -91,7 +91,7 @@ def _strings(o):
             yield o
     elif isinstance(o, dict):
         for k, v in o.items():
-            if k not in ("img", "ref_img", "strip"):
+            if k not in ("img", "ref_img", "strip", "col_img", "nb_imgs"):
                 yield from _strings(k); yield from _strings(v)
     elif isinstance(o, (list, tuple)):
         for v in o:
@@ -174,7 +174,16 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     elif exclude:
         items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
-        rows = [dict(r, img=embed(r.get("img")), **({"ref_img": embed(r["ref_img"])} if r.get("ref_img") else {})) for r in items]
+        def _row(r):
+            x = dict(r, img=embed(r.get("img")))
+            if r.get("ref_img"):
+                x["ref_img"] = embed(r["ref_img"])
+            if r.get("col_img"):      # 1.6：整列图（本格红框）
+                x["col_img"] = embed(r["col_img"])
+            if r.get("nb_imgs"):      # 1.6：左右邻列图 [{img,label}]
+                x["nb_imgs"] = [dict(n, img=embed(n["img"])) for n in r["nb_imgs"] if n.get("img")]
+            return x
+        rows = [_row(r) for r in items]
         cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
         pp = per_page or (24 if not rest_ok else 8)
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,

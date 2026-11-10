@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+- char_card 1.6.0（MINOR，人审页线 11-10，用户 Sheldon 要求）：①难认字/低把握格带**整列图**（本格红框）、**左右邻列图**（折叠）、**同列 ±8 格上下文**（机器字＋整理本字），items 可带 `col_img`／`nb_imgs`／`ctx`，由新命令 `review-pages hard-items`（`crop.column_images`）从 cell_shrink＋页图＋包 seed_admit／align_ref 生成；②每格加「不入库」勾选框（定字照记人裁，格文档带 `no_glyph_lib: true`，`expand` 输出同字段，事件 payload 照写 `no_glyph_lib`，route／glyphdb_admit 已认）；旧本机暂存键（1.4/1.5）兜底。L0。
+
 - 冷启动高/低把握两张页固化（MINOR，人审页线 11-10，用户要求）：`review_pages/cold_start.py` 与 `review-pages cold-items`／`cold-pages`：按 5b 领先量、cov、库例数把「库缺样本」格分高把握（带「本页其余都对」）与低把握（一格一卡、没点不算对），一条命令出页；char_card 模板不变（1.5.4）。流程见 `doc/01-粗校/开书/冷启动快审入库.md`「高把握／低把握」一节（PR #412）。L0。
 
 ## [0.4.33] - 2026-11-10
