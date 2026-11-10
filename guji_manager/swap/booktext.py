@@ -128,8 +128,10 @@ def table_counts(rows: list[dict]) -> dict[str, int]:
 
 # ───────────────────────── 字的取舍 ─────────────────────────
 
-def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[str] | frozenset[str] = frozenset()) -> dict:
+def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[str] | frozenset[str] = frozenset(),
+                protected: dict[str, str] | None = None) -> dict:
     """按对照表逐块图判字，**就地改 new_char**。pending：新单上待审的格（新格号）。
+    protected：{新格号: 字}，有效人裁与 char-edits 手改经对照表换到新格后的字（人裁最高，`resolve` 的 human）。
 
     返回报告 {kind: [(新格, 现行字, 新包字, 落字)]}，另有 ``dup_new``：新增格与邻格同字（疑似重复切，只报不改）。"""
     old_by_new = {r["new"]: r["old"] for r in rows if r["new"] and r["old"]}
@@ -145,7 +147,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
                 rep["dup_new"].append((a, None, x.get("c"), x.get("c")))
             continue
         cur, new = cur_seq[i], new_seq[i]
-        d = resolve(cur, new, None, flaw=i in flaws, new_pending=a in pending,
+        d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
                     new_lacuna=bool(x.get("lacuna")))
         if d.result != new and d.result is not None:
             x["c"] = d.result
@@ -155,6 +157,58 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
         if d.kind != "same":
             rep[d.kind].append((a, cur, new, x.get("c")))
     return dict(rep)
+
+
+# ───────────────────────── 人裁与手改（受保护的格） ─────────────────────────
+
+def load_human(book: str) -> dict[str, str] | None:
+    """事件里的定字人裁 {裁时格号: 字}（不过绑定表：云端没有产物算不了绑定）。取不到（没装 cv、没有事件目录）返回 None。"""
+    try:
+        from .._cv import human_chars
+        h = human_chars(book, bind=False)
+    except Exception:  # noqa: BLE001
+        return None
+    return {k.split(":", 1)[1] if k.startswith(f"{book}:") else k: c for k, c in h.items() if c}
+
+
+def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None) -> tuple[dict[str, str], list[tuple]]:
+    """旧版里受保护的格 {旧格号: 字}：有效人裁（旧 book-text 该格正是人裁字，才算绑得上）与 char-edits 手改（取改后字）。
+    返回 (受保护, 原先就对不上的 [(格, 来源, 人裁或手改字, 旧文本字)])；后者多是异体／归一（删/刪），只报不停。"""
+    och = {a: x.get("c") for a, x in _chars(old_char)}
+    prot, pre = {}, []
+    for a, c in (human or {}).items():
+        if och.get(a) == c:
+            prot[a] = c
+        elif a in och:
+            pre.append((a, "人裁", c, och.get(a)))
+    for e in edits or []:
+        a, c = e.get("anchor"), e.get("new")
+        if not a or not c:
+            continue
+        if och.get(a) == c:
+            prot[a] = c
+        elif a in och:
+            pre.append((a, "手改", c, och.get(a)))
+    return prot, pre
+
+
+def human_ledger(rows: list[dict], prot_old: dict[str, str], new_char: dict) -> tuple[dict[str, str], list[str]]:
+    """受保护的旧格经对照表换新格号；账不平的列成问题：旧格被「删」（新包里这块图没了）、落字≠人裁／手改字。
+    返回 ({新格号: 字}, 问题)。落字在 merge 之后再核一遍（``ledger_check``）。"""
+    o2n = {r["old"]: r["new"] for r in rows if r["old"] and r["new"]}
+    gone = {r["old"] for r in rows if r["kind"] == "删"}
+    out, probs = {}, []
+    for a, c in prot_old.items():
+        if a in gone or a not in o2n:
+            probs.append(f"{a}「{c}」（人裁／手改）在新包里没有对应格")
+        else:
+            out[o2n[a]] = c
+    return out, probs
+
+
+def ledger_check(new_char: dict, prot_new: dict[str, str]) -> list[str]:
+    cur = {a: x.get("c") for a, x in _chars(new_char)}
+    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if cur.get(a) != c]
 
 
 # ───────────────────────── book-text 里落地 ─────────────────────────
@@ -195,11 +249,17 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
 
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
-                  out_dir: Path | None = None, merge: bool = True) -> dict:
+                  out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
+                  book: str | None = None, require_human: bool = False) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
-    返回 {ok, problems, counts, chars, remap, table, left, review}。"""
+    受保护的格（有效人裁、char-edits 手改）先经对照表换到新格、按人裁最高判字；**账不平就停**：
+    受保护的旧格在新包里没了（删），或落字≠人裁／手改字（新包与人裁冲突，按总纲保留人裁，但要人看）。
+    human 缺省从事件读（``load_human(book)``，book 缺省 ``vol<章>``）；读不到就只核手改并在 notes 里说明，
+    ``require_human``（1.x 册）时读不到就停。
+
+    返回 {ok, problems, counts, chars, remap, table, left, review, notes, human_pre}。"""
     repo, vdir = Path(repo), Path(vdir)
     from ..closeout import remap_lib
     from ..formats.guji_char_cord import dumps
@@ -210,7 +270,19 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     cf = vdir / f"{chapter}.char.json"
     new_char, new_cord = _load(cf), _load(vdir / f"{chapter}.cord.json")
     rows = cell_table(old["char"], old["cord"], new_char, new_cord)
-    chars = merge_chars(old["char"], new_char, rows, pending) if merge else {}
+    notes, human_missing = [], False
+    if human is None:
+        human = load_human(book or f"vol{int(chapter):02d}")
+        if human is None:
+            human_missing = True
+            notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
+    edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
+    prot_old, human_pre = protected_cells(old["char"], human, edits)
+    prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
+    chars = merge_chars(old["char"], new_char, rows, pending, prot_new) if merge else {}
+    ledger_probs += ledger_check(new_char, prot_new)
+    conflicts = (chars.get("protected_conflict") or []) if merge else []
+    ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
     out_dir = Path(out_dir or tempfile.mkdtemp(prefix="swap-bt-"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -222,6 +294,10 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     punct, entity = _load(pf), _load(ef)
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
     problems = guard(punct, res["punct"], entity, res["entity"])
+    if human_missing and require_human:
+        problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
+    if ledger_probs:
+        problems.append(f"人裁账不平 {len(ledger_probs)} 格：" + "；".join(ledger_probs[:8]))
     review = [r for r in res["report"] if r[0] == "entity-复核"]
     grown = _grow_spans(res["entity"], new_char, rows, res["report"])
     moved_breaks = _breaks_follow_headings(res["punct"], new_char, rows)
@@ -238,6 +314,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     (out_dir / f"left_vol{vol:02d}.tsv").write_text(
         "层\t条目\t旧锚\t新锚\t内容\t原因码｜说明\n" + "".join("\t".join(map(str, r)) + "\n" for r in left), encoding="utf-8")
     return {"ok": not problems, "problems": problems, "counts": table_counts(rows), "breaks_moved": moved_breaks,
+            "notes": notes, "human_pre": human_pre, "protected": len(prot_new),
             "chars": {k: len(v) for k, v in chars.items()}, "char_detail": chars,
             "remap": {"moved": res["moved"], "left": res["left"]}, "table": str(tsv),
             "left": left, "review": review}
@@ -373,7 +450,8 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             t = vdir / "fig" / ch / f.name
             if not t.exists() or t.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, t)
-    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir)
+    one_x = str(tv).split(".")[0] not in ("0", "")
+    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")
@@ -411,6 +489,9 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     dup = r["char_detail"].get("dup_new") or []
     if dup:
         body.append("疑似重复切（新增格与邻格同字，未改）：" + "、".join(f"{a}{c}" for a, _, c, _ in dup[:10]))
+    body.append(f"人裁／手改受保护 {r.get('protected', 0)} 格，账平" + ("；" + "；".join(r["notes"]) if r.get("notes") else ""))
+    if r.get("human_pre"):
+        body.append(f"人裁／手改与旧文本原先就不同 {len(r['human_pre'])} 格（多为异体／归一，未动）：" + "、".join(f"{a}{c}≠{o}" for a, _, c, o in r["human_pre"][:8]))
     if r.get("breaks_moved"):
         body.append("标题前分段符随标题挪（中间插进新增格）：" + "、".join(f"{o}→{n}" for o, n in r["breaks_moved"][:6]))
     if r["review"]:
@@ -420,7 +501,6 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     msg = f"殿本 {book}：换包增删格，标点专名按对照表平移（patch）\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
     _git(wt, "add", "-A", "--", str(vdir.relative_to(wt)))
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
-    one_x = str(tv).split(".")[0] not in ("0", "")
     if push:
         dest = f"swap/{book}-1x" if one_x else "dev"
         for i in range(3):

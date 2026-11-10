@@ -84,3 +84,61 @@ def test_break_follows_heading_over_added_cells():
     out = bt._breaks_follow_headings(p, new_c, rows)
     b = p["punctuations"][0]
     assert out == [("1:1:1", "1:1:3")] and b["anchor"] == "1:1:3" and b["pre_char"] == "丙" and b["char_offset"] == 2
+
+
+def test_protected_cells_and_ledger():
+    old_c = _char({1: "刪行苞"})
+    human = {"1:1:1": "删", "1:1:2": "行"}            # 1:1:1 原先就不同（异体），1:1:2 有效
+    edits = [{"anchor": "1:1:3", "old": "芭", "new": "苞"}]
+    prot, pre = bt.protected_cells(old_c, human, edits)
+    assert prot == {"1:1:2": "行", "1:1:3": "苞"} and pre == [("1:1:1", "人裁", "删", "刪")]
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格"), dict(old="1:1:2", new="", kind="删"),
+            dict(old="1:1:3", new="1:1:2", kind="改号")]
+    new_c = _char({1: "刪苞"})
+    pn, probs = bt.human_ledger(rows, prot, new_c)
+    assert pn == {"1:1:2": "苞"} and len(probs) == 1 and "1:1:2" in probs[0]   # 有人裁的格被删：报
+
+
+def test_merge_keeps_human_and_flags_conflict():
+    old_c, new_c = _char({1: "方苞在"}), _char({1: "方芭在"})
+    rows = bt.cell_table(old_c, _cord({1: "方苞在"}), new_c, _cord({1: "方芭在"}))
+    rep = bt.merge_chars(old_c, new_c, rows, protected={"1:1:2": "苞"})
+    assert "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"]) == "方苞在"
+    assert rep["protected_conflict"] == [("1:1:2", "苞", "芭", "苞")]
+    assert bt.ledger_check(new_c, {"1:1:2": "苞"}) == []
+
+
+def test_require_human_stops_1x_when_events_missing(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    repo = tmp_path / "bt"
+    vdir = repo / "Book" / "default"
+    vdir.mkdir(parents=True)
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "original_version.py").write_text(
+        "import json\ndef dump_json(p, d):\n    open(p, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False))\n",
+        encoding="utf-8")
+    c = _char({1: "方苞"})
+    d = _cord({1: "方苞"})
+    for t, x in (("char", c), ("cord", d), ("punct", {"punctuations": []}), ("entity", {"entities": []})):
+        (vdir / f"001.{t}.json").write_text(json.dumps(x, ensure_ascii=False), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b", "-c", "user.name=t", "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b", "-c", "user.name=t", "commit", "-qm", "x"], check=True)
+    monkeypatch.setattr(bt, "load_human", lambda book: None)
+    calls = {}
+
+    class _RA:
+        def load_cells(self, p):
+            return p
+
+    def _run(ra, ch, nc, p, e, cells):
+        calls["n"] = calls.get("n", 0) + 1
+        return {"punct": p, "entity": e, "report": [], "moved": 0, "left": 0}
+    from guji_manager.closeout import remap_lib
+    monkeypatch.setattr(remap_lib, "load_ra", lambda repo: _RA())
+    monkeypatch.setattr(remap_lib, "run", _run)
+    r0 = bt.remap_in_repo(repo, vdir, "001", out_dir=tmp_path / "o")
+    assert r0["ok"] and r0["notes"]
+    r1 = bt.remap_in_repo(repo, vdir, "001", out_dir=tmp_path / "o", require_human=True)
+    assert not r1["ok"] and any("1.x" in x for x in r1["problems"])
