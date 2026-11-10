@@ -42,6 +42,8 @@ def test_detail_roundtrip_and_multi_cause():
 def test_cell_of():
     assert A.cell_of("vol04:3:1:2") == "3:1:2"
     assert A.cell_of("3:1:2～3:1:4") == "3:1:2"
+    assert A.cell_of("88:6:15b～88:6:19b") == "88:6:15b"   # 双栏格保留 a／b 后缀
+    assert A.cell_of("vol01:88:1:1a") == "88:1:1a"
     assert A.cell_of("") is None and A.cell_of("～") is None
 
 
