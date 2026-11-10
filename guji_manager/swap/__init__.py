@@ -292,6 +292,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--worktree", help="book-text：独立 worktree 路径（缺省 <book-text>-swap，每册重置到 origin/dev）")
     p.add_argument("--note", help="book-text：文本线版本记录的说明")
     p.add_argument("--push", action="store_true", help="book-text：过了守卫和 local_check 就推（0.x 推 dev；1.x 推 swap/<册>-1x 分支待开 PR）")
+    p.add_argument("--glyph-db", help="book-text：字形库 sqlite（R1 前置闸：库里刻例的格键须都在新包里，否则停 r1-stop；不给则只标「R1 未核」）")
+    p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
     p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
 
 

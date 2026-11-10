@@ -34,7 +34,7 @@ guji swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text �
 | 2 | **对照表**：新旧 cord 按框 IoU≥0.5 一对一配，配不上的同页按中心距再配（同字或同号）；类别 同格／改号／删／新增。格式同 A31 回放脚本、book-text `remap_anchors.py`，写在 `reports/_swap/book-text/<册>/` | — |
 | 3 | **逐块图判字**（`resolve.resolve`）：新包 □ 而现行有字 → 保持现字；待审且首选字≠现行 → 保持现字；改出相邻重复字 → 回退；其余机器改字、□ 补字照采纳；新增格照新包 | — |
 | 4 | **挪标点专名**：`remap_anchors.remap_data` 按表挪（同格改字刷新校验字，改字落进专名的列复核）；两端都对上、中间插进新增格的专名（語子→語孟子）伸长并列复核；标题前的分段符被整段新增格隔开时，挪到标题前一格（F-OV-12） | — |
-| 5 | **守卫**：专名条目 id、类型、挂法（entity_id／status／group）不变；标点按 mark／kind／source／pos 计数不变 | 不过不写，报 guard-stop |
+| 5 | **守卫**：专名条目 id、条数、类型、挂法与其余字段（entity_id／status／targets／group／decomposition／level／coarse／note）不变，专名不被切短（少的字数不超过锚区间里被删的格数）；标点按 mark／kind／source／pos 计数不变；**人裁账平**（A34 11-10）：有效人裁（旧文本该格正是人裁字）与 char-edits 手改经对照表到新格、按人裁最高判字，旧格被「删」或新包与人裁冲突就停（原先就不同的多为异体／归一，只报） | 不过不写，报 guard-stop |
 | 6 | 文本、标点、实体三线升 **patch**，`sync_headings`，`local_check --dev` | 不过不提交，报 local-check-fail |
 | 7 | 提交（提交信息含对照表计数、字的取舍计数、复核与留待重标清单、`版本记录:` 行），推 | — |
 
