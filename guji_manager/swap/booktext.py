@@ -605,7 +605,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     lc = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
     if lc.returncode and stored is not None:
         # book-text 校验器还不认 lineage/ 目录时（需 book-text 把 lineage 加进 ORIGINAL_SIDECAR_FILES）：不带对照表再核一遍，别因此整册落不了
-        shutil.rmtree(vdir / "lineage", ignore_errors=True)
+        drop_stored_table(stored)
         lc2 = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
         if lc2.returncode == 0:
             print("  对照表入库跳过：book-text 校验器不认 lineage/ 目录，已不带对照表落文本（对照表仍在 reports/_swap/book-text/）", file=sys.stderr)
@@ -652,6 +652,18 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 out["status"] = "pr-opened"
         return out
     return {"status": "committed", "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+
+
+def drop_stored_table(stored: Path) -> None:
+    """只删刚放进去的那张对照表；同版本目录早先已提交的 ``lineage/revisions/*.tsv`` 一张都不能动。
+    ``lineage/revisions`` 和 ``lineage`` 只有在删完变空时才顺手删（本次新建的目录）。"""
+    stored = Path(stored)
+    stored.unlink(missing_ok=True)
+    for d in (stored.parent, stored.parent.parent):
+        try:
+            d.rmdir()            # 非空会抛 OSError，留着
+        except OSError:
+            break
 
 
 def pending_cells_of(ws: Path, text_id: str, ch: str) -> set[str]:
