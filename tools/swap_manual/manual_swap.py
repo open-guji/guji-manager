@@ -15,7 +15,7 @@ adopt=[(a,o[a],c) for a,c in nn if a in o and c!='□' and c!=o[a]]
 print(vol,'cells old/new',len(o),len(nn),'added',added[:10],len(added),'removed',removed[:10],len(removed),'restore □→现字',len(restore),'adopt 机器改字',len(adopt),adopt[:8])
 if '--dry' in sys.argv: sys.exit()
 def _flat(o):
-    if isinstance(o,dict): return not any(isinstance(v,(dict,list)) for v in o.values())
+    if isinstance(o,dict): return all(not isinstance(v,dict) and not (isinstance(v,list) and any(isinstance(x,dict) for x in v)) for v in o.values())
     if isinstance(o,list): return not any(isinstance(x,dict) for x in o)
     return True
 def dumps(obj):
