@@ -1,6 +1,6 @@
 from guji_manager.swap.resolve import (resolve, detect_flaws, SAME, HUMAN_KEEP, HUMAN_RESTORE, PROTECTED_CONFLICT,
                                        HUMAN_INVALID, NEW_ADMIT, MACHINE_CHANGE, RETURN_TO_BLANK, MACHINE_FLAW,
-                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT, PENDING_SAME, PENDING_NO_CHOICE, PENDING_KEEP)
+                                       REMOVED, KEEP, ADOPT, REVIEW, REVERT, PENDING_SAME, PENDING_NO_CHOICE, PENDING_KEEP, EVICT_REVIEW)
 
 
 def test_human_beats_machine():
@@ -89,3 +89,20 @@ def test_pending_does_not_conflict_with_human():
 def test_true_lacuna_from_machine_goes_to_review():
     d = resolve("字", "□", new_lacuna=True)
     assert (d.kind, d.action, d.result) == (RETURN_TO_BLANK, REVIEW, "字")
+
+
+def test_evict_review_keeps_current_char():
+    # 撤库重审格（sheldon 11-10）：新包放行别的字、退回□、待审，现行有字都不动，进复审单
+    for kw in ({}, {"new_pending": True}, {"new_lacuna": True}):
+        new = "□" if kw.get("new_lacuna") else "乙"
+        d = resolve("甲", new, evict_review=True, **kw)
+        assert (d.kind, d.action, d.result, d.to_review) == (EVICT_REVIEW, KEEP, "甲", True)
+
+
+def test_evict_review_blank_writes_first_choice_and_human_wins():
+    d = resolve("□", "乙", evict_review=True)
+    assert (d.result, d.to_review) == ("乙", True)
+    d = resolve(None, "□", evict_review=True, new_lacuna=True)
+    assert (d.kind, d.result) == (PENDING_NO_CHOICE, None)
+    d = resolve("甲", "乙", human="乙", evict_review=True)   # 人已再裁
+    assert (d.kind, d.result) == (HUMAN_RESTORE, "乙")
