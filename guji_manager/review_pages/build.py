@@ -133,6 +133,11 @@ def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
         from fontTools import subset as ftsub
     except ImportError:
         return "", chars
+    try:
+        import brotli  # noqa: F401
+        flavor, mime = "woff2", "font/woff2"
+    except ImportError:          # 没装 brotli 就用 woff（zlib），体积略大但不报错
+        flavor, mime = "woff", "font/woff"
     left, css, fam = set(chars), [], []
     for i, fp in enumerate(fonts):
         if not left:
@@ -142,10 +147,10 @@ def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
         have = sorted(c for c in left if ord(c) in cm)
         if not have:
             continue
-        opt = ftsub.Options(); opt.flavor = "woff2"; opt.layout_features = ["*"]; opt.notdef_outline = False
+        opt = ftsub.Options(); opt.flavor = flavor; opt.layout_features = ["*"]; opt.notdef_outline = False
         sub = ftsub.Subsetter(opt); sub.populate(text="".join(have)); sub.subset(f)
-        buf = io.BytesIO(); f.flavor = "woff2"; f.save(buf)
-        css.append("@font-face{font-family:GujiSub%d;src:url(data:font/woff2;base64,%s) format('woff2')}" % (i, base64.b64encode(buf.getvalue()).decode()))
+        buf = io.BytesIO(); f.flavor = flavor; f.save(buf)
+        css.append("@font-face{font-family:GujiSub%d;src:url(data:%s;base64,%s) format('%s')}" % (i, mime, base64.b64encode(buf.getvalue()).decode(), flavor))
         fam.append("GujiSub%d" % i)
         left -= set(have)
     if fam:
