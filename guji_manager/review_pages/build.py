@@ -85,13 +85,36 @@ def default_fonts(font_dir) -> list[str]:
     return out
 
 
+def _bundled_fonts() -> list[str]:
+    """本包自带 Jigmo3 20250912（CC0，补到 Unicode 17 扩展 J，如 U+32A39）；排在最后，只补前面字体没有的字。"""
+    p = Path(__file__).parent / "fonts" / "Jigmo3-20250912.ttf"
+    return [str(p)] if p.exists() else []
+
+
+def auto_fonts() -> list[str]:
+    """没显式给 --font/--font-dir 时自动找字体：环境变量 GUJI_FONT_DIR，或已装 open_guji_cv 旁的 fonts/（Jigmo CC0 覆盖到扩展 H、I.Ming）。
+    找不到返回空表（页上缺字改显码位，不会空白）。"""
+    import os
+    cands = [os.environ.get("GUJI_FONT_DIR")]
+    import importlib.util          # 只查位置、不 import cv（本包只经 _cv 门面碰 cv）
+    spec = importlib.util.find_spec("open_guji_cv")
+    if spec and spec.origin:
+        cands.append(str(Path(spec.origin).resolve().parent.parent / "fonts"))
+    for d in cands:
+        if d and Path(d).is_dir():
+            fs = default_fonts(d)
+            if fs:
+                return fs + _bundled_fonts()
+    return _bundled_fonts()
+
+
 def _strings(o):
     if isinstance(o, str):
         if not o.startswith("data:"):
             yield o
     elif isinstance(o, dict):
         for k, v in o.items():
-            if k not in ("img", "ref_img", "strip"):
+            if k not in ("img", "ref_img", "strip", "col_img", "nb_imgs"):
                 yield from _strings(k); yield from _strings(v)
     elif isinstance(o, (list, tuple)):
         for v in o:
@@ -109,6 +132,11 @@ def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
         from fontTools import subset as ftsub
     except ImportError:
         return "", chars
+    try:
+        import brotli  # noqa: F401
+        flavor, mime = "woff2", "font/woff2"
+    except ImportError:          # 没装 brotli 就用 woff（zlib），体积略大但不报错
+        flavor, mime = "woff", "font/woff"
     left, css, fam = set(chars), [], []
     for i, fp in enumerate(fonts):
         if not left:
@@ -118,10 +146,10 @@ def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
         have = sorted(c for c in left if ord(c) in cm)
         if not have:
             continue
-        opt = ftsub.Options(); opt.flavor = "woff2"; opt.layout_features = ["*"]; opt.notdef_outline = False
+        opt = ftsub.Options(); opt.flavor = flavor; opt.layout_features = ["*"]; opt.notdef_outline = False
         sub = ftsub.Subsetter(opt); sub.populate(text="".join(have)); sub.subset(f)
-        buf = io.BytesIO(); f.flavor = "woff2"; f.save(buf)
-        css.append("@font-face{font-family:GujiSub%d;src:url(data:font/woff2;base64,%s) format('woff2')}" % (i, base64.b64encode(buf.getvalue()).decode()))
+        buf = io.BytesIO(); f.flavor = flavor; f.save(buf)
+        css.append("@font-face{font-family:GujiSub%d;src:url(data:%s;base64,%s) format('%s')}" % (i, mime, base64.b64encode(buf.getvalue()).decode(), flavor))
         fam.append("GujiSub%d" % i)
         left -= set(have)
     if fam:
@@ -154,6 +182,8 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     """exclude：已录入的格号，出页时撤掉（点过即录入、不再上页）。
     rest_ok=False（char_card）：难认字页，没有「本页其余都对」，没点的格不算对，只存点过、改过的格。"""
     pt = get(page_type)
+    if fonts is None and page_type in ("char_card", "char_grid"):
+        fonts = auto_fonts()      # 1.3/1.7：扩展 G/H 等字系统字体常缺，默认内嵌子集（Jigmo）
     n0 = len(items)
     excluded_n = None
     if page_type == "glyph_quality":
@@ -174,7 +204,16 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
     elif exclude:
         items = [r for r in items if r.get("id", r.get("key")) not in exclude]
     if page_type == "char_card":
-        rows = [dict(r, img=embed(r.get("img")), **({"ref_img": embed(r["ref_img"])} if r.get("ref_img") else {})) for r in items]
+        def _row(r):
+            x = dict(r, img=embed(r.get("img")))
+            if r.get("ref_img"):
+                x["ref_img"] = embed(r["ref_img"])
+            if r.get("col_img"):      # 1.6：整列图（本格红框）
+                x["col_img"] = embed(r["col_img"])
+            if r.get("nb_imgs"):      # 1.6：左右邻列图 [{img,label}]
+                x["nb_imgs"] = [dict(n, img=embed(n["img"])) for n in r["nb_imgs"] if n.get("img")]
+            return x
+        rows = [_row(r) for r in items]
         cs = cards_mod.build_cards(rows, k, solo=not rest_ok)
         pp = per_page or (24 if not rest_ok else 8)
         data = {"book": book, "per_page": pp, "cards": cs, "n_cells": sum(c["n"] for c in cs), "rest_ok": rest_ok,
@@ -191,6 +230,9 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         chars = {t[1] for t in tiles}
         data = {"book": book, "per_page": pp, "n_chars": len(chars),
                 "n_cells": sum(t[4] for t in tiles), "tiles": tiles}
+        if fonts:   # 页上字（字头）子集化内嵌；字体都没有的字页上显示码位
+            font_css, nofont = font_subset_css({"chars": sorted(chars)}, fonts)
+            data["font_css"], data["nofont"] = font_css, nofont
         stat = {"tiles": len(tiles), "chars": len(chars), "pages": -(-len(tiles) // pp)}
     elif page_type == "codepoint":
         pp = per_page or 8
