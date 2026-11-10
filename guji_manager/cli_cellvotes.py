@@ -417,7 +417,8 @@ def add_parser(sub) -> None:
     p.add_argument("--tol", type=float, default=8.0, help="draft：格框容差（像素，缺省 8）")
     p.add_argument("--sheet", default=None, help="draft：投票时的待审单（读 prior：复审格上有意推翻旧人裁）；"
                                                  "缺省数据目录里同 rev 的线上单")
-    p.add_argument("--include-none", action="store_true", help="draft：「无字」也写（缺省挂起）")
+    p.add_argument("--include-none", action="store_true", default=True, help="draft：「无字」也写（2026-11-10 起缺省就写，此项保留兼容）")
+    p.add_argument("--no-none", dest="include_none", action="store_false", help="draft：「无字」票不写（挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
     p.add_argument("--from-kv", action="store_true", help="draft：票直接管理读网站")
     p.add_argument("--items", action="store_true", help="draft：读按条目记的票（换成条目现在的格号；--rev 给现行单）")

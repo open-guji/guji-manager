@@ -14,7 +14,7 @@
     cut    → confirm v=seg_defect quality=truncated（给了字就带 shape）
     jiazhu → confirm v=seg_defect reason=jiazhu_as_main（给了字就带 shape）
     main   → confirm v=seg_defect reason=main_as_jiazhu（给了字就带 shape）
-    none   → confirm v=not_a_char —— **缺省挂起**：排除名单只增不删、不带锚（M10 调研 B 的 P6），要落加 include_none
+    none   → confirm v=not_a_char —— **缺省就写**（2026-11-10 起；原先缺省挂起，因排除名单只增不删、不带锚，M10 调研 B 的 P6）；不想写传 include_none=False／`--no-none`
     figure → confirm v=figure alt=<说明>（「符号、篆字等」，GUJI-740；票上 `alt` 是卡片说明框里填的，可空）
     damaged → confirm v=damaged guess=<字>（「破损、阙字」，2026-10-25：录成阙字方框 □；票上带的字是「最像的字」，只进金标与括注，不进库）
     unsure → 不写（页面上的「其他」）
@@ -28,8 +28,12 @@
 figure 同格几票只是说明不同，算同一意见：取最新一票的说明（同格同来源本就只留最新）。和已有人裁比也只比「是不是图」，
 说明改了不算推翻。
 
-挂起（不写，交人看）的情形：同格意见不一致；要推翻已有人裁；格位对不上（现行 cv 重切过这一列，旧格号已不是那个字）；
-无字（缺省）。和已有人裁一致的直接跳过，不重写。
+挂起（不写，交人看）的情形：同格意见不一致；格位对不上（现行 cv 重切过这一列，旧格号已不是那个字）；
+和已有人裁一致的直接跳过，不重写。
+
+**新人裁直接覆盖旧人裁（用户 2026-11-10 定）**：票和已有人裁不同就照写，payload 记 `overrides: <旧人裁 id>`，不用回网站再选一次，
+复审单上有没有 prior 都一样。唯一例外：这票没给字（切分错了、破损等）而旧裁是明确的字，不拿它盖掉旧裁的字（跳过）。
+下面「在网站上推翻旧人裁」一段是旧规矩，仅供对照。
 
 **在网站上推翻旧人裁（M10 复盘第 5 项，10-23）**：复审单（`republish.py prep --recheck`）上的格带 `prior`
 （{c, id}），网站卡片写明「已有判断：判为 X。这次提交的选择会替代它」。票投在这样的格上、且 `prior.id` 就是该格
@@ -221,7 +225,7 @@ class Triage:
         return [d for d in self.drafts if d.held]
 
 
-def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool = False,
+def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool = True,
            check: Callable[[str], str | None] | None = None, sheet_prior: dict[str, str] | None = None) -> Triage:
     """``votes`` 已经过 latest_votes；``human`` 是 latest_human 的结果；
     ``check(a)`` 核格位（对得上返回 None，否则理由；只对要写的格调用），给 None 表示不核（调用方要自己担保）；
@@ -261,14 +265,15 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
             if same_verdict(h.payload, p):
                 out.skipped.append((a, f"与已有人裁 {h.id} 一致"))
                 continue
-            if sheet_prior.get(a) != h.id:
-                out.drafts.append(Draft(key, a, p, real, held=f"要推翻已有人裁 {h.id}（{h.payload.get('v')} "
-                                                              f"{h.payload.get('shape') or ''}）", kind="overturn", prior=h))
+            # 用户 11-10 定：网站上的新人裁直接覆盖旧人裁，不用回网站再选一次。
+            # 唯一例外：这票没给字（切分错了／破损等），旧裁却是明确的字——不拿它去盖掉旧裁的字。
+            if not char and h.payload.get("shape") and p["v"] != "not_a_char":
+                out.skipped.append((a, f"这票没给字，不覆盖已有人裁 {h.id}（{h.payload.get('shape')}）"))
                 continue
-            p = {**p, "overrides": h.id}         # 单上写明了旧裁、投票人有意推翻
+            p = {**p, "overrides": h.id}
         d = Draft(key, a, p, real)
         if p["v"] == "not_a_char" and not include_none:
-            d.held, d.kind = "无字：排除名单只增不删、不带锚，缺省不落（要落加 --include-none）", "none"
+            d.held, d.kind = "无字：调用方显式不写（include_none=False）", "none"
         elif check is not None:
             why = check(a)
             if why:
