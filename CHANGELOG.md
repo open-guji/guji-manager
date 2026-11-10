@@ -5,6 +5,8 @@
 
 ## [未发版]
 
+## [0.4.41] - 2026-11-10
+
 - `cellvotes` 三处陷阱（PATCH，A31 11-10，ai-team 审视 §四-1~3）：`draft --from-kv` 按格号读到 0 票自动改读条目票，仍为 0 则报错退出；`--pack` 出单版包缺页时核格位退回主产物；`write` 缺 `--batch`/`--reviewer` 报缺哪项并以退出码 2 退出。L0。
 - `swap run` 加 `--ack-unlanded-votes <原因>`，透传 auto_cycle（cv 同步加参数）→ proof_cycle apply（PATCH，审视陷阱 4，ZM 转）。L0。
 
