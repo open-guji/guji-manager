@@ -97,6 +97,22 @@ def decide(cells: list[dict], a: list[dict], b: list[dict]) -> list[dict]:
     return rows
 
 
+def decide_rounds(cells: list[dict], rounds: list[tuple[list[dict], list[dict]]]) -> list[dict]:
+    """多轮：每轮（甲，乙）各自 decide，**每一轮都定字且字相同**才定字，否则「待审」。
+    2026-11-11 定：单次两路读法有随机波动（r39 低把握的格 r41 变 high），至少两轮独立会话才写人裁。"""
+    per = [decide(cells, a, b) for a, b in rounds]
+    rows = []
+    for k, c in enumerate(cells):
+        chs = {r[k]["char"] for r in per}
+        ok = len(chs) == 1 and "待审" not in chs
+        row = dict(per[0][k])
+        row["a"] = " | ".join(r[k]["a"] for r in per)
+        row["b"] = " | ".join(r[k]["b"] for r in per)
+        row["char"] = chs.pop() if ok else "待审"
+        rows.append(row)
+    return rows
+
+
 def write(rows: list[dict], out: str, rnd: str = "") -> dict:
     o = Path(out)
     o.mkdir(parents=True, exist_ok=True)

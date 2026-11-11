@@ -28,3 +28,12 @@ def test_prompt_order_and_decide(tmp_path):
     st = ctx2.write(ctx2.decide(cells, a, a), str(tmp_path / "o"), "r41")
     assert st == {"cells": 1, "decided": 1, "pending": 0}
     assert json.loads((tmp_path / "o" / "import草案.jsonl").read_text(encoding="utf-8"))["group"] == "ry"
+
+
+def test_two_rounds_must_agree(tmp_path):
+    cells = ctx2.collect(_pack(tmp_path))
+    h = [{"n": 1, "ch": "日", "conf": "high"}]
+    lo = [{"n": 1, "ch": "日", "conf": "low"}]
+    assert ctx2.decide_rounds(cells, [(h, h), (h, h)])[0]["char"] == "日"
+    assert ctx2.decide_rounds(cells, [(h, h), (h, lo)])[0]["char"] == "待审"
+    assert ctx2.decide_rounds(cells, [(h, h), ([{"n": 1, "ch": "曰", "conf": "high"}],) * 2])[0]["char"] == "待审"

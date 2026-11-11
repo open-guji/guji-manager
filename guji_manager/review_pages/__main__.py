@@ -102,6 +102,7 @@ def main(argv=None):
     p.add_argument("--include-admitted", action="store_true")
     p = sub.add_parser("ctx2-import"); p.add_argument("--cells", required=True); p.add_argument("--a", required=True)
     p.add_argument("--b", required=True); p.add_argument("--out", required=True); p.add_argument("--round", default="")
+    p.add_argument("--a2", help="第二轮甲（独立会话）；给了 --a2/--b2 就要求每轮都一致 high 才定字"); p.add_argument("--b2")
     p = sub.add_parser("closeout-sum"); p.add_argument("--results", required=True)
     p = sub.add_parser("cold-items"); p.add_argument("--cells", required=True)
     p.add_argument("--pack-dir", required=True, help="包目录，含 rare_candidates/；多册用 {vol}")
@@ -283,7 +284,10 @@ def main(argv=None):
     elif a.cmd == "ctx2-import":
         from . import ctx2
         cells = json.loads(Path(a.cells).read_text(encoding="utf-8"))
-        rows = ctx2.decide(cells, ctx2._load(a.a), ctx2._load(a.b))
+        rounds = [(ctx2._load(a.a), ctx2._load(a.b))]
+        if a.a2 and a.b2:
+            rounds.append((ctx2._load(a.a2), ctx2._load(a.b2)))
+        rows = ctx2.decide_rounds(cells, rounds)
         print(json.dumps(ctx2.write(rows, a.out, a.round), ensure_ascii=False))
     elif a.cmd == "unconfirmed":
         from . import results
