@@ -149,6 +149,45 @@ def cmd_scan(a):
     print(json.dumps(rep, ensure_ascii=False, indent=1))
 
 
+def cmd_crop(a):
+    """从**原页图**裁格。cell_shrink 的 bbox_page 坐标原点在页面**右上角**、x 从右往左量
+    （raw_page_px@top-right，见 cv products/kinds/chars.py 头注）；PIL 用左上原点，须翻转：
+    x0' = (W-1) - x1, x1' = (W-1) - x0，y 不变。输出带 PAD 像素上下文与红框。"""
+    from PIL import Image, ImageDraw
+    out = Path(a.out)
+    pd = Path(a.patches)
+    pd.mkdir(parents=True, exist_ok=True)
+    ids = [json.loads(l)["id"] for l in open(out / "auto_candidates.jsonl", encoding="utf-8")]
+    if a.ids:
+        want = {l.strip() for l in open(a.ids, encoding="utf-8") if l.strip()}
+        ids = [i for i in ids if i in want]
+    by = collections.defaultdict(list)
+    for i in ids:
+        v, pg, _, _ = i.split(":")
+        by[(v, int(pg))].append(i)
+    n = miss = 0
+    for (v, pg), L in sorted(by.items()):
+        f = Path(a.packs) / v / "cell_shrink" / f"p{pg:04d}.json"
+        img = Path(a.ws) / "data_full" / v / f"{pg}.png"
+        if not f.exists() or not img.exists():
+            miss += len(L)
+            continue
+        bx = {c["id"]: c["bbox_page"] for col in json.load(open(f))["char_index"]["columns"] for c in col["chars"]}
+        im = Image.open(img).convert("RGB")
+        W = im.size[0]
+        for i in L:
+            b = bx.get(i)
+            if not b:
+                miss += 1
+                continue
+            x0, x1, y0, y1 = int(round(W - 1 - b[2])), int(round(W - 1 - b[0])), int(round(b[1])), int(round(b[3]))
+            t = im.crop((x0 - a.pad, y0 - a.pad, x1 + a.pad, y1 + a.pad))
+            ImageDraw.Draw(t).rectangle([a.pad, a.pad, a.pad + x1 - x0, a.pad + y1 - y0], outline="red", width=2)
+            t.save(pd / f"{i.replace(':', '_')}.png")
+            n += 1
+    print(f"裁了 {n} 格，缺 {miss} 格 → {pd}")
+
+
 def cmd_sample(a):
     from PIL import Image, ImageDraw, ImageFont
     out = Path(a.out)
@@ -166,7 +205,11 @@ def cmd_sample(a):
         take = min(len(g), n // 3 + (1 if t < n % 3 else 0))
         idx += random.sample(g, take)
     idx = sorted(idx)
-    W, cw, ch, per = 10, 120, 125, 60
+    if a.list_only:  # 只列抽中的格号，先据此只生成这些格的格图
+        (out / "sample_ids.txt").write_text("\n".join(cands[k]["id"] for k in idx) + "\n", encoding="utf-8")
+        print(f"抽中 {len(idx)} 格 → sample_ids.txt")
+        return
+    W, cw, ch, per = 8, 170, 170, 40
     ft = None
     for f in glob.glob("/usr/share/fonts/**/*.[to]tf", recursive=True):
         try:
@@ -182,7 +225,7 @@ def cmd_sample(a):
         for j, k in enumerate(chunk):
             x = cands[k]
             p = Image.open(f"{a.patches}/{x['id'].replace(':', '_')}.png").convert("RGB")
-            p.thumbnail((110, 100))
+            p.thumbnail((160, 140))
             im.paste(p, ((j % W) * cw + 5, (j // W) * ch + 22))
             d.text(((j % W) * cw + 4, (j // W) * ch + 1), str(part * per + j), fill="red", font=ft)
             key.append(f"{part * per + j}\t{x['id']}\t{x['ref']}")
@@ -280,11 +323,20 @@ def main():
     s.add_argument("--ocr", help="rapidocr/5b 结果 tsv（格号<TAB>字）；给了则要求与参校一致")
     s.add_argument("--out", required=True)
     s.set_defaults(f=cmd_scan)
+    s = sub.add_parser("crop")
+    s.add_argument("--out", required=True)
+    s.add_argument("--packs", required=True)
+    s.add_argument("--ws", required=True)
+    s.add_argument("--patches", required=True)
+    s.add_argument("--ids", help="只裁这些格号（每行一个），缺省裁全部候选")
+    s.add_argument("--pad", type=int, default=40)
+    s.set_defaults(f=cmd_crop)
     s = sub.add_parser("sample")
     s.add_argument("--out", required=True)
     s.add_argument("--n", type=int, default=120)
     s.add_argument("--seed", type=int, default=11)
-    s.add_argument("--patches", required=True, help="候选格图目录（<册>_<页>_<列>_<格>.png，由 cv materialize('char_patch') 生成）")
+    s.add_argument("--list-only", action="store_true")
+    s.add_argument("--patches", required=False, help="候选格图目录（<册>_<页>_<列>_<格>.png，由 cv materialize('char_patch') 生成）")
     s.set_defaults(f=cmd_sample)
     s = sub.add_parser("gate")
     s.add_argument("--out", required=True)
