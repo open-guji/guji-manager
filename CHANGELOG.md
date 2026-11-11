@@ -7,6 +7,10 @@
 
 - 单页扫描的页面范围改为**按册两遍定框**（PATCH，A20 11-10，用户要全唐文「每页都有框、框大小基本一致」）：新增 `datastore/framefit.py`——先逐页按线段量框线（不怕斜），再取全册统一框尺寸，逐页对准框线；版心一侧线淡、只剩一条框线、个别页拍大、序页抬头伸出框外都处理；缺页灰图与无框页取整幅（`fit: blank/none`）。`pagemeta.build_pages` 给了页图就缺省走它（`how: framefit`、`fit` 记定法），没装 opencv 或 `guji source pagemeta --no-fit` 退回旧的逐页 `detect_content`；`--save` 存逐页记录出审查图。框线外粗内细取外道、配上的框线略大就撑到包住、粗过 3.5% 的墨团不算线、书名签小框与封面不猜（`fit: unsure`）。全唐文 11,238 页：退整幅 775→0（另 6 页本无框），框宽在中位 ±3% 内 57%→99.6%；北行日錄旧法退整幅的 3 页也框上了。只影响旁车，不动页表、不让产物过期。L0。
 
+## [0.4.43] - 2026-11-10
+
+- 修史記 anchors/04.jsonl 拉不下来（PATCH，A31 11-10，GUJI-750）：根因是 SJ-史記切分 rev 957032–957044 那次 push，04.jsonl 里 4 对行主键重复（第 56–59 行与 61–64 行），旧扫描「后者覆盖」只存了 61 行，source_files 却登记 65 行／整文件 sha，库里谁都还原不出（「还原后 sha 不符」）。①`guji db pull --repair-gaps`：缺行文件按库里现有行还原并列 repaired，本机文件与登记 sha 不同，下一次 db push 把它推回去修好登记；②push 前拒推：要推的文件里有同主键重复行即报错（`GUJI_ALLOW_DUP_KEYS=1` 放行）。L0。
+
 ## [0.4.42] - 2026-11-10
 
 - 字形库推库防缩水（PATCH，A31 11-10，史記事故 GUJI-750：`db push` 连带导出本机旧 glyph.db，中心库字形库 6,465→3,554）：①`guji db push` 缺省不再导出 glyph.db、不推字形库账本，要推显式 `--with-glyph`（或 `GUJI_DB_WITH_GLYPH=1`；`store commit`、`db sync` 不变）；②导出缩水闸 0.5→0.95（任一账本缩水超 5% 且少 ≥3 行即还原并停）；③入库删除闸 `emptied_ledger` 门槛一半→5%，并把 glyph_instances／glyph_sources 也纳入。L0。
