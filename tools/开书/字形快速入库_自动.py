@@ -37,6 +37,8 @@ COV_MIN = 0.975        # glyph_match 第一名 cov 下限
 GAP_MIN = 0.025        # 与第二名的差下限
 LOW_OWN = 8            # 自有样本 < 此数的字头才补
 PER_CHAR = 10          # 每字最多补几条
+# 形近组字头：不走自动入库（只记待批）。形近线的正式清单放 /mnt/project-files/shiji/，用 --exclude-file 追加
+SIMILAR = set("日曰己已巳末未木王玉主冡冢子于約田還環入八人卞十面而宫官東束大太犬春泰丈文衞椒土士志忘")
 PROVENANCE_BATCH = "sj-fill-auto-{date}"
 
 
@@ -64,6 +66,15 @@ def cmd_scan(a):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     own = own_counts(a.ws)
+    excl = set(SIMILAR)
+    if a.exclude_file:
+        excl |= {c for c in Path(a.exclude_file).read_text(encoding="utf-8") if not c.isspace() and c != "#"}
+    ocr = {}
+    if a.ocr:  # rapidocr/5b 另跑出的 <格号>\t<字>；给了就要求一致，没给的格不放
+        for l in open(a.ocr, encoding="utf-8"):
+            t = l.rstrip("\n").split("\t")
+            if len(t) >= 2:
+                ocr[t[0]] = t[1]
     cands, pending, stat = [], [], collections.defaultdict(collections.Counter)
     for v in a.vols:
         for f in sorted(glob.glob(f"{a.packs}/{v}/glyph_match/p*.json")):
@@ -88,6 +99,14 @@ def cmd_scan(a):
                         continue
                     gap = cd[0][1] - (cd[1][1] if len(cd) > 1 else 0)
                     if gap < GAP_MIN or own[ref] >= LOW_OWN:
+                        continue
+                    if ref in excl:
+                        stat[v]["形近组排除"] += 1
+                        pending.append(f"{i}\t形近组\t{ref}：形近字头不自动入库")
+                        continue
+                    if ocr and ocr.get(i) != ref:
+                        stat[v]["OCR不一致或缺"] += 1
+                        pending.append(f"{i}\tOCR不一致\t参校{ref} OCR{ocr.get(i)}")
                         continue
                     cands.append({"id": i, "ref": ref, "cov": cd[0][1], "gap": round(gap, 4),
                                   "orig_channel": s.get("channel"), "own": own[ref]})
@@ -118,11 +137,11 @@ def cmd_scan(a):
             tot[k2] += n
     rep = {"册": a.vols, "可自动入库": len(sel), "涉及字头": len({x['ref'] for x in sel}),
            "缺样本待审格": tot["缺样本待审格"], "总格": tot["格"],
+           "形近组排除": tot["形近组排除"], "OCR不一致或缺": tot["OCR不一致或缺"],
            "参数": {"cov_min": COV_MIN, "gap_min": GAP_MIN, "low_own": LOW_OWN, "per_char": PER_CHAR}}
     (out / "scan_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
     ledger = out / "待批.tsv"
-    if not ledger.exists():
-        ledger.write_text("格号\t类别\t说明\n", encoding="utf-8")
+    ledger.write_text("格号\t类别\t说明\n" + "".join(x + "\n" for x in pending), encoding="utf-8")
     print(json.dumps(rep, ensure_ascii=False, indent=1))
 
 
@@ -131,7 +150,18 @@ def cmd_sample(a):
     out = Path(a.out)
     cands = [json.loads(l) for l in open(out / "auto_candidates.jsonl", encoding="utf-8")]
     random.seed(a.seed)
-    idx = sorted(random.sample(range(len(cands)), min(a.n, len(cands))))
+    # 按字头频次分层：候选数高/中/低三档各取约 1/3，档内随机
+    cnt = collections.Counter(x["ref"] for x in cands)
+    order = sorted(cnt, key=lambda c: -cnt[c])
+    third = max(1, len(order) // 3)
+    tier = {c: min(2, i // third) for i, c in enumerate(order)}
+    groups = [[k for k, x in enumerate(cands) if tier[x["ref"]] == t] for t in range(3)]
+    n = min(a.n, len(cands))
+    idx = []
+    for t, g in enumerate(groups):
+        take = min(len(g), n // 3 + (1 if t < n % 3 else 0))
+        idx += random.sample(g, take)
+    idx = sorted(idx)
     W, cw, ch, per = 10, 120, 125, 60
     ft = None
     for f in glob.glob("/usr/share/fonts/**/*.[to]tf", recursive=True):
@@ -242,6 +272,8 @@ def main():
     s.add_argument("--packs", required=True, help="产物包根（含 <册>/glyph_match、seed_admit、align_ref）")
     s.add_argument("--ws", required=True)
     s.add_argument("--vols", nargs="+", required=True)
+    s.add_argument("--exclude-file", help="形近线清单（字头，任意分隔），追加到内置形近组")
+    s.add_argument("--ocr", help="rapidocr/5b 结果 tsv（格号<TAB>字）；给了则要求与参校一致")
     s.add_argument("--out", required=True)
     s.set_defaults(f=cmd_scan)
     s = sub.add_parser("sample")
