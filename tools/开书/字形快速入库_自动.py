@@ -37,6 +37,7 @@ COV_MIN = 0.975        # glyph_match 第一名 cov 下限
 GAP_MIN = 0.025        # 与第二名的差下限
 LOW_OWN = 8            # 自有样本 < 此数的字头才补
 PER_CHAR = 10          # 每字最多补几条
+MIN_OWN = 4            # 字头自有样本太少时三方一致不可靠（r41 盲读真错全在 own≤3 里）
 # 形近组字头：不走自动入库（只记待批）。形近线的正式清单放 /mnt/project-files/shiji/，用 --exclude-file 追加
 SIMILAR = set("日曰己已巳末未木王玉主冡冢子于約田還環入八人卞十面而宫官東束大太犬春泰丈文衞椒土士志忘")
 PROVENANCE_BATCH = "sj-fill-auto-{date}"
@@ -104,6 +105,10 @@ def cmd_scan(a):
                     gap = cd[0][1] - (cd[1][1] if len(cd) > 1 else 0)
                     if gap < GAP_MIN or own[ref] >= LOW_OWN:
                         continue
+                    if own[ref] < a.min_own:
+                        stat[v]["自有样本太少"] += 1
+                        pending.append(f"{i}\t样本太少\t{ref} 自有{own[ref]}<{a.min_own}，三方一致不可靠")
+                        continue
                     if ref in excl:
                         stat[v]["形近组排除"] += 1
                         pending.append(f"{i}\t形近组\t{ref}：形近字头不自动入库")
@@ -141,7 +146,7 @@ def cmd_scan(a):
             tot[k2] += n
     rep = {"册": a.vols, "可自动入库": len(sel), "涉及字头": len({x['ref'] for x in sel}),
            "缺样本待审格": tot["缺样本待审格"], "总格": tot["格"],
-           "形近组排除": tot["形近组排除"], "OCR不一致或缺": tot["OCR不一致或缺"],
+           "形近组排除": tot["形近组排除"], "OCR不一致或缺": tot["OCR不一致或缺"], "自有样本太少": tot["自有样本太少"],
            "参数": {"cov_min": COV_MIN, "gap_min": GAP_MIN, "low_own": LOW_OWN, "per_char": PER_CHAR}}
     (out / "scan_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
     ledger = out / "待批.tsv"
@@ -188,12 +193,71 @@ def cmd_crop(a):
     print(f"裁了 {n} 格，缺 {miss} 格 → {pd}")
 
 
+def cmd_ocr(a):
+    """对候选格做 rapidocr 单字识别（须在装了 rapidocr_onnxruntime＋cv2 的 python 里跑，如 cv 的 .venv）。
+    从原页图按 bbox_page（右上原点翻转）裁紧框，输出 ocr.tsv：格号<TAB>OCR首位字<TAB>置信度。"""
+    import cv2
+    import numpy as np
+    from PIL import Image
+    from rapidocr_onnxruntime import RapidOCR
+    eng = RapidOCR()
+    tr = eng.text_recognizer
+    chars = list(tr.postprocess_op.character)
+    out = Path(a.out)
+    ids = [json.loads(l)["id"] for l in open(out / "auto_candidates.jsonl", encoding="utf-8")]
+    by = collections.defaultdict(list)
+    for i in ids:
+        v, pg, _, _ = i.split(":")
+        by[(v, int(pg))].append(i)
+    rows = ["格号\tocr\tconf"]
+    for (v, pg), L in sorted(by.items()):
+        f = Path(a.packs) / v / "cell_shrink" / f"p{pg:04d}.json"
+        img = Path(a.ws) / "data_full" / v / f"{pg}.png"
+        if not f.exists() or not img.exists():
+            continue
+        bx = {c["id"]: c["bbox_page"] for col in json.load(open(f))["char_index"]["columns"] for c in col["chars"]}
+        im = np.array(Image.open(img).convert("RGB"))[:, :, ::-1]
+        H, W = im.shape[:2]
+        for i in L:
+            b = bx.get(i)
+            if not b:
+                continue
+            x0, x1, y0, y1 = max(0, int(round(W - 1 - b[2]))), int(round(W - 1 - b[0])), max(0, int(round(b[1]))), int(round(b[3]))
+            t = im[y0:y1 + 1, x0:x1 + 1]
+            if t.size == 0:
+                continue
+            h, w = t.shape[:2]
+            k = 40 / max(w, h)
+            t = cv2.resize(t, (max(1, int(w * k)), max(1, int(h * k))))
+            t = cv2.copyMakeBorder(t, 4, 4, 4, 4, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+            h, w = t.shape[:2]
+            x = cv2.resize(t, (max(w, 48), 48)).astype("float32").transpose(2, 0, 1) / 255
+            x = ((x - .5) / .5)[None]
+            pr = tr.session(x)[0][0]
+            if pr.min() < 0 or abs(pr.sum(1).mean() - 1) > .05:
+                e = np.exp(pr - pr.max(1, keepdims=True))
+                pr = e / e.sum(1, keepdims=True)
+            am, mx = pr.argmax(1), pr.max(1)
+            seq, cs, prev = [], [], -1
+            for ai, m in zip(am, mx):
+                if ai != prev and ai != 0:
+                    seq.append(chars[ai])
+                    cs.append(float(m))
+                prev = ai
+            rows.append(f"{i}\t{''.join(seq)}\t{min(cs) if cs else 0:.3f}")
+    (out / "ocr.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    print(f"OCR {len(rows) - 1} 格 → {out / 'ocr.tsv'}")
+
+
 def cmd_sample(a):
     from PIL import Image, ImageDraw, ImageFont
     out = Path(a.out)
     cands = [json.loads(l) for l in open(out / "auto_candidates.jsonl", encoding="utf-8")]
     random.seed(a.seed)
     # 按字头频次分层：候选数高/中/低三档各取约 1/3，档内随机
+    if a.skip_ids:  # 不与上轮同格
+        skip = {l.strip() for l in open(a.skip_ids, encoding="utf-8") if l.strip()}
+        cands = [x for x in cands if x["id"] not in skip]
     cnt = collections.Counter(x["ref"] for x in cands)
     order = sorted(cnt, key=lambda c: -cnt[c])
     third = max(1, len(order) // 3)
@@ -319,6 +383,7 @@ def main():
     s.add_argument("--packs", required=True, help="产物包根（含 <册>/glyph_match、seed_admit、align_ref）")
     s.add_argument("--ws", required=True)
     s.add_argument("--vols", nargs="+", required=True)
+    s.add_argument("--min-own", type=int, default=MIN_OWN, help="字头自有样本至少几条才可自动补（r41 盲读：<4 的格真错率约 9%%，≥4 无真错）")
     s.add_argument("--exclude-file", help="形近线清单（字头，任意分隔），追加到内置形近组")
     s.add_argument("--ocr", help="rapidocr/5b 结果 tsv（格号<TAB>字）；给了则要求与参校一致")
     s.add_argument("--out", required=True)
@@ -331,11 +396,17 @@ def main():
     s.add_argument("--ids", help="只裁这些格号（每行一个），缺省裁全部候选")
     s.add_argument("--pad", type=int, default=40)
     s.set_defaults(f=cmd_crop)
+    s = sub.add_parser("ocr")
+    s.add_argument("--out", required=True)
+    s.add_argument("--packs", required=True)
+    s.add_argument("--ws", required=True)
+    s.set_defaults(f=cmd_ocr)
     s = sub.add_parser("sample")
     s.add_argument("--out", required=True)
     s.add_argument("--n", type=int, default=120)
     s.add_argument("--seed", type=int, default=11)
     s.add_argument("--list-only", action="store_true")
+    s.add_argument("--skip-ids", help="排除这些格号（上轮已抽过的）")
     s.add_argument("--patches", required=False, help="候选格图目录（<册>_<页>_<列>_<格>.png，由 cv materialize('char_patch') 生成）")
     s.set_defaults(f=cmd_sample)
     s = sub.add_parser("gate")
