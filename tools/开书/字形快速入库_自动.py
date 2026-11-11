@@ -68,7 +68,11 @@ def cmd_scan(a):
     own = own_counts(a.ws)
     excl = set(SIMILAR)
     if a.exclude_file:
-        excl |= {c for c in Path(a.exclude_file).read_text(encoding="utf-8") if not c.isspace() and c != "#"}
+        for l in Path(a.exclude_file).read_text(encoding="utf-8").splitlines():
+            if l.startswith("#") or l.startswith("组名"):
+                continue
+            # 有制表符的取第二列（组名<TAB>字头…），否则整行都是字头
+            excl |= {c for c in (l.split("\t", 1)[1] if "\t" in l else l) if not c.isspace()}
     ocr = {}
     if a.ocr:  # rapidocr/5b 另跑出的 <格号>\t<字>；给了就要求一致，没给的格不放
         for l in open(a.ocr, encoding="utf-8"):
