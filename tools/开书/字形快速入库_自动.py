@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""字形快速入库·自动链（不需要人点页）：扫描 → 金标盲读抽样 → 闸 → 入库 → 快照。
+
+2026-11-11，史记字形线（Sheldon 这两天点不了人审页，要求把流程做成可重复脚本）。
+规则与 doc 见 `字形快速入库.md` 第八节「自动链」。口径来自史记 g16 一轮的实测（498 条、盲读 120 格 0 错）。
+
+子命令（全部只读，除了 admit）::
+
+    scan     从一册（或多册）产物包找「可自动入库」与「待批」，出清单与统计，不动库。
+    sample   从可自动入库清单抽金标：出无标签盲读图（blind_N.png）＋答案（key.tsv）。
+    gate     读人／模型的盲读结果（reads.tsv: 序号<TAB>读出的字），对答案算错率；0 错才写 gate.ok。
+    admit    没有 gate.ok 一律拒绝；有则把清单按 provenance=auto 写事件并入库（要 cv 环境），出入库报告。
+    （快照）  admit 之后按文末命令出 g<N>：snapshot → snapshot-upload --execute → pin-verify → db sync。
+
+需要人裁的格一律只进 ``待批.tsv``（台账），**绝不入库**。
+
+用法示例::
+
+    python 字形快速入库_自动.py scan   --packs /path/packs --ws /path/ws --out out/ --vols 01 02
+    python 字形快速入库_自动.py sample --out out/ --n 120 --seed 11 --patches /path/patchE
+    python 字形快速入库_自动.py gate   --out out/ --reads out/reads.tsv
+    python 字形快速入库_自动.py admit  --out out/ --ws /path/ws --patches /path/patchE
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import glob
+import json
+import random
+import sqlite3
+import sys
+from pathlib import Path
+
+# ── 规则参数（缺省值就是 g16 用的；改了要在 doc 里记）──
+COV_MIN = 0.975        # glyph_match 第一名 cov 下限
+GAP_MIN = 0.025        # 与第二名的差下限
+LOW_OWN = 8            # 自有样本 < 此数的字头才补
+PER_CHAR = 10          # 每字最多补几条
+PROVENANCE_BATCH = "sj-fill-auto-{date}"
+
+
+def _walk(o, acc):
+    if isinstance(o, dict):
+        if "id" in o and ("align_char" in o or "ref_char" in o):
+            acc.setdefault(o["id"], {}).update({k: o[k] for k in ("align_char", "ref_char") if k in o})
+        for v in o.values():
+            _walk(v, acc)
+    elif isinstance(o, list):
+        for v in o:
+            _walk(v, acc)
+
+
+def own_counts(ws: str) -> collections.Counter:
+    """自有样本数（人裁＋auto；不含借库）。"""
+    con = sqlite3.connect(f"file:{ws}/output/glyph.db?mode=ro", uri=True)
+    c = collections.Counter()
+    for lab, n in con.execute("select label,count(*) from instances where label_status in ('human','auto') group by 1"):
+        c[lab] = n
+    return c
+
+
+def cmd_scan(a):
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    own = own_counts(a.ws)
+    cands, pending, stat = [], [], collections.defaultdict(collections.Counter)
+    for v in a.vols:
+        for f in sorted(glob.glob(f"{a.packs}/{v}/glyph_match/p*.json")):
+            pg = Path(f).name
+            gm = json.load(open(f))["glyph_match"]
+            sa = {c["id"]: c for col in json.load(open(f"{a.packs}/{v}/seed_admit/{pg}"))["seed_admit"]["columns"]
+                  for c in col["chars"]}
+            A = {}
+            _walk(json.load(open(f"{a.packs}/{v}/align_ref/{pg}")), A)
+            for col in gm["columns"]:
+                for c in col["chars"]:
+                    i = c["id"]
+                    s = sa.get(i, {})
+                    al = A.get(i, {})
+                    ref, ali = al.get("ref_char"), al.get("align_char")
+                    cd = c.get("candidates") or []
+                    stat[v]["格"] += 1
+                    # 缺样本待审：参校字已知、没放行、自有样本不够
+                    if (not s.get("admit")) and ref and own[ref] < LOW_OWN:
+                        stat[v]["缺样本待审格"] += 1
+                    if not (ref and ali == ref and cd and cd[0][0] == ref and cd[0][1] >= COV_MIN):
+                        continue
+                    gap = cd[0][1] - (cd[1][1] if len(cd) > 1 else 0)
+                    if gap < GAP_MIN or own[ref] >= LOW_OWN:
+                        continue
+                    cands.append({"id": i, "ref": ref, "cov": cd[0][1], "gap": round(gap, 4),
+                                  "orig_channel": s.get("channel"), "own": own[ref]})
+    # 每字取 PER_CHAR 条，按页散开、gap 大的优先
+    by = collections.defaultdict(list)
+    for x in cands:
+        by[x["ref"]].append(x)
+    sel = []
+    for ch, L in by.items():
+        L.sort(key=lambda x: -x["gap"])
+        seen = set()
+        k = 0
+        for x in L:
+            pg = x["id"].rsplit(":", 2)[0]
+            if pg in seen:
+                continue
+            seen.add(pg)
+            sel.append(x)
+            k += 1
+            if k >= max(0, PER_CHAR - own[ch]):
+                break
+    # 待批台账：缺样本但不满足自动条件（需要人裁／看图）
+    sel_ids = {x["id"] for x in sel}
+    (out / "auto_candidates.jsonl").write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in sel) + "\n", encoding="utf-8")
+    tot = collections.Counter()
+    for v in a.vols:
+        for k2, n in stat[v].items():
+            tot[k2] += n
+    rep = {"册": a.vols, "可自动入库": len(sel), "涉及字头": len({x['ref'] for x in sel}),
+           "缺样本待审格": tot["缺样本待审格"], "总格": tot["格"],
+           "参数": {"cov_min": COV_MIN, "gap_min": GAP_MIN, "low_own": LOW_OWN, "per_char": PER_CHAR}}
+    (out / "scan_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    ledger = out / "待批.tsv"
+    if not ledger.exists():
+        ledger.write_text("格号\t类别\t说明\n", encoding="utf-8")
+    print(json.dumps(rep, ensure_ascii=False, indent=1))
+
+
+def cmd_sample(a):
+    from PIL import Image, ImageDraw, ImageFont
+    out = Path(a.out)
+    cands = [json.loads(l) for l in open(out / "auto_candidates.jsonl", encoding="utf-8")]
+    random.seed(a.seed)
+    idx = sorted(random.sample(range(len(cands)), min(a.n, len(cands))))
+    W, cw, ch, per = 10, 120, 125, 60
+    ft = None
+    for f in glob.glob("/usr/share/fonts/**/*.[to]tf", recursive=True):
+        try:
+            ft = ImageFont.truetype(f, 20)
+            break
+        except Exception:
+            pass
+    key = ["序号\t格号\t答案"]
+    for part in range((len(idx) + per - 1) // per):
+        chunk = idx[part * per:(part + 1) * per]
+        im = Image.new("RGB", (W * cw, ((len(chunk) + W - 1) // W) * ch), "white")
+        d = ImageDraw.Draw(im)
+        for j, k in enumerate(chunk):
+            x = cands[k]
+            p = Image.open(f"{a.patches}/{x['id'].replace(':', '_')}.png").convert("RGB")
+            p.thumbnail((110, 100))
+            im.paste(p, ((j % W) * cw + 5, (j // W) * ch + 22))
+            d.text(((j % W) * cw + 4, (j // W) * ch + 1), str(part * per + j), fill="red", font=ft)
+            key.append(f"{part * per + j}\t{x['id']}\t{x['ref']}")
+        im.save(out / f"blind_{part}.png")
+    (out / "key.tsv").write_text("\n".join(key) + "\n", encoding="utf-8")
+    print(f"抽 {len(idx)} 格 → blind_*.png（无标签）、key.tsv（答案，读图时别看）")
+
+
+def cmd_gate(a):
+    out = Path(a.out)
+    key = {}
+    for l in open(out / "key.tsv", encoding="utf-8").read().splitlines()[1:]:
+        n, i, ans = l.split("\t")
+        key[int(n)] = (i, ans)
+    reads = {}
+    for l in open(a.reads, encoding="utf-8").read().splitlines():
+        if l.strip() and not l.startswith("序号"):
+            n, r = l.split("\t")[:2]
+            reads[int(n)] = r
+    miss = [n for n in key if n not in reads]
+    bad = [(n, key[n][0], key[n][1], reads[n]) for n in key if n in reads and reads[n] != key[n][1]]
+    rep = {"抽样": len(key), "读了": len(reads), "没读": len(miss), "错": len(bad), "错格": bad}
+    (out / "gate_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    if len(key) >= a.min_n and not miss and not bad:
+        (out / "gate.ok").write_text("ok\n")
+        print("闸通过（0 错）", json.dumps(rep, ensure_ascii=False))
+        return 0
+    if (out / "gate.ok").exists():
+        (out / "gate.ok").unlink()
+    print("闸不过：", json.dumps(rep, ensure_ascii=False))
+    return 1
+
+
+def cmd_admit(a):
+    out = Path(a.out)
+    if not (out / "gate.ok").exists():
+        sys.exit("拒绝入库：没有 gate.ok（盲读抽样必须 0 错）")
+    import datetime
+    import cv2
+    sys.path.insert(0, a.cv)
+    from open_guji_cv.core.workspace import glyph_db_path, set_workspace_override
+    set_workspace_override(a.ws)
+    from open_guji_cv.clustering.glyph_db import GlyphDB, export_store
+    from open_guji_cv.utils.binarized import binarize_page
+    from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
+    batch = PROVENANCE_BATCH.format(date=datetime.date.today().strftime("%m%d"))
+    log = EventLog(Path(a.ws) / "feedback")
+    human = {e.target.key for e in log.iter_all() if e.actor == "user"}
+    dbp = glyph_db_path()
+    with sqlite3.connect(f"file:{dbp}?mode=ro", uri=True) as c:
+        inlib = {r[0] for r in c.execute("select instance_id from admissions")}
+    db = GlyphDB(dbp)
+    base = log.latest_seq(batch)
+    evs, st = [], collections.Counter()
+    for l in open(out / "auto_candidates.jsonl", encoding="utf-8"):
+        r = json.loads(l)
+        k, ch = r["id"], r["ref"]
+        if k in human:
+            st["已有人裁"] += 1
+            continue
+        if f"v2:{k}" in inlib:
+            st["已在库"] += 1
+            continue
+        img = cv2.imread(f"{a.patches}/{k.replace(':', '_')}.png")
+        if img is None:
+            st["无图"] += 1
+            continue
+        bk, pg, col, slot = k.split(":")
+        meta = {"channel": "auto-chain", "cov": r["cov"], "gap": r["gap"], "orig_channel": r.get("orig_channel")}
+        n = slot.rstrip("ab")
+        e = make_event(batch, base + len(evs) + 1, "confirm",
+                       EventTarget(step="seed_admit", unit="cell", key=k, book=bk, page=int(pg), col=int(col), slot=int(n) if n.isdigit() else 0),
+                       {"v": "confirm", "shape": ch, "source": "auto", **meta}, actor="model")
+        evs.append(e)
+        ok = db.admit_instance(f"v2:{k}", ch, cv2.imencode(".png", binarize_page(img, edge_margin=0))[1].tobytes(),
+                               provenance="auto", shape=ch,
+                               evidence={"event": e.id, "batch": batch, "source": "auto", **meta},
+                               page=pg, col=int(col), idx=int(n) if n.isdigit() else 0)   # idx 必须是 int
+        st["入库" if ok else "拒"] += 1
+    log.append(evs)
+    # 注意：export_store 写到「数据目录」的 glyph_store（$GUJI_DATA_HOME/<分支>/<ws id>/output/glyph_store），
+    # 不是工作区 output/glyph_store；写错地方 db sync 看不见（史记 11-10 踩过）。
+    print(json.dumps(dict(st), ensure_ascii=False))
+    print("入库完成。下一步（数据目录 store 用 export_store 同步、再出快照）：见 doc 第八节命令清单。")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan")
+    s.add_argument("--packs", required=True, help="产物包根（含 <册>/glyph_match、seed_admit、align_ref）")
+    s.add_argument("--ws", required=True)
+    s.add_argument("--vols", nargs="+", required=True)
+    s.add_argument("--out", required=True)
+    s.set_defaults(f=cmd_scan)
+    s = sub.add_parser("sample")
+    s.add_argument("--out", required=True)
+    s.add_argument("--n", type=int, default=120)
+    s.add_argument("--seed", type=int, default=11)
+    s.add_argument("--patches", required=True, help="候选格图目录（<册>_<页>_<列>_<格>.png，由 cv materialize('char_patch') 生成）")
+    s.set_defaults(f=cmd_sample)
+    s = sub.add_parser("gate")
+    s.add_argument("--out", required=True)
+    s.add_argument("--reads", required=True)
+    s.add_argument("--min-n", type=int, default=100)
+    s.set_defaults(f=cmd_gate)
+    s = sub.add_parser("admit")
+    s.add_argument("--out", required=True)
+    s.add_argument("--ws", required=True)
+    s.add_argument("--patches", required=True)
+    s.add_argument("--cv", default="/home/user/open-guji-cv")
+    s.set_defaults(f=cmd_admit)
+    a = ap.parse_args()
+    sys.exit(a.f(a) or 0)
+
+
+if __name__ == "__main__":
+    main()
