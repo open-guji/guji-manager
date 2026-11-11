@@ -22,7 +22,8 @@
   左右半叶共用，宽高要调用方给（DjVu 页大小页表里没有）。
 
 `content`：wyg-frame 与 crop 的页图本来就裁在版框上，由页表 `frame`/`pad` 直接算（版框矩形外扩 1.5% 短边）；
-单页扫描用 `detect_content` 离线算（长横线定上下、竖线定左右，缩到 600 宽，无框线取整幅），可 `manual` 覆盖。
+单页扫描用 `framefit` 按册两遍算（先逐页量框线，全册统一框尺寸，逐页对准；11-10 起，全唐文看图定），
+没装 opencv 退回逐页的 `detect_content`（长横线定上下、竖线定左右，缩到 600 宽，无框线取整幅），可 `manual` 覆盖。
 """
 from __future__ import annotations
 
@@ -266,8 +267,35 @@ def _round(H: np.ndarray) -> list[list[float]]:
     return [[float(f"{v:.10g}") for v in r] for r in np.asarray(H, float)]
 
 
-def build_pages(table: dict, **kw) -> dict[str, dict]:
-    return {p["seq"]: build_page(p, table, **kw) for p in table["pages"]}
+def _single(row: dict) -> bool:
+    return not (row.get("frame") and row.get("half")) and not any("crop" in o for o in (row.get("ops") or []))
+
+
+def build_pages(table: dict, *, src_size: SizeOf | None = None,
+                gray_of: Callable[[dict], np.ndarray] | None = None, fit: bool = True) -> dict[str, dict]:
+    """整册旁车记录。单页扫描给了 `gray_of` 时缺省按册两遍定框（`framefit`：先量框线，全册统一框尺寸，逐页对准），
+    `how: framefit`、`fit` 记定法；没装 opencv 或 `fit=False` 退回逐页的 `detect_content`（`how: detect`）。
+    占位灰页、无框线页 content 取整幅（`how: whole`，`fit` 记 blank/none）。"""
+    fitted: dict[str, tuple] = {}
+    singles = [p for p in table["pages"] if _single(p)]
+    if gray_of is not None and fit and singles:
+        try:
+            import cv2  # noqa: F401
+            from . import framefit as FF
+        except ImportError:
+            FF = None
+        if FF is not None:
+            fitted = FF.fit_volume({p["seq"]: FF.measure(gray_of(p)) for p in singles})
+    out = {}
+    for p in table["pages"]:
+        if p["seq"] in fitted:
+            m = build_page(p, table, src_size=src_size, gray_of=None)
+            c, how = fitted[p["seq"]]
+            m.update({"content": c, "how": "framefit", "fit": how} if c else {"how": "whole", "fit": how})
+            out[p["seq"]] = m
+        else:
+            out[p["seq"]] = build_page(p, table, src_size=src_size, gray_of=gray_of)
+    return out
 
 
 # ─── 校验 ────────────────────────────────────────────────────────────────
