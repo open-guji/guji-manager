@@ -4,7 +4,7 @@
   1. 几何快筛（seg_detect.py）：逐格 flags，FOR/Fend/Fpatch/Lh/Lv = 装饰类，JZW（夹注半格并格）= 结构类；
   2. 漏切块（orphan.py）：列里整块墨不在任何格框里；
   3. 钉子核对：中心库 manual-cells 钉子列，cell_shrink 出的格号集合必须与钉子一致（格号不符＝结构类）；
-     版式对格号（给 --layout）：非钉子列按 layout_slots 格位表比实出格号（格数不同＝版式不符，要看；格数相同只是编号不同＝版式编号差，多为题署列空位、单侧小注 a/b 约定，框对就不修）；
+     版式对格号（给 --layout）：非钉子列按 layout_slots 格位表比实出格号（半格 a、b 都算对上；格数不同＝版式不符，要看；格数相同只是编号不同，多为题署列大间距不留空位号，判过只计数）；
   4. 待审原因（guji_manager.review.causes）：A1/A3/A4/A5/A6/A9 这些「切分或对位」原因码，
      所在列有○（evidence.symbol）的归「○对位」，其余归「原因码·看图」（多为整理本列与图不齐，要看图确认框对）；
   5. 汇总成列清单：每列一行，给出 类（结构／装饰／对位）与 处置（需钉子＝要看图定框、公用＝交 A22、
@@ -121,23 +121,31 @@ def check_layout(prod, vols, layout_path, pinned):
         ids = set()
         for n in d["slots"]:
             if n in half:
-                ids.add(f"{n}a")
+                ids.add(f"{n}a")   # 半格 half 是 a^b、不分左右（A22 11-11）：比对时 Nb 也算对上，见下
             elif n in notes:
                 ids |= {f"{n}a", f"{n}b"}
             else:
                 ids.add(str(n))
-        want[v][(int(d["page"]), int(d["col"]))] = ids
+        want[v][(int(d["page"]), int(d["col"]))] = (ids, {f"{n}a" for n in half})
     for v in vols:
         got = shrink_slots(prod, v)
-        for (p, c), ids in want[v].items():
+        for (p, c), (ids, halfa) in want[v].items():
             if (v, p, c) in pinned:
                 continue
             have = got.get((p, c))
             if have is None:
                 continue
+            # 半格只切了左行（Nb）也算对上
+            have = {h[:-1] + "a" if h.endswith("b") and h[:-1] + "a" in halfa and h[:-1] + "a" not in have else h
+                    for h in have}
             miss, extra = sorted(ids - have, key=_sk), sorted(have - ids, key=_sk)
-            if miss or extra:
-                res[(v, p, c)] = ("同数" if len(miss) == len(extra) else "异数") + f"：版式有产物无 {','.join(miss) or '-'}；产物有版式无 {','.join(extra) or '-'}"
+            if not (miss or extra):
+                continue
+            if len(miss) == len(extra):
+                # 格数相同、只是编号不同（题署列大间距不给版式空位留号）：A22 11-11 建议不改格号，判过，只计数
+                res[(v, p, c)] = "同数"
+                continue
+            res[(v, p, c)] = f"异数：版式有产物无 {','.join(miss) or '-'}；产物有版式无 {','.join(extra) or '-'}"
     return res
 
 
@@ -194,7 +202,9 @@ def aggregate(cells_tsv, orph_tsv, pins, causes, skip, layout=None):
         else:
             col[k]  # 钉子列也列出来，标已钉
     for k, msg in (layout or {}).items():
-        col[k]["LAYOUT" if msg.startswith("异数") else "LAYOUT_ID"] += 1
+        if msg == "同数":
+            continue
+        col[k]["LAYOUT"] += 1
         ex[k].insert(0, msg)
     rows = []
     for k in set(col) | set(pins):
@@ -207,8 +217,6 @@ def aggregate(cells_tsv, orph_tsv, pins, causes, skip, layout=None):
             cls, act = "结构", "格号不符"
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
-        elif cn["LAYOUT_ID"] and not pg and not struct:
-            cls, act = "结构", "版式编号差"
         elif pg:
             cls, act = ("结构" if struct else "装饰" if cosm else "对位"), pg
         elif struct and k in pins:
@@ -227,7 +235,7 @@ def aggregate(cells_tsv, orph_tsv, pins, causes, skip, layout=None):
             continue
         rows.append(dict(列=f"{k[0]}:{k[1]}:{k[2]}", 类=cls, 处置=act, 结构分=struct, 装饰分=cosm,
                          各项=json.dumps(dict(cn), ensure_ascii=False), 例格=" ".join(ex[k][:14])))
-    order = {"格号不符": 0, "版式不符": 0.5, "需钉子": 1, "版式编号差": 1.5, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3, "公用清格": 4, "已钉": 5}
+    order = {"格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3, "公用清格": 4, "已钉": 5}
     rows.sort(key=lambda r: (order.get(r["处置"], 9), -r["结构分"], -r["装饰分"]))
     return rows
 
@@ -290,7 +298,7 @@ def main(argv=None):
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["列"], delimiter="\t")
         w.writeheader()
         w.writerows(rows)
-    look = [r for r in rows if r["处置"] in ("格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图", "版式编号差")]
+    look = [r for r in rows if r["处置"] in ("格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")]
     n_img = montage(a.products, a.cache, look, out)
     cnt = collections.Counter(r["处置"] for r in rows)
     flags = collections.Counter()
@@ -301,6 +309,7 @@ def main(argv=None):
              f"- 产物根 `{a.products}`，钉子 `{a.pins or '无'}`",
              "- 处置计数（按列）：" + "，".join(f"{k} {v}" for k, v in cnt.most_common()),
              "- 逐格 flags：" + "，".join(f"{k} {v}" for k, v in flags.most_common()),
+             f"- 版式格数同、编号不同（判过）：{sum(1 for m in layout.values() if m == '同数')} 列",
              f"- 需看图列缩略图 {n_img} 列：`需看图_*.png`", "",
              "## 格号不符／版式不符／需钉子／已钉复核", ""]
     lines += [f"- {r['列']} {r['处置']}：{r['例格']}" for r in look] or ["- 无"]
