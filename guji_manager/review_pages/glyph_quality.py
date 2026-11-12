@@ -1,4 +1,4 @@
-"""字块质量页（glyph_quality）：单块或同一格新旧两版字块并排，人点「干净／带框／切笔／看不清」。
+"""字块质量页（glyph_quality）：单块或同一格新旧两版字块并排，人点「干净／带框／切笔／污渍／看不清」（污渍 1.1.0，2026-11-12 Sheldon 要建污渍尺子）。
 
 结果按字块 sha 锚定：同一格换了切法、字块有一个像素不同就是新 sha，旧标签不沿用（要再看）。
 
@@ -15,8 +15,8 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-LABELS = ("clean", "frame", "cut", "unsure")
-LABEL_NAMES = {"clean": "干净", "frame": "带框", "cut": "切笔", "unsure": "看不清"}
+LABELS = ("clean", "frame", "cut", "stain", "unsure")
+LABEL_NAMES = {"clean": "干净", "frame": "带框", "cut": "切笔", "stain": "污渍", "unsure": "看不清"}
 _KEY_NAMES = {"off": "旧", "on": "新", "old": "旧", "new": "新"}
 
 
