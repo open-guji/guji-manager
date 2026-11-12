@@ -153,7 +153,9 @@ def font_subset_css(data: dict, fonts: list[str]) -> tuple[str, list[str]]:
         fam.append("GujiSub%d" % i)
         left -= set(have)
     if fam:
-        css.append(":root{--font-glyph:%s,\"Noto Serif SC\",\"Songti SC\",\"SimSun\",serif}" % ",".join(fam))
+        # 字体顺序（Sheldon 11-10 定）：先用系统原字体（大陆标准字形：Noto Serif SC／Songti SC／SimSun），
+        # 内嵌的全字库子集（Jigmo、I.Ming，非大陆标准字形）只排在后面，给系统字体没有的冷僻字兜底
+        css.append(":root{--font-glyph:\"Noto Serif SC\",\"Songti SC\",\"SimSun\",%s,serif}" % ",".join(fam))
     return "".join(css), sorted(left)
 
 

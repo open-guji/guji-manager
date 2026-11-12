@@ -62,10 +62,15 @@ def _rows(src, tbl: str, ws: str, cols, **filters):
 
 def materialize(src, ws: str, dest: str | Path, prefixes: tuple[str, ...] = (GS,),
                 cache=None, bucket: str = "main", with_images: bool = True,
-                reuse: Callable[[str], Path | None] | None = None, exclude: tuple[str, ...] = ()) -> dict:
+                reuse: Callable[[str], Path | None] | None = None, exclude: tuple[str, ...] = (),
+                repair_gaps: bool = False) -> dict:
     """把工作区 ``ws`` 里路径以 ``prefixes`` 之一开头的文件还原到 ``dest``（目录结构同工作区）。
 
     ``exclude``：这些前缀下的文件不取（按需拉取，见 ``workcopy.pull`` 的 ``exclude``）。
+
+    ``repair_gaps``：库里某个逐行文件缺了几行（旧版 push 把同主键重复行「后者覆盖」后丢了前面的行，登记的 n_lines／sha
+    却还是整个文件的，2026-11-10 史記 anchors/04.jsonl），不报 sha 不符，按库里现有的行顺序还原（缺的行丢掉），登记进返回的
+    ``repaired``；本机文件和库里登记的 sha 不同，下一次 push 会把它推回去修好库里的登记。
 
     ``dest`` 下原有的同前缀目录先清空，保证不残留库里已经没有的文件。返回统计（``reused``＝用本机字节的文件数，
     ``fetched``＝向库要的文件数）。``reuse(相对路径)`` 给出本机现有的同路径文件（没有给 None）；
@@ -114,7 +119,7 @@ def materialize(src, ws: str, dest: str | Path, prefixes: tuple[str, ...] = (GS,
         img_thread = threading.Thread(target=fetch_images, name="materialize-images", daemon=True)
         img_thread.start()
     try:
-        texts, reused, fetched = _texts(src, ws, files, reuse)
+        texts, reused, fetched, repaired = _texts(src, ws, files, reuse, repair_gaps)
     finally:
         if img_thread is not None:
             img_thread.join()
@@ -154,7 +159,8 @@ def materialize(src, ws: str, dest: str | Path, prefixes: tuple[str, ...] = (GS,
                     new.replace(old)
     shutil.rmtree(tmp, ignore_errors=True)
     return {"ws": ws, "files": len(texts), "reused": reused, "fetched": fetched, "images": len(images),
-            "image_cache": img_stats, "missing_images": skipped, "bytes": sum(len(b) for b in texts.values())}
+            "image_cache": img_stats, "missing_images": skipped, "bytes": sum(len(b) for b in texts.values()),
+            "repaired": repaired}
 
 
 #: 整文件表（files 等）按路径分批取，每批原文合计不超过这么多字节、不超过这么多个文件（2026-11-02）。
@@ -194,13 +200,14 @@ def _whole_rows(src, tbl: str, ws: str, cols, need: list[str], files: dict):
         yield from src.rows(tbl, ws, cols=cols, src_path=b)
 
 
-def _texts(src, ws: str, files: dict, reuse) -> tuple[dict[str, bytes], int, int]:
+def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple[dict[str, bytes], int, int, list[str]]:
     """``source_files`` 登记的文本文件逐个还原（本机同 sha 的直接用），整文件核 sha。返回 (文本, 复用数, 向库要的数)。"""
     by_tbl: dict[str, list[str]] = defaultdict(list)
     for p, f in files.items():
         by_tbl[f["tbl"]].append(p)
 
     texts: dict[str, bytes] = {}
+    repaired: list[str] = []
     reused = fetched = 0
     for tbl, paths in sorted(by_tbl.items()):
         if tbl in BLOB_TABLES:
@@ -246,10 +253,15 @@ def _texts(src, ws: str, files: dict, reuse) -> tuple[dict[str, bytes], int, int
                 raise MaterializeError(f"{p}: 库里有超出 n_lines 的行 {sorted(extra)[:5]}")
             text = "\n".join(have.get(i, "") for i in range(n)) + ("\n" if f["final_newline"] else "")
             texts[p] = text.encode("utf-8")
+            if repair_gaps and len(have) < n and sha256(texts[p]) != f["sha256"]:
+                keep = [have[i] for i in sorted(have)]
+                texts[p] = ("\n".join(keep) + ("\n" if f["final_newline"] and keep else "")).encode("utf-8")
+                repaired.append(f"{p}（库里 {len(have)} 行、登记 {n} 行）")
 
-    bad = [p for p, b in texts.items()
-           if sha256(b) != files[p]["sha256"] or len(b) != int(files[p]["bytes"])]
+    skip_check = {x.split("（")[0] for x in repaired}
+    bad = [p for p, b in texts.items() if p not in skip_check
+           and (sha256(b) != files[p]["sha256"] or len(b) != int(files[p]["bytes"]))]
     missing = [p for p, f in files.items() if f["tbl"] not in BLOB_TABLES and p not in texts]
     if bad or missing:
         raise MaterializeError(f"还原后 sha 不符 {len(bad)} 个（如 {bad[:3]}），缺 {len(missing)} 个（如 {missing[:3]}）")
-    return texts, reused, fetched
+    return texts, reused, fetched, repaired

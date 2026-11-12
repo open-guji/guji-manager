@@ -129,7 +129,7 @@ def table_counts(rows: list[dict]) -> dict[str, int]:
 # ───────────────────────── 字的取舍 ─────────────────────────
 
 def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[str] | frozenset[str] = frozenset(),
-                protected: dict[str, str] | None = None) -> dict:
+                protected: dict[str, str] | None = None, same=None) -> dict:
     """按对照表逐块图判字，**就地改 new_char**。pending：新单上待审的格（新格号）。
     protected：{新格号: 字}，有效人裁与 char-edits 手改经对照表换到新格后的字（人裁最高，`resolve` 的 human）。
 
@@ -148,7 +148,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
             continue
         cur, new = cur_seq[i], new_seq[i]
         d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
-                    new_lacuna=bool(x.get("lacuna")))
+                    new_lacuna=bool(x.get("lacuna")), same=same)
         if d.result != new and d.result is not None:
             x["c"] = d.result
             if d.result != BLANK:
@@ -171,13 +171,14 @@ def load_human(book: str) -> dict[str, str] | None:
     return {k.split(":", 1)[1] if k.startswith(f"{book}:") else k: c for k, c in h.items() if c}
 
 
-def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None) -> tuple[dict[str, str], list[tuple]]:
+def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[dict] | None, same=None) -> tuple[dict[str, str], list[tuple]]:
     """旧版里受保护的格 {旧格号: 字}：有效人裁（旧 book-text 该格正是人裁字，才算绑得上）与 char-edits 手改（取改后字）。
     返回 (受保护, 原先就对不上的 [(格, 来源, 人裁或手改字, 旧文本字)])；后者多是异体／归一（删/刪），只报不停。"""
     och = {a: x.get("c") for a, x in _chars(old_char)}
+    eq = same or (lambda p, q: p == q)
     prot, pre = {}, []
     for a, c in (human or {}).items():
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "人裁", c, och.get(a)))
@@ -185,7 +186,7 @@ def protected_cells(old_char: dict, human: dict[str, str] | None, edits: list[di
         a, c = e.get("anchor"), e.get("new")
         if not a or not c:
             continue
-        if och.get(a) == c:
+        if eq(och.get(a), c):
             prot[a] = c
         elif a in och:
             pre.append((a, "手改", c, och.get(a)))
@@ -206,9 +207,10 @@ def human_ledger(rows: list[dict], prot_old: dict[str, str], new_char: dict) -> 
     return out, probs
 
 
-def ledger_check(new_char: dict, prot_new: dict[str, str]) -> list[str]:
+def ledger_check(new_char: dict, prot_new: dict[str, str], same=None) -> list[str]:
+    eq = same or (lambda p, q: p == q)
     cur = {a: x.get("c") for a, x in _chars(new_char)}
-    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if cur.get(a) != c]
+    return [f"{a} 落字「{cur.get(a)}」≠人裁／手改「{c}」" for a, c in prot_new.items() if not eq(cur.get(a), c)]
 
 
 # ───────────────────────── book-text 里落地 ─────────────────────────
@@ -313,10 +315,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
-    prot_old, human_pre = protected_cells(old["char"], human, edits)
+    from ..charnorm import load_norm
+    same = load_norm(book or f"vol{int(chapter):02d}").same     # 同字判定（别／別 不算冲突）
+    prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
-    chars = merge_chars(old["char"], new_char, rows, pending, prot_new) if merge else {}
-    ledger_probs += ledger_check(new_char, prot_new)
+    chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
+    ledger_probs += ledger_check(new_char, prot_new, same)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
@@ -427,6 +431,51 @@ def structure_changed(old_char: dict, new_char: dict) -> bool:
     return [a for a, _ in _chars(old_char)] != [a for a, _ in _chars(new_char)]
 
 
+# ───────────────────────── R1 前置闸：字形库已 rekey ─────────────────────────
+
+def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int) -> dict:
+    """字形库刻例的键（`册:页:列:格`）是格号坐标，格号变了必须先 rekey（`ops/cell_rekey`），否则人裁刻例会投到别的块图（殿本 99:2:8 出两个「雯」）。
+    只读核对：本册字形库实例的格键，不在**新包格集合**里的就是没跟上的（停）；在新包里、但对照表说它改了号的（旧号被别的块图占用）
+    无法只靠键判断，只计数报出（``ambiguous``），要用 g 快照对比图字对（字形快速入库.md）。
+    返回 {ok, orphan: [键…], ambiguous: n, n_inst}。"""
+    import sqlite3
+    from ..ops.cell_rekey import _split_instance
+    pre = f"vol{vol:02d}:"
+    new_cells = {pre + r["new"] for r in rows if r["new"]}
+    renamed_old = {pre + r["old"] for r in rows if r["kind"] == "改号" and r["old"]}
+    c = sqlite3.connect(f"file:{glyph_db}?mode=ro", uri=True)
+    try:
+        ids = [r[0] for r in c.execute("SELECT instance_id FROM instances")]
+    finally:
+        c.close()
+    orphan, amb, n = [], 0, 0
+    for iid in ids:
+        sp = _split_instance(iid, f"vol{vol:02d}")
+        if sp is None:
+            continue
+        n += 1
+        key = sp[1]
+        if key not in new_cells:
+            orphan.append(iid)
+        elif key in renamed_old:
+            amb += 1
+    return {"ok": not orphan, "orphan": orphan, "ambiguous": amb, "n_inst": n}
+
+
+def open_pr(wt: Path, branch: str, title: str, body: str, base: str = "dev") -> str:
+    """R7：1.x 推了 ``swap/<册>-1x`` 分支后开 PR（草稿；需 ``gh`` 且已登录）。已有同分支的开 PR 就返回它。失败不抛，返回 ``failed：…``。"""
+    gh = shutil.which("gh")
+    if not gh:
+        return "failed：没有 gh 命令，手动开 PR"
+    ex = subprocess.run([gh, "pr", "list", "--head", branch, "--base", base, "--state", "open", "--json", "url", "-q", ".[0].url"],
+                        cwd=wt, capture_output=True, text=True)
+    if ex.returncode == 0 and ex.stdout.strip():
+        return ex.stdout.strip()
+    p = subprocess.run([gh, "pr", "create", "--draft", "--base", base, "--head", branch, "--title", title, "--body", body],
+                       cwd=wt, capture_output=True, text=True)
+    return p.stdout.strip().splitlines()[-1] if p.returncode == 0 and p.stdout.strip() else f"failed：{(p.stderr or p.stdout).strip()[-200:]}"
+
+
 # ───────────────────────── 命令 ─────────────────────────
 
 def _latest_export(ws: Path, book: str) -> Path | None:
@@ -460,8 +509,34 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
     return wt
 
 
+def _copy_cord(src: Path, dst: Path, cv: Path | None) -> str | None:
+    """导出的 cord 写进 book-text。给了 cv 就用 cv ``republish.copy_cord_for_site`` 换到网站页图坐标（换过图源的书，
+    与 swap run 的自动路径同一口径）；没给 cv 原样拷（殿本页表未换，坐标相同）。返回 None＝成功，否则是停下的原因。"""
+    if not src.exists():
+        return None
+    if cv is None:
+        shutil.copyfile(src, dst)
+        return None
+    import importlib.util
+    f = Path(cv) / "scripts" / "zhengli" / "republish.py"
+    try:
+        for d in (str(Path(cv)), str(f.parent)):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+        spec = importlib.util.spec_from_file_location("_cv_republish", f)
+        rp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rp)
+        rp.copy_cord_for_site(src, dst)
+    except SystemExit as e:
+        return f"cord 换不到网站页图坐标：{e}"
+    except Exception as e:  # noqa: BLE001 —— cv 不在或读不了页表：不拿错坐标落库
+        return f"cord 换坐标失败（cv {cv}）：{e}"
+    return None
+
+
 def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: str, push: bool,
-            pending: set[str], out_dir: Path) -> dict:
+            pending: set[str], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True,
+            cv: Path | None = None) -> dict:
     vdir = _bt_dir(wt, text_id) / "default"
     ch = f"{int(book[3:]):03d}"
     from ..formats.guji_char_cord import dumps
@@ -473,9 +548,22 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     new_char = _load(export / f"{ch}.char.json")
     if not new_char:
         return {"status": "blocked", "why": f"导出里没有 {ch}.char.json：{export}"}
+    old_cord = _load(vdir / f"{ch}.cord.json")
+    why = _copy_cord(export / f"{ch}.cord.json", vdir / f"{ch}.cord.json", cv)     # 换过图源的书换到网站页图坐标
+    if why:
+        _git(wt, "checkout", "-q", "--", ".")
+        return {"status": "blocked", "why": why}
+    gate_note = "R1 未核（没给 --glyph-db）"
+    if glyph_db:
+        new_cord = _load(vdir / f"{ch}.cord.json")
+        if old_cord and new_cord:
+            g = rekey_gate(glyph_db, cell_table(old_char, old_cord, new_char, new_cord), int(book[3:]))
+            if not g["ok"]:
+                return {"status": "r1-stop", "why": f"字形库有 {len(g['orphan'])} 个刻例的格键不在新包里（没 rekey）：{g['orphan'][:5]}；先 rekey 再落"}
+            gate_note = f"R1 已核（实例 {g['n_inst']}，改号待核 {g['ambiguous']}）"
     new_char["version"] = old_char.get("version", new_char.get("version"))
     (vdir / f"{ch}.char.json").write_text(dumps(new_char), encoding="utf-8", newline="\n")
-    for t in ("cord", "norm", "fig"):
+    for t in ("norm", "fig"):
         p = export / f"{ch}.{t}.json"
         if p.exists():
             shutil.copyfile(p, vdir / f"{ch}.{t}.json")
@@ -503,7 +591,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             _git(wt, "clean", "-fdq", "--", "Book")
             return {"status": "blocked", "why": f"bump {ln} 失败：{(p.stdout + p.stderr).strip()[-300:]}", **r}
         records += [x.strip() for x in p.stdout.splitlines() if x.startswith("版本记录:")]
-    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    sync_headings_keep_unreadable(wt, vdir)
     ar = Path(wt) / "scripts" / "book-text"
     if str(ar) not in sys.path:
         sys.path.insert(0, str(ar))
@@ -512,7 +600,20 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         auto_remap.fix_heading_breaks(str(vdir), ch)
     except Exception as e:  # noqa: BLE001
         print(f"  标题符修正跳过：{e}", file=sys.stderr)
+    stored = None
+    try:
+        from .finish import store_table
+        stored = store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
+    except OSError as e:  # noqa: BLE001
+        print(f"  对照表入库跳过：{e}", file=sys.stderr)
     lc = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
+    if lc.returncode and stored is not None:
+        # book-text 校验器还不认 lineage/ 目录时（需 book-text 把 lineage 加进 ORIGINAL_SIDECAR_FILES）：不带对照表再核一遍，别因此整册落不了
+        drop_stored_table(stored)
+        lc2 = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
+        if lc2.returncode == 0:
+            print("  对照表入库跳过：book-text 校验器不认 lineage/ 目录，已不带对照表落文本（对照表仍在 reports/_swap/book-text/）", file=sys.stderr)
+        lc = lc2
     if lc.returncode:
         keep = out_dir / f"local_check_{book}.txt"
         keep.write_text(lc.stdout + lc.stderr, encoding="utf-8")
@@ -534,6 +635,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         body.append(f"专名复核 {len(r['review'])} 条（改字落进专名）：" + "；".join(f"{x[1]} {x[4]}" for x in r["review"][:8]))
     if r["left"]:
         body.append(f"留待重标 {len(r['left'])} 条（closeout 现算为 A01–A03）：" + "；".join(f"{x[1]} {x[2]}" for x in r["left"][:6]))
+    body.append(gate_note)
     msg = f"殿本 {book}：换包增删格，标点专名按对照表平移（patch）\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
     _git(wt, "add", "-A", "--", str(vdir.relative_to(wt)))
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
@@ -547,8 +649,61 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 break
         else:
             return {"status": "push-fail", "why": p.stderr.strip()[-200:], **r}
-        return {"status": "pr-needed" if one_x else "pushed", "branch": dest, "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+        out = {"status": "pr-needed" if one_x else "pushed", "branch": dest, "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+        if one_x and open_pr_:
+            out["pr"] = open_pr(wt, dest, f"{book} 换包（1.x）：格号变动按格级对照表落 book-text（patch）", "\n".join(body) + "\n\n" + "\n".join(records))
+            if not out["pr"].startswith("failed"):
+                out["status"] = "pr-opened"
+        return out
     return {"status": "committed", "commit": _git(wt, "rev-parse", "HEAD").strip(), **r}
+
+
+def _unreadable_headings(vdir: Path) -> dict[int, list]:
+    """index.json 里 char／punct 文件不在盘上的章（稀疏检出、只取了本册）已有的 headings，按章序号 → 原值。"""
+    try:
+        idx = json.loads((Path(vdir) / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    keep = {}
+    for i, c in enumerate(idx.get("chapters") or []):
+        if not isinstance(c, dict) or "headings" not in c:
+            continue
+        stem = c.get("file") or (f"{c['n']:03d}" if isinstance(c.get("n"), int) else None)
+        if not stem or not (Path(vdir) / f"{stem}.char.json").is_file() or not (Path(vdir) / f"{stem}.punct.json").is_file():
+            keep[i] = c["headings"]
+    return keep
+
+
+def sync_headings_keep_unreadable(wt: Path, vdir: Path) -> None:
+    """跑 book-text ``OV.sync_headings`` 重算目录缓存 headings，但**别章读不到数据文件时不删它的 headings**。
+    ``sync_headings`` 把「char／punct 文件不在」当成「没有标题」而删键；工作树只检出本章时，会把别章（殿本 vol03 的 #437：98 章）
+    的 headings 全删光。这里先记下读不到数据的章的 headings，同步后原样放回。"""
+    keep = _unreadable_headings(vdir)
+    _run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import original_version as OV; OV.sync_headings(sys.argv[1])", vdir], wt)
+    if not keep:
+        return
+    ip = Path(vdir) / "index.json"
+    idx = json.loads(ip.read_text(encoding="utf-8"))
+    changed = False
+    for i, h in keep.items():
+        chs = idx.get("chapters") or []
+        if i < len(chs) and chs[i].get("headings") != h:
+            chs[i]["headings"] = h
+            changed = True
+    if changed:
+        ip.write_text(json.dumps(idx, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def drop_stored_table(stored: Path) -> None:
+    """只删刚放进去的那张对照表；同版本目录早先已提交的 ``lineage/revisions/*.tsv`` 一张都不能动。
+    ``lineage/revisions`` 和 ``lineage`` 只有在删完变空时才顺手删（本次新建的目录）。"""
+    stored = Path(stored)
+    stored.unlink(missing_ok=True)
+    for d in (stored.parent, stored.parent.parent):
+        try:
+            d.rmdir()            # 非空会抛 OSError，留着
+        except OSError:
+            break
 
 
 def pending_cells_of(ws: Path, text_id: str, ch: str) -> set[str]:
@@ -562,7 +717,7 @@ def pending_cells_of(ws: Path, text_id: str, ch: str) -> set[str]:
 
 
 def push_sheet(ws: Path, book: str, cv: Path) -> str:
-    """need-A33 时 auto_cycle 停在推库之前：新单已出（reports/<册>/_publish/<rev>）但没换上线。book-text 落好后补推这张单
+    """book-text 这步没过（guard-stop，旧称 need-A33）时 auto_cycle 停在推库之前：新单已出（reports/<册>/_publish/<rev>）但没换上线。book-text 落好后补推这张单
     （cv `republish.py push --yes --no-pack`，不带 --book-text：文本已由本命令落好）。只写本机数据目录，最后统一 db sync。"""
     ch = f"{int(book[3:]):03d}"
     pubs = sorted((ws / "reports" / book / "_publish").glob(f"{ch}-r*"), key=lambda p: int(p.name.rsplit("-r", 1)[1]))
@@ -606,7 +761,9 @@ def cmd_book_text(a, books: list[str]) -> int:
         _worktree(src, wt)
         ch = f"{int(b[3:]):03d}"
         r = do_book(wt, ws, b, a.text_id, export, note=a.note or f"{b} 换包（{export.parent.name}），增删格按格级对照表落 book-text",
-                    push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b)
+                    push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b,
+                    glyph_db=Path(a.glyph_db) if getattr(a, "glyph_db", None) else None, open_pr_=not getattr(a, "no_pr", False),
+                    cv=Path(a.cv) if getattr(a, "cv", None) and (Path(a.cv) / "scripts" / "zhengli" / "republish.py").exists() else None)
         res[b] = {k: v for k, v in r.items() if k not in ("char_detail", "left", "review")}
         if getattr(a, "sheet", False) and r["status"] == "pushed":
             res[b]["sheet"] = push_sheet(ws, b, Path(a.cv))
@@ -615,4 +772,35 @@ def cmd_book_text(a, books: list[str]) -> int:
         ok = db_sync(ws, Path(a.cv))
         print(f"中心库同步：{'好' if ok else '失败，手动 guji db sync -w ' + str(ws)}；网站随 swap run 的发布或每日 proofing-sync 上线", file=sys.stderr)
     print(json.dumps(res, ensure_ascii=False, indent=1))
-    return 0 if all(v["status"] in ("pushed", "committed", "pr-needed") for v in res.values()) else 2
+    return 0 if all(v["status"] in ("pushed", "committed", "pr-needed", "pr-opened") for v in res.values()) else 2
+
+
+def cmd_finish_merged(a, books: list[str]) -> int:
+    """R8：合并后收尾。对照表取 book-text 版本目录 ``lineage/revisions/<册>-*.tsv`` 里最新的一张（含 ``--table`` 指定）。"""
+    from . import finish as F
+    ws, src = Path(a.workspace).resolve(), Path(a.book_text).resolve()
+    vdir = _bt_dir(src, a.text_id) / "default"
+    res = {}
+    for b in books:
+        tabs = sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)
+        tp = Path(a.table) if getattr(a, "table", None) else (tabs[-1] if tabs else None)
+        if tp is None:      # book-text 校验器还不认 lineage/ 时表没入库：退到本机 reports 里的那张
+            loc = ws / "reports" / "_swap" / "book-text" / b / f"old_new_cells_vol{int(b[3:]):02d}.tsv"
+            tp = loc if loc.exists() else None
+        if not tp or not tp.exists():
+            res[b] = {"status": "blocked", "why": f"book-text 里没有 {F.REV_DIR}/{b}-*.tsv（先 guji swap book-text 落文本并合并）"}
+            continue
+        raw = F.read_table(tp)
+        rows = [dict(old=(r["旧格"].split(":", 1)[1] if r["旧格"] else ""), new=(r["新格"].split(":", 1)[1] if r["新格"] else ""),
+                     kind=r["类别"], oc=r["旧字"], nc=r["新字"]) for r in raw]
+        res[b] = {"status": "done", **F.finish(ws, b, rows, load_human(b), run=(tp.stem.split("-", 1)[1] if "-" in tp.stem else "local"), commit=getattr(a, "commit", "") or ""),
+                  "table": str(tp)}
+        allt = [F.read_table(p) for p in sorted((vdir / F.REV_DIR).glob(f"{b}-*.tsv"), key=lambda p: p.stat().st_mtime)]
+        red = F.redirect_map(allt)
+        rp = ws / "reports" / "_swap" / "finish" / b / "redirects.tsv"
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("旧格\t现行格\n" + "".join(f"{o}\t{n or ''}\n" for o, n in sorted(red.items())), encoding="utf-8")
+        res[b]["redirects"] = {"file": str(rp), "n": len(red)}
+        print(f"{b}\tdone\t无锚人裁 {res[b].get('recheck', {}).get('n', '-')}\tredirect {len(red)}", file=sys.stderr)
+    print(json.dumps(res, ensure_ascii=False, indent=1, default=str))
+    return 0 if all(v["status"] == "done" for v in res.values()) else 2

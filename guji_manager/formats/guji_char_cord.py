@@ -707,7 +707,7 @@ def char_schema_for(char: dict) -> str:
     return CHAR_SCHEMA_URL
 
 
-def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = None) -> dict:
+def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = None, same=None) -> dict:
     """按同版待审单把待审格写成首选字，原地改，返回计数（sheldon 2026-11-09 定，取代 11-03 的 char v0.4 `pending_reason`）。
 
     book-text 只录首选字，待审格与其他格看起来一样；待审原因、候选、人裁都只在中心库待审单／网站 KV 里。
@@ -736,7 +736,7 @@ def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = No
                     continue
                 cur = (current or {}).get(c["a"])
                 if cur and cur != LACUNA_CHAR and x.get("review") != "human":
-                    if c["c"] != cur:
+                    if not (same or (lambda p, q: p == q))(c["c"], cur):
                         c["c"] = cur
                         c.pop("lacuna", None)
                         c.pop("guess_c", None)

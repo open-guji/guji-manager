@@ -36,8 +36,9 @@ def _cells(char: dict):
     return [c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []]
 
 
-def overlay(char: dict, edits: list[dict], cellmap: dict[str, str]) -> tuple[dict, OverlayReport]:
-    """返回 (叠好的新 char 副本, 报告)。入参 char 不动。"""
+def overlay(char: dict, edits: list[dict], cellmap: dict[str, str], same=None) -> tuple[dict, OverlayReport]:
+    """返回 (叠好的新 char 副本, 报告)。入参 char 不动。``same``：同字判定（charnorm），别／別 之类不算「机器又改了」。"""
+    eq = same or (lambda p, q: p == q)
     out = copy.deepcopy(char)
     by_a = {c["a"]: c for c in _cells(out)}
     rep = OverlayReport()
@@ -48,9 +49,9 @@ def overlay(char: dict, edits: list[dict], cellmap: dict[str, str]) -> tuple[dic
         cell = by_a.get(n) if n else None
         if cell is None:
             rep.lost.append(rec)
-        elif cell["c"] == new_c:
+        elif eq(cell["c"], new_c):
             rep.already.append(rec)
-        elif cell["c"] == old_c:
+        elif eq(cell["c"], old_c):
             cell["c"] = new_c
             rep.applied.append(rec)
         else:

@@ -29,7 +29,8 @@ def cmd_store(args) -> None:
               f"先 `guji db migrate -w {ws}`", file=sys.stderr)
         sys.exit(2)
     from .cli_db import push_workspace
-    res = push_workspace(ws, dry_run=args.action != "commit", allow_delete=args.allow_deletions)
+    res = push_workspace(ws, dry_run=args.action != "commit", allow_delete=args.allow_deletions,
+                         with_glyph=True)    # store commit 就是「导出 glyph.db 并推」
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=1, default=str))
     n = sum(v.get("changes", 0) for v in (res.get("per_ws") or {}).values())

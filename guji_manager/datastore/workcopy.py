@@ -123,7 +123,22 @@ def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
 
 
 ALLOW_GLYPH_SHRINK_ENV = "GUJI_ALLOW_GLYPH_SHRINK"      # 设 1：确要缩小字形库（人为清理）时放行
-GLYPH_SHRINK_RATIO = 0.5                                 # 导出后某个账本行数 < 原来的这个比例就拦
+GLYPH_SHRINK_RATIO = 0.95                                # 导出后某个账本行数 < 原来的这个比例（且少 ≥3 行）就拦：缩水超 5% 即停（2026-11-10 史記 6,465→3,554 没被「一半」拦住）
+
+
+ALLOW_DUP_KEYS_ENV = "GUJI_ALLOW_DUP_KEYS"
+
+
+def dup_key_problems(problems: list[str], changed: set[str]) -> list[str]:
+    """扫描报的「主键与第 N 行重复」里，属于这次要推（相对基准改了）的文件的那些（纯函数）。"""
+    out = []
+    for pr in problems:
+        if "行重复" not in pr or "主键" not in pr:
+            continue
+        path = pr.split(":", 1)[0]
+        if path in changed:
+            out.append(pr)
+    return out
 
 
 def _jsonl_rows(store: Path) -> dict[str, int]:
@@ -141,7 +156,7 @@ def glyph_shrink_problems(before: dict[str, int], after: dict[str, int], ratio: 
     bad = []
     for name, n0 in before.items():
         n1 = after.get(name, 0)
-        if n0 > 0 and (n1 == 0 or n1 < n0 * ratio):
+        if n0 > 0 and (n1 == 0 or (n1 < n0 * ratio and n0 - n1 >= 3)):
             bad.append(f"{name}：{n0} → {n1} 行")
     return bad
 
@@ -151,7 +166,7 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
 
     缩水闸（2026-11-09，用户要求）：本机 glyph.db 是空的或没重建（`db pull --no-rebuild` 之后、或只跑过别的
     pin 的库）时，导出会把数据目录里原有的字形账本写成空，随后 sync／push 就把中心库的字形表清掉
-    （2026-11-04 事故同类）。导出前备份账本，导出后任一账本行数归零或不足原来的一半就还原备份并停下；
+    （2026-11-04 事故同类）。导出前备份账本，导出后任一账本行数归零或缩水超 5% 就还原备份并停下；
     确要缩小的人为清理设环境变量 `GUJI_ALLOW_GLYPH_SHRINK=1`。"""
     if glyph is None or not Path(glyph.db_path).exists():
         return False
@@ -284,12 +299,13 @@ def _read_only(src) -> bool:
 
 def _materialize(src, ws: str, tmp: Path, cache, bucket: str, retries: int = 3,
                  prefixes: tuple[str, ...] = (WS_YAML,) + SCOPE, reuse=None,
-                 exclude: tuple[str, ...] = ()) -> tuple[int, dict]:
+                 exclude: tuple[str, ...] = (), repair_gaps: bool = False) -> tuple[int, dict]:
     from .materialize import MaterializeError, materialize
     for _ in range(retries):
         r0 = src.status()
         try:
-            stats = materialize(src, ws, tmp, prefixes, cache=cache, bucket=bucket, reuse=reuse, exclude=exclude)
+            stats = materialize(src, ws, tmp, prefixes, cache=cache, bucket=bucket, reuse=reuse, exclude=exclude,
+                           repair_gaps=repair_gaps)
         except MaterializeError:
             # 先读 source_files、后读行：中间有人推了新行（如 admissions.jsonl 追加），行数对不上会报
             # 「超出 n_lines」或 sha 不符。读的过程中工作区有新写入就重读，否则是真不一致，照抛（10-23 A30 sync 撞上）
@@ -606,7 +622,7 @@ def _partial_guard(st: dict | None, what: str) -> None:
 
 
 def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = False,
-         glyph: GlyphHooks | None = None, exclude: tuple[str, ...] = ()) -> dict:
+         glyph: GlyphHooks | None = None, exclude: tuple[str, ...] = (), repair_gaps: bool = False) -> dict:
     """中心库 → 数据目录。本地有未推的改动就拒绝（``force`` 丢掉）。
 
     ``exclude``（路径前缀）下的文件不拉、本机已有的删掉，状态里记下，之后 push／sync 拒绝（见 ``RUN_EXCLUDE``）。"""
@@ -633,7 +649,7 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
         here = reuse
         reuse = lambda rel: here(rel) or ((seed / rel) if (seed / rel).is_file() else None)  # noqa: E731
     try:
-        rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude)
+        rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude, repair_gaps=repair_gaps)
     finally:
         shutil.rmtree(seed, ignore_errors=True)
     written, removed = _install(tmp, ws_dir, data)
@@ -729,6 +745,11 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     if sc.ws != st.get("ws"):
         raise SystemExit(f"数据目录记的工作区是 {st.get('ws')}，workspace.yaml 写的是 {sc.ws}")
     local_paths = {r.src_path for r in sc.rows}
+    dup = dup_key_problems(sc.problems, set(_diff(st.get("base", {}), manifest(ws_dir, data))))
+    if dup and os.environ.get(ALLOW_DUP_KEYS_ENV) != "1":
+        raise SystemExit(f"要推的文件里有同主键重复行（库里按主键存，「后者覆盖」会丢前面的行，登记的行数却是整个文件的，"
+                         f"之后谁都拉不下来，史記 anchors/04.jsonl 2026-11-10）：{'；'.join(dup[:4])}。先去重再推；"
+                         f"确要照推设 {ALLOW_DUP_KEYS_ENV}=1")
     # 换图源（GUJI-748 §六）：切过图源的册（册 yaml 有 source_rev），锚里页表 rev 不符的**新**事件拒收
     from .._cv import RevGate
     rgate = RevGate(books_dir=data / "books")

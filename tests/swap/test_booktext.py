@@ -156,3 +156,80 @@ def test_guard_other_fields_count_and_shortened():
     assert any("字段" in p for p in bt.guard(None, None, e0, nodec))
     dup = {"entities": e0["entities"] * 2}
     assert any("条数" in p for p in bt.guard(None, None, e0, dup))
+
+def test_rekey_gate_orphan_and_ok(tmp_path):
+    import sqlite3
+    from guji_manager.swap.booktext import rekey_gate
+    db = tmp_path / "g.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE instances(instance_id TEXT, source_id TEXT, label TEXT)")
+    c.executemany("INSERT INTO instances VALUES(?,?,?)", [("v2:vol04:1:1:1", "s", "甲"), ("v2:vol04:1:1:2", "s", "乙"), ("v2:vol05:1:1:1", "s", "丙")])
+    c.commit(); c.close()
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格", oc="", nc="", iou=1, note=""),
+            dict(old="1:1:2", new="", kind="删", oc="", nc="", iou=0, note="")]
+    g = rekey_gate(db, rows, 4)
+    assert not g["ok"] and g["orphan"] == ["v2:vol04:1:1:2"] and g["n_inst"] == 2
+    rows[1] = dict(old="1:1:2", new="1:1:2", kind="同格", oc="", nc="", iou=1, note="")
+    assert rekey_gate(db, rows, 4)["ok"]
+
+
+def test_finish_redirect_and_unanchored(tmp_path):
+    from guji_manager.swap import finish as F
+    t1 = [{"旧格": "vol01:1:1:1", "新格": "vol01:1:1:2", "类别": "改号"}, {"旧格": "vol01:1:1:2", "新格": "", "类别": "删"},
+          {"旧格": "vol01:1:1:3", "新格": "vol01:1:1:3", "类别": "同格"}]
+    t2 = [{"旧格": "vol01:1:1:2", "新格": "vol01:1:1:5", "类别": "改号"}]
+    red = F.redirect_map([t1, t2])
+    assert red["vol01:1:1:1"] == "vol01:1:1:5" and red["vol01:1:1:2"] == "vol01:1:1:5" and "vol01:1:1:3" not in red
+    rows = [dict(old="1:1:1", new="1:1:2", kind="改号"), dict(old="1:1:2", new="", kind="删"), dict(old="1:1:3", new="1:1:3", kind="同格")]
+    lines, gone = F.unanchored_human(rows, {"1:1:1": "甲", "1:1:2": "乙", "1:1:3": "丙", "9:9:9": "丁"}, 1)
+    assert len(lines) == 1 and lines[0].startswith("vol01:1:1:2\t") and lines[0].endswith("\t甲")
+    assert gone == [("1:1:2", "乙"), ("9:9:9", "丁")]
+    rep = F.finish(tmp_path, "vol01", rows, {"1:1:1": "甲"}, run="abc")
+    assert rep["recheck"]["n"] == 1 and (tmp_path / "reports/_swap/metrics.jsonl").exists()
+
+def test_copy_cord_plain_and_via_cv(tmp_path):
+    src = tmp_path / "001.cord.json"
+    src.write_text('{"pages": []}', encoding="utf-8")
+    assert bt._copy_cord(src, tmp_path / "a.json", None) is None and (tmp_path / "a.json").read_text(encoding="utf-8") == '{"pages": []}'
+    cv = tmp_path / "cv"
+    (cv / "scripts" / "zhengli").mkdir(parents=True)
+    (cv / "scripts" / "zhengli" / "republish.py").write_text(
+        "import sys\ndef copy_cord_for_site(s, d):\n    sys.exit('页表对不上')\n", encoding="utf-8")
+    why = bt._copy_cord(src, tmp_path / "b.json", cv)
+    assert why and "页表对不上" in why and not (tmp_path / "b.json").exists()
+
+
+def test_drop_stored_table_keeps_earlier_tables(tmp_path):
+    rev = tmp_path / "lineage" / "revisions"
+    rev.mkdir(parents=True)
+    old, new = rev / "vol01-aaa.tsv", rev / "vol01-bbb.tsv"
+    old.write_text("x"), new.write_text("y")
+    bt.drop_stored_table(new)
+    assert old.exists() and not new.exists()
+    bt.drop_stored_table(old)                 # 最后一张删完：空目录一并收掉
+    assert not (tmp_path / "lineage").exists()
+
+
+def test_sync_headings_keeps_unreadable_chapters(tmp_path):
+    """只检出本章时，别章的 headings 不能被 sync_headings 删光（殿本 vol03 #437）。"""
+    import json
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "original_version.py").write_text(
+        "import json, os\n"
+        "def sync_headings(d):\n"
+        "    p = os.path.join(d, 'index.json'); x = json.load(open(p))\n"
+        "    for c in x['chapters']:\n"
+        "        if os.path.isfile(os.path.join(d, c['file'] + '.char.json')): c['headings'] = [{'label': 'new'}]\n"
+        "        else: c.pop('headings', None)\n"
+        "    json.dump(x, open(p, 'w'))\n", encoding="utf-8")
+    v = tmp_path / "Book" / "default"
+    v.mkdir(parents=True)
+    old = [{"level": 1, "label": "旧", "anchor": "1:1:1"}]
+    (v / "index.json").write_text(json.dumps({"chapters": [{"n": 1, "file": "001", "headings": old},
+                                                           {"n": 3, "file": "003", "headings": old}]}), encoding="utf-8")
+    for t in ("char", "punct"):
+        (v / f"003.{t}.json").write_text("{}", encoding="utf-8")
+    bt.sync_headings_keep_unreadable(tmp_path, v)
+    ch = json.loads((v / "index.json").read_text(encoding="utf-8"))["chapters"]
+    assert ch[0]["headings"] == old                       # 001 文件不在：原样保留
+    assert ch[1]["headings"] == [{"label": "new"}]        # 003 在盘上：照常重算

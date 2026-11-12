@@ -97,6 +97,12 @@ def main(argv=None):
     p = sub.add_parser("cp-apply"); p.add_argument("--results", required=True); p.add_argument("--who", default="用户")
     p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
+    p = sub.add_parser("ctx2-export"); p.add_argument("--packs", required=True, help="<目录>/<册>/seed_admit/p*.json")
+    p.add_argument("--groups", default="日曰,己已巳"); p.add_argument("--out", required=True)
+    p.add_argument("--include-admitted", action="store_true")
+    p = sub.add_parser("ctx2-import"); p.add_argument("--cells", required=True); p.add_argument("--a", required=True)
+    p.add_argument("--b", required=True); p.add_argument("--out", required=True); p.add_argument("--round", default="")
+    p.add_argument("--a2", help="第二轮甲（独立会话）；给了 --a2/--b2 就要求每轮都一致 high 才定字"); p.add_argument("--b2")
     p = sub.add_parser("closeout-sum"); p.add_argument("--results", required=True)
     p = sub.add_parser("cold-items"); p.add_argument("--cells", required=True)
     p.add_argument("--pack-dir", required=True, help="包目录，含 rare_candidates/；多册用 {vol}")
@@ -266,6 +272,23 @@ def main(argv=None):
             from . import results
             un = results.unconfirmed([g["key"] for g in build_mod.read_items(a.items)], docs)
             print(f"# 未确认 {len(un)} 组（没点也没翻过去，不要当成全对）：" + "、".join(un[:30]) + ("…" if len(un) > 30 else ""))
+    elif a.cmd == "ctx2-export":
+        from . import ctx2
+        gs = tuple(x for x in a.groups.split(",") if x)
+        cells = ctx2.collect(a.packs, gs, a.include_admitted)
+        o = Path(a.out); o.mkdir(parents=True, exist_ok=True)
+        (o / "cells.json").write_text(json.dumps(cells, ensure_ascii=False), encoding="utf-8")
+        (o / "prompt_A.txt").write_text(ctx2.prompts(cells, False), encoding="utf-8")
+        (o / "prompt_B.txt").write_text(ctx2.prompts(cells, True), encoding="utf-8")
+        print(f"{len(cells)} 格 → {o}（cells.json、prompt_A.txt、prompt_B.txt；两个干净会话各读一个，回 JSON 存 A.json/B.json）")
+    elif a.cmd == "ctx2-import":
+        from . import ctx2
+        cells = json.loads(Path(a.cells).read_text(encoding="utf-8"))
+        rounds = [(ctx2._load(a.a), ctx2._load(a.b))]
+        if a.a2 and a.b2:
+            rounds.append((ctx2._load(a.a2), ctx2._load(a.b2)))
+        rows = ctx2.decide_rounds(cells, rounds)
+        print(json.dumps(ctx2.write(rows, a.out, a.round), ensure_ascii=False))
     elif a.cmd == "unconfirmed":
         from . import results
         its = build_mod.read_items(a.items)

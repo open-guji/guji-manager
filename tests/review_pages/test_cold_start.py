@@ -56,3 +56,16 @@ def test_char_grid_embeds_font_subset(tmp_path):
     assert "@font-face" in html and "GujiSub" in html
     assert st["bytes"] < 800_000
     assert "\\u32a39" not in html.lower()
+
+
+def test_font_stack_system_first():
+    """Sheldon 11-10：系统原字体（大陆标准字形）排在前，内嵌 Jigmo／I.Ming 子集只给缺字兜底。"""
+    import pytest
+    pytest.importorskip("fontTools")
+    from guji_manager.review_pages import build as b
+    fs = b.auto_fonts()
+    if not fs:
+        pytest.skip("no fonts")
+    css, _ = b.font_subset_css({"c": "\U00032A39"}, fs)
+    stack = css[css.index("--font-glyph:"):]
+    assert stack.index("Songti SC") < stack.index("GujiSub")

@@ -6,6 +6,40 @@
 ## [未发版]
 
 - 测试 `test_code_deps_coverage` 登记 glyph_match → clustering.sim_cnn 不进指纹（cv #1394 `sim_model` 开关，缺省关；开着时经 sim_model_sha 进参数指纹）。只改测试（A23，11-10）。
+- 单页扫描的页面范围改为**按册两遍定框**（PATCH，A20 11-10，用户要全唐文「每页都有框、框大小基本一致」）：新增 `datastore/framefit.py`——先逐页按线段量框线（不怕斜），再取全册统一框尺寸，逐页对准框线；版心一侧线淡、只剩一条框线、个别页拍大、序页抬头伸出框外都处理；缺页灰图与无框页取整幅（`fit: blank/none`）。`pagemeta.build_pages` 给了页图就缺省走它（`how: framefit`、`fit` 记定法），没装 opencv 或 `guji source pagemeta --no-fit` 退回旧的逐页 `detect_content`；`--save` 存逐页记录出审查图。框线外粗内细取外道、配上的框线略大就撑到包住、粗过 3.5% 的墨团不算线、书名签小框与封面不猜（`fit: unsure`）。全唐文 11,238 页：退整幅 775→0（另 6 页本无框），框宽在中位 ±3% 内 57%→99.6%；北行日錄旧法退整幅的 3 页也框上了。只影响旁车，不动页表、不让产物过期。L0。
+
+## [0.4.43] - 2026-11-10
+
+- 修史記 anchors/04.jsonl 拉不下来（PATCH，A31 11-10，GUJI-750）：根因是 SJ-史記切分 rev 957032–957044 那次 push，04.jsonl 里 4 对行主键重复（第 56–59 行与 61–64 行），旧扫描「后者覆盖」只存了 61 行，source_files 却登记 65 行／整文件 sha，库里谁都还原不出（「还原后 sha 不符」）。①`guji db pull --repair-gaps`：缺行文件按库里现有行还原并列 repaired，本机文件与登记 sha 不同，下一次 db push 把它推回去修好登记；②push 前拒推：要推的文件里有同主键重复行即报错（`GUJI_ALLOW_DUP_KEYS=1` 放行）。L0。
+
+## [0.4.42] - 2026-11-10
+
+- 字形库推库防缩水（PATCH，A31 11-10，史記事故 GUJI-750：`db push` 连带导出本机旧 glyph.db，中心库字形库 6,465→3,554）：①`guji db push` 缺省不再导出 glyph.db、不推字形库账本，要推显式 `--with-glyph`（或 `GUJI_DB_WITH_GLYPH=1`；`store commit`、`db sync` 不变）；②导出缩水闸 0.5→0.95（任一账本缩水超 5% 且少 ≥3 行即还原并停）；③入库删除闸 `emptied_ledger` 门槛一半→5%，并把 glyph_instances／glyph_sources 也纳入。L0。
+- review-pages 字体顺序调整（PATCH，人审页线 11-10，Sheldon 要求）：char_card 1.6.2／char_grid 1.3.1：内嵌的全字库子集（Jigmo、I.Ming，非大陆标准字形）排到系统原字体（Noto Serif SC／Songti SC／SimSun）之后，只给系统字体没有的冷僻字兜底。L0。
+- review-pages 窄屏版式（PATCH，人审页线 11-10，总览要求）：char_card 1.6.3：屏宽 ≤700px 时难认字／形近字卡的候选按钮、前后文、操作按钮排在上面，整列图缩小放到最下面、点一下放大；宽屏不变。L0。
+
+## [0.4.41] - 2026-11-10
+
+- `cellvotes` 三处陷阱（PATCH，A31 11-10，ai-team 审视 §四-1~3）：`draft --from-kv` 按格号读到 0 票自动改读条目票，仍为 0 则报错退出；`--pack` 出单版包缺页时核格位退回主产物；`write` 缺 `--batch`/`--reviewer` 报缺哪项并以退出码 2 退出。L0。
+- `swap run` 加 `--ack-unlanded-votes <原因>`，透传 auto_cycle（cv 同步加参数）→ proof_cycle apply（PATCH，审视陷阱 4，ZM 转）。L0。
+
+- 统一「同一个字」判法（PATCH，A31 11-10，ai-team 字的等价与归一审视）：新增 `guji_manager/charnorm.py`（`CharNorm.same/canon`、`load_norm(book)` 读书级 codepoints，读不到按字面比）；`swap/resolve.resolve`、`booktext.merge_chars／protected_cells／ledger_check`、`overlay_edits.overlay`、`apply_pending(current=)`、`web_votes.triage／same_verdict`、`cellvotes draft` 都接受 `same=` 并在 `swap book-text`／`cellvotes draft` 里传入，别／別 这类归一后同字不再算冲突、机器改字、推翻旧裁。不传 `same` 行为与旧版一致。测试 `tests/test_charnorm.py`。L0。
+
+## [0.4.40] - 2026-11-10
+
+- `swap book-text` 修隐患（PATCH，A31 11-10，专家审 v0.4.39）：校验器不认 lineage/ 时退回不带表落文本，原先 `rmtree(lineage)` 会把同版本目录早先已提交的对照表一并删掉；改成只删刚放进去的那张（`drop_stored_table`）。L0。
+
+## [0.4.39] - 2026-11-10
+
+- 新增 `guji swap finish-merged`（R8，PATCH，A31 11-10，ZM 答复）：`swap book-text` 把对照表存进 book-text `lineage/revisions/<册>-<run>.tsv`；合并后收尾出旧格号 redirect 表、对照表里改号格上的无锚人裁 recheck 清单、metrics.jsonl。L0。
+
+- `guji swap book-text`：cord 经 cv `republish.copy_cord_for_site` 换到网站页图坐标再落（与 swap run 自动路径同口径，换过图源的书不再拷原坐标）；R1 闸用换好的 cord 比（PATCH，ZM 11-10）。L0。
+
+## [0.4.38] - 2026-11-10
+
+- `guji swap book-text` R1 前置闸与 R7（PATCH，A31 11-10，coordinator 转 ZM）：`--glyph-db` 给字形库就核「刻例格键须都在新包里」，不在则停 `r1-stop`（改号待核数只报不停）；1.x 推 `swap/<册>-1x` 后自动开草稿 PR（`gh`，`--no-pr` 关）。L0。
+
+- `guji swap book-text` 守卫补齐（PATCH，ZM 11-10；#478、#479）：①人裁账平——有效人裁与 `char-edits` 手改经对照表换到新格、按人裁最高判字，旧格被删或新包与人裁冲突就停（原先就不同的多为异体／归一，只报），1.x 册取不到人裁事件也停；②专名守卫加 `decomposition`／`targets`／`level`／`coarse`／`note`、条数、「被切短」（少的字数超过锚区间里被删格数就拒写，A33 建议）。人裁改走 `_cv` 门面。L0。
 
 ## [0.4.37] - 2026-11-10
 

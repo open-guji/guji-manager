@@ -87,6 +87,14 @@ def require_actor(dry_run: bool = False) -> str | None:
 
 
 NO_GLYPH_ENV = "GUJI_DB_NO_GLYPH"
+WITH_GLYPH_ENV = "GUJI_DB_WITH_GLYPH"
+
+
+def with_glyph_wanted(flag: bool = False) -> bool:
+    """``guji db push`` 要连字形库账本一起推：``--with-glyph`` 或 ``GUJI_DB_WITH_GLYPH=1``。缺省不推
+    （2026-11-10 史記推 glyph_pin 时连带导出本机旧 glyph.db，中心库字形库 6,465→3,554；11-02、11-04 同类）。
+    ``db sync`` 不受这个影响（它先合进库里的新行再推，且落库后要导出）。"""
+    return bool(flag) or os.environ.get(WITH_GLYPH_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
 def no_glyph_wanted(flag: bool = False) -> bool:
@@ -103,8 +111,11 @@ def _glyph_args(ws_dir: Path, no_glyph: bool) -> dict:
 
 
 def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = False,
-                   no_glyph: bool = False) -> dict:
-    """``guji db push`` 的实现（``guji store commit`` 在已迁移的工作区上也走这里）。"""
+                   no_glyph: bool = False, with_glyph: bool = False) -> dict:
+    """``guji db push`` 的实现（``guji store commit`` 在已迁移的工作区上也走这里）。
+
+    缺省不导出本机 glyph.db、字形库账本不推（只推册 yaml／glyph_pin／人裁等）；要推字形库账本显式
+    ``with_glyph``（``--with-glyph``／``GUJI_DB_WITH_GLYPH=1``）。``no_glyph`` 优先。"""
     from ._cv import upload_files
     from ._cv import workcopy_push as push
     actor = require_actor(dry_run)
@@ -113,7 +124,7 @@ def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = 
     with _pg_conn(branch) as conn:
         return push(conn, ws_dir, actor=actor, dry_run=dry_run, allow_delete=allow_delete,
                     uploader=lambda imgs, ext="png": upload_files(imgs, bucket=_bucket(branch), ext=ext),
-                    **_glyph_args(ws_dir, no_glyph_wanted(no_glyph)))
+                    **_glyph_args(ws_dir, no_glyph_wanted(no_glyph) or not with_glyph_wanted(with_glyph)))
 
 
 def _ensure_glyph_pins(ws_dir: Path, res: dict) -> None:
@@ -265,7 +276,7 @@ def cmd_db(args) -> None:
 
     if args.action == "push":
         _print(push_workspace(ws_dir, dry_run=args.dry_run, allow_delete=args.allow_delete,
-                                   no_glyph=args.no_glyph))
+                                   no_glyph=args.no_glyph, with_glyph=args.with_glyph))
         return
 
     if args.action == "sync":
@@ -305,7 +316,8 @@ def cmd_db(args) -> None:
     if args.action == "pull":
         from ._cv import workcopy_pull as pull, pull_exclude
         res = pull(src, ws_dir, cache=BlobCache(), bucket=args.bucket, force=args.force,
-                   glyph=None if args.no_rebuild else glyph_hooks(ws_dir), exclude=pull_exclude(args.exclude or ()))
+                   glyph=None if args.no_rebuild else glyph_hooks(ws_dir), exclude=pull_exclude(args.exclude or ()),
+                   repair_gaps=args.repair_gaps)
         res["worker_requests"] = src.requests
         if not args.no_rebuild:
             _ensure_glyph_pins(ws_dir, res)
@@ -366,6 +378,9 @@ def add_parser(sub) -> None:
                    help="读写哪个分支（缺省 GUJI_DATA_BRANCH 或 main）；exp/* 时数据目录、glyph.db、products 换到该分支自己的")
     p.add_argument("--against", default="main", help="diff：和哪个分支比（缺省 main）")
     p.add_argument("--show", type=int, default=20, help="diff：每类最多列几个路径")
+    p.add_argument("--repair-gaps", action="store_true",
+                   help="pull：库里某逐行文件缺了几行（旧 push 把同主键重复行覆盖丢了）、还原后 sha 对不上时，按库里现有的行还原并列在 "
+                        "repaired；之后 db push 会把修好的文件推回去（史記 anchors/04.jsonl，2026-11-10）")
     p.add_argument("--no-rebuild", action="store_true", help="pull：不重建 glyph.db")
     p.add_argument("--force", action="store_true", help="pull：丢掉本地没推的改动")
     p.add_argument("--exclude", action="append", default=None, metavar="前缀",
@@ -387,6 +402,9 @@ def add_parser(sub) -> None:
     p.add_argument("--watch", type=int, default=None, metavar="秒", help="sync：每隔这么多秒做一轮，不退出")
     p.add_argument("--no-glyph", action="store_true",
                    help="push／sync：不碰字形库——不导出 glyph.db、字形库账本不推（也可设 GUJI_DB_NO_GLYPH=1）；换单用这个")
+    p.add_argument("--with-glyph", action="store_true",
+                   help="push：连字形库账本一起推（缺省 push 不导出 glyph.db、不推字形库；也可设 GUJI_DB_WITH_GLYPH=1）；"
+                        "推前必须 db pull 重建并 --dry-run 核对账本没有成批 delete")
     p.add_argument("--no-admit", action="store_true",
                    help="sync：不顺带把待落库的人裁落进字形库（缺省落；也可设 GUJI_AUTO_ADMIT=0）")
 

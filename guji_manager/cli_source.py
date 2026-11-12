@@ -418,11 +418,15 @@ def cmd_pagemeta(args) -> None:
                 return r
             f, _, pg = sid.partition("#")
             return raw(f"{by_title.get(f)}#{pg}") if by_title.get(f) else None
-    pages = PM.build_pages(table, src_size=sizes, gray_of=_gray_of_blobs({}, args))
+    pages = PM.build_pages(table, src_size=sizes, gray_of=_gray_of_blobs({}, args), fit=not getattr(args, "no_fit", False))
     errs = PM.validate_pagemeta(table, PM.make_pagemeta(table, pages, by="", why=""))
     hows: dict[str, int] = {}
     for m in pages.values():
-        hows[m["how"]] = hows.get(m["how"], 0) + 1
+        k = m["how"] + (f"/{m['fit']}" if m.get("fit") else "")
+        hows[k] = hows.get(k, 0) + 1
+    if getattr(args, "save", None):
+        Path(args.save).write_text(json.dumps(pages, ensure_ascii=False), encoding="utf-8")
+        print(f"  已存 {args.save}")
     print(f"{args.book_id}/{vol} r{table['rev']:03d}（{table.get('status')}）：{len(pages)} 页，来源 {hows}，校验问题 {len(errs)}")
     for e in errs[:20]:
         print("  ✗", e)
@@ -495,6 +499,8 @@ def add_parser(sub) -> None:
     p.add_argument("--src-sizes", default=None,
                    help="pagemeta／final 登记：源图宽高 json {\"<源图 id>\": [宽,高]}，拆页与文淵閣必给（页表里没有）；文淵閣 id 可写 \"<Commons 标题>#<DjVu 页>\"")
     p.add_argument("--no-detect", action="store_true", help="pagemeta／final 登记：单页扫描不检测版框，content 取整幅（how: whole）")
+    p.add_argument("--no-fit", action="store_true", help="pagemeta：单页扫描逐页各自检测（旧法 detect_content），不按册统一框尺寸")
+    p.add_argument("--save", help="pagemeta：把算出的逐页记录存成 json（出审查图用）")
     p.add_argument("--no-pagemeta", action="store_true", help="register／ia／commons：标 final 也不产页面范围（只给过渡期用，会被验收脚本点名）")
     p.add_argument("--reroot", action="store_true",
                    help="commons：修好的版本已传上 Commons，按旧页表逐页对上，沿用页序（页 id 不变）")
