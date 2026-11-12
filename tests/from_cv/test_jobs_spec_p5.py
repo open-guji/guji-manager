@@ -68,6 +68,8 @@ def test_override_order_does_not_matter():
     ({"kind": "command", "cv": "dev", "run": [["glyph-db", "push"]]}, "push"),
     ({"kind": "command", "cv": "dev", "run": [["products", "pack", "fetch", "vol1", "--main"]]}, "--main"),
     ({"kind": "command", "cv": "dev", "run": "eval run"}, "参数列表"),
+    ({"kind": "command", "cv": "dev", "run": [["seg", "pin", "vol1:3:4", "--write"]]}, "check"),
+    ({"kind": "command", "cv": "dev", "run": [["seg"]]}, "check"),
 ])
 def test_rejects(kw, words):
     with pytest.raises(SP.SpecError, match=words):
@@ -79,6 +81,8 @@ def test_command_and_eval():
     assert s["run"] == [["status", "{book}", "-w", "{ws}"]] and s["output"]["pack"] is False
     e = norm(kind="eval", cv="dev")
     assert e["run"] == [["eval", "run", "--json"]] and e["book"] is None
+    g = norm(kind="command", cv="dev", book="vol10", run=[["seg", "check", "{book}", "-w", "{ws}", "--job"]])
+    assert g["run"][0][:2] == ["seg", "check"]
 
 
 def test_compare_to_job():
