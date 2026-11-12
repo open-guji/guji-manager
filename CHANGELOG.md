@@ -5,8 +5,8 @@
 
 ## [未发版]
 
-- 新命令 `guji seg check <册…>`：切分核查一条命令，并了 SJ 史記快筛（`tools/seg_check`，留作别名）、cv `seg_screen`、待审原因码。按列给 类／处置（格号不符、版式不符、需钉子、原因码·看图、已钉·复核、对位（○）、公用清格、点名跳过、卷首页），出列清单、需看图缩略图、报告；退出码 3＝有要看图的列。点名跳过页与卷首页数写工作区 `workspace.yaml` 的 `seg_check:`。要 cv ≥ #1447。
-- 新命令 `guji seg ruler`：中心库人修过的列（manual-cells、column-slots、抬头、拖线、solo-notes，含退役的）＋第一次写的时间；`seg check --recall` 只拿修在产物之后的列量各检查的查全。
+- 新命令 `guji seg check <册…>`：切分核查一条命令，并了 SJ 史記快筛（`tools/seg_check`，留作别名）、cv `seg_screen`、待审原因码。按列给 类／处置（钉子未生效、格号不符、版式不符、需钉子、原因码·看图、已钉·复核、对位（○）、公用清格、点名跳过、卷首页），出列清单、需看图缩略图、报告；退出码 3＝有要看图的列。点名跳过页与卷首页数写工作区 `workspace.yaml` 的 `seg_check:`。要 cv ≥ #1447。
+- 新命令 `guji seg ruler`：中心库人修过的列（manual-cells、column-slots、抬头、拖线、solo-notes，含退役的）＋第一次写的时间；`seg check --recall` 只拿产物里错还在的列（manual-cells 看产物有没有用上钉子，其余看修的时间是否晚于产物）量各检查的查全。
 - 新命令 `guji seg pin <册:页:列>`：整列写定（manual-cells）。从已有钉子或现行 row_segment 产物起稿，`--split/--merge/--move/--insert-after/--delete/--ys` 改格，出草稿、叠框图、格号对照表（给 `guji swap`），自动跑 cv `check_manual_cells`；`--write --why` 才写本机数据目录（同 id 原地替换、保留 history）。见 cv `doc/切分覆盖.md` 第四节。
 - 测试 `test_code_deps_coverage` 登记 glyph_match → clustering.sim_cnn 不进指纹（cv #1394 `sim_model` 开关，缺省关；开着时经 sim_model_sha 进参数指纹）。只改测试（A23，11-10）。
 - 单页扫描的页面范围改为**按册两遍定框**（PATCH，A20 11-10，用户要全唐文「每页都有框、框大小基本一致」）：新增 `datastore/framefit.py`——先逐页按线段量框线（不怕斜），再取全册统一框尺寸，逐页对准框线；版心一侧线淡、只剩一条框线、个别页拍大、序页抬头伸出框外都处理；缺页灰图与无框页取整幅（`fit: blank/none`）。`pagemeta.build_pages` 给了页图就缺省走它（`how: framefit`、`fit` 记定法），没装 opencv 或 `guji source pagemeta --no-fit` 退回旧的逐页 `detect_content`；`--save` 存逐页记录出审查图。框线外粗内细取外道、配上的框线略大就撑到包住、粗过 3.5% 的墨团不算线、书名签小框与封面不猜（`fit: unsure`）。全唐文 11,238 页：退整幅 775→0（另 6 页本无框），框宽在中位 ±3% 内 57%→99.6%；北行日錄旧法退整幅的 3 页也框上了。只影响旁车，不动页表、不让产物过期。L0。

@@ -5,6 +5,7 @@
 本模块只做汇总：按列给 类（结构／装饰／对位）与 处置，出列清单、需看图的整列缩略图和报告。
 
 处置（SJ 第 7 条，按看图先后排）：
+- 钉子未生效：中心库有钉子、本页产物没用上（产物早于钉子），要从 row_segment 重跑；
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、列首列尾漏墨 edge_ink）；
@@ -41,8 +42,8 @@ RULER_SHARDS = {
     "touching-cuts": "char-segmentation/touching-cuts",
     "solo-notes": "char-segmentation/solo-notes",
 }
-LOOK = ("格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
-ORDER = {"格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
+LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
+ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
          "公用清格": 4, "已钉": 5}
 
 
@@ -157,6 +158,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             k = (int(r[1]), int(r[2]))
             col[k]["PIN"] += 1
             ex[k].insert(0, "格号不符:" + str(r[4]))
+    for r in rows.get("pin_stale", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["PIN_STALE"] += 1
+            ex[k].insert(0, "钉子未生效（产物早于钉子，从 row_segment 重跑）")
     for r in rows.get("layout_slots", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -170,7 +176,9 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                   + cn["PIN"] * 10 + cause_n * 2)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
-        if cn["PIN"]:
+        if cn["PIN_STALE"]:
+            cls, act = "结构", "钉子未生效"
+        elif cn["PIN"]:
             cls, act = "结构", "格号不符"
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
@@ -294,37 +302,42 @@ def page_run_ts(products_dir: Path, book: str) -> dict[int, float]:
 
 def recall(ruler: list[dict], rows: dict[str, list], products_dir: Path, books: list[str],
            pages: set[int] | None, skip: dict[str, set[int]]) -> dict:
-    """只量「修在本页产物之后」的人修列（产物里错还在）：各检查、合起来各抓到几列。"""
+    """只量产物里错还在的人修列，看各检查、合起来各抓到几列。
+
+    产物里错还在不在：manual-cells 看本页产物有没有用上钉子（`pin_stale` 表里的列＝没用上）；其余人裁看修的时间
+    是否晚于本页 row_segment 产物的时间（manifest ts）。`pin_stale` 本身不算检查（它是拿钉子对的）。"""
     flagged: dict[str, set] = collections.defaultdict(set)
     for name, rs in rows.items():
-        if name in ("pin_slots",):
+        if name in ("pin_slots", "pin_stale"):
             continue
         for r in rs:
             if str(r[2]).lstrip("-").isdigit():
                 flagged[name].add((r[0], int(r[1]), int(r[2])))
             elif name in ("colnet_page", "layout_col_shift", "frame_margin"):
                 flagged[name].add((r[0], int(r[1]), None))
+    stale_pins = {(r[0], int(r[1]), int(r[2])) for r in rows.get("pin_stale", [])}
     run_ts = {b: page_run_ts(products_dir, b) for b in books}
-    target, stale = [], 0
+    target, fixed = set(), set()
     for r in ruler:
-        b, p = r["book"], r["page"]
+        b, p, c = r["book"], int(r["page"]), int(r["col"])
         if b not in books or (pages and p not in pages) or p in _skip_for(b, skip):
+            continue
+        if r.get("source") == "manual-cells":
+            (target if (b, p, c) in stale_pins else fixed).add((b, p, c))
             continue
         t, fix = run_ts.get(b, {}).get(p), _iso_to_epoch(r["ts"])
         if t is None or fix is None:
             continue
-        if fix <= t:
-            stale += 1          # 产物已经带上这条人修，错已不在，不拿来量
-            continue
-        target.append((b, p, r["col"]))
-    target = sorted(set(target))
+        (target if fix > t else fixed).add((b, p, c))
+    fixed -= target
+    target = sorted(target)
 
     def hit(k, name):
         return k in flagged[name] or (k[0], k[1], None) in flagged[name]
     per = {name: sum(hit(k, name) for k in target) for name in flagged}
-    anyhit = [k for k in target if any(hit(k, n) for n in flagged)]
-    return {"n": len(target), "already_fixed": stale, "any": len(anyhit), "per_check": per,
-            "missed": [f"{b}:{p}:{c}" for b, p, c in target if (b, p, c) not in set(anyhit)]}
+    anyhit = {k for k in target if any(hit(k, n) for n in flagged)}
+    return {"n": len(target), "already_fixed": len(fixed), "any": len(anyhit), "per_check": per,
+            "missed": [f"{b}:{p}:{c}" for b, p, c in target if (b, p, c) not in anyhit]}
 
 
 # ── 一条命令 ────────────────────────────────────────────────────────────────
@@ -357,7 +370,8 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
         cz = seg_causes(prod, b) if causes else {}
         if pages:
             cz = {k: v for k, v in cz.items() if k[0] in pages}
-        pinned = {k for k in pinned_all[b] if not pages or k[0] in pages}
+        stale = {(int(r[1]), int(r[2])) for r in rows.get("pin_stale", []) if r[0] == b}
+        pinned = {k for k in pinned_all[b] if (not pages or k[0] in pages) and k not in stale}
         allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages)
     allrows.sort(key=lambda r: (ORDER.get(r["处置"], 9), -r["结构分"], -r["装饰分"]))
     fields = ["列", "类", "处置", "结构分", "装饰分", "各项", "例格"]
@@ -388,12 +402,12 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
                   "- 各检查：" + ("，".join(f"{k} {v}" for k, v in sorted(rc["per_check"].items(), key=lambda t: -t[1]) if v)
                                  or "无"),
                   f"- 漏掉的列：{' '.join(rc['missed'][:40]) or '无'}", ""]
-    lines += ["## 格号不符／版式不符／需钉子／已钉复核／原因码看图", ""]
+    lines += ["## 钉子未生效／格号不符／版式不符／需钉子／已钉复核／原因码看图", ""]
     lines += [f"- {r['列']} {r['处置']}：{r['例格']}" for r in look] or ["- 无"]
     lines += ["", "## ○对位（不归切分，交对位／参校）", ""]
     lines += [f"- {r['列']}：{r['例格']}" for r in allrows if r["处置"] == "对位（○）"] or ["- 无"]
-    bad = sum(1 for r in look if r["处置"] in ("格号不符", "版式不符", "需钉子"))
-    lines += ["", f"结论：{'有 %d 列要看图（格号不符、版式不符或需钉子）' % bad if bad else '0 格号不符、0 版式不符、0 需钉子'}"]
+    bad = sum(1 for r in look if r["处置"] in ("钉子未生效", "格号不符", "版式不符", "需钉子"))
+    lines += ["", f"结论：{'有 %d 列要处理（钉子未生效、格号不符、版式不符或需钉子）' % bad if bad else '0 钉子未生效、0 格号不符、0 版式不符、0 需钉子'}"]
     text = "\n".join(lines) + "\n"
     (out / "report.md").write_text(text, encoding="utf-8")
     return text, (3 if bad else 0)
