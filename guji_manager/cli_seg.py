@@ -42,6 +42,7 @@ def add_parser(sub) -> None:
     ck.add_argument("--skip", default="", help="点名跳过的页，册:页 或 册:起-止，逗号分隔；与 workspace.yaml 的 seg_check.skip 合并")
     ck.add_argument("--head-pages", type=int, default=None, help="每册前几页当卷首页单列（缺省读 workspace.yaml，再缺省 0）")
     ck.add_argument("--no-cell", action="store_true", help="不跑格级 flags（要读字块，慢）")
+    ck.add_argument("--no-defect", action="store_true", help="不跑同字对照切坏检测（并格／切笔／带框，要读全册字块）")
     ck.add_argument("--no-causes", action="store_true", help="不读待审原因码（产物没有 seed_admit 时自动跳过）")
     ck.add_argument("--montage", type=int, default=60, help="缩略图最多几列")
     ck.add_argument("--recall", default="", help="召回尺子 TSV（guji seg ruler 出的），量各检查的查全")
@@ -85,7 +86,8 @@ def _cmd_check(args) -> None:
     head = args.head_pages if args.head_pages is not None else int(cfg.get("head_pages") or 0)
     text, code = sc.run(args.books, Path(args.out or "seg-check"), pages=sc.parse_pages(args.pages) or None,
                         skip=skip, head_pages=head, cell_checks=not args.no_cell, causes=not args.no_causes,
-                        montage_limit=args.montage, ruler_tsv=Path(args.recall) if args.recall else None)
+                        montage_limit=args.montage, ruler_tsv=Path(args.recall) if args.recall else None,
+                        defect=not args.no_defect, ws=ws)
     print(text)
     raise SystemExit(code)
 

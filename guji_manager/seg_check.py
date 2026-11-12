@@ -8,11 +8,12 @@
 - 钉子未生效：中心库有钉子、本页产物没用上（产物早于钉子），要从 row_segment 重跑；
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
-- 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink）；
+- 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
+  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
-- 公用清格：只有装饰类 flag（FOR／Fend／Fpatch／Lh／Lv／端格只有框线）；
+- 公用清格：只有装饰类 flag（FOR／Fend／Fpatch／Lh／Lv／端格只有框线／同字对照带框 FRAME、FRAME_HEAVY＝重档／邻格笔画溢入 BLEED，未量过）；
 - 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）。
 
 书配置（工作区 `workspace.yaml`）：
@@ -23,6 +24,9 @@ seg_check:
   skip: {"01": "39-52,54,121,127,138-139", "04": "124"}   # 点名跳过的页：年表、卷首题署、整页御题印…
 ```
 
+同字对照切坏检测（2026-11-12 并进来，`--no-defect` 关）：`review/seg_defect.book_flags`，殿本尺子
+（open-guji-dataset char-segmentation/frame-end-crop）上切笔查全 0.69、带框 0.60；表 `筛查/seg_defect.tsv`。
+
 召回尺子：`guji seg ruler` 从中心库人裁（manual-cells、column-slots、抬头、拖线、solo-notes）列出人修过的列和修的时间；
 `guji seg check --recall <尺子.tsv>` 只拿「修在本页产物之后」的列（产物里错还在）量各检查的查全。
 """
@@ -31,10 +35,13 @@ from __future__ import annotations
 import collections
 import csv
 import json
+import sys
 from pathlib import Path
 
 SEG_CAUSES = {"A1", "A3", "A4", "A5", "A6", "A9"}
-COSM_FLAGS = ("FOR", "Fend", "Fpatch", "Lh", "Lv", "FRAME_ONLY")
+COSM_FLAGS = ("FOR", "Fend", "Fpatch", "Lh", "Lv", "FRAME_ONLY", "FRAME", "FRAME_HEAVY", "BLEED")
+#: 同字对照切坏检测（review/seg_defect）的 seg_kind → 列清单里的 flag
+DEFECT_FLAG = {"merged": "MERGED", "clipped": "CLIP", "bleed": "BLEED", "frame_residue": "FRAME"}
 RULER_SHARDS = {
     "manual-cells": "char-segmentation/manual-cells",
     "column-slots": "char-segmentation/column-slots",
@@ -150,6 +157,24 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             for kind in str(r[3]).split(","):
                 col[k]["TALL" if kind == "tall" else "SHORT"] += 1
             ex[k].insert(0, f"格高离群 {r[4]}")
+    for r in rows.get("page_pitch", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["PITCH"] += 1
+            ex[k].insert(0, f"格高对整页 列×{r[3]} {r[4]}")
+    for r in rows.get("half_width", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["HALF"] += 1
+            ex[k].insert(0, f"夹注半格宽 {r[4]}")
+    for r in rows.get("seg_defect", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            fl = DEFECT_FLAG.get(str(r[3]), str(r[3]))
+            if fl == "FRAME" and "重" in str(r[4]):
+                fl = "FRAME_HEAVY"
+            col[k][fl] += 1
+            ex[k].insert(0 if fl in ("MERGED", "CLIP") else len(ex[k]), f"{str(r[4]).split()[0]}{fl}")
     for r in rows.get("edge_frame_only", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -179,6 +204,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         cn = col[k]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
         struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
+                  + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2)
         cosm = sum(cn[f] for f in COSM_FLAGS)
@@ -215,9 +241,15 @@ def montage(rows: list[dict], out: Path, limit: int = 60) -> int:
     """需看图的列：列图上画 cell_shrink 字框（红＝字、绿＝空），12 列一张。"""
     from PIL import Image, ImageDraw
 
-    from ._cv import ImageCache, ProductStore, RunContext, load_book, page_key
+    from ._cv import (
+        ImageCache,
+        ProductStore,
+        RunContext,
+        column_key,
+        load_book,
+        page_key,
+    )
     from ._cv import steps as _s  # noqa: F401
-    from ._cv import column_key
     store, cache = ProductStore(), ImageCache()
     ctxs: dict = {}
     tiles = []
@@ -347,11 +379,36 @@ def recall(ruler: list[dict], rows: dict[str, list], products_dir: Path, books: 
             "missed": [f"{b}:{p}:{c}" for b, p, c in target if (b, p, c) not in anyhit]}
 
 
+def defect_rows(books: list[str], pages: set[int] | None, skip: dict[str, set[int]], ws: Path | None) -> list[tuple]:
+    """同字对照切坏检测（`review.seg_defect.book_flags`，有尺子：殿本列端 677 块，切笔查全 0.69／查准 0.84，
+    带框 0.60／0.79）→ 筛查表行 (book, page, col, seg_kind, "格号 特征 程度")。书级阈值取 `SELFCHECK_BOOKS`
+    （按工作区的 book-text id），没登记的书用殿本口径（查带框）。缺 seed_admit 等产物的册跳过并提示。"""
+    from ._cv import ImageCache, ProductStore, cache_root, products_root
+    from .review import seg_defect as sd
+    store, cache = ProductStore(Path(products_root())), ImageCache(Path(cache_root()))
+    opts = (sd.book_opts(sd.book_id_of(ws)) if ws else None) or {"frame": True}
+    out = []
+    for b in books:
+        pgs = [p for p in sd._pages_of(store, b) if (not pages or p in pages) and p not in _skip_for(b, skip)]
+        try:
+            rs, _meta = sd.book_flags(b, store, cache, opts, pages=pgs)
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ {b}：同字对照切坏检测没跑成（{type(e).__name__}: {e}），列清单里不含并格／切笔／带框", file=sys.stderr)
+            continue
+        for r in rs:
+            parts = str(r["格号"]).split(":")
+            if len(parts) < 4:
+                continue
+            out.append((b, int(parts[-3]), int(parts[-2]), r["seg_kind"],
+                        f"{parts[-1]} {r['特征']} {r.get('程度') or ''}".strip()))
+    return out
+
+
 # ── 一条命令 ────────────────────────────────────────────────────────────────
 
 def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dict[str, set[int]] | None = None,
         head_pages: int = 0, cell_checks: bool = True, causes: bool = True, montage_limit: int = 60,
-        ruler_tsv: Path | None = None) -> tuple[str, int]:
+        ruler_tsv: Path | None = None, defect: bool = True, ws: Path | None = None) -> tuple[str, int]:
     from ._cv import products_root
     try:
         from ._cv import screen_seg_book, write_seg_screen_report
@@ -371,6 +428,8 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
             pinned_all[b] = {(int(p), int(c)) for p, c in resolved_manual_cells(b)}
         except Exception:  # noqa: BLE001
             pinned_all[b] = set()
+    if defect:
+        rows["seg_defect"] = defect_rows(books, pages, skip, ws)
     write_seg_screen_report(rows, counts, out / "筛查")
     allrows = []
     for b in books:
@@ -390,6 +449,8 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
     n_img = montage(look, out, montage_limit) if look else 0
     cnt = collections.Counter(r["处置"] for r in allrows)
     flags = collections.Counter(f for r in rows.get("cell_flags", []) for f in str(r[3]).split(",") if f)
+    flags.update(DEFECT_FLAG.get(str(r[3]), str(r[3])) + ("重" if "重" in str(r[4]) else "")
+                 for r in rows.get("seg_defect", []))
     same = sum(c.get("layout_same_count", 0) for c in counts.values())
     lines = [f"# 切分核查 {','.join(books)}", "",
              f"- 产物根 `{prod}`；页 {'全部' if not pages else ','.join(map(str, sorted(pages)))}",
