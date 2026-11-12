@@ -99,6 +99,26 @@ def test_protected_cells_and_ledger():
     assert pn == {"1:1:2": "苞"} and len(probs) == 1 and "1:1:2" in probs[0]   # 有人裁的格被删：报
 
 
+def test_ledger_same_key_when_old_cord_had_no_box():
+    new_c = _char({1: "甲乙丙"})
+    # 1:1:2 旧 cord 无框，对照表旧侧没有；新包有同键格 → 同键认
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格"), dict(old="", new="1:1:2", kind="新增"),
+            dict(old="1:1:3", new="1:1:3", kind="同格")]
+    pn, probs = bt.human_ledger(rows, {"1:1:2": "乙"}, new_c)
+    assert pn == {"1:1:2": "乙"} and probs == []
+    # 新包没有该键 → 仍报
+    pn, probs = bt.human_ledger(rows, {"1:1:9": "乙"}, new_c)
+    assert pn == {} and len(probs) == 1
+    # 同键已被别的旧格认走（格号平移）→ 不按同键认，仍报
+    rows2 = [dict(old="1:1:1", new="1:1:2", kind="改号"), dict(old="1:1:3", new="1:1:3", kind="同格")]
+    pn, probs = bt.human_ledger(rows2, {"1:1:2": "乙"}, new_c)
+    assert pn == {} and len(probs) == 1
+    # 旧格在对照表且「删」→ 仍报
+    rows3 = [dict(old="1:1:2", new="", kind="删")]
+    pn, probs = bt.human_ledger(rows3, {"1:1:2": "乙"}, new_c)
+    assert pn == {} and len(probs) == 1
+
+
 def test_merge_keeps_human_and_flags_conflict():
     old_c, new_c = _char({1: "方苞在"}), _char({1: "方芭在"})
     rows = bt.cell_table(old_c, _cord({1: "方苞在"}), new_c, _cord({1: "方芭在"}))

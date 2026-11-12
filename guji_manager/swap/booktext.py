@@ -198,9 +198,16 @@ def human_ledger(rows: list[dict], prot_old: dict[str, str], new_char: dict) -> 
     返回 ({新格号: 字}, 问题)。落字在 merge 之后再核一遍（``ledger_check``）。"""
     o2n = {r["old"]: r["new"] for r in rows if r["old"] and r["new"]}
     gone = {r["old"] for r in rows if r["kind"] == "删"}
+    seen_old = {r["old"] for r in rows if r["old"]}
+    claimed = {r["new"] for r in rows if r["old"] and r["new"]}      # 已被某个旧格认走的新格号
+    new_keys = {a for a, _ in _chars(new_char)}
     out, probs = {}, []
     for a, c in prot_old.items():
-        if a in gone or a not in o2n:
+        # 旧 cord 里这格没有框（旧包排除过），对照表旧侧没有它：新包有同键格、且没被别的旧格认走，按同键认
+        # （ZM 11-12：殿本 vol02 125:8:7 於、98:4:17 此）。其余仍只走对照表，不按格号比。
+        if a not in seen_old and a in new_keys and a not in claimed:
+            out[a] = c
+        elif a in gone or a not in o2n:
             probs.append(f"{a}「{c}」（人裁／手改）在新包里没有对应格")
         else:
             out[o2n[a]] = c
