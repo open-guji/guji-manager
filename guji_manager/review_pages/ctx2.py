@@ -61,10 +61,25 @@ def _half_ctx(L: list[dict]) -> dict[int, tuple[str, str]]:
         idx = ([i for i in range(s0, k) if L[i]["id"][-1] == "a"] +
                [i for i in range(s0, k) if L[i]["id"][-1] == "b"])
         seq = list(range(max(0, s0 - CTX_N), s0)) + idx + list(range(k, min(len(L), k + CTX_N)))
-        txt = [L[i]["char"] for i in seq]
+        txt = [(L[i]["char"] or "□") for i in seq]
         for pos, i in enumerate(seq):
             if s0 <= i < k:
                 out[i] = ("".join(txt[max(0, pos - CTX_N):pos]), "".join(txt[pos + 1:pos + 1 + CTX_N]))
+    return out
+
+
+def _ext_chars(seed_file: str) -> dict:
+    """同页 align_ref 里每格的参校本字与坐标字：{格号: [ref, coord]}；没有该文件就是空。"""
+    af = Path(seed_file).parent.parent / "align_ref" / Path(seed_file).name
+    if not af.exists():
+        return {}
+    a = json.loads(af.read_text(encoding="utf-8")).get("align_ref") or {}
+    out: dict = {}
+    if a.get("anchored"):
+        for c in a.get("chars") or []:
+            out.setdefault(c["id"], []).append(c.get("align_char"))
+    for c in a.get("coord") or []:
+        out.setdefault(c["id"], []).append(c.get("ref_char"))
     return out
 
 
@@ -73,6 +88,7 @@ def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False, h
     上下文按小注阅读顺序串联；默认只取整格。"""
     out = []
     for f in sorted(glob.glob(f"{packs}/*/seed_admit/p*.json")):
+        ext = _ext_chars(f)
         for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
             L = col["chars"]
             hc = _half_ctx(L) if half else {}
@@ -85,8 +101,13 @@ def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False, h
                 g = _group_of(ch["char"], groups)
                 if g is None:
                     continue
-                l, r = hc[k] if half else ("".join(x["char"] for x in L[max(0, k - CTX_N):k]),
-                                           "".join(x["char"] for x in L[k + 1:k + 1 + CTX_N]))
+                # 组外字防护（2026-11-12 r52 金标抽检教训）：参校本/坐标字是组外汉字（如 單于 的「于」落在千干组外），
+                # 候选封闭在组内会硬选错，这类格不进双轮。
+                if any(c and c not in GROUPS[g] and c != ch["char"] and "\u3400" <= c <= "\u9fff"
+                       for c in ext.get(ch["id"], ())):
+                    continue
+                l, r = hc[k] if half else ("".join((x["char"] or "□") for x in L[max(0, k - CTX_N):k]),
+                                           "".join((x["char"] or "□") for x in L[k + 1:k + 1 + CTX_N]))
                 out.append({"id": ch["id"], "g": g, "cur": ch["char"], "admit": bool(ch.get("admit")),
                             "l": l, "r": r})
     for n, c in enumerate(out, 1):
