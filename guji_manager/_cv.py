@@ -29,6 +29,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "EventLog": ("feedback.events", "EventLog"),
     "batches_root": ("core.workspace", "batches_root"),
     "verdicts_root": ("core.workspace", "verdicts_root"),
+    "check_manual_cells": ("feedback.lookup", "check_manual_cells"),
     "GoldStore": ("gold.store", "GoldStore"),
     "Event": ("feedback.events", "Event"),
     "book_yaml_path": ("core.book", "_book_yaml_path"),
