@@ -109,11 +109,19 @@ def check_layout(prod, vols, layout_path, pinned):
     """版式对格号：layout_slots 每列格位（大字 N、小注 Na/Nb、半格 Na）对 cell_shrink 实出格号。
     钉子列不比（钉子说了算）。返回 {(v,p,c): 问题串}。"""
     res = {}
-    if not layout_path or not os.path.exists(layout_path):
+    recs = []
+    if layout_path and os.path.exists(layout_path):
+        recs = [json.loads(line) for line in open(layout_path) if line.strip()]
+    have = {str(d["vol"]).zfill(2) for d in recs}
+    # 离线表里没有的册：读 Step3 当场出的格位表（`page_map: pins` 时存在 row_segment/_page_map.json 的 layout）
+    for v in vols:
+        pm = os.path.join(prod, v, "row_segment", "_page_map.json")
+        if v not in have and os.path.exists(pm):
+            recs += [dict(d, vol=v) for d in (json.load(open(pm)).get("layout") or [])]
+    if not recs:
         return res
     want = collections.defaultdict(dict)
-    for line in open(layout_path):
-        d = json.loads(line)
+    for d in recs:
         v = str(d["vol"]).zfill(2)
         if v not in vols:
             continue
@@ -278,7 +286,7 @@ def main(argv=None):
     ap.add_argument("--vols", required=True)
     ap.add_argument("--pins", default="")
     ap.add_argument("--skip", default="")
-    ap.add_argument("--layout", default="", help="版式格位表 layout_slots.jsonl（书语料 corpus/<参校>/），给了就比版式对格号")
+    ap.add_argument("--layout", default="", help="版式格位表 layout_slots.jsonl（书语料 corpus/<参校>/），给了就比版式对格号；表里没有的册改读产物 row_segment/_page_map.json 的 layout（page_map: pins 当场出的表）")
     ap.add_argument("--out", required=True)
     ap.add_argument("--reuse-geom", action="store_true", help="out 里已有逐格flags/漏切块就不重算")
     a = ap.parse_args(argv)
