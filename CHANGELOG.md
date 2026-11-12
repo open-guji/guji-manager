@@ -1,12 +1,15 @@
 # Changelog
 
-版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]
-- 审阅页 glyph_quality 1.1.0：加「污渍」一档（数字键 4，看不清改 5），gq-apply 认 stain（A22 11-12，Sheldon 要建污渍尺子）。
-- `guji seg check` 并进同字对照切坏检测（并格 MERGED／切笔 CLIP 进「需钉子」，带框 FRAME／FRAME_HEAVY、BLEED 进「公用清格」，`--no-defect` 关），并汇总 cv 新表 page_pitch（格高对整页）、half_width（夹注半格宽）（A22 11-12，Sheldon 追问快检覆盖面）。` - `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
-下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
+版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
 
+## [0.4.44] - 2026-11-12
+
+- 任务单 `run` 收 `seg check`／`seg ruler`（不收 `seg pin`，它写数据目录钉子）；`seg check --job` 把逐列清单排前、计数与结论压最后、退出码恒 0，因任务库只留每条输出末 6000 字（PATCH，QTW 11-12，#535）。
+- 审阅页 glyph_quality 1.1.0：加「污渍」一档（数字键 4，看不清改 5），gq-apply 认 stain（A22 11-12，Sheldon 要建污渍尺子）。
+- `guji seg check` 并进同字对照切坏检测（并格 MERGED／切笔 CLIP 进「需钉子」，带框 FRAME／FRAME_HEAVY、BLEED 进「公用清格」，`--no-defect` 关），并汇总 cv 新表 page_pitch（格高对整页）、half_width（夹注半格宽）（A22 11-12，Sheldon 追问快检覆盖面）。
+- `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
 - 新命令 `guji seg check <册…>`：切分核查一条命令，并了 SJ 史記快筛（`tools/seg_check`，留作别名）、cv `seg_screen`、待审原因码。按列给 类／处置（钉子未生效、格号不符、版式不符、需钉子、原因码·看图、已钉·复核、对位（○）、公用清格、点名跳过、卷首页），出列清单、需看图缩略图、报告；退出码 3＝有要看图的列。点名跳过页与卷首页数写工作区 `workspace.yaml` 的 `seg_check:`。要 cv ≥ #1447。
 - 新命令 `guji seg ruler`：中心库人修过的列（manual-cells、column-slots、抬头、拖线、solo-notes，含退役的）＋第一次写的时间；`seg check --recall` 只拿产物里错还在的列（manual-cells 看产物有没有用上钉子，其余看修的时间是否晚于产物）量各检查的查全。
 - 新命令 `guji seg pin <册:页:列>`：整列写定（manual-cells）。从已有钉子或现行 row_segment 产物起稿，`--split/--merge/--move/--insert-after/--delete/--ys` 改格，出草稿、叠框图、格号对照表（给 `guji swap`），自动跑 cv `check_manual_cells`；`--write --why` 才写本机数据目录（同 id 原地替换、保留 history）。见 cv `doc/切分覆盖.md` 第四节。
