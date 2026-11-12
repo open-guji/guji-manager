@@ -99,7 +99,7 @@ def main(argv=None):
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
     p = sub.add_parser("ctx2-export"); p.add_argument("--packs", required=True, help="<目录>/<册>/seed_admit/p*.json")
     p.add_argument("--groups", default="日曰,己已巳"); p.add_argument("--out", required=True)
-    p.add_argument("--include-admitted", action="store_true")
+    p.add_argument("--half", action="store_true", help="只取半格（小注）"); p.add_argument("--include-admitted", action="store_true")
     p = sub.add_parser("ctx2-import"); p.add_argument("--cells", required=True); p.add_argument("--a", required=True)
     p.add_argument("--b", required=True); p.add_argument("--out", required=True); p.add_argument("--round", default="")
     p.add_argument("--a2", help="第二轮甲（独立会话）；给了 --a2/--b2 就要求每轮都一致 high 才定字"); p.add_argument("--b2")
@@ -275,7 +275,7 @@ def main(argv=None):
     elif a.cmd == "ctx2-export":
         from . import ctx2
         gs = tuple(x for x in a.groups.split(",") if x)
-        cells = ctx2.collect(a.packs, gs, a.include_admitted)
+        cells = ctx2.collect(a.packs, gs, a.include_admitted, a.half)
         o = Path(a.out); o.mkdir(parents=True, exist_ok=True)
         (o / "cells.json").write_text(json.dumps(cells, ensure_ascii=False), encoding="utf-8")
         (o / "prompt_A.txt").write_text(ctx2.prompts(cells, False), encoding="utf-8")
