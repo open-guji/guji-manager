@@ -143,8 +143,13 @@ def apply_edit(cells: list[dict], edit: tuple[str, str], content_x: tuple[float,
     return out
 
 
+def _span(cs: list[dict], slot: int) -> tuple[float, float]:
+    g = [c for c in cs if int(c["slot"]) == slot]
+    return round(min(c["y0"] for c in g)), round(max(c["y1"] for c in g))
+
+
 def slot_map(before: list[dict], after: list[dict]) -> list[tuple[int | None, int | None, str]]:
-    """改前改后格号对照：按格心 y 就近配（一格配一格），配不上的记增删。给 `guji swap` 的格号对照表参考。"""
+    """改前改后格号对照：按格心 y 就近配（一格配一格），配不上的记增删；同号但上下边挪了记「改框」（字可能变，人裁要看）。给 `guji swap` 的格号对照表参考。"""
     def centers(cs):
         return [(int(g[0]["slot"]), (min(c["y0"] for c in g) + max(c["y1"] for c in g)) / 2) for g in _groups(cs)]
     b, a = centers(before), centers(after)
@@ -163,7 +168,8 @@ def slot_map(before: list[dict], after: list[dict]) -> list[tuple[int | None, in
             rows.append((sb, None, "删／并"))
         else:
             used.add(best[0])
-            rows.append((sb, best[0], "同" if sb == best[0] else "改号"))
+            moved = _span(before, sb) != _span(after, best[0])
+            rows.append((sb, best[0], ("改框" if moved else "同") if sb == best[0] else "改号"))
     for sa, _ya in a:
         if sa not in used:
             rows.append((None, sa, "新增"))
@@ -219,6 +225,7 @@ def write_item(path: Path, item: dict) -> None:
 def draft_from_data(book: str, page: int, col: int, store=None) -> tuple[Draft, dict | None]:
     """起稿：active 的 manual-cells 优先，否则现行 row_segment 产物。返回 (草稿, 已有条目或 None)。"""
     from ._cv import ProductStore, page_key
+    from ._cv import steps as _s  # noqa: F401 —— 先注册 Step，否则 store.read 的 kind_of() 查不到产物种类
     st = store or ProductStore()
     pc = st.read(book, "row_segment", page_key(page), "cells")
     cc = None if pc is None else next((c for c in pc.columns if c.col == col), None)
@@ -246,15 +253,17 @@ def draft_from_data(book: str, page: int, col: int, store=None) -> tuple[Draft, 
 
 
 def overlay(d: Draft, before: list[dict], out: Path) -> Path | None:
-    """列图上画框：灰＝起稿、红＝新格表，格号标在右边。没有列图缓存返回 None。"""
+    """列图上画框：灰＝起稿、红＝新格表，格号标在右边。缓存里没有列图就现算；算不出（缺原图等）返回 None。"""
     try:
         import cv2
         from ._cv import column_key
     except Exception:  # noqa: BLE001
         return None
-    try:
-        from ._cv import cache_root
-        p = Path(cache_root()) / d.book / "column_image" / f"{column_key(d.page, d.col)}.png"
+    try:   # 缺图就现算（同 `guji cache get`：ctx.materialize）
+        from ._cv import ImageCache, ProductStore, RunContext, load_book
+        from ._cv import steps as _s  # noqa: F401
+        ctx = RunContext(load_book(d.book), ProductStore(), ImageCache(), log=lambda _: None)
+        p = Path(ctx.materialize("column_image", column_key(d.page, d.col)))
     except Exception:  # noqa: BLE001
         return None
     if not p.exists():

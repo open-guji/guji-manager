@@ -64,7 +64,7 @@ def test_slot_map():
     before = _col((0, 100), (100, 220), (220, 300))
     after = sp.apply_edit(before, ("split", "2@160"), CX)
     rows = sp.slot_map(before, after)
-    assert (1, 1, "同") in rows and (3, 4, "改号") in rows and any(r[2] == "新增" for r in rows)
+    assert (1, 1, "同") in rows and (3, 4, "改号") in rows and (2, 2, "改框") in rows and any(r[2] == "新增" for r in rows)
 
 
 def test_make_item_keeps_history():
@@ -73,3 +73,15 @@ def test_make_item_keeps_history():
     assert it["id"] == "vol01:88:4" and it["history"][0]["change"] == "created" and it["status"] == "active"
     it2 = sp.make_item(d, "再改", prev=it)
     assert [h["change"] for h in it2["history"]] == ["created", "updated"]
+
+
+def test_write_item_replaces_same_id(tmp_path):
+    p = tmp_path / "items.jsonl"
+    d = sp.Draft("vol01", 88, 4, _col((0, 100)), CX, "row_segment")
+    other = dict(sp.make_item(sp.Draft("vol01", 88, 5, _col((0, 50)), CX, "row_segment"), "x"))
+    sp.write_item(p, other)
+    sp.write_item(p, sp.make_item(d, "一"))
+    sp.write_item(p, sp.make_item(d, "二"))
+    rows = sp.read_items(p)
+    assert [r["id"] for r in rows] == ["vol01:88:5", "vol01:88:4"]
+    assert rows[1]["history"][-1]["why"] == "二"
