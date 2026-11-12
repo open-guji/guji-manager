@@ -27,7 +27,7 @@ from pathlib import Path
 GROUPS = {
     "日曰": ("日", "曰"), "己已巳": ("己", "已", "巳"), "面而": ("面", "而"), "還環": ("還", "環"),
     "未末": ("未", "末"), "大太": ("大", "太"), "問間": ("問", "間"), "論諭": ("論", "諭"),
-    "子于": ("子", "于"), "東束": ("東", "束"), "宫官": ("宫", "官"), "春泰": ("春", "泰"),
+    "子于": ("子", "于"), "東束": ("東", "束"), "宫官": ("宫", "官"), "春泰": ("春", "泰"), "令今": ("令", "今"), "千干": ("千", "干"),
 }
 DEFAULT_GROUPS = ("日曰", "己已巳")
 CTX_N = 5
@@ -46,23 +46,49 @@ def _group_of(ch: str, groups) -> str | None:
     return None
 
 
-def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False) -> list[dict]:
-    """从 <packs>/<册>/seed_admit/p*.json 取整格形近组格，附前后文。"""
+def _half_ctx(L: list[dict]) -> dict[int, tuple[str, str]]:
+    """列内连续的小注段按阅读顺序（a 行自上而下，再 b 行自上而下）排成一串，前接段前大字、后接段后大字，
+    返回 {L 下标: (前文, 后文)}（各取 CTX_N 字）。"""
+    out = {}
+    k = 0
+    while k < len(L):
+        if L[k]["id"][-1] not in "ab":
+            k += 1
+            continue
+        s0 = k
+        while k < len(L) and L[k]["id"][-1] in "ab":
+            k += 1
+        idx = ([i for i in range(s0, k) if L[i]["id"][-1] == "a"] +
+               [i for i in range(s0, k) if L[i]["id"][-1] == "b"])
+        seq = list(range(max(0, s0 - CTX_N), s0)) + idx + list(range(k, min(len(L), k + CTX_N)))
+        txt = [L[i]["char"] for i in seq]
+        for pos, i in enumerate(seq):
+            if s0 <= i < k:
+                out[i] = ("".join(txt[max(0, pos - CTX_N):pos]), "".join(txt[pos + 1:pos + 1 + CTX_N]))
+    return out
+
+
+def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False, half: bool = False) -> list[dict]:
+    """从 <packs>/<册>/seed_admit/p*.json 取形近组格，附前后文。half=True 时只取半格（小注 a/b），
+    上下文按小注阅读顺序串联；默认只取整格。"""
     out = []
     for f in sorted(glob.glob(f"{packs}/*/seed_admit/p*.json")):
         for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
             L = col["chars"]
+            hc = _half_ctx(L) if half else {}
             for k, ch in enumerate(L):
-                if ch["id"][-1] in "ab":
+                is_half = ch["id"][-1] in "ab"
+                if is_half != half:
                     continue
                 if ch.get("admit") and not include_admitted:
                     continue
                 g = _group_of(ch["char"], groups)
                 if g is None:
                     continue
+                l, r = hc[k] if half else ("".join(x["char"] for x in L[max(0, k - CTX_N):k]),
+                                           "".join(x["char"] for x in L[k + 1:k + 1 + CTX_N]))
                 out.append({"id": ch["id"], "g": g, "cur": ch["char"], "admit": bool(ch.get("admit")),
-                            "l": "".join(x["char"] for x in L[max(0, k - CTX_N):k]),
-                            "r": "".join(x["char"] for x in L[k + 1:k + 1 + CTX_N])})
+                            "l": l, "r": r})
     for n, c in enumerate(out, 1):
         c["n"] = n
     return out
