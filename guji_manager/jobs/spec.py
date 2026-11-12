@@ -58,8 +58,10 @@ def book_id(spec: dict) -> str | None:
 #: command／eval 的 run 里允许的 guji 子命令。不收会推库、改中心库、标 main 的（db、promote 等）。
 RUN_SUBCOMMANDS = frozenset({
     "pipeline", "step", "recheck", "status", "eval", "collate", "cache", "corpus", "glyph-db", "source",
-    "products", "close-check", "gold", "report", "product",
+    "products", "close-check", "gold", "report", "product", "seg",
 })
+#: 有些子命令只许其中几个只读的二级命令（seg pin --write 会写数据目录里的钉子，不进任务单）
+RUN_SUBSUBCOMMANDS = {"seg": frozenset({"check", "ruler"})}
 #: run 里不许出现的参数（推中心库、标 main）
 RUN_FORBIDDEN_ARGS = frozenset({"--main", "promote", "push", "push-index", "sync", "migrate"})
 _ENV_KEY = re.compile(r"^GUJI_[A-Z0-9_]+$")
@@ -241,6 +243,9 @@ def _check_argv(a) -> list[str]:
         a = a[1:]
     if not a or a[0] not in RUN_SUBCOMMANDS:
         raise SpecError(f"run 只许这些 guji 子命令：{', '.join(sorted(RUN_SUBCOMMANDS))}（不是 {a[:1]}）")
+    sub2 = RUN_SUBSUBCOMMANDS.get(a[0])
+    if sub2 is not None and (len(a) < 2 or a[1] not in sub2):
+        raise SpecError(f"run 里 {a[0]} 只许 {'／'.join(sorted(sub2))}（不是 {a[1:2]}）")
     if a[0] == "products" and len(a) > 1 and a[1] == "pack" and (len(a) < 3 or a[2] not in ("fetch", "list")):
         raise SpecError("run 里 products pack 只许 fetch／list；存包写 output.pack")
     bad = RUN_FORBIDDEN_ARGS.intersection(a[1:])

@@ -65,3 +65,15 @@ def test_defect_and_uniform_rows():
             "half_width": [("b", 4, 2, 1, "6ab 差0.6 本册半格宽 50px")]}
     agg = {r["列"]: r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())}
     assert agg == {"b:3:1": "需钉子", "b:3:2": "公用清格", "b:3:3": "公用清格", "b:4:1": "需钉子", "b:4:2": "需钉子"}
+
+
+def test_job_text_puts_counts_last():
+    rep = "\n".join(["# 切分核查 016", "", "- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1", "",
+                     "## 钉子未生效／格号不符／版式不符／需钉子／已钉复核／原因码看图", "", "- 016:66:9 需钉子：22CLIP",
+                     "", "## ○对位（不归切分，交对位／参校）", "", "- 016:1:2：x", "- 016:3:4：y", "",
+                     "结论：有 1 列要处理（钉子未生效、格号不符、版式不符或需钉子）", ""])
+    out = sc.job_text(rep).splitlines()
+    assert out[0] == "- 016:66:9 需钉子：22CLIP"
+    assert "- ○对位（不归切分）2 列，明细见 report.md" in out
+    assert out[-3:] == ["- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1",
+                        "结论：有 1 列要处理（钉子未生效、格号不符、版式不符或需钉子）"]

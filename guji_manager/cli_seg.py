@@ -47,6 +47,8 @@ def add_parser(sub) -> None:
     ck.add_argument("--montage", type=int, default=60, help="缩略图最多几列")
     ck.add_argument("--recall", default="", help="召回尺子 TSV（guji seg ruler 出的），量各检查的查全")
     ck.add_argument("--out", default="", help="报告目录（缺省 ./seg-check）")
+    ck.add_argument("--job", action="store_true",
+                    help="任务单用：要看的列在前、计数与结论压最后（任务库只留输出尾巴），有要处理的列也退出 0")
 
     rl = ss.add_parser("ruler", help="中心库人修过的列（manual-cells、column-slots、抬头、拖线、solo-notes）＋第一次写的时间")
     rl.add_argument("books", nargs="*", help="只要这些册（缺省全部）")
@@ -88,6 +90,9 @@ def _cmd_check(args) -> None:
                         skip=skip, head_pages=head, cell_checks=not args.no_cell, causes=not args.no_causes,
                         montage_limit=args.montage, ruler_tsv=Path(args.recall) if args.recall else None,
                         defect=not args.no_defect, ws=ws)
+    if args.job:
+        print(sc.job_text(text))
+        raise SystemExit(0)
     print(text)
     raise SystemExit(code)
 

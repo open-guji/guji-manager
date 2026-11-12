@@ -404,6 +404,27 @@ def defect_rows(books: list[str], pages: set[int] | None, skip: dict[str, set[in
     return out
 
 
+def job_text(report: str) -> str:
+    """把 report.md 改排成任务单输出：逐列清单在前、○对位只留列数、计数与结论压最后。
+    任务库只存每条命令输出的尾巴（runner `run_commands` 留末 6000 字），尾巴被截时丢的是清单头，不是计数。"""
+    head, body, tail, n_dui, sec = [], [], [], 0, None
+    for ln in report.splitlines():
+        if ln.startswith("## "):
+            sec = ln
+            continue
+        if not ln.strip() or ln.startswith("# "):
+            continue
+        if ln.startswith("结论："):
+            tail.append(ln)
+        elif sec is None:
+            head.append(ln)
+        elif sec.startswith("## ○"):
+            n_dui += ln.startswith("- ") and ln != "- 无"
+        else:
+            body.append(ln)
+    return "\n".join(body + [f"- ○对位（不归切分）{n_dui} 列，明细见 report.md"] + head + tail)
+
+
 # ── 一条命令 ────────────────────────────────────────────────────────────────
 
 def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dict[str, set[int]] | None = None,
