@@ -37,3 +37,14 @@ def test_two_rounds_must_agree(tmp_path):
     assert ctx2.decide_rounds(cells, [(h, h), (h, h)])[0]["char"] == "日"
     assert ctx2.decide_rounds(cells, [(h, h), (h, lo)])[0]["char"] == "待审"
     assert ctx2.decide_rounds(cells, [(h, h), ([{"n": 1, "ch": "曰", "conf": "high"}],) * 2])[0]["char"] == "待审"
+
+
+def test_half_cell_context_follows_reading_order(tmp_path):
+    d = tmp_path / "07" / "seed_admit"; d.mkdir(parents=True)
+    ch = lambda i, c: {"id": i, "char": c, "admit": False}
+    col = {"chars": [ch("07:1:1:1", "前"), ch("07:1:1:2a", "甲"), ch("07:1:1:2b", "乙"),
+                     ch("07:1:1:3a", "日"), ch("07:1:1:3b", "丙"), ch("07:1:1:4", "後")]}
+    (d / "p0001.json").write_text(json.dumps({"seed_admit": {"columns": [col]}}), encoding="utf-8")
+    cells = ctx2.collect(str(tmp_path), half=True)
+    assert [c["id"] for c in cells] == ["07:1:1:3a"]
+    assert cells[0]["l"] == "前甲" and cells[0]["r"] == "乙丙後"   # a 行读完接 b 行
