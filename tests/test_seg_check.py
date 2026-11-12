@@ -56,3 +56,12 @@ def test_recall_manual_cells_by_pin_stale(tmp_path):
 def test_cell_size_is_structural():
     rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
     assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]
+
+
+def test_defect_and_uniform_rows():
+    rows = {"seg_defect": [("b", 3, 1, "clipped", "21 同字墨高 0.77"), ("b", 3, 2, "frame_residue", "1 同字… 重"),
+                           ("b", 3, 3, "bleed", "5 edge_blob")],
+            "page_pitch": [("b", 4, 1, 0.85, " 本页格高 100px")],
+            "half_width": [("b", 4, 2, 1, "6ab 差0.6 本册半格宽 50px")]}
+    agg = {r["列"]: r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())}
+    assert agg == {"b:3:1": "需钉子", "b:3:2": "公用清格", "b:3:3": "公用清格", "b:4:1": "需钉子", "b:4:2": "需钉子"}
