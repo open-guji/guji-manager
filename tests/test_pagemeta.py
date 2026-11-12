@@ -157,3 +157,90 @@ def test_publish_refuses_invalid():
     pages["0001"]["H"] = [[1, 0, 900], [0, 1, 0], [0, 0, 1]]
     with pytest.raises(ValueError, match="没过校验"):
         PM.publish_pagemeta(FakeSrc(), table, pages, by="t", why="x")
+
+
+# ─── 按册两遍定框（framefit）────────────────────────────────────────────────
+
+def _scan(frame=(100, 120, 800, 1160), tilt=0, top=True, bottom=True, left=True, right=True, top_from=0.0, cartouche=False,
+          w=1000, h=1400, fill=255):
+    """造一页单页扫描：版框四线（可斜、可缺、上线可只剩右段）＋一列列字；`cartouche` 在框上方加个抬头小框。"""
+    cv2 = pytest.importorskip("cv2")
+    g = np.full((h, w), fill, np.uint8)
+    if fill != 255:
+        return g
+    x, y, fw, fh = frame
+    if top:
+        cv2.line(g, (int(x + top_from * fw), y), (x + fw, y + tilt), 0, 6)
+    if bottom:
+        cv2.line(g, (x, y + fh), (x + fw, y + fh + tilt), 0, 6)
+    if left:
+        cv2.line(g, (x, y), (x, y + fh), 0, 6)
+    if right:
+        cv2.line(g, (x + fw, y + tilt), (x + fw, y + fh + tilt), 0, 6)
+    for cx in range(x + 60, x + fw - 60, 90):
+        for cy in range(y + 40, y + fh - 60, 50):
+            g[cy:cy + 30, cx:cx + 30] = 0
+    if cartouche:
+        cx = x + fw - 150
+        g[y - 80:y, cx:cx + 4] = 0
+        g[y - 80:y, cx + 60:cx + 64] = 0
+        g[y - 80:y - 76, cx:cx + 64] = 0
+        g[y - 70:y - 10, cx + 15:cx + 50] = 0
+    return g
+
+
+def test_framefit_same_size_across_volume():
+    FF = pytest.importorskip("guji_manager.datastore.framefit")
+    pytest.importorskip("cv2")
+    pages = {
+        "0001": _scan(),
+        "0002": _scan(frame=(130, 100, 800, 1160)),
+        "0003": _scan(frame=(90, 140, 800, 1160), tilt=14),            # 框线斜：旧法逐行扫会失手
+        "0004": _scan(frame=(110, 110, 800, 1160), top_from=0.45),     # 版心一侧上线淡掉一半
+        "0005": _scan(frame=(100, 130, 800, 1160), top=False),         # 只剩下框线
+        "0006": _scan(frame=(120, 120, 800, 1160)),
+        "0007": _scan(fill=66),                                       # 缺页占位灰图
+    }
+    out = FF.fit_volume({k: FF.measure(g) for k, g in pages.items()})
+    assert out["0007"][0] is None and out["0007"][1] == "blank"
+    sizes = {k: (c[2], c[3]) for k, (c, _) in out.items() if c}
+    assert len(sizes) == 6
+    ws = [s[0] for s in sizes.values()]
+    hs = [s[1] for s in sizes.values()]
+    assert max(ws) - min(ws) <= 4
+    assert max(hs) - min(hs) <= 0.02 * max(hs)          # 斜的那页框撑到包住斜线，略高一点
+    m = 0.015 * 1000
+    truth = {"0001": (100, 120), "0002": (130, 100), "0003": (90, 140), "0004": (110, 110), "0005": (100, 130), "0006": (120, 120)}
+    for k, (x, y) in truth.items():
+        c = out[k][0]
+        assert abs(c[0] - (x - m)) <= 12 and abs(c[1] - (y - m)) <= 12, (k, c, out[k][1])
+    assert PM.detect_content(pages["0003"])[2] > 0       # 旧法还能调
+
+
+def test_framefit_cartouche_stretches_content():
+    FF = pytest.importorskip("guji_manager.datastore.framefit")
+    pytest.importorskip("cv2")
+    pages = {f"{i:04d}": _scan() for i in range(1, 5)}
+    pages["0005"] = _scan(cartouche=True)
+    out = FF.fit_volume({k: FF.measure(g) for k, g in pages.items()})
+    plain, cart = out["0001"][0], out["0005"][0]
+    assert cart[1] <= 120 - 80 + 2 and cart[1] + cart[3] == plain[1] + plain[3]
+
+
+def test_build_pages_uses_framefit_and_keeps_size_on_full_res():
+    pytest.importorskip("cv2")
+    rows, grays = [], {}
+    for i, fr in enumerate([(100, 120, 800, 1160), (140, 100, 800, 1160), (90, 140, 800, 1160)], 1):
+        g = _scan(frame=tuple(v * 4 for v in fr), w=4000, h=5600)    # 原图 4 倍大：检测缩到 1000 宽再放回
+        seq = f"{i:04d}"
+        rows.append({"seq": seq, "page": i, "sha256": f"{i:02d}" * 32, "bytes": 1, "w": 4000, "h": 5600, "src": "", "ops": []})
+        grays[seq] = g
+    t = _table(rows)
+    pages = PM.build_pages(t, gray_of=lambda r: grays[r["seq"]])
+    assert {m["how"] for m in pages.values()} == {"framefit"}
+    assert all(m["fit"] == "pair/pair" for m in pages.values())
+    ws = [m["content"][2] for m in pages.values()]
+    assert max(ws) - min(ws) <= 8
+    assert PM.validate_pagemeta(t, PM.make_pagemeta(t, pages, by="t", why="t")) == []
+    old = PM.build_pages(t, gray_of=lambda r: grays[r["seq"]], fit=False)
+    assert {m["how"] for m in old.values()} == {"detect"}

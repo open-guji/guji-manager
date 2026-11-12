@@ -1,13 +1,25 @@
 # Changelog
 
-版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` - `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
-下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
+版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+
+## [0.4.44] - 2026-11-12
+
+- 任务单 `run` 收 `seg check`／`seg ruler`（不收 `seg pin`，它写数据目录钉子）；`seg check --job` 把逐列清单排前、计数与结论压最后、退出码恒 0，因任务库只留每条输出末 6000 字（PATCH，QTW 11-12，#535）。
+- 审阅页 glyph_quality 1.1.0：加「污渍」一档（数字键 4，看不清改 5），gq-apply 认 stain（A22 11-12，Sheldon 要建污渍尺子）。
+- `guji seg check` 并进同字对照切坏检测（并格 MERGED／切笔 CLIP 进「需钉子」，带框 FRAME／FRAME_HEAVY、BLEED 进「公用清格」，`--no-defect` 关），并汇总 cv 新表 page_pitch（格高对整页）、half_width（夹注半格宽）（A22 11-12，Sheldon 追问快检覆盖面）。
+- `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
+- 新命令 `guji seg check <册…>`：切分核查一条命令，并了 SJ 史記快筛（`tools/seg_check`，留作别名）、cv `seg_screen`、待审原因码。按列给 类／处置（钉子未生效、格号不符、版式不符、需钉子、原因码·看图、已钉·复核、对位（○）、公用清格、点名跳过、卷首页），出列清单、需看图缩略图、报告；退出码 3＝有要看图的列。点名跳过页与卷首页数写工作区 `workspace.yaml` 的 `seg_check:`。要 cv ≥ #1447。
+- 新命令 `guji seg ruler`：中心库人修过的列（manual-cells、column-slots、抬头、拖线、solo-notes，含退役的）＋第一次写的时间；`seg check --recall` 只拿产物里错还在的列（manual-cells 看产物有没有用上钉子，其余看修的时间是否晚于产物）量各检查的查全。
+- 新命令 `guji seg pin <册:页:列>`：整列写定（manual-cells）。从已有钉子或现行 row_segment 产物起稿，`--split/--merge/--move/--insert-after/--delete/--ys` 改格，出草稿、叠框图、格号对照表（给 `guji swap`），自动跑 cv `check_manual_cells`；`--write --why` 才写本机数据目录（同 id 原地替换、保留 history）。见 cv `doc/切分覆盖.md` 第四节。
+- 测试 `test_code_deps_coverage` 登记 glyph_match → clustering.sim_cnn 不进指纹（cv #1394 `sim_model` 开关，缺省关；开着时经 sim_model_sha 进参数指纹）。只改测试（A23，11-10）。
+- 单页扫描的页面范围改为**按册两遍定框**（PATCH，A20 11-10，用户要全唐文「每页都有框、框大小基本一致」）：新增 `datastore/framefit.py`——先逐页按线段量框线（不怕斜），再取全册统一框尺寸，逐页对准框线；版心一侧线淡、只剩一条框线、个别页拍大、序页抬头伸出框外都处理；缺页灰图与无框页取整幅（`fit: blank/none`）。`pagemeta.build_pages` 给了页图就缺省走它（`how: framefit`、`fit` 记定法），没装 opencv 或 `guji source pagemeta --no-fit` 退回旧的逐页 `detect_content`；`--save` 存逐页记录出审查图。框线外粗内细取外道、配上的框线略大就撑到包住、粗过 3.5% 的墨团不算线、书名签小框与封面不猜（`fit: unsure`）。全唐文 11,238 页：退整幅 775→0（另 6 页本无框），框宽在中位 ±3% 内 57%→99.6%；北行日錄旧法退整幅的 3 页也框上了。只影响旁车，不动页表、不让产物过期。L0。
 
 ## [0.4.43] - 2026-11-10
 
 - 修史記 anchors/04.jsonl 拉不下来（PATCH，A31 11-10，GUJI-750）：根因是 SJ-史記切分 rev 957032–957044 那次 push，04.jsonl 里 4 对行主键重复（第 56–59 行与 61–64 行），旧扫描「后者覆盖」只存了 61 行，source_files 却登记 65 行／整文件 sha，库里谁都还原不出（「还原后 sha 不符」）。①`guji db pull --repair-gaps`：缺行文件按库里现有行还原并列 repaired，本机文件与登记 sha 不同，下一次 db push 把它推回去修好登记；②push 前拒推：要推的文件里有同主键重复行即报错（`GUJI_ALLOW_DUP_KEYS=1` 放行）。L0。
+
 ## [0.4.42] - 2026-11-10
 
 - 字形库推库防缩水（PATCH，A31 11-10，史記事故 GUJI-750：`db push` 连带导出本机旧 glyph.db，中心库字形库 6,465→3,554）：①`guji db push` 缺省不再导出 glyph.db、不推字形库账本，要推显式 `--with-glyph`（或 `GUJI_DB_WITH_GLYPH=1`；`store commit`、`db sync` 不变）；②导出缩水闸 0.5→0.95（任一账本缩水超 5% 且少 ≥3 行即还原并停）；③入库删除闸 `emptied_ledger` 门槛一半→5%，并把 glyph_instances／glyph_sources 也纳入。L0。
