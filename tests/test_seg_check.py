@@ -51,3 +51,8 @@ def test_recall_manual_cells_by_pin_stale(tmp_path):
     assert rc["n"] == 1 and rc["any"] == 1 and rc["already_fixed"] == 1
     agg = {r["列"]: r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())}
     assert agg["b:5:3"] == "钉子未生效"
+
+
+def test_cell_size_is_structural():
+    rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
+    assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]

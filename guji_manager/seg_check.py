@@ -8,7 +8,7 @@
 - 钉子未生效：中心库有钉子、本页产物没用上（产物早于钉子），要从 row_segment 重跑；
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
-- 需钉子：结构类 flag（漏切块、夹注并格 JZW、列首列尾漏墨 edge_ink）；
+- 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
@@ -144,6 +144,12 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             k = (int(r[1]), int(r[2]))
             col[k]["EDGE"] += 1
             ex[k].insert(0, f"端外墨 {r[4]}")
+    for r in rows.get("cell_size", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            for kind in str(r[3]).split(","):
+                col[k]["TALL" if kind == "tall" else "SHORT"] += 1
+            ex[k].insert(0, f"格高离群 {r[4]}")
     for r in rows.get("edge_frame_only", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -172,7 +178,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     for k in set(col) | set(pinned):
         cn = col[k]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
-        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["ORPH_head"] + cn["ORPH_tail"] + cn["EDGE"]
+        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
+                  + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
