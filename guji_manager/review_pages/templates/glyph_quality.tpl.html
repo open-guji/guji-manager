@@ -16,6 +16,7 @@
 .qb button[data-v=clean][aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
 .qb button[data-v=frame][aria-pressed="true"]{background:#b7791f;border-color:#b7791f}
 .qb button[data-v=cut][aria-pressed="true"]{background:var(--bad);border-color:var(--bad)}
+.qb button[data-v=stain][aria-pressed="true"]{background:#6b4f2a;border-color:#6b4f2a}
 .qb button[data-v=unsure][aria-pressed="true"]{background:#5b5f8a;border-color:#5b5f8a}
 .gcell.need .gbox{border-color:var(--accent);border-width:2px}
 .pg-def{font-size:11px;color:var(--muted)}
@@ -26,11 +27,11 @@ select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var
 const D=/*DATA*/null;
 /*COMMON_JS*/
 /*STORE_JS*/
-// 每格一张卡：一块或新旧两块字块（同一倍数放大并排），每块点「干净／带框／切笔／看不清」，再点取消。
+// 每格一张卡：一块或新旧两块字块（同一倍数放大并排），每块点「干净／带框／切笔／污渍／看不清」，再点取消。
 // 存档用通用件 makeStore：每块一项，项 id＝格号|sha（结果按字块 sha 锚定），文档 i_<safeId>，how=click／page_ok。
 // 「本页其余都干净」：本页没点的字块记干净（how=page_ok）。
 const MAJOR=D.tpl_version.split(".")[0], P=D.per_page;
-const KEYS={"1":"clean","2":"frame","3":"cut","4":"unsure"};
+const KEYS={"1":"clean","2":"frame","3":"cut","4":"stain","5":"unsure"};
 const K=(it,c)=>it.id+"|"+c.sha;
 const byK={};D.items.forEach((it,i)=>it.crops.forEach(c=>byK[K(it,c)]={it,c,i}));
 const S=makeStore({key:"glyph-quality-"+D.book+"-v"+MAJOR,pageOf:k=>Math.floor(((byK[k]||{i:0}).i)/P),
@@ -38,7 +39,7 @@ const S=makeStore({key:"glyph-quality-"+D.book+"-v"+MAJOR,pageOf:k=>Math.floor((
 const st=S.st;
 const labOf=(it,c)=>{const r=S.raw(K(it,c));return r&&r.v?{v:r.v,how:S.how(K(it,c))}:null};
 const done=it=>it.crops.every(c=>labOf(it,c));
-const FILTERS=[["","全部"],["todo","没点完"],["frame","有带框"],["cut","有切笔"],["unsure","有看不清"]];
+const FILTERS=[["","全部"],["todo","没点完"],["frame","有带框"],["cut","有切笔"],["stain","有污渍"],["unsure","有看不清"]];
 function list(){
   if(!st.f)return D.items;
   if(st.f==="todo")return D.items.filter(it=>!done(it));
@@ -104,7 +105,7 @@ function render(){
   if(!L.childNodes.length){const e=document.createElement("p");e.className="hint";e.textContent=st.f==="todo"?"全部点完了。":"这一类还没有。";L.appendChild(e)}
   $("pg").textContent=`第 ${st.page+1} / ${NP()} 页`;
   $("sub").textContent=`册 ${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`+(D.n_excluded?` · 已录入撤出 ${D.n_excluded}`:"");
-  $("hint").textContent=D.hint||"每张卡是一格的字块（有两块时左旧右新，同一倍数放大）。只看字块本身：干净＝没有框线、笔画完整；带框＝留着一截版框线（哪怕只挂在字脚上）；切笔＝笔画被切掉一块；看不清＝判断不了。每点一下就存后台，再点取消。点卡片后可用数字键 1–4 点当前卡下一块、J/K 换卡。「本页其余都干净」把本页没点的字块记干净再翻页。";
+  $("hint").textContent=D.hint||"每张卡是一格的字块（有两块时左旧右新，同一倍数放大）。只看字块本身：干净＝没有框线、笔画完整；带框＝留着一截版框线（哪怕只挂在字脚上）；切笔＝笔画被切掉一块；污渍＝字块里沾着不属于字的墨团、霉点、斑点（多在字头字脚）；看不清＝判断不了。几样都有时点影响最大的一样。每点一下就存后台，再点取消。点卡片后可用数字键 1–5 点当前卡下一块、J/K 换卡。「本页其余都干净」把本页没点的字块记干净再翻页。";
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
   for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页其余都干净，完成":"本页其余都干净，下一页";
   stat();setCur(0,false);S.save();
