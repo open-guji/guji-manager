@@ -84,3 +84,12 @@ def test_job_text_puts_counts_last():
     assert "- ○对位（不归切分）2 列，明细见 report.md" in out
     assert out[-3:] == ["- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1",
                         "结论：有 1 列要处理（钉子未生效、格号不符、版式不符或需钉子）"]
+
+
+def test_block_tall_is_structural_even_with_lv():
+    # 殿本 vol06 147:3:3：格线对、字块连上长竖线；旧版只有 Lv 判「公用清格」，现在字块过高要进「需钉子」
+    rows = {"cell_flags": [("b", 147, 3, "Lv", "3 fr 0.000 foreign 0 cut 10")],
+            "block_tall": [("b", 147, 3, 3.34, "3 字块高 427px 格高 128px boundary_ink")]}
+    (r,) = sc.aggregate("b", rows, set(), {}, skip=set())
+    assert (r["列"], r["处置"], r["结构分"]) == ("b:147:3", "需钉子", 3)
+    assert r["例格"].startswith("字块过高×3.34")
