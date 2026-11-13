@@ -9,7 +9,7 @@
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
-  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP）；
+  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
@@ -167,6 +167,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             k = (int(r[1]), int(r[2]))
             col[k]["HALF"] += 1
             ex[k].insert(0, f"夹注半格宽 {r[4]}")
+    for r in rows.get("cut_through", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["CUT"] += 1
+            ex[k].insert(0, f"劈字{str(r[3])} {str(r[4]).split('，')[0]}")
     for r in rows.get("seg_defect", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -204,7 +209,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         cn = col[k]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
         struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
-                  + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2
+                  + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2)
         cosm = sum(cn[f] for f in COSM_FLAGS)

@@ -67,6 +67,13 @@ def test_defect_and_uniform_rows():
     assert agg == {"b:3:1": "需钉子", "b:3:2": "公用清格", "b:3:3": "公用清格", "b:4:1": "需钉子", "b:4:2": "需钉子"}
 
 
+def test_cut_through_is_structural():
+    rows = {"cut_through": [("b", 27, 6, "中", "8|9 切割量 747px，挪 +31px 可降到 0px，裁判 0.91→0.99 分歧 653→112px")]}
+    (r,) = sc.aggregate("b", rows, set(), {}, skip=set())
+    assert (r["列"], r["处置"], r["结构分"]) == ("b:27:6", "需钉子", 2)
+    assert r["例格"].startswith("劈字中 8|9 切割量 747px")
+
+
 def test_job_text_puts_counts_last():
     rep = "\n".join(["# 切分核查 016", "", "- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1", "",
                      "## 钉子未生效／格号不符／版式不符／需钉子／已钉复核／原因码看图", "", "- 016:66:9 需钉子：22CLIP",
