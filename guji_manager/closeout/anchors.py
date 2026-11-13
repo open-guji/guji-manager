@@ -98,10 +98,17 @@ def group_by_cell(items, *, use_new: bool = True) -> dict[str, list[dict]]:
     return out
 
 
+#: 只因锚点要重挂而挂着的格（字没问题）不放进判字用的 `cells[]`，单独放在这一键下（11-13 ZM）：
+#: 判字单上的格每一个都是「要人判字」的，book-text 的「待审格现字不动」、网站投票、票账、待审数都只认 `cells[]`。
+#: 这类格由 `stamp` 每次出单现算，不进条目表，也不进网站。
+DEFERRED_KEY = "anchor_cells"
+
+
 def purge(plan: dict) -> int:
     """清掉上一次现算写进单子的锚点信息（A01–A03 不写清除事件，每次出单按当前 book-text 重算，方案 8.9）：
-    src=closeout_anchor 的格、主因是 A 类的格整格去掉；别的格只去掉 detail 里的 `anchor=` 段和 `pending_reason_also` 里的 A 类。返回清掉几处。"""
-    n = 0
+    `anchor_cells[]` 整个去掉；老单（11-13 之前）里 src=closeout_anchor 的格、主因是 A 类的格整格去掉；
+    别的格只去掉 detail 里的 `anchor=` 段和 `pending_reason_also` 里的 A 类。返回清掉几处。"""
+    n = len(plan.pop(DEFERRED_KEY, None) or [])
     keep = []
     for x in plan.get("cells", []):
         if x.get("src") == "closeout_anchor" or x.get("pending_reason") in ANCHOR_REASON_VALUES:
@@ -139,7 +146,8 @@ def stamp(plan: dict, items, *, char_of: dict[str, str] | None = None, fresh: bo
     - 该格已因别的原因待审：主因 `pending_reason` 不动（字的原因优先，A 类 priority 900+）；锚点类原因按 priority 放进
       `pending_reason_also`，旧新锚与说明追加进 detail；不重复计格。
     - 该格不在单上：新增一格，主因取最先的锚点原因，其余进 `pending_reason_also`，带 `src: closeout_anchor`
-      （route deferred／reviewer none：不进人审字卡、不算人审率）。新格的坐标字段（页、列、框）由调用方按新包补；
+      （route deferred／reviewer none：不进人审字卡、不算人审率），**放进 `anchor_cells[]`，不放进 `cells[]`**
+      （11-13 ZM：字没问题的格混进判字单，会让网站当待审卡、让 book-text 把现字钉住）。新格的坐标字段（页、列、框）由调用方按新包补；
       `char_of` 给了就填 `char`。
     返回计数：{"purged", "appended", "new", "<主因>": 新增格数}。
     """
@@ -147,6 +155,7 @@ def stamp(plan: dict, items, *, char_of: dict[str, str] | None = None, fresh: bo
     if fresh:
         n["purged"] = purge(plan)
     cells = plan.setdefault("cells", [])
+    side = plan.setdefault(DEFERRED_KEY, [])
     index = {}
     for x in cells:
         k = cell_of(x.get("cell", ""))
@@ -173,14 +182,22 @@ def stamp(plan: dict, items, *, char_of: dict[str, str] | None = None, fresh: bo
             x["pending_reason_also"] = rs[1:]
         if char_of and cell in char_of:
             x["char"] = char_of[cell]
-        cells.append(x)
+        side.append(x)
         index[cell] = x
         n["new"] += 1
         n[rs[0]] += 1
+    if not side:
+        plan.pop(DEFERRED_KEY)
     return n
 
 
+def anchor_only(x: dict) -> bool:
+    """这一格只因锚点要重挂而挂着、字没有要判的（老单里混在 `cells[]` 的这类格，出单时靠它认）。"""
+    return x.get("src") == "closeout_anchor" or x.get("pending_reason") in ANCHOR_REASON_VALUES
+
+
 def anchor_cells(plan: dict) -> list[dict]:
-    """待审单上带锚点信息的格（主因是锚点类，或 detail 里有 `anchor=` 段）。"""
-    return [x for x in plan.get("cells", [])
-            if x.get("pending_reason") in ANCHOR_REASON_VALUES or decode(x.get("pending_reason_detail"))]
+    """待审单上带锚点信息的格：`anchor_cells[]` 里的，加 `cells[]` 里主因是锚点类或 detail 里有 `anchor=` 段的。"""
+    return list(plan.get(DEFERRED_KEY) or []) + [
+        x for x in plan.get("cells", [])
+        if x.get("pending_reason") in ANCHOR_REASON_VALUES or decode(x.get("pending_reason_detail"))]

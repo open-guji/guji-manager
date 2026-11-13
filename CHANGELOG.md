@@ -7,6 +7,7 @@
 ## [0.4.46] - 2026-11-13
 
 - 出单 reconcile 不再把已有人裁的条目重开（PATCH，A31 11-13，ZM 殿本 vol01 001-r18）：条目已 `resolved`，新单又判待审时，只有「复审格（`recheck`）」或「图块指纹两边都有且不同」才重开；图没变（含机器只是又打了锚点类 A01／A02 标记）保持已裁，reconcile 结果多一项 `保持已裁`。L0。
+- 待审单体检与锚点格出判字单（PATCH，ZM 11-13，重跑后覆盖逻辑清查）：①新增 `review/sheet_audit.py` 与 `guji pending audit <册> [--sheet 候选单] [--norm 归一表]`：机械查几类「不该进判字单」的格——机器无字被写成「机器改判为 □，推翻人裁」（`overturn_empty`）、旧人裁已失效（unanchored／review／void）却被当成「被机器推翻」（`overturn_untrusted`）、改判前后码位归一后同字（`overturn_same`）、锚点格混在 `cells[]`（`anchor_only_in_cells`）、重复格；有「拦」的类退出码 1（cv `republish.py push` 内置同一道门，`--ack-sheet-audit` 放行）。前 20 册线上单实测：87 个锚点格混在判字单、15 个假「推翻人裁」复审格。②`closeout.anchors.stamp` 把只因标点专名要重挂的新格写进 `anchor_cells[]` 旁表，不再写进 `cells[]`（`purge` 两处都清，老单里混的下次出单清掉；`anchor_cells()`／`closeout stats／list` 两处都读）。③`apply_pending` 不把 `src=closeout_anchor` 的格当待审字：不钉 book-text 现字、不填首选字。总纲 `doc/00-总览/待审单-人裁事件-book-text格子.md` 加第四节「重跑之后怎么覆盖：一个问题一个出口」。
 
 ## [0.4.45] - 2026-11-13
 

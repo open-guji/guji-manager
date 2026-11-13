@@ -435,6 +435,7 @@ reasons:
     legacy: {taxonomy: [P2]}
   # ── A 标点专名重挂（2026-11-09 sheldon：标 main 后自动收尾，余项不另存，记成待审格的原因）──
   # 字没问题、只是这格挂的标点／专名要重挂：route deferred＝留到点校阶段一起做，reviewer none＝不进人审字卡、不算人审率。
+  # 11-13 起这类格（只因锚点挂着的）放待审单的旁表 `anchor_cells[]`，不在判字用的 `cells[]` 里（closeout/anchors.py DEFERRED_KEY）。
   # 一格多因：pending_reason 只放主因（字的原因优先，这三条 priority 排在 X 类之后），其余命中的按 priority 放 pending_reason_also（列表）。
   anchor_miss:
     code: A01
