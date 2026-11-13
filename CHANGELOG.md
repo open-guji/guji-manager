@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.4.45] - 测试中
+## [0.4.45] - 2026-11-13
 
 - 新格子类型「无法识别字」（char v0.5 `unk`，PATCH，A31 11-13，Sheldon 定、QTW 全唐文 007:77:9:15）：人裁事件 `confirm v=figure` 带 `unk`（部件描述）→ 排除名单 `unk=` → `figure_cells` 返回 `UnkDesc` → 字框 `unk` → char 格 `{c:□, unk}`，`$schema` 写 v0.5（随包带 schema 副本）；网站精校票 `choice=unrec`；`apply_pending`、`swap.merge_chars` 不回填。cv 不用改。文档 `doc/01-粗校/无法识别字.md`。L0。
 ## [0.4.44] - 2026-11-12
