@@ -62,7 +62,7 @@ def audit_sheet(doc: dict, norm: dict[str, str] | None = None) -> list[Finding]:
         if cell in seen:
             out.append(Finding("dup_cell", cell))
         seen.add(cell)
-        if A.anchor_only(x) and not x.get("recheck"):
+        if A.anchor_only(x) and not x.get("recheck") and x.get("review") != "human":  # 已人审（resolved）的留在单上显示结果，不算混入
             out.append(Finding("anchor_only_in_cells", cell))
         note = str(x.get("note") or "")
         m = OVERTURN_NOTE.search(note) if x.get("recheck") else None
