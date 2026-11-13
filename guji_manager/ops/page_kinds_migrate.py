@@ -105,9 +105,19 @@ def step_fingerprints(book_id: str, books_dir: Path) -> dict[str, str]:
     from .._cv import STEPS
     from .._cv import ImageCache
     from .._cv import ProductStore
-    with warnings.catch_warnings():                 # 迁移前的册本来就带老写法，别刷屏
-        warnings.simplefilter("ignore", FutureWarning)
-        book = load_book(book_id, books_dir)
+    import os
+    # 迁移前的册本来就带老写法：cv 读配置遇老写法会报错（或警告），这里明说放行（cv 的 GUJI_ALLOW_OLD_PAGE_SYNTAX）
+    old_env = os.environ.get("GUJI_ALLOW_OLD_PAGE_SYNTAX")
+    os.environ["GUJI_ALLOW_OLD_PAGE_SYNTAX"] = "1"
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            book = load_book(book_id, books_dir)
+    finally:
+        if old_env is None:
+            os.environ.pop("GUJI_ALLOW_OLD_PAGE_SYNTAX", None)
+        else:
+            os.environ["GUJI_ALLOW_OLD_PAGE_SYNTAX"] = old_env
     pl = load_pipeline(default_pipeline_id(book))
     with tempfile.TemporaryDirectory() as t:
         eng = Engine(book, pl, store=ProductStore(Path(t) / "p"), cache=ImageCache(Path(t) / "c"), log=lambda s: None)
