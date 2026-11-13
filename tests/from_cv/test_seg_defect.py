@@ -21,6 +21,13 @@ def test_inner_gap_of_one_char_not_merged():
     assert _valley_split(_patch([(5, 195)]), 100.0) is None
 
 
+def test_small_blob_below_char_not_merged():
+    """史記写本列尾字脚下的句读圈、残笔（R011，11-13）：下面那团够高但墨量不到上面那团 0.2，不算两字并一格。"""
+    img = _patch([(5, 85)])
+    img[115:160, 25:32] = 0                          # 细长一小团
+    assert _valley_split(img, 100.0) is None
+
+
 def test_frame_residue_on_head_cell():
     """列首格最终字块上还留着断成几截的内框细线：frame_residue；同一字块没有全页线位就不判。"""
     from types import SimpleNamespace as NS
@@ -148,3 +155,16 @@ def test_end_debris_and_grade():
     assert sd.frame_grade("同字墨高 1.20 宽 1.71（参照 36 个）端条隔开 0.21 伸出 0.08") == "重"
     assert sd.frame_grade("同字墨高 0.70 宽 1.30（参照 9 个）") == ""   # 切笔
     assert sd.frame_grade("下线 30px") == ""
+
+
+def test_book_id_from_workspace_yaml(tmp_path):
+    """任务机上工作区目录名不是 `<id>-<书名>` 时，照 workspace.yaml 的 id 认书（史記 R012：认不出就退回殿本口径）。"""
+    from guji_manager.review.seg_defect import book_id_of, book_opts
+    ws = tmp_path / "job-ws"
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text("id: 988g3f0wsu\n", encoding="utf-8")
+    assert book_id_of(ws) == "988g3f0wsu"
+    assert book_opts(book_id_of(ws))["clip_edge_ink"] == 0.2
+    other = tmp_path / "96mid1ogzk-si-ku-zong-mu"
+    other.mkdir()
+    assert book_id_of(other) == "96mid1ogzk"
