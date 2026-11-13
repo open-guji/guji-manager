@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 出单 reconcile 不再把已有人裁的条目重开（PATCH，A31 11-13，ZM 殿本 vol01 001-r18）：条目已 `resolved`，新单又判待审时，只有「复审格（`recheck`）」或「图块指纹两边都有且不同」才重开；图没变（含机器只是又打了锚点类 A01／A02 标记）保持已裁，reconcile 结果多一项 `保持已裁`。L0。
+
 ## [0.4.45] - 2026-11-13
 
 - 新格子类型「无法识别字」（char v0.5 `unk`，PATCH，A31 11-13，Sheldon 定、QTW 全唐文 007:77:9:15）：人裁事件 `confirm v=figure` 带 `unk`（部件描述）→ 排除名单 `unk=` → `figure_cells` 返回 `UnkDesc` → 字框 `unk` → char 格 `{c:□, unk}`，`$schema` 写 v0.5（随包带 schema 副本）；网站精校票 `choice=unrec`；`apply_pending`、`swap.merge_chars` 不回填。cv 不用改。文档 `doc/01-粗校/无法识别字.md`。L0。

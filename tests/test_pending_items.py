@@ -140,3 +140,19 @@ def test_item_sprites_merge_into_sheet(tmp_path):
     s.add("5:5:5", {"img": {"s": e["name"], "x": 0, "y": 0, "w": 40, "h": 40}}, by="x", src="human:x", sprites=[e])
     doc = P.export_sheet(s, {"rev": "004-r1", "sprites": [{"name": "p1.webp", "sha256": "c" * 64, "md5": "d" * 32, "bytes": 5}]})
     assert [x["name"] for x in doc["sprites"]] == ["c0123456789abcdef.webp", "p1.webp"]
+
+
+def test_resolved_not_reopened_when_image_unchanged(tmp_path):
+    """r18 出单：刚落的人裁，图没变、机器又判待审（含锚点类）→ 保持已裁；复审格或图真变了才重开。"""
+    s = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    P.reconcile(s, _cells(("1:1:1", "a"), ("1:1:2", "a"), ("1:1:3", "a"), ("1:1:4", "a")), src="r1",
+                fps={"1:1:1": "f1", "1:1:2": "f2", "1:1:3": "f3", "1:1:4": ""})
+    for c in ("1:1:1", "1:1:2", "1:1:3", "1:1:4"):
+        s.resolve(c, by="web")
+    cells = _cells(("1:1:1", "anchor_miss"), ("1:1:2", "b"), ("1:1:3", "b"), ("1:1:4", "b"))
+    cells[1]["recheck"] = True
+    r = P.reconcile(s, cells, src="r2", fps={"1:1:1": "f1", "1:1:2": "f2", "1:1:3": "g3", "1:1:4": "f4"})
+    st = {x["cell"]: x["state"] for x in s.items.values()}
+    assert st == {"1:1:1": "resolved", "1:1:2": "open", "1:1:3": "open", "1:1:4": "resolved"}
+    assert sorted(r["保持已裁"]) == ["1:1:1", "1:1:4"] and sorted(r["重开"]) == ["1:1:2", "1:1:3"]
+    assert all(x["doc"]["review"] == "human" for x in s.items.values() if x["state"] == "resolved")
