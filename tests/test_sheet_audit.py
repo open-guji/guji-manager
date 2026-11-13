@@ -42,3 +42,9 @@ def test_clean_sheet():
     doc = {"cells": [{"cell": "1:1:1", "pending_reason": "hard_pair"},
                      {"cell": "1:1:2", "recheck": True, "note": "撤库重审", "pending_reason": "evicted"}]}
     assert _codes(doc) == []
+
+
+def test_resolved_anchor_only_cell_not_flagged():
+    """已人审（review: human）的锚点类条目留在单上显示结果，不报 anchor_only_in_cells。"""
+    doc = {"cells": [{"cell": "103:5:13", "pending_reason": "anchor_miss", "src": "closeout_anchor", "review": "human"}]}
+    assert SA.audit_sheet(doc) == []
