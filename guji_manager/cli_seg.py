@@ -59,6 +59,7 @@ def add_parser(sub) -> None:
     gt.add_argument("new", help="候选包的 guji seg check 输出目录（或其 列清单.tsv）")
     gt.add_argument("--base", required=True, help="现役 main 的 guji seg check 输出目录（同样页范围、同样开关）")
     gt.add_argument("--ledger", default="", help="切分根因台账 TSV（ai-team domain/CV/A22/切分根因台账.tsv）")
+    gt.add_argument("--book", default="", help="台账里的书名（殿本／史記／全唐文…），给了 --ledger 必给")
     gt.add_argument("--page-cols", type=int, default=4, help="一页几列结构列且过半算页级错（缺省 4）")
     gt.add_argument("--new-label", default="", help="候选包标签，写进报告")
     gt.add_argument("--base-label", default="", help="现役 main 包标签，写进报告")
@@ -80,7 +81,7 @@ def _cmd_gate(args) -> None:
     from . import seg_gate
     text, code = seg_gate.run(Path(args.new), Path(args.base), Path(args.out),
                               ledger_path=Path(args.ledger) if args.ledger else None, page_cols=args.page_cols,
-                              new_label=args.new_label, base_label=args.base_label)
+                              new_label=args.new_label, base_label=args.base_label, book=args.book)
     print(text)
     raise SystemExit(code)
 

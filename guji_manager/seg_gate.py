@@ -49,8 +49,8 @@ def read_check(d: Path) -> dict[tuple[str, int, int], dict]:
         return {_key(r["列"]): r for r in csv.DictReader(fh, delimiter="\t")}
 
 
-def read_ledger(path: Path | None) -> list[dict]:
-    """根因台账 TSV。`涉及` 一格里用空格分隔多个模式：`42:114:2`、`37:164`（整页）、`vol28:*:*`、`*:*:*`（整书配合 `书`）。"""
+def read_ledger(path: Path | None, book: str = "") -> list[dict]:
+    """根因台账 TSV，只留 `书` 等于 book（或写 `*`、空）的行——各书册号会撞（殿本 vol01 与史記 01）。`涉及` 一格里用空格分隔多个模式：`42:114:2`、`37:164`（整页）、`vol28:*:*`、`*:*:*`（整书配合 `书`）。"""
     if not path:
         return []
     with open(path, encoding="utf-8") as fh:
@@ -58,6 +58,8 @@ def read_ledger(path: Path | None) -> list[dict]:
     miss = [c for c in ("根因号", "涉及", "状态") if rows and c not in rows[0]]
     if miss:
         raise SystemExit(f"❌ 台账 {path} 缺列 {miss}（列见 seg_gate.LEDGER_COLS）")
+    if book:
+        rows = [r for r in rows if str(r.get("书", "")).strip() in (book, "*", "")]
     return rows
 
 
@@ -108,9 +110,11 @@ def _fmt(k) -> str:
 
 
 def run(new_dir: Path, base_dir: Path, out: Path, *, ledger_path: Path | None = None, page_cols: int = 4,
-        new_label: str = "", base_label: str = "") -> tuple[str, int]:
+        new_label: str = "", base_label: str = "", book: str = "") -> tuple[str, int]:
     new, base = read_check(new_dir), read_check(base_dir)
-    ledger = read_ledger(ledger_path)
+    if ledger_path and not book:
+        raise SystemExit("❌ 给了 --ledger 就要给 --book（台账里的书名，如 殿本／史記／全唐文），各书册号会撞")
+    ledger = read_ledger(ledger_path, book)
     g = gate(new, base, ledger, page_cols)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -122,7 +126,7 @@ def run(new_dir: Path, base_dir: Path, out: Path, *, ledger_path: Path | None = 
             w.writerow([k[0], k[1], k[2], r.get("处置", ""), "是" if k in set(g["regress"]) else "",
                         g["ledger"].get(k, ""), r.get("例格", "")[:200]])
     meta = {"new": str(new_dir), "base": str(base_dir), "new_label": new_label, "base_label": base_label,
-            "ledger": str(ledger_path or ""), "page_cols": page_cols, "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "ledger": str(ledger_path or ""), "book": book, "page_cols": page_cols, "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "blocked": g["blocked"], "n_regress": len(g["regress"]), "n_bad_pages": len(g["bad_pages"]),
             "n_known": len(g["known"]), "n_fixed": len(g["fixed"]), "n_unregistered": len(g["unregistered"])}
     (out / "gate.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
