@@ -55,17 +55,42 @@ def test_stamp_keeps_main_reason_and_adds_cells():
     n = A.stamp(plan, items)
     assert n["appended"] == 1 and n["new"] == 2
     assert plan["cells"][0]["pending_reason_also"] == ["anchor_miss"]        # 其余原因进 also
-    by = {x["cell"]: x for x in plan["cells"]}
+    by = {x["cell"]: x for x in [*plan["cells"], *plan["anchor_cells"]]}
     assert by["vol20:3:1:4"]["pending_reason"] == "group_abstain"            # 主因不变
     assert A.decode(by["vol20:3:1:4"]["pending_reason_detail"])[0]["i"] == "#1"
     assert by["vol20:5:1:1"]["pending_reason"] == "add_del"                  # 沿用册前缀
     assert by["vol20:7:1:1"]["pending_reason"] == "anchor_miss"
-    assert A.stamp(plan, items)["new"] == 2 and len(plan["cells"]) == 3      # 重算幂等：先清后写，不重复计格
+    # 只因锚点要重挂的新格放 anchor_cells[]，不进判字用的 cells[]（11-13）
+    assert [x["cell"] for x in plan["cells"]] == ["vol20:3:1:4"]
+    assert sorted(x["cell"] for x in plan["anchor_cells"]) == ["vol20:5:1:1", "vol20:7:1:1"]
+    assert len(A.anchor_cells(plan)) == 3                                    # 汇总口径：已有格上带锚点信息的也算
+    assert A.stamp(plan, items)["new"] == 2 and len(plan["cells"]) == 1 and len(plan["anchor_cells"]) == 2   # 重算幂等
     assert plan["cells"][0]["pending_reason_also"] == ["anchor_miss"]
     A.stamp(plan, [])                                                         # 问题消了 → 自然消失
     assert plan["cells"] == [{"cell": "vol20:3:1:4", "pending_reason": "group_abstain", "pending_reason_detail": "g1:x"}]
+    assert "anchor_cells" not in plan
     A.stamp(plan, items)
-    assert len(A.decode(by["vol20:3:1:4"]["pending_reason_detail"])) == 1
+    assert len(A.decode(plan["cells"][0]["pending_reason_detail"])) == 1
+
+
+def test_stamp_purges_legacy_anchor_only_cells_in_cells():
+    """老单（11-13 之前）里混在 cells[] 的锚点格，重算时整格清掉，新的进 anchor_cells[]。"""
+    plan = {"cells": [{"cell": "5:1:1", "pending_reason": "anchor_miss", "src": "closeout_anchor"},
+                      {"cell": "6:1:1", "pending_reason": "group_abstain"}]}
+    assert A.anchor_only(plan["cells"][0]) and not A.anchor_only(plan["cells"][1])
+    A.stamp(plan, [("punct", "#1", "5:1:1", "5:1:1", "，", "ANCHOR_MISS｜x")])
+    assert [x["cell"] for x in plan["cells"]] == ["6:1:1"] and [x["cell"] for x in plan["anchor_cells"]] == ["5:1:1"]
+
+
+def test_apply_pending_ignores_anchor_only_cells():
+    """锚点格不是待审字：book-text 现字不被它钉住，也不被它填首选字。"""
+    from guji_manager.formats import guji_char_cord as cc
+    char = {"pages": [{"page": 1, "columns": [{"col": 1, "cells": [{"a": "1:1:1", "c": "乙"}, {"a": "1:1:2", "c": "□"}]}]}]}
+    pend = {"cells": [{"cell": "1:1:1", "pending_reason": "anchor_miss", "src": "closeout_anchor"},
+                      {"cell": "1:1:2", "pending_reason": "anchor_miss", "src": "closeout_anchor", "ref": {"c": "丙"}}]}
+    n = cc.apply_pending(char, pend, current={"1:1:1": "甲"})
+    assert n["held_current"] == 0 and n["filled"] == 0
+    assert [c["c"] for c in char["pages"][0]["columns"][0]["cells"]] == ["乙", "□"]
 
 
 def test_main_reason_priority():

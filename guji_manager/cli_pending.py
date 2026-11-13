@@ -11,6 +11,9 @@
     guji pending reconcile vol04 --sheet <新出的 pending.json> [--fps <格号→指纹.json>] --src rev:<rev> -w <工作区>
                                                                   # 机器一轮：按新单逐格比，只动有变化的条目
     guji pending export vol04 -w <工作区> [--out <文件>]          # 条目 → 整张 pending.json（缺省写回中心库的那份）
+    guji pending audit vol04 -w <工作区> [--sheet <候选单.json>] [--norm <码位归一.json>]
+                                                                  # 单子体检：不该进判字单的格（机器无字当推翻人裁、失效旧人裁当被推翻、
+                                                                  # 锚点格混在判字单…）；有「拦」的类退出码 1。republish push 上线前也跑它
 
 改条目、导出之后跑 `guji db sync -w <工作区>`；加 `--sync` 顺带同步并触发网站 proofing-sync（只发这一章）；
 加 `--kv` 同步后直接把整张单写进网站 KV（/api/pending，需 CELLREVIEW_TOKEN；单里的图都已在 COS 才走这条，否则退回 --sync）。
@@ -36,7 +39,7 @@ WEB_REPO = "open-guji/kaiyuanguji-web"
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("pending", help="待审条目（一格一条）：列、撤下、放回、改说明、加复审、导入、reconcile、导出")
     p.add_argument("action", choices=["ls", "show", "withdraw", "restore", "note", "set", "add", "resolve",
-                                      "import", "reconcile", "export"])
+                                      "import", "reconcile", "export", "audit"])
     p.add_argument("book", help="册号（如 vol04）")
     p.add_argument("refs", nargs="*", help="条目 id 或格号；note 的最后一个是说明")
     p.add_argument("--text-id", default=None, help="book-text 书 id（缺省取工作区目录名 <id>-<书名> 的 id）")
@@ -53,6 +56,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--event", default="", help="resolve：落成的人裁事件 id")
     p.add_argument("--sheet", default=None, help="reconcile：新出的整张 pending.json")
     p.add_argument("--fps", default=None, help="reconcile：{格号: 图块指纹} 的 json")
+    p.add_argument("--norm", default=None, help="audit：码位归一表 json {另一码位: 本书码位}")
     p.add_argument("--keep-missing", action="store_true", help="reconcile：新单上没有的开着条目不关")
     p.add_argument("--out", default=None, help="export：写到这里（缺省写回数据目录的整张单）")
     p.add_argument("--no-export", action="store_true", help="人改条目后不重导整张单")
@@ -187,9 +191,27 @@ def export(store: P.ItemStore, data: Path, out: Path | None = None) -> Path:
     return dst
 
 
+def _audit(a, data: Path, text_id: str, chapter: str) -> int:
+    from .review import sheet_audit as SA
+    src = Path(a.sheet) if a.sheet else P.sheet_path(data, text_id, chapter)
+    if not src.exists():
+        sys.exit(f"✗ 没有单子：{src}")
+    norm = json.loads(Path(a.norm).read_text(encoding="utf-8")) if a.norm else None
+    doc = json.loads(src.read_text(encoding="utf-8"))
+    fs = SA.audit_sheet(doc, norm)
+    for f in fs:
+        print(f.line())
+    n = SA.summary(fs)
+    print(f"# {a.book} {doc.get('rev', '?')}：判字单 {len(doc.get('cells') or [])} 格，另有锚点格 {len(doc.get('anchor_cells') or [])}；"
+          + ("、".join(f"{k} {v}" for k, v in n.items()) if n else "体检通过"))
+    return 1 if any(f.block for f in fs) else 0
+
+
 def cmd_pending(a) -> int:
     data, text_id, chapter, ws = _loc(a)
     a.text_id_resolved = text_id
+    if a.action == "audit":
+        return _audit(a, data, text_id, chapter)
     store = P.ItemStore.open(data, text_id, chapter)
     by = a.by or os.environ.get("GUJI_ACTOR", "")
     act = a.action

@@ -13,7 +13,7 @@ def plan_stats(plan: dict) -> dict:
     by_code: Counter = Counter()
     by_layer: Counter = Counter()
     anyn = 0
-    for x in plan.get("cells", []):
+    for x in [*plan.get("cells", []), *(plan.get(A.DEFERRED_KEY) or [])]:
         es = A.decode(x.get("pending_reason_detail"))
         if x.get("pending_reason") in A.ANCHOR_REASON_VALUES:
             main[x["pending_reason"]] += 1
@@ -22,5 +22,5 @@ def plan_stats(plan: dict) -> dict:
         for e in es:
             by_code[e.get("c", "")] += 1
             by_layer[e.get("l", "")] += 1
-    return {"cells": len(plan.get("cells", [])), "anchor_main": dict(main), "anchor_any": anyn,
+    return {"cells": len(plan.get("cells", [])), "deferred_cells": len(plan.get(A.DEFERRED_KEY) or []), "anchor_main": dict(main), "anchor_any": anyn,
             "by_code": dict(by_code), "by_layer": dict(by_layer)}
