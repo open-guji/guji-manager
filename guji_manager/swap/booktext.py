@@ -147,6 +147,10 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
                 rep["dup_new"].append((a, None, x.get("c"), x.get("c")))
             continue
         cur, new = cur_seq[i], new_seq[i]
+        if x.get("unk") is not None:
+            # 无法识别字（char v0.5）：新包里是人裁出来的终态（新人裁最高），不过 resolve；现行文本里的字不回填
+            rep["unk_keep"].append((a, cur, new, x.get("c")))
+            continue
         d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
                     new_lacuna=bool(x.get("lacuna")), same=same)
         if d.result != new and d.result is not None:

@@ -828,9 +828,14 @@ def crop_exclude(events, list_path: str = "", dry_run: bool = False,
                 note = "审查卡片人裁：原图破损，认不出"
         elif reason == "figure":
             # `alt`（图的说明）进名单：导出写 fig.json 时取它（`feedback/figures.figure_cells`）。
-            if p.get("alt"):
-                ev.append(f"alt={p['alt']}")
-            note = "审查卡片人裁：图形，不是字" + (f"（{p['alt']}）" if p.get("alt") else "")
+            if p.get("unk"):
+                # 无法识别字（char v0.5 `unk`）：对 cv 同图片格，导出才区分；描述进名单 `unk=`
+                ev.append(f"unk={p['unk']}")
+                note = f"审查卡片人裁：无法识别字（{p['unk']}）"
+            else:
+                if p.get("alt"):
+                    ev.append(f"alt={p['alt']}")
+                note = "审查卡片人裁：图形，不是字" + (f"（{p['alt']}）" if p.get("alt") else "")
         rows.append({
             "date": (e.ts or "")[:10],
             "evidence": ev,

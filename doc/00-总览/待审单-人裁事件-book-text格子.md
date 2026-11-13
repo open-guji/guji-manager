@@ -29,6 +29,7 @@
   - `lacuna: true`：**只给真阙文**（审过定阙）。□ 只表示真阙文，**待审 ≠ 阙文**
   - `guess_c`：阙文的推测字（括注用）
   - `fig`：图片格
+  - `unk`：无法识别字（图上有字、认不出、Unicode 没有；`c` 写 □，值是部件描述；网页显示「？」），见 `doc/01-粗校/无法识别字.md`
 - **不录**：待审原因 `pending_reason`、候选、置信度、人裁记录、`decision.json`、点校的 `assumed`（11-09 起全部不进 book-text，校验 F-OV-16、F-OV-05 会拦）。
 - **谁写、多快**：只在**换包（出新单／重导出）、修订、点校入标点**时改，每次升文本线版本、写进 git 提交（`版本记录:` 行）。
   **原则是少改**：一次改字就是一次 book-text 提交、一次升版、可能一次标点重投影。
@@ -112,6 +113,7 @@
 | 撤库重审格（字形库审阅撤库） | 不动（现行有字保持；□ 且无候选保持 □） | 上（复审格「撤库重审」） |
 | 机器认定真阙文、现行有字 | 不动 | 上（复审） |
 | 人裁定为阙文 | □＋`lacuna: true` | 不上 |
+| 人裁定为无法识别字 | □＋`unk: "描述"`（不被首选字、换包回填） | 不上 |
 
 代码：manager `formats/guji_char_cord.apply_pending(current=)`、`swap/resolve.resolve`；cv `scripts/zhengli/republish.py`（`hold_pending_current`）。
 要求 guji-manager ≥ v0.4.34、cv ≥ v0.6.35。

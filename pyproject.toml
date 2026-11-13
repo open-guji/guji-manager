@@ -33,4 +33,4 @@ include = ["guji_manager*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-guji_manager = ["review_triage/review_grid.tpl.html", "opinions/rules.json", "review/pending_reasons.yaml", "datastore/schema.sql", "jobs/schema.sql", "review_pages/templates/*"]
+guji_manager = ["formats/guji_char_v0.5.schema.json", "review_triage/review_grid.tpl.html", "opinions/rules.json", "review/pending_reasons.yaml", "datastore/schema.sql", "jobs/schema.sql", "review_pages/templates/*"]
