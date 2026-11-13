@@ -733,7 +733,9 @@ def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = No
     - `current`（可选，{格位: book-text 现行字}）：单上的格（review≠human）现行已是字、而导出里的字不同（含 □）时，**文本不动**，
       写回现行字（计 `held_current`），等人裁定了确是另一字再改（sheldon 11-10 定，少改 book-text 提交）；现行是 □／缺格才写首选字。
     分行稿随字变（待审格不再写 `[[]]`）。计数里 `stamped` 等于 `filled`，留给旧调用方打印。"""
-    want = {x["cell"]: x for x in pending.get("cells", [])}
+    # 只因标点／专名要重挂而挂着的格（字没问题，11-13 ZM）不是待审字：不钉现字、不填首选字（新单它们在 anchor_cells[]，老单混在 cells[] 里）
+    want = {x["cell"]: x for x in pending.get("cells", [])
+            if x.get("src") != "closeout_anchor"}
     n = {"filled": 0, "no_choice": 0, "kept": 0, "lacuna_dropped": 0, "fig_skipped": 0, "unk_skipped": 0, "missing": 0,
          "reason_dropped": 0, "held_current": 0, "by_src": {}}
     seen = set()

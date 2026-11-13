@@ -41,6 +41,10 @@
   1. 机器没放行的格（`review: pending`）；
   2. 复审格（`recheck: true`）：人裁过但要再看的——机器推翻了人裁、旧人裁绑定失效、**撤库重审**（撤库的格，不论册在哪个版本）、别处发现的疑点；
   3. 已人审、留在单上显示结果的格（`review: human`）。
+
+  **单上的 `cells[]` 就是「判字单」：每一格都是要人判字的。** 字没问题、只因标点／专名要重挂的格（`anchor_miss`／`add_del`／`anchor_drift`，route deferred）
+  放在同一张单的旁表 `anchor_cells[]`，不进网站、不进条目表、不让 book-text 钉住现字（11-13 起；老单里混在 `cells[]` 的，下次出单清掉）。
+  `guji closeout list／stats` 两处都读。
 - **住哪**：真源在**中心库** `feedback/lists/proofing/<书 id>/<章>.pending.json`（随 `guji db sync`）；
   网站精校页读的是它发布出去的副本（proofing-sync → 网站存储／KV）。平时说「待审信息在 KV」指的就是这一路：中心库待审单 → 网站。
 - **关键信息**：
@@ -124,7 +128,22 @@
 2. **待审单可以随便换，book-text 少改。** 出一版新单不需要动 book-text；只有字真的定了（人裁、或机器放行改字、或 □ 有了首选字）才改 book-text。
 3. **人裁只追加、靠锚绑定。** 不改旧事件；重切后靠锚重绑，绑不上就回待审单复审，绝不挂到别的字上。
 
-## 四、常见问题
+## 四、重跑之后怎么覆盖：一个问题一个出口（11-13 清查）
+
+连着出过三类「不该进单／不该被改」的错：①印章遮挡、机器无字被写成「机器改判为 □，推翻人裁」；②换图源后已失效的老人裁被当成「被机器推翻」（殿本 vol03／05／08／09／18／20 共 14 条假复审）；
+③字没问题、只因标点专名要重挂的格混进判字单，被网站当待审卡、被 book-text 钉住现字（vol03–20 共 87 格）。根因都是**同一个问题有几套口径、各出单路径各修各的**。规矩：每个问题只认下面一个出口，新代码不许再自己读事件、自己比字。
+
+| 问题 | 唯一出口 | 说明 |
+|---|---|---|
+| 这一格现在有没有**被采信**的定字人裁？ | cv `feedback.lookup.human_chars`（过绑定表，`valid`／`rebound` 才认；换图源后 `unanchored`／`review`／`void` 不认） | `proof_cycle.human_chars_of` 已改为调它（对沙箱产物算绑定）。仍有的另一套读法只作它用：`pending_route.deciding`（出单时扣「单后已有人裁」的格，配 `stale.ts`／`--keep`）、`swap/booktext.human_ledger`（按旧 cord 框对照表认，换包守卫）、`web_votes.latest_human`（票落事件前）。**新代码不要再加第四套** |
+| 换包／重跑后，book-text 这一格改不改、改成什么？ | 第三节的表 = manager `swap/resolve.resolve`；`proof_cycle.split_changes` 是同一张表的「按格号」实现，格号有变时不用它（走格级对照表，见 [换包落book-text-增删格](../02-精校/换包落book-text-增删格.md)） | 两处各有一份实现是已知的重复，待合并（改任何一处都要同步另一处与本表） |
+| 哪些格进判字单（`cells[]`）？ | 产物未放行（`admit=false`，排除名单上人已定的除外）＋复审清单（`recheck`）＋同字对照自检旗，经 `pending_route` 扣掉已裁的格 | 锚点格在 `anchor_cells[]`，不在这里 |
+| 复审格什么时候成立？ | 只有「**被采信的**人裁**被机器推翻**」：旧字是最新人裁，机器认出了**另一个字**（非空、码位归一后不同） | 机器无字（遮挡）→ 留人裁字不复审；人裁已失效 → 不是复审，是普通待审格或直接放行 |
+| 上线前最后一道关 | `guji pending audit`（manager `review/sheet_audit.py`），`republish.py push` 内置 `sheet_gate` | 拦：`overturn_empty`、`overturn_untrusted`、`overturn_same`、`anchor_only_in_cells`、`dup_cell`；提示：`no_reason`、`recheck_no_note`。确要照上线加 `--ack-sheet-audit "<原因>"` |
+
+**体检门不看出单从哪条路来**：以后再有新的出单路径（或改了老路径）生出新一类误报，先加一条体检规则拦住，再回去修路径；不要只修路径。
+
+## 五、常见问题
 
 - **待审格在 book-text 里看不出来，读者会不会被误导？** 会显示首选字，可能是错的（例：殿本一处标题曾因参校本首选变成「雜史類臣三弁」）。这正是待审单要人看的格；网站上「待审」的标记读的是待审单，不是 book-text。
 - **网站票算不算人裁？** 票在 KV 里只是意见；落成事件（`cellvotes` → `events`）之后才算，下一轮才进文本。
@@ -132,7 +151,7 @@
 - **重切后格号变了怎么办？**（如殿本 vol01 锚点平移）**只走一条路**（11-10 sheldon 定）：[换包落book-text-增删格](../02-精校/换包落book-text-增删格.md)（`swap/booktext.py`，swap run 遇增删格自动调）。先出新旧格对照表；人裁按锚重绑（平移到新格号），绑不上的回待审单复审；标点专名按对照表平移（`auto_remap --cell-map`，不单跑不带表的）；字形库键 rekey；book-text 只换变化页，按上表逐格判（人裁平移后的字＞机器新字）。待审条目先按图块指纹认（同一块图挪了格号只改 `cell`），认不出再按格号认（指纹变了标 `fp_changed`，怎么处理待定）。
 - **`decision.json`、char v0.4、`pending_reason` 写在 char 里？** 都已废弃（11-09）。
 
-## 五、废弃说法对照
+## 六、废弃说法对照
 
 | 旧说法 | 现在 |
 |---|---|
@@ -142,8 +161,10 @@
 | 1.x 已放行格只增不改 | 已废：机器改字默认放行，0.x、1.x 一样（11-09；A34 #450） |
 | 登记在册的手改字单列一级 | 补录成人裁事件，并入人裁一级（11-10） |
 | 未冻结册机器变字一律进待审复审（10-20） | 机器改字默认按最新结果进文本，只有推翻人裁才复审（11-05） |
+| 「机器改判…，推翻人裁」凡旧字等于某条人裁就写（按格号比事件） | 只对**被采信**的人裁、且机器认出另一个非空字才写；其余不写（11-13） |
+| `anchor_miss`／`add_del` 格进待审单 `cells[]`，靠 route deferred 让人不看 | 放 `anchor_cells[]` 旁表，`cells[]` 只放要判字的格（11-13） |
 
-## 六、真源
+## 七、真源
 
 - book-text 格子：book-text `docs/design/2026-11-book-text只录首选字.md`（#427）、guji-format char 规范、本仓 `formats/guji_char_cord.py`
 - 待审单：cv `scripts/zhengli/pending_list.py`（单头与字段）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../01-粗校/待审原因/README.md)）
