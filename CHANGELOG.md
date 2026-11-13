@@ -15,6 +15,7 @@
 
 - 任务单 `run` 收 `seg check`／`seg ruler`（不收 `seg pin`，它写数据目录钉子）；`seg check --job` 把逐列清单排前、计数与结论压最后、退出码恒 0，因任务库只留每条输出末 6000 字（PATCH，QTW 11-12，#535）。
 - 审阅页 glyph_quality 1.1.0：加「污渍」一档（数字键 4，看不清改 5），gq-apply 认 stain（A22 11-12，Sheldon 要建污渍尺子）。
+- char_grid 1.3.2：提示语去掉「殿本字形库认的字」旧说法（字形线 11-12）。L0。
 - `guji seg check` 并进同字对照切坏检测（并格 MERGED／切笔 CLIP 进「需钉子」，带框 FRAME／FRAME_HEAVY、BLEED 进「公用清格」，`--no-defect` 关），并汇总 cv 新表 page_pitch（格高对整页）、half_width（夹注半格宽）（A22 11-12，Sheldon 追问快检覆盖面）。
 - `guji code release` 的下一步提示改成先推 main、再打 tag：云端走中转站 `process/tag.py guji-workspace/<书仓> <提交> k<N>`（PATCH，A20 11-09，文档）。
 - 新命令 `guji seg check <册…>`：切分核查一条命令，并了 SJ 史記快筛（`tools/seg_check`，留作别名）、cv `seg_screen`、待审原因码。按列给 类／处置（钉子未生效、格号不符、版式不符、需钉子、原因码·看图、已钉·复核、对位（○）、公用清格、点名跳过、卷首页），出列清单、需看图缩略图、报告；退出码 3＝有要看图的列。点名跳过页与卷首页数写工作区 `workspace.yaml` 的 `seg_check:`。要 cv ≥ #1447。
@@ -31,6 +32,7 @@
 
 - 字形库推库防缩水（PATCH，A31 11-10，史記事故 GUJI-750：`db push` 连带导出本机旧 glyph.db，中心库字形库 6,465→3,554）：①`guji db push` 缺省不再导出 glyph.db、不推字形库账本，要推显式 `--with-glyph`（或 `GUJI_DB_WITH_GLYPH=1`；`store commit`、`db sync` 不变）；②导出缩水闸 0.5→0.95（任一账本缩水超 5% 且少 ≥3 行即还原并停）；③入库删除闸 `emptied_ledger` 门槛一半→5%，并把 glyph_instances／glyph_sources 也纳入。L0。
 - review-pages 字体顺序调整（PATCH，人审页线 11-10，Sheldon 要求）：char_card 1.6.2／char_grid 1.3.1：内嵌的全字库子集（Jigmo、I.Ming，非大陆标准字形）排到系统原字体（Noto Serif SC／Songti SC／SimSun）之后，只给系统字体没有的冷僻字兜底。L0。
+- review-pages 难认字卡列图瘦身（PATCH，Sheldon 11-12）：`hard-items`／`column_images` 的列图只取本格及上下各 1 格（`--span`，0 取整列），邻列同一高度段；文字上下文缺省前后各 10 字（`--ctx-n`，原 8）。char_card 1.6.4 去掉列图固定 360px 高。L0。
 - review-pages 窄屏版式（PATCH，人审页线 11-10，总览要求）：char_card 1.6.3：屏宽 ≤700px 时难认字／形近字卡的候选按钮、前后文、操作按钮排在上面，整列图缩小放到最下面、点一下放大；宽屏不变。L0。
 
 ## [0.4.41] - 2026-11-10

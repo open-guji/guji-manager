@@ -54,7 +54,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <button id="export">导出</button>
   </div>
 </header>
-<p class="hint">每格是一张字块图配它的字（殿本字形库认的字 ＝ 整理本的字）。默认全对，只点不对的格（变红）。点「下一页」就算这一页审完，导出时只带已审完的页。</p>
+<p class="hint">每格是一张字块图配机器预选的字（与参校本一致，本书字形库例少，仅供参考）。默认全对，只点不对的格（变红）。点「下一页」就算这一页审完，导出时只带已审完的页。</p>
 <main><div class="grid" id="grid"></div>
 <div class="foot"><button id="prev2">上一页</button><button id="next2" class="primary">本页没问题，下一页</button></div></main>
 <dialog id="dlg"><p>结果已自动存到后台，不用发给我。下面的 JSON 只是备份：</p><textarea id="out" readonly></textarea><p><button id="copy" class="primary">复制</button> <button id="close">关闭</button></p></dialog>
