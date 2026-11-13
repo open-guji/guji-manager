@@ -214,6 +214,20 @@ class ItemStore:
 
 # ---- 机器一轮：按新单逐格比 ----
 
+
+def _keep_resolved(r: dict, doc: dict, fp: str) -> bool:
+    """已裁条目（resolved）在新单上又被判待审，要不要重开。人裁不该被「同一块图又判待审」推翻：
+    - 新单这格是复审格（`recheck`，人明确要重看）→ 重开；
+    - 图块指纹两边都有且不同（图真变了）→ 重开；
+    - 其余（图没变或认不出变，机器只是又判了待审，如锚点类 A01／A02 的收尾标记）→ 保持已裁。"""
+    if doc.get("recheck"):
+        return False
+    old = r.get("fp") or ""
+    if fp and old and fp != old:
+        return False
+    return True
+
+
 def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[str, str] | None = None,
               by: str = "", at: str | None = None, close_missing: bool = True) -> dict:
     """机器跑完一轮（或导入旧单）：新单上的每一格对到条目，只动有变化的。
@@ -233,7 +247,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             by_fp.setdefault(r["fp"], r)
         by_cell.setdefault(r["cell"], []).append(r)
     rank = {"open": 0, "withdrawn": 1, "resolved": 2, "closed": 3}
-    out = {"开": [], "改": [], "挪格": [], "图变": [], "重开": [], "关": [], "不变": 0, "撤下仍判待审": []}
+    out = {"开": [], "改": [], "挪格": [], "图变": [], "重开": [], "关": [], "不变": 0, "撤下仍判待审": [], "保持已裁": []}
     seen: set[str] = set()
     for c in cells:
         cell = norm_cell(c.get("cell") or c.get("a") or "")
@@ -279,6 +293,10 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             else:
                 upd["state"] = want
                 ops.append("state")
+        elif st == "resolved" and want == "open" and _keep_resolved(r, doc, fp):
+            out["保持已裁"].append(cell)         # 已有人裁、图没变、机器没要求复审：不重开（r18 出单把刚落的人裁放回单上）
+            if upd:                              # 格号挪了、指纹补上等照记，字段不动
+                upd.pop("doc", None)
         elif st != want:
             upd["state"] = want
             ops.append("reopen" if want == "open" else "state")
