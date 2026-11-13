@@ -16,6 +16,7 @@
     main   → confirm v=seg_defect reason=main_as_jiazhu（给了字就带 shape）
     none   → confirm v=not_a_char —— **缺省就写**（2026-11-10 起；原先缺省挂起，因排除名单只增不删、不带锚，M10 调研 B 的 P6）；不想写传 include_none=False／`--no-none`
     figure → confirm v=figure alt=<说明>（「符号、篆字等」，GUJI-740；票上 `alt` 是卡片说明框里填的，可空）
+    unrec  → confirm v=figure unk=<描述>（「认不出的字」，char v0.5 `unk`，2026-11-13：图上有字、认不出、Unicode 没有；票上 `unk` 是描述，可空，空时导出写「无法识别」；对 cv 同图片格）
     damaged → confirm v=damaged guess=<字>（「破损、阙字」，2026-10-25：录成阙字方框 □；票上带的字是「最像的字」，只进金标与括注，不进库）
     unsure → 不写（页面上的「其他」）
 
@@ -58,7 +59,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "damaged")
+from ..formats.guji_char_cord import UNK_DEFAULT
+
+CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
 A_RE = re.compile(r"^(\d+):(\d+):(-?\d+)([ab]?)$")
 #: 人裁里算「定了这一格」的 payload.v
 HUMAN_VS = ("confirm", "seg_defect", "not_a_char", "damaged", "figure")
@@ -112,7 +115,7 @@ def latest_votes(votes: list[dict], site_book: str, rev: str) -> tuple[list[dict
     return sorted(best.values(), key=lambda v: (cell_order(v["a"]), v.get("ts") or 0)), dict(dropped)
 
 
-def payload_of(choice: str, char: str = "", alt: str = "") -> dict | None:
+def payload_of(choice: str, char: str = "", alt: str = "", unk: str = "") -> dict | None:
     if choice == "char":
         return {"v": "confirm", "shape": char} if char else None
     if choice == "cut":
@@ -125,6 +128,8 @@ def payload_of(choice: str, char: str = "", alt: str = "") -> dict | None:
         return {"v": "not_a_char"}
     if choice == "figure":
         return {"v": "figure", **({"alt": alt} if alt else {})}
+    if choice == "unrec":
+        return {"v": "figure", "unk": unk or UNK_DEFAULT}
     if choice == "damaged":
         return {"v": "damaged", **({"guess": char} if char else {})}
     return None
@@ -149,6 +154,8 @@ def same_verdict(p: dict, q: dict, same=None) -> bool:
     """``same``：同字判定（charnorm）；``shape`` 归一后相同算一致（别／別），其余字段照旧字面比。"""
     eq = same or (lambda a, b: a == b)
     keys = ("v", "quality", "reason")
+    if bool(p.get("unk")) != bool(q.get("unk")):      # 图片格 vs 无法识别字（同是 v=figure）：不算一致；描述改了不算推翻
+        return False
     return all((p.get(k) or "") == (q.get(k) or "") for k in keys) and eq(p.get("shape") or "", q.get("shape") or "")
 
 
@@ -240,9 +247,10 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
         groups[v["a"]].append(v)
     for a in sorted(groups, key=cell_order):
         vs = groups[a]
-        guess = [v for v in vs if v["choice"] in ("none", "unsure", "figure") and v.get("char")]
+        guess = [v for v in vs if v["choice"] in ("none", "unsure", "figure", "unrec") and v.get("char")]
         if guess:
-            what = "说是图形又给了字：" if any(v["choice"] == "figure" for v in guess) else "说无字／看不清又给了字："
+            what = ("说是图形又给了字：" if any(v["choice"] == "figure" for v in guess) else
+                    "说认不出的字又给了字：" if any(v["choice"] == "unrec" for v in guess) else "说无字／看不清又给了字：")
             out.drafts.append(Draft(f"{cv_book}:{a}", a, {}, vs, held=what + "、".join(
                 sorted({f"{v['choice']}={v['char']}" for v in guess})), kind="guess"))
             continue
@@ -259,7 +267,9 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
         choice, char = next(iter(kinds))
         alt = next((str(v["alt"]).strip() for v in sorted(real, key=lambda v: v.get("ts") or 0, reverse=True)
                     if (v.get("alt") or "").strip()), "") if choice == "figure" else ""
-        p = payload_of(choice, char, alt)
+        unk = next((str(v["unk"]).strip() for v in sorted(real, key=lambda v: v.get("ts") or 0, reverse=True)
+                    if (v.get("unk") or "").strip()), "") if choice == "unrec" else ""
+        p = payload_of(choice, char, alt, unk)
         if p is None:
             out.skipped.append((a, f"{choice} 档不写"))
             continue
@@ -295,7 +305,7 @@ def vote_label(v: dict) -> str:
     ch = f"「{v['char']}」" if v.get("char") else ""
     return {"char": ch, "none": "没有字" + ch, "unsure": "看不清" + ch, "cut": "切分错了" + ch,
             "jiazhu": "小注当正文" + ch, "main": "正文当小注" + ch,
-            "figure": "符号、篆字", "damaged": "破损、阙字" + ch}.get(v["choice"], v["choice"] + ch)
+            "figure": "符号、篆字", "unrec": "认不出的字", "damaged": "破损、阙字" + ch}.get(v["choice"], v["choice"] + ch)
 
 
 def recheck_rows(t: Triage) -> list[tuple[str, str, str, str, str]]:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guji-manager"
-version = "0.4.44"
+version = "0.4.45"
 description = "古籍 pipeline manager：工作区、取图、打包推中心库、任务库等对外交互；调用 open-guji-cv（pipeline）但自己不含识别算法"
 requires-python = ">=3.10"
 dependencies = []
@@ -33,4 +33,4 @@ include = ["guji_manager*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-guji_manager = ["review_triage/review_grid.tpl.html", "opinions/rules.json", "review/pending_reasons.yaml", "datastore/schema.sql", "jobs/schema.sql", "review_pages/templates/*"]
+guji_manager = ["formats/guji_char_v0.5.schema.json", "review_triage/review_grid.tpl.html", "opinions/rules.json", "review/pending_reasons.yaml", "datastore/schema.sql", "jobs/schema.sql", "review_pages/templates/*"]

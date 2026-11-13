@@ -203,7 +203,9 @@ QUESTIONS: tuple[Question, ...] = (
         note="走 `payload.v == 'figure'` 进来（GUJI-740），payload 另带 `alt`（图的说明，可空）。"
              "进排除名单（理由 `figure`）：不进字形库、不再出卡；字位占住，文本层出 `□`，"
              "Step9 导出写 char `fig`、`NNN.fig.json` 与裁图。网站精校票 `choice=figure` 经 "
-             "`guji cellvotes` 落成这一条。",
+             "`guji cellvotes` 落成这一条。"
+             "payload 带 `unk`（部件描述或 IDS）＝**无法识别字**（char v0.5，2026-11-13）：图上有字、人认不出、Unicode 没有；"
+             "对 cv 同图片格，导出写 char `unk` 不写 `fig`（网站精校票 `choice=unrec`）。",
     ),
     Question(
         id="export.page.figure_region", unit="page",

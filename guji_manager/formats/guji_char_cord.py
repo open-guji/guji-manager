@@ -61,11 +61,13 @@ from typing import Any
 CHAR_SCHEMA_URL = "https://open-guji.org/schema/char/v0.1.json"
 CHAR_SCHEMA_URL_V02 = "https://open-guji.org/schema/char/v0.2.json"     # 有 guess_c（阙文带推测字）才写这一版
 CHAR_SCHEMA_URL_V03 = "https://open-guji.org/schema/char/v0.3.json"     # 有图片格或图列才写这一版
-CHAR_SCHEMA_URL_V04 = "https://open-guji.org/schema/char/v0.4.json"     # 有待审格（pending_reason）才写这一版
+CHAR_SCHEMA_URL_V04 = "https://open-guji.org/schema/char/v0.4.json"     # 有待审格（pending_reason）才写这一版（已停用）
+CHAR_SCHEMA_URL_V05 = "https://open-guji.org/schema/char/v0.5.json"     # 有无法识别字（unk）才写这一版
 CORD_SCHEMA_URL = "https://open-guji.org/schema/cord/v0.1.json"
 CORD_SCHEMA_URL_V02 = "https://open-guji.org/schema/cord/v0.2.json"     # 有插图块（marks.figure）才写这一版
 FIG_SCHEMA_URL = "https://open-guji.org/schema/fig/v0.1.json"
 FIG_DEFAULT_ALT = "图形符号"           # 人定是图时没写说明（spec 09 §3.2）
+UNK_DEFAULT = "无法识别"               # 人定无法识别字时没写描述
 NORM_SCHEMA = "guji-norm/0.2"          # guji-format 还没有 norm 的 schema；0.1 是 F3 带字偏移 `o` 的那版
 LACUNA_CHAR = "□"
 ZI_NO_NEAR = "〓"
@@ -75,7 +77,9 @@ SCHEMA_PATHS = {"char": _FORMATS / "guji_char_v0.1.schema.json",
                 "fig": _FORMATS / "guji_fig_v0.1.schema.json"}
 CHAR_SCHEMA_FILES = {CHAR_SCHEMA_URL: SCHEMA_PATHS["char"], CHAR_SCHEMA_URL_V02: _FORMATS / "guji_char_v0.2.schema.json",
                      CHAR_SCHEMA_URL_V03: _FORMATS / "guji_char_v0.3.schema.json",
-                     CHAR_SCHEMA_URL_V04: _FORMATS / "guji_char_v0.4.schema.json"}
+                     CHAR_SCHEMA_URL_V04: _FORMATS / "guji_char_v0.4.schema.json",
+                     # v0.5 随 manager 带一份（guji-format#31 的副本），cv 的 formats/ 还没有它
+                     CHAR_SCHEMA_URL_V05: Path(__file__).with_name("guji_char_v0.5.schema.json")}
 CORD_SCHEMA_FILES = {CORD_SCHEMA_URL: SCHEMA_PATHS["cord"], CORD_SCHEMA_URL_V02: _FORMATS / "guji_cord_v0.2.schema.json"}
 KEYS = ("cv", "lines")
 
@@ -125,6 +129,7 @@ def _tok(cell: dict, *, in_solo: bool = False, guess_c_as_qz: bool = False, alts
         return LACUNA_CHAR if in_solo else "[[]]"   # Step9 在 :jz[…] 里把阙文写成「□」（guji_page_v0.2 §10.1 已知例外）
     if cell.get("zi") is not None:
         return f":zi[{cell['zi']}]"
+    # 无法识别字（char v0.5 `unk`）落到最后一行：写 `c`＝□（与 Step9 9.1 的 lines.md 逐字节一致，描述不进分行稿，spec 02 §4.9）
     if cell.get("guess"):
         return f"□{{guess={cell['c']}}}"
     return cell["c"]
@@ -284,6 +289,12 @@ def _char_cell(c: dict, lane: str, *, lac_extra: set[int], zi_by_o: dict[int, di
         out["c"] = LACUNA_CHAR
         _set_lane(out, lane)
         out["fig"] = ""
+        return out
+    if c.get("unk") is not None:
+        # 无法识别字（char v0.5 `unk`，spec 02 §4.9）：图上有字、人认不出且 Unicode 没有；`c` 写 □，不带 lacuna／guess／zi／fig
+        out["c"] = LACUNA_CHAR
+        _set_lane(out, lane)
+        out["unk"] = str(c["unk"]).strip() or UNK_DEFAULT
         return out
     z = zi_by_o.get(o)
     if z is not None:
@@ -471,7 +482,9 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
         norm_items = [n for n in norm_items if n["a"] not in gone]  # 插图块占掉的格上的规范层一并去掉
     has_fig = bool(figures)
     has_guess_c = any("guess_c" in c for p in char_pages for col in p["columns"] for c in col["cells"])
-    char = {"$schema": CHAR_SCHEMA_URL_V03 if has_fig else CHAR_SCHEMA_URL_V02 if has_guess_c else CHAR_SCHEMA_URL,
+    has_unk = any("unk" in c for p in char_pages for col in p["columns"] for c in col["cells"])
+    char = {"$schema": (CHAR_SCHEMA_URL_V05 if has_unk else CHAR_SCHEMA_URL_V03 if has_fig
+                        else CHAR_SCHEMA_URL_V02 if has_guess_c else CHAR_SCHEMA_URL),
             "version": version, **head, "pages": char_pages}
     has_block = any(m["kind"] == "figure" for p in cord_pages for m in p.get("marks", []))
     cord = {"$schema": CORD_SCHEMA_URL_V02 if has_block else CORD_SCHEMA_URL, **head, "pages": cord_pages}
@@ -698,6 +711,8 @@ def first_choice(cell: dict) -> tuple[str | None, str]:
 def char_schema_for(char: dict) -> str:
     """按 char 里实际用到的写法取最低的 `$schema`：图片格／图列 v0.3，阙文推测字 v0.2，否则 v0.1（不再写 v0.4）。"""
     cells = [c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []]
+    if any(c.get("unk") is not None for c in cells):
+        return CHAR_SCHEMA_URL_V05
     has_fig = any(c.get("fig") is not None for c in cells) or any(
         col.get("kind") == "figure" for p in char.get("pages") or [] for col in p.get("columns") or [])
     if has_fig:
@@ -719,7 +734,7 @@ def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = No
       写回现行字（计 `held_current`），等人裁定了确是另一字再改（sheldon 11-10 定，少改 book-text 提交）；现行是 □／缺格才写首选字。
     分行稿随字变（待审格不再写 `[[]]`）。计数里 `stamped` 等于 `filled`，留给旧调用方打印。"""
     want = {x["cell"]: x for x in pending.get("cells", [])}
-    n = {"filled": 0, "no_choice": 0, "kept": 0, "lacuna_dropped": 0, "fig_skipped": 0, "missing": 0,
+    n = {"filled": 0, "no_choice": 0, "kept": 0, "lacuna_dropped": 0, "fig_skipped": 0, "unk_skipped": 0, "missing": 0,
          "reason_dropped": 0, "held_current": 0, "by_src": {}}
     seen = set()
     for p in char["pages"]:
@@ -733,6 +748,9 @@ def apply_pending(char: dict, pending: dict, current: dict[str, str] | None = No
                 seen.add(c["a"])
                 if c.get("fig") is not None:
                     n["fig_skipped"] += 1
+                    continue
+                if c.get("unk") is not None:         # 人已审定的无法识别字：不填首选字
+                    n["unk_skipped"] += 1
                     continue
                 cur = (current or {}).get(c["a"])
                 if cur and cur != LACUNA_CHAR and x.get("review") != "human":
