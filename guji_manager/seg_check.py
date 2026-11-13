@@ -157,6 +157,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             for kind in str(r[3]).split(","):
                 col[k]["TALL" if kind == "tall" else "SHORT"] += 1
             ex[k].insert(0, f"格高离群 {r[4]}")
+    for r in rows.get("block_tall", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["BLOCK"] += 1
+            ex[k].insert(0, f"字块过高×{r[3]} {r[4]}")
     for r in rows.get("page_pitch", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -208,7 +213,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     for k in set(col) | set(pinned):
         cn = col[k]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
-        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
+        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["BLOCK"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2)
