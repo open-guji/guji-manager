@@ -352,7 +352,7 @@ def recall(ruler: list[dict], rows: dict[str, list], products_dir: Path, books: 
     是否晚于本页 row_segment 产物的时间（manifest ts）。`pin_stale` 本身不算检查（它是拿钉子对的）。"""
     flagged: dict[str, set] = collections.defaultdict(set)
     for name, rs in rows.items():
-        if name in ("pin_slots", "pin_stale"):
+        if name in ("pin_slots", "pin_stale", "geo_ref_ok"):     # geo_ref_ok 是按参校字豁免掉的，不算报出
             continue
         for r in rs:
             if str(r[2]).lstrip("-").isdigit():
@@ -391,7 +391,12 @@ def defect_rows(books: list[str], pages: set[int] | None, skip: dict[str, set[in
     from ._cv import ImageCache, ProductStore, cache_root, products_root
     from .review import seg_defect as sd
     store, cache = ProductStore(Path(products_root())), ImageCache(Path(cache_root()))
-    opts = (sd.book_opts(sd.book_id_of(ws)) if ws else None) or {"frame": True}
+    bid = sd.book_id_of(ws) if ws else ""
+    opts = sd.book_opts(bid) if bid else None
+    if opts is None:
+        opts = {"frame": True}
+        print(f"⚠️ 同字对照切坏检测：认不出书（工作区 {ws or '未给'}，id {bid or '-'}）不在 SELFCHECK_BOOKS 里，按殿本口径跑"
+              "（clip_edge_ink 0、查带框）；写本书这样会把长笔伸出格报成 CLIP，跑前给 -w <书仓>", file=sys.stderr)
     out = []
     for b in books:
         pgs = [p for p in sd._pages_of(store, b) if (not pages or p in pages) and p not in _skip_for(b, skip)]

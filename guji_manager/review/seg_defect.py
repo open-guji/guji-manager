@@ -8,7 +8,8 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
 
 - `merged`  两字并一格：墨高 ≥ `MERGED_H` 倍基准（整字格按格高 `period`，夹注半格按本列夹注半格墨高中位），
   且竖向投影中段有低谷（墨 < `MERGED_VALLEY` 峰值、长 ≥ `MERGED_GAP` 格高），低谷上下两团各高 ≥ `MERGED_PART` 格高
-  （防「三」「二」这种字中间本来就有空行）。
+  （防「三」「二」这种字中间本来就有空行），且两团墨量小比大 ≥ `MERGED_INK`（史記写本列尾字脚下的句读圈、残笔、污点
+  只是一小团，A22 11-13 R011）。
 - `clipped` 字被切掉一截：Step3 选中的切线穿墨（`cut_candidates` 里选中那条的 `seam_ink` ≥ `CLIP_SEAM_INK`），
   线两侧的格都标，有大印（`seals` 里的 stain）的页和打了 `seal_region` 旗的格不判（印泥满纸噪点）；
   或 cell_shrink 打了 `boundary_ink` 旗、且不是列尾格、本格没放行（列尾字脚贴版框就打旗；列首格留着）（A22：05:15:8:1a 字头被切到格外）。
@@ -62,6 +63,7 @@ MERGED_H = 1.6
 MERGED_VALLEY = 0.10
 MERGED_GAP = 0.08
 MERGED_PART = 0.30
+MERGED_INK = 0.20    # 低谷上下两团墨量的小比大 ≥ 它才算两个字：写本字脚下的句读圈、邻格残笔、污点只是一小团（史記 R011，A22 11-13）
 CLIP_SEAM_INK = 30   # 殿本 vol12：12–20 全误报（A22 11-04）
 SAME_H = 0.80        # 同字对照：墨高比低于它就算缺一截
 SAME_H_WIDE = 0.85   # 墨高比在 SAME_H～它之间时，还要宽不跟着缩
@@ -116,7 +118,9 @@ def _valley_split(patch: np.ndarray, cell_h: float) -> str | None:
                 y += 1
             if y0 > top and y <= bot and (y - y0) >= MERGED_GAP * cell_h \
                     and (y0 - top) >= MERGED_PART * cell_h and (bot - y + 1) >= MERGED_PART * cell_h:
-                best = (y0, y)
+                up, down = ink[top:y0].sum(), ink[y:bot + 1].sum()
+                if min(up, down) >= MERGED_INK * max(up, down):
+                    best = (y0, y)
         y += 1
     return None if best is None else f"valley={best[0]}-{best[1]}"
 
@@ -522,8 +526,21 @@ def is_gate_row(row: dict) -> bool:
 
 
 def book_id_of(workspace) -> str:
-    """工作区目录名 `<book-text 条目 id>-<书名>` 的 id 段（与 cv republish.text_id_of 同口径）。"""
-    return Path(workspace).resolve().name.split("-", 1)[0]
+    """书的条目 id：先认工作区 `workspace.yaml` 的 `id:`（2026-10-28 起＝book ID），没有再取目录名 `<id>-<书名>` 的 id 段
+    （与 cv republish.text_id_of 同口径）。
+
+    史記 r58/r59（A22 11-13，台账 R012）：任务机上的工作区目录名认不出 id 时，`SELFCHECK_BOOKS` 查不到史記，
+    seg check 退回殿本口径（clip_edge_ink 0），写本长笔伸出格全报成 CLIP——15 册殿本口径 clipped 54 列、史記口径 2 列。"""
+    ws = Path(workspace).resolve()
+    try:
+        import yaml
+        d = yaml.safe_load((ws / "workspace.yaml").read_text(encoding="utf-8")) or {}
+        bid = str(d.get("id") or "").strip()
+        if bid in SELFCHECK_BOOKS:
+            return bid
+    except Exception:  # noqa: BLE001 —— 没有或读不了 workspace.yaml，照旧按目录名
+        pass
+    return ws.name.split("-", 1)[0]
 
 
 def book_opts(book_id: str) -> dict | None:
