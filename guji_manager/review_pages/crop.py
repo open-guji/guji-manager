@@ -76,8 +76,8 @@ def _col_union(boxes: list[tuple[str, list]], pad: int):
 
 
 def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str = "{page}.png",
-                  pad: int = 12, ctx_n: int = 8, pack_dir: str | None = None, max_h: int = 700) -> dict:
-    """对每格出：<格号>_col.png（整列，本格红框）、_nbr.png／_nbl.png（右列、左列整列图）、同列 ±ctx_n 格的上下文字串。
+                  pad: int = 12, ctx_n: int = 10, pack_dir: str | None = None, max_h: int = 700, span: int | None = 1) -> dict:
+    """对每格出：<格号>_col.png（本格红框，只取本格及上下各 span 格；span=None 取整列）、_nbr.png／_nbl.png（右列、左列同一高度段）、同列 ±ctx_n 格的上下文字串。
 
     ctx 取包里 seed_admit 的机器字（pack_dir 用 {vol} 占位，缺则只出图）；本格用【】括起、机器没定的字写「？」。
     返回 {格号: {"col_img", "nb_imgs":[{"img","label"}], "ctx"}}，可直接并进 char_card 的 items。
@@ -118,11 +118,13 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
                 for c in json.loads(ar.read_text(encoding="utf-8")).get("align_ref", {}).get("chars", []):
                     refc[c["id"]] = c.get("align_char") or ""
 
-        def col_img(cn, mark=None):
+        def col_img(cn, mark=None, yr=None):
             bx = cols.get(cn)
             if not bx:
                 return None
             ub, _ = _col_union(bx, pad)
+            if yr:
+                ub = [ub[0], yr[0], ub[2], yr[1]]
             box = to_image_box(ub, im.width, pad)
             cr = im.crop(box)
             if mark:
@@ -136,17 +138,23 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
         for i in cs:
             col = int(i.split(":")[2])
             r: dict = {}
-            c_img = col_img(col, i)
+            seq = [k for k, _ in cols.get(col, [])]
+            yr = None
+            if span is not None and i in seq:
+                j0 = seq.index(i)
+                bd = dict(cols[col])
+                ks = seq[max(0, j0 - span):j0 + span + 1]
+                yr = (min(bd[k][1] for k in ks), max(bd[k][3] for k in ks))
+            c_img = col_img(col, i, yr)
             if c_img:
                 f = out / (i.replace(":", "_") + "_col.png"); c_img.save(f); r["col_img"] = str(f)
             nb = []
             for dc, lab, tag in ((-1, "右邻列（先读）", "nbr"), (1, "左邻列（后读）", "nbl")):
-                ni = col_img(col + dc)
+                ni = col_img(col + dc, None, yr)
                 if ni:
                     f = out / (i.replace(":", "_") + f"_{tag}.png"); ni.save(f); nb.append({"img": str(f), "label": lab})
             if nb:
                 r["nb_imgs"] = nb
-            seq = [k for k, _ in cols.get(col, [])]
             if chars and i in seq:
                 j = seq.index(i)
                 a, b = seq[max(0, j - ctx_n):j], seq[j + 1:j + 1 + ctx_n]

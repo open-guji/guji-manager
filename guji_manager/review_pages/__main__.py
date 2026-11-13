@@ -113,7 +113,7 @@ def main(argv=None):
     p = sub.add_parser("hard-items"); p.add_argument("--items", required=True)
     p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
     p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
-    p.add_argument("--pack-dir"); p.add_argument("--ctx-n", type=int, default=8); p.add_argument("--img-dir")
+    p.add_argument("--pack-dir"); p.add_argument("--ctx-n", type=int, default=10); p.add_argument("--span", type=int, default=1, help="列图只取本格上下各几格，0 取整列"); p.add_argument("--img-dir")
     p = sub.add_parser("cold-pages"); p.add_argument("--out-dir", required=True); p.add_argument("--book", required=True)
     p.add_argument("--tag", default="")
     p = sub.add_parser("pair-events"); p.add_argument("type", choices=["near_pair", "lib_audit"])
@@ -157,7 +157,7 @@ def main(argv=None):
         its = build_mod.read_items(a.items)
         img_dir = a.img_dir or str(Path(a.out).with_suffix("")) + "_col"
         extra = crop.column_images([r["id"] for r in its], a.shrink_dir, a.pages_dir, img_dir, a.page_name,
-                                   ctx_n=a.ctx_n, pack_dir=a.pack_dir)
+                                   ctx_n=a.ctx_n, pack_dir=a.pack_dir, span=(a.span or None))
         rows = []
         for r in its:
             e = extra.get(r["id"], {})
