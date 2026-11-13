@@ -38,6 +38,18 @@ _PREP_ENV_PARTS = {"cv", "克隆工作区", "db-pull", "取原图", "模板索�
 _TOKEN_RE = re.compile(r"(TOKEN|SECRET|KEY|PASS|DSN)[A-Z_]*=\S+|postgres(ql)?://\S+|Bearer \S+", re.I)
 
 
+def _ws_remote_head(ws_repo: str) -> str | None:
+    """书仓 origin/main 的当前提交（ls-remote，不下载）。取不到返回 None：这种情况不复用旧准备，照常跑准备脚本去同步。"""
+    try:
+        r = subprocess.run(["git", "ls-remote", f"https://github.com/{ws_repo}", "refs/heads/main"],
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = r.stdout.split()
+    return out[0] if r.returncode == 0 and out else None
+
+
 def resolve_ws_repo(sp: dict) -> str | None:
     """这单的工作区仓：单子存的 ws_repo 优先；空的（提交时没映射上、或书 ID 后来才登记）就按册 ID 现查 WS_REPOS。
     都没有返回 None，prep 退回 open-guji/guji-workspace 里 ws_glob 匹配的目录。"""
@@ -210,14 +222,17 @@ class Job:
         sp = self.spec
         # 复用签名带上中心库 rev：同一 cv 换了新字形库（指纹变）后，旧工作区不能再拿来出包（QTW r6 册07 事件）
         rev = self.central_rev() if sp.get("book") else None
+        # 书仓 origin/main 的提交也进签名：书级代码（code/）在仓里更新后（如 SJ k8），旧检出不能再凭「同一配置」跳过准备
+        ws_repo = resolve_ws_repo(sp) if sp.get("book") else None
+        ws_head = _ws_remote_head(ws_repo) if ws_repo else None
         sig = json.dumps({**{k: sp.get(k) for k in ("book", "cv", "book_overrides", "pin_args", "ws_glob", "ws_repo")},
-                          "central_rev": rev}, sort_keys=True)
+                          "central_rev": rev, "ws_head": ws_head}, sort_keys=True)
         mark = HOME / "prepped.json"
         try:
             last = json.loads(mark.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             last = {}
-        if sp.get("book") and rev is not None and last.get("sig") == sig and last.get("ws") \
+        if sp.get("book") and rev is not None and ws_head is not None and last.get("sig") == sig and last.get("ws") \
                 and Path(last["ws"]).is_dir():
             self.ws = last["ws"]
             self.prep_override = last.get("override") or {}
