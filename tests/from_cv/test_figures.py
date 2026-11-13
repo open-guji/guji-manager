@@ -254,3 +254,51 @@ def test_exporter_script_writes_fig(tmp_path, monkeypatch):
     assert main(base + ["--out", str(tmp_path / "plain"), "--no-figures", "--page-images", str(imgs)]) == 0
     fig = json.loads((tmp_path / "plain" / "002.fig.json").read_text(encoding="utf-8"))
     assert [(f["id"], f["alt"]) for f in fig["figures"]] == [(f"f{PAGE}-2-5", cc.FIG_DEFAULT_ALT)]
+
+
+# ───────────────────────── 无法识别字（char v0.5 `unk`，2026-11-13） ─────────────────────────
+
+def test_unk_event_to_exclusion_and_cells(tmp_path):
+    from guji_manager.feedback.figures import UnkDesc
+    lst = tmp_path / "crop_exclusions.jsonl"
+    res = crop_exclude([(_confirm("vol05:148:2:14", {"v": "figure", "unk": "左王右旦"}), None)], list_path=str(lst))
+    assert res.added == 1
+    row = json.loads(lst.read_text(encoding="utf-8"))
+    assert row["reason"] == "figure" and "unk=左王右旦" in row["evidence"] and "alt=" not in "".join(row["evidence"])
+    got = figure_cells("vol05", lst, log=EventLog(tmp_path / "fb"))
+    assert got == {"vol05:148:2:14": "左王右旦"} and isinstance(got["vol05:148:2:14"], UnkDesc)
+    # 后来改判回图片格：不再是无法识别字
+    log = EventLog(tmp_path / "fb")
+    log.append([_confirm("vol05:148:2:14", {"v": "figure"}, seq=2, ts="2026-10-25T00:00:00Z")])
+    got = figure_cells("vol05", lst, log=log)
+    assert got == {"vol05:148:2:14": ""} and not isinstance(got["vol05:148:2:14"], UnkDesc)
+
+
+def test_unk_vote_payload():
+    from guji_manager.feedback.web_votes import payload_of
+    assert payload_of("unrec", unk="左王右旦") == {"v": "figure", "unk": "左王右旦"}
+    assert payload_of("unrec") == {"v": "figure", "unk": cc.UNK_DEFAULT}
+
+
+def test_export_unk_cell(tmp_path):
+    from guji_manager.feedback.figures import UnkDesc
+    st = _store_with_figure(tmp_path)
+    pg = from_cv_products(st, BOOK, PAGE, META, figure_alts={FIG_ID: UnkDesc("左王右旦")})
+    assert gp.check(pg) == []
+    g = next(x for x in pg["glyphs"] if x["cv_id"] == FIG_ID)
+    assert g["unk"] == "左王右旦" and "fig" not in g and g["review"] == "human"
+    files = gf.to_guji_format([pg], chapter="002")
+    back, _ = gf.from_guji_format(files)
+    assert back == [gp.strip_ext(pg)]
+    out, rep = cc.from_pages_json(files["002.pages.json"], zi=files["002.zi.json"], norm=files["002.norm.json"], chapter="002")
+    char, cord = out["002.char.json"], out["002.cord.json"]
+    assert char["$schema"] == cc.CHAR_SCHEMA_URL_V05 and "002.fig.json" not in out
+    cell = next(c for p in char["pages"] for col in p["columns"] for c in col["cells"] if c["a"] == f"{PAGE}:2:5")
+    assert cell == {"a": f"{PAGE}:2:5", "c": "□", "unk": "左王右旦"}
+    assert cc.validate(char, "char") == [] and cc.check(char, cord, out["002.norm.json"]) == []
+    assert cc.char_to_lines_md(char) == files["002.lines.md"]          # lines.md 里是 □，描述不进分行稿
+    assert cc.char_schema_for(char) == cc.CHAR_SCHEMA_URL_V05
+    # 待审首选字不覆盖已审定的无法识别字
+    pend = {"cells": [{"cell": f"{PAGE}:2:5", "review": "pending", "first": "旦"}]}
+    n = cc.apply_pending(char, pend)
+    assert n["unk_skipped"] == 1 and cell["c"] == "□" and cell["unk"] == "左王右旦"

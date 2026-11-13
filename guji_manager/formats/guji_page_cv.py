@@ -36,6 +36,13 @@ LANE_OF_KIND = {"char": "main", "jiazhu_a": "jz_r", "jiazhu_b": "jz_l", "jiazhu_
 STEPS = ("border_detect", "row_segment", "cell_shrink", "seed_admit")
 
 
+
+class UnkDesc(str):
+    """无法识别字的描述（char v0.5 `unk`）。是 ``str``，所以能原样放进 ``figure_cells`` 的 ``{字位: alt}``，
+    导出（本模块）靠 ``isinstance(v, UnkDesc)`` 区分「图片格」和「无法识别字」——
+    cv 的导出脚本只认 ``figure_alts`` 这一个参数，用子类就不用改它。"""
+
+
 def _candidates(store: ProductStore, book: str, key: str) -> dict[str, dict[str, str]]:
     """字位 id → `{lib, rare, ref}` 各路首位字（只读已有产物，缺件留空）。"""
     out: dict[str, dict[str, str]] = {}
@@ -260,7 +267,11 @@ def from_cv_products(store: ProductStore, book: str, page: int, meta: dict,
             if s.guess:
                 g["guess"] = s.guess
             if s.figure:
-                g["fig"] = {"alt": figure_alts.get(s.id, "")}
+                alt = figure_alts.get(s.id, "")
+                if isinstance(alt, UnkDesc):      # 无法识别字（char v0.5 `unk`）：借图片格的通道，导出写 unk
+                    g["unk"] = str(alt)
+                else:
+                    g["fig"] = {"alt": alt}
             flags = []
             if occ:
                 flags.append("occluded")

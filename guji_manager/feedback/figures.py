@@ -6,7 +6,7 @@
 
 | | 人怎么定 | 事件 | 落到哪 | 本模块 |
 |---|---|---|---|---|
-| **图片格**（一格是图形，不是字） | 定字台／网站精校票 `choice=figure` | `confirm`，`payload.v="figure"`、`alt` | `crop_exclude` 进排除名单，理由 `figure`；Step7 照排除格处理（不进库、不出卡），`report/slots` 占位出 □ | `figure_cells` |
+| **图片格**（一格是图形，不是字；另有「无法识别字」借同一条路，见 `figure_cells`） | 定字台／网站精校票 `choice=figure` | `confirm`，`payload.v="figure"`、`alt` | `crop_exclude` 进排除名单，理由 `figure`；Step7 照排除格处理（不进库、不出卡），`report/slots` 占位出 □ | `figure_cells` |
 | **插图块**（占几列、半页、整页） | 控制台在页上画框 | `figure_region`（页级，一页一条，后到覆盖） | 不配消费者，不让产物过期 | `resolved_figure_regions` |
 
 `figure_region` 的单位键 `figure:<册>:<页>`，payload：
@@ -22,26 +22,41 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..formats.guji_page_cv import UnkDesc   # 定义在 formats（分层低一层），这里只用
+
 #: 人定是图时没写说明的，导出写这个（spec 09 §3.2）
 DEFAULT_ALT = "图形符号"
 
 
-def _alt_of(rec: dict) -> str:
+def _tag_of(rec: dict, prefix: str) -> str:
     for tag in rec.get("evidence") or []:
-        if isinstance(tag, str) and tag.startswith("alt="):
-            return tag[4:]
+        if isinstance(tag, str) and tag.startswith(prefix):
+            return tag[len(prefix):]
     return ""
 
 
+def _alt_of(rec: dict) -> str:
+    return _tag_of(rec, "alt=")
+
+
 def figure_cells(book: str, exclusions_path: str | Path | None = None, log=None) -> dict[str, str]:
-    """本册判成图片格的格 → 说明：`{裸 id（vol05:148:2:14）: alt}`（没写说明的是空串）。
+    """本册判成图片格或无法识别字的格 → 说明：`{裸 id（vol05:148:2:14）: alt}`（没写说明的是空串）。
+
+    **无法识别字**（char v0.5 `unk`，2026-11-13）：人判「这是个字但认不出、Unicode 里也没有」，事件仍是 `confirm`、
+    `payload.v="figure"`，另带 `payload.unk`（部件描述或 IDS，如「左王右旦」；没写取「无法识别」）。对 cv 它就是图片格
+    （进排除名单理由 `figure`，不进库、不出卡，字位占住出 □），区别只在导出：值是 `UnkDesc`，导出写 `unk` 而不是 `fig`。
 
     「是不是图」以排除名单为准（Step7、`report/slots` 读的就是它，三处同口径）；说明取这一格最新一条
-    `v=figure` 事件的 `alt`（后来改过说明的以事件为准），没有事件可读时取名单 evidence 里的 `alt=`。"""
+    `v=figure` 事件的 `alt`／`unk`（后来改过的以事件为准，后来改回图片格就不再是无法识别字），
+    没有事件可读时取名单 evidence 里的 `alt=`／`unk=`。"""
     from .._cv import default_path, load_exclusions
     pre = f"{book}:"
     ex = load_exclusions(str(exclusions_path) if exclusions_path else default_path())
-    out = {k: _alt_of(r) for k, r in ex.items() if k.startswith(pre) and r.get("reason") == "figure"}
+    out: dict[str, str] = {}
+    for k, r in ex.items():
+        if k.startswith(pre) and r.get("reason") == "figure":
+            unk = _tag_of(r, "unk=")
+            out[k] = UnkDesc(unk) if unk else _alt_of(r)
     if not out:
         return out
     from .._cv import EventLog, counts_as_human, iter_events_readonly, replay_key
@@ -53,8 +68,13 @@ def figure_cells(book: str, exclusions_path: str | Path | None = None, log=None)
         if e.kind != "confirm" or e.target.key not in out or not counts_as_human(e):
             continue
         p = e.payload or {}
-        if p.get("v") == "figure" and p.get("alt"):
-            out[e.target.key] = str(p["alt"])
+        if p.get("v") == "figure":
+            if p.get("unk"):
+                out[e.target.key] = UnkDesc(str(p["unk"]))
+            elif p.get("alt"):
+                out[e.target.key] = str(p["alt"])
+            elif isinstance(out[e.target.key], UnkDesc):
+                out[e.target.key] = ""                          # 后来改回图片格：不再是无法识别字
     return out
 
 
