@@ -9,12 +9,18 @@
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
-  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判）；
+  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判（弱档 CUT_WEAK 只当提示「劈字弱·笔画相触」）；
+  对位串错 ALIGN＝cv align_drift，一列里连续对不上参校字、劈或并后整列错一格（史記 R017，11-14）；同页报出 ≥3 列的
+  （cv 标 page）记 ALIGN_PAGE，只当提示「对位串错·整页」（透印、版式、整页没对上，SJ 抽看）。
+  不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
+- 格高·参校证实：只有格高／半格宽离群、但参校字落在字形匹配前 3 名且邻格无反证的格（cv `geo_ref_ok`，2026-11-13 史記 R011／R013），
+  只列不算结构、不挡闸；写本册抽看用（SJ 11-14：R011 那批里混有真错）；
 - 公用清格：只有装饰类 flag（FOR／Fend／Fpatch／Lh／Lv／端格只有框线／同字对照带框 FRAME、FRAME_HEAVY＝重档／邻格笔画溢入 BLEED，未量过）；
-- 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）。
+- 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）；
+- 书级提示：书级口径里只当提示的旗（`BOOK_HINT_FLAGS`／`seg_check.hint_flags`，史記写本的 BLOCK），只有这类旗的列。
 
 书配置（工作区 `workspace.yaml`）：
 
@@ -22,6 +28,7 @@
 seg_check:
   head_pages: 3                       # 每册前几页当卷首页单列（缺省 0）
   skip: {"01": "39-52,54,121,127,138-139", "04": "124"}   # 点名跳过的页：年表、卷首题署、整页御题印…
+  hint_flags: [BLOCK]                 # 这本书只当提示的旗（缺省按 BOOK_HINT_FLAGS：史記 BLOCK；[] 全按结构）
 ```
 
 同字对照切坏检测（2026-11-12 并进来，`--no-defect` 关）：`review/seg_defect.book_flags`，殿本尺子
@@ -51,7 +58,7 @@ RULER_SHARDS = {
 }
 LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
 ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
-         "公用清格": 4, "已钉": 5}
+         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "劈字弱·笔画相触": 4.7, "书级提示": 4.8, "已钉": 5}
 
 
 # ── 书配置 ──────────────────────────────────────────────────────────────────
@@ -82,6 +89,27 @@ def book_config(ws: Path | None) -> dict:
     import yaml
     d = yaml.safe_load((Path(ws) / "workspace.yaml").read_text(encoding="utf-8")) or {}
     return d.get("seg_check") or {}
+
+
+#: 各书只当提示的 seg check 旗（书级口径，按 book-text 条目 id；工作区 workspace.yaml `seg_check.hint_flags` 写了就以它为准，
+#: 写 [] 即全按结构算）。写本字距、笔画长短不匀，按刻本定的几何检查在写本上多是字形本来如此：
+#: - 史記（文淵閣寫本）BLOCK 字块过高：SJ 11-14 r59 20/37/41/42 册新增约 170 列，抽 25 列看图全是长笔／笔画相触、0 真错；
+#:   r59 之后人钉的 77 列里带 BLOCK 的 14 列都另有结构旗，只当提示不掉召回（A22 11-14）。殿本照旧算结构
+#:   （ZM 11-13 vol06 147:3、vol07 133:7 靠它抓到、已钉）。
+BOOK_HINT_FLAGS: dict[str, tuple[str, ...]] = {
+    "988g3f0wsu": ("BLOCK",),
+}
+
+
+def book_hint_flags(ws: Path | None) -> tuple[str, ...]:
+    """这本书只当提示的旗：workspace.yaml `seg_check.hint_flags` 优先，没写按 `BOOK_HINT_FLAGS`（认书用 workspace.yaml 的 id）。"""
+    cfg = book_config(ws)
+    if "hint_flags" in cfg:
+        return tuple(str(f) for f in (cfg.get("hint_flags") or ()))
+    if ws is None:
+        return ()
+    from .review import seg_defect as sd
+    return BOOK_HINT_FLAGS.get(sd.book_id_of(ws), ())
 
 
 def _skip_for(book: str, skip: dict[str, set[int]]) -> set[int]:
@@ -124,8 +152,9 @@ def seg_causes(products_dir: Path, book: str) -> dict[tuple[int, int], list[tupl
 # ── 按列汇总 ────────────────────────────────────────────────────────────────
 
 def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], causes: dict, skip: set[int],
-              head_pages: int = 0) -> list[dict]:
-    """cv 筛查的各张表＋原因码 → 按列一行（列、类、处置、结构分、装饰分、各项、例格）。"""
+              head_pages: int = 0, hint_flags: tuple[str, ...] = ()) -> list[dict]:
+    """cv 筛查的各张表＋原因码 → 按列一行（列、类、处置、结构分、装饰分、各项、例格）。
+    `hint_flags`：这本书只当提示的旗（书级口径，`book_hint_flags`），计数改记 `<旗>_HINT`、不算结构分。"""
     col: dict = collections.defaultdict(collections.Counter)
     ex: dict = collections.defaultdict(list)
 
@@ -157,6 +186,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             for kind in str(r[3]).split(","):
                 col[k]["TALL" if kind == "tall" else "SHORT"] += 1
             ex[k].insert(0, f"格高离群 {r[4]}")
+    for r in rows.get("block_tall", []):
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["BLOCK"] += 1
+            ex[k].insert(0, f"字块过高×{r[3]} {r[4]}")
     for r in rows.get("page_pitch", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -170,8 +204,9 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     for r in rows.get("cut_through", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
-            col[k]["CUT"] += 1
-            ex[k].insert(0, f"劈字{str(r[3])} {str(r[4]).split('，')[0]}")
+            weak = str(r[3]) == "弱"            # cv CUT_WEAK_MOVE：挪不到 1/3 格高，多是上下字笔画相触（SJ 11-14），只当提示
+            col[k]["CUT_WEAK" if weak else "CUT"] += 1
+            ex[k].insert(len(ex[k]) if weak else 0, f"劈字{r[3]!s} {str(r[4]).split('，')[0]}")
     for r in rows.get("seg_defect", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -180,6 +215,17 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                 fl = "FRAME_HEAVY"
             col[k][fl] += 1
             ex[k].insert(0 if fl in ("MERGED", "CLIP") else len(ex[k]), f"{str(r[4]).split()[0]}{fl}")
+    for r in rows.get("align_drift", []):       # cv eval/seg_screen.align_drift：对位串错·疑整列错位（R017）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            whole_page = "page" in str(r[3]).split(",")     # 一页报出 ≥3 列：透印、版式、整页没对上，降成提示（SJ 11-14 抽看）
+            col[k]["ALIGN_PAGE" if whole_page else "ALIGN"] += 1
+            ex[k].insert(len(ex[k]) if whole_page else 0, f"对位串错({r[3]}) {r[4]}")
+    for r in rows.get("geo_ref_ok", []):        # cv eval/seg_screen：格高／半格宽离群、但参校字证实，降成提示（不算结构）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["GEO_OK"] += 1
+            ex[k].append(f"{r[4]}证实")
     for r in rows.get("edge_frame_only", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -207,11 +253,16 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     out = []
     for k in set(col) | set(pinned):
         cn = col[k]
+        for f in hint_flags:
+            if cn.get(f):
+                cn[f + "_HINT"] = cn.pop(f)
+        hinted = [f for f in hint_flags if cn.get(f + "_HINT")]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
-        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
+        struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["BLOCK"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
-                  + cn["PIN"] * 10 + cause_n * 2)
+                  + cn["PIN"] * 10 + cause_n * 2
+                  + cn["ALIGN"] * 3)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
         if cn["PIN_STALE"]:
@@ -221,7 +272,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
         elif pg:
-            cls, act = ("结构" if struct else "装饰" if cosm else "对位"), pg
+            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["CUT_WEAK"] or hinted else "对位"), pg
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
@@ -232,6 +283,14 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             cls, act = "对位", "对位（○）"
         elif cosm:
             cls, act = "装饰", "公用清格"
+        elif cn["GEO_OK"]:
+            cls, act = "提示", "格高·参校证实"
+        elif cn["ALIGN_PAGE"]:
+            cls, act = "提示", "对位串错·整页"
+        elif cn["CUT_WEAK"]:
+            cls, act = "提示", "劈字弱·笔画相触"
+        elif hinted:
+            cls, act = "提示", "书级提示"
         elif k in pinned:
             cls, act = "", "已钉"
         else:
@@ -352,7 +411,7 @@ def recall(ruler: list[dict], rows: dict[str, list], products_dir: Path, books: 
     是否晚于本页 row_segment 产物的时间（manifest ts）。`pin_stale` 本身不算检查（它是拿钉子对的）。"""
     flagged: dict[str, set] = collections.defaultdict(set)
     for name, rs in rows.items():
-        if name in ("pin_slots", "pin_stale"):
+        if name in ("pin_slots", "pin_stale", "geo_ref_ok"):     # geo_ref_ok 是按参校字豁免掉的，不算报出
             continue
         for r in rs:
             if str(r[2]).lstrip("-").isdigit():
@@ -391,7 +450,12 @@ def defect_rows(books: list[str], pages: set[int] | None, skip: dict[str, set[in
     from ._cv import ImageCache, ProductStore, cache_root, products_root
     from .review import seg_defect as sd
     store, cache = ProductStore(Path(products_root())), ImageCache(Path(cache_root()))
-    opts = (sd.book_opts(sd.book_id_of(ws)) if ws else None) or {"frame": True}
+    bid = sd.book_id_of(ws) if ws else ""
+    opts = sd.book_opts(bid) if bid else None
+    if opts is None:
+        opts = {"frame": True}
+        print(f"⚠️ 同字对照切坏检测：认不出书（工作区 {ws or '未给'}，id {bid or '-'}）不在 SELFCHECK_BOOKS 里，按殿本口径跑"
+              "（clip_edge_ink 0、查带框）；写本书这样会把长笔伸出格报成 CLIP，跑前给 -w <书仓>", file=sys.stderr)
     out = []
     for b in books:
         pgs = [p for p in sd._pages_of(store, b) if (not pages or p in pages) and p not in _skip_for(b, skip)]
@@ -430,6 +494,63 @@ def job_text(report: str) -> str:
     return "\n".join(body + [f"- ○对位（不归切分）{n_dui} 列，明细见 report.md"] + head + tail)
 
 
+# ── 格几何（seg gate 用）────────────────────────────────────────────────────
+
+def col_geometry(row_segment: dict, char_index=None) -> dict[int, str]:
+    """一页 row_segment 产物（JSON）＋ cell_shrink char_index → {列: 格几何串}。
+
+    串＝`格框#字框`：格框是按格号排的 `格号[a|b]:x0,y0,x1,y1`（row_segment 切出的格，夹注左右分界也在里头），字框同写法
+    （cell_shrink 收墨后的框，cell_shrink 改了归墨也算切分变了）。都用整页坐标——列图原点会随 border_detect 挪，列图坐标不可比。
+    seg gate 拿两个包同一列的串比（`seg_gate.geometry_same`）：格号集合一样、线和框都挪不到 `GEO_SAME_TOL` 格高，就算切分没变，
+    seg check 报的差异只能来自对位、放行、参校本等下游（全唐文 R020，A22 11-14）。"""
+    rows: dict[int, list] = collections.defaultdict(list)
+    for cc in (row_segment.get("cells") or {}).get("columns") or []:
+        for x in cc.get("cells") or []:
+            qs = x.get("quad_page") or []
+            if qs:
+                xs, ys = [q[0] for q in qs], [q[1] for q in qs]
+                rows[int(cc["col"])].append((int(x["slot"]), str(x.get("sub") or ""),
+                                             round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))))
+    boxes: dict[int, list] = collections.defaultdict(list)
+    for cc in getattr(char_index, "columns", None) or []:
+        for x in cc.chars:
+            if x.bbox_page:
+                boxes[int(cc.col)].append((int(x.slot), str(x.sub or ""), *(round(v) for v in x.bbox_page)))
+    out = {}
+    for c in rows:
+        g = ";".join(f"{s}{sub}:{a},{b},{e},{f}" for s, sub, a, b, e, f in sorted(rows[c]))
+        bx = ";".join(f"{s}{sub}:{a},{b},{e},{f}" for s, sub, a, b, e, f in sorted(boxes.get(c, [])))
+        out[c] = f"{g}#{bx}"
+    return out
+
+
+def write_col_geometry(books: list[str], pages: set[int] | None, path: Path) -> int:
+    """查过的页每列一行 (列, 格几何)，给 `guji seg gate` 判「格几何没变」。读不到 row_segment 的页跳过。"""
+    from ._cv import ProductStore, page_key
+    store = ProductStore()
+    n = 0
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(["列", "格几何"])
+        for b in books:
+            pgs = sorted(int(q.stem[1:]) for q in store.step_dir(b, "row_segment").glob("p*.json") if q.stem[1:].isdigit())
+            for p in pgs:
+                if pages and p not in pages:
+                    continue
+                try:
+                    d = json.loads(store.path(b, "row_segment", page_key(p)).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                try:
+                    ci = store.read(b, "cell_shrink", page_key(p), "char_index")
+                except Exception:  # noqa: BLE001
+                    ci = None
+                for c, g in sorted(col_geometry(d, ci).items()):
+                    w.writerow([f"{b}:{p}:{c}", g])
+                    n += 1
+    return n
+
+
 # ── 一条命令 ────────────────────────────────────────────────────────────────
 
 def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dict[str, set[int]] | None = None,
@@ -458,19 +579,23 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
         rows["seg_defect"] = defect_rows(books, pages, skip, ws)
     write_seg_screen_report(rows, counts, out / "筛查")
     allrows = []
+    hint = book_hint_flags(ws)
+    if hint:
+        print(f"ℹ️ 本书只当提示的旗（书级口径）：{', '.join(hint)}", file=sys.stderr)
     for b in books:
         cz = seg_causes(prod, b) if causes else {}
         if pages:
             cz = {k: v for k, v in cz.items() if k[0] in pages}
         stale = {(int(r[1]), int(r[2])) for r in rows.get("pin_stale", []) if r[0] == b}
         pinned = {k for k in pinned_all[b] if (not pages or k[0] in pages) and k not in stale}
-        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages)
+        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages, hint)
     allrows.sort(key=lambda r: (ORDER.get(r["处置"], 9), -r["结构分"], -r["装饰分"]))
     fields = ["列", "类", "处置", "结构分", "装饰分", "各项", "例格"]
     with open(out / "列清单.tsv", "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
         w.writeheader()
         w.writerows(allrows)
+    write_col_geometry(books, pages, out / "格几何.tsv")
     look = [r for r in allrows if r["处置"] in LOOK]
     n_img = montage(look, out, montage_limit) if look else 0
     cnt = collections.Counter(r["处置"] for r in allrows)
