@@ -53,6 +53,14 @@ def test_recall_manual_cells_by_pin_stale(tmp_path):
     assert agg["b:5:3"] == "钉子未生效"
 
 
+def test_geo_ref_ok_is_hint_not_structural():
+    """cv geo_ref_ok（格高离群但参校字证实）降成提示列：列出来供抽看，不算结构、不进闸；同列另有结构 flag 照报需钉子。"""
+    rows = {"geo_ref_ok": [("b", 5, 1, "cell_size", "6×0.2"), ("b", 5, 2, "half_width", "3a×0.69")],
+            "cell_size": [("b", 5, 2, "short", "8×0.3")]}
+    out = {r["列"]: (r["类"], r["处置"]) for r in sc.aggregate("b", rows, set(), {}, skip=set())}
+    assert out == {"b:5:1": ("提示", "格高·参校证实"), "b:5:2": ("结构", "需钉子")}
+
+
 def test_cell_size_is_structural():
     rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
     assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]
