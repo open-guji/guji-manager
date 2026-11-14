@@ -97,6 +97,13 @@ def test_cut_through_is_structural():
     assert r["例格"].startswith("劈字中 8|9 切割量 747px")
 
 
+def test_cut_through_weak_is_hint():
+    """cv 弱档（挪不到 1/3 格高，多是上下字笔画相触）只当提示，不算结构。"""
+    rows = {"cut_through": [("b", 27, 6, "弱", "8|9 切割量 400px，挪 +20px 可降到 0px")]}
+    (r,) = sc.aggregate("b", rows, set(), {}, skip=set())
+    assert (r["类"], r["处置"], r["结构分"]) == ("提示", "劈字弱·笔画相触", 0)
+
+
 def test_job_text_puts_counts_last():
     rep = "\n".join(["# 切分核查 016", "", "- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1", "",
                      "## 钉子未生效／格号不符／版式不符／需钉子／已钉复核／原因码看图", "", "- 016:66:9 需钉子：22CLIP",
