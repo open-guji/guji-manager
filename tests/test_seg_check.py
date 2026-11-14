@@ -104,6 +104,26 @@ def test_cut_through_weak_is_hint():
     assert (r["类"], r["处置"], r["结构分"]) == ("提示", "劈字弱·笔画相触", 0)
 
 
+def test_block_tall_book_hint():
+    """史記写本 BLOCK 只当提示（书级口径）；同列另有劈字等结构旗照样需钉子；殿本缺省不变。"""
+    rows = {"block_tall": [("b", 5, 1, 1.5, "3 字块高 180px 格高 120px"), ("b", 5, 2, 1.4, "4 …")],
+            "cut_through": [("b", 5, 2, "中", "4|5 切割量 600px")]}
+    out = {r["列"]: (r["类"], r["处置"]) for r in sc.aggregate("b", rows, set(), {}, skip=set(), hint_flags=("BLOCK",))}
+    assert out == {"b:5:1": ("提示", "书级提示"), "b:5:2": ("结构", "需钉子")}
+    out = {r["列"]: r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())}
+    assert out == {"b:5:1": "需钉子", "b:5:2": "需钉子"}
+
+
+def test_book_hint_flags_config(tmp_path):
+    """认书读 workspace.yaml 的 id；写了 seg_check.hint_flags 以它为准。"""
+    (tmp_path / "workspace.yaml").write_text("id: 988g3f0wsu\n", encoding="utf-8")
+    assert sc.book_hint_flags(tmp_path) == ("BLOCK",)
+    (tmp_path / "workspace.yaml").write_text("id: 988g3f0wsu\nseg_check:\n  hint_flags: []\n", encoding="utf-8")
+    assert sc.book_hint_flags(tmp_path) == ()
+    (tmp_path / "workspace.yaml").write_text("id: 96mid1ogzk\n", encoding="utf-8")
+    assert sc.book_hint_flags(tmp_path) == () and sc.book_hint_flags(None) == ()
+
+
 def test_job_text_puts_counts_last():
     rep = "\n".join(["# 切分核查 016", "", "- 处置计数（按列）：需钉子 1", "- 逐格 flags：CLIP 1", "",
                      "## 钉子未生效／格号不符／版式不符／需钉子／已钉复核／原因码看图", "", "- 016:66:9 需钉子：22CLIP",

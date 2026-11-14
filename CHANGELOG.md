@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：seg check 加书级口径「只当提示的旗」：`BOOK_HINT_FLAGS`（按 book-text id）＋workspace.yaml `seg_check.hint_flags`（写了优先，[] 全按结构）；史記写本缺省 BLOCK 字块过高只当提示「书级提示」，殿本不变（A22 11-14：SJ 抽 25 列 0 真错；r59 后人钉 77 列里带 BLOCK 的 14 列都另有结构旗，召回不变）。
+
 - PATCH：seg check 劈字弱档（cv `cut_through` level＝弱，挪不到 1/3 格高）记 `CUT_WEAK`，只当提示「劈字弱·笔画相触」，不进闸（史記 SJ 11-14 看图，A22 量过人钉列不掉召回）。要 cv 含 #1538。
 
 - PATCH：seg check 列清单：cv `align_drift` value 带 `page`（同页报出 ≥3 列）的记 `ALIGN_PAGE`，降成提示「对位串错·整页」，不进闸（史記 R017 SJ 抽看，A22 11-14）。要 cv 含 #1536。

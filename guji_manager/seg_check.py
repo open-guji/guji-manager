@@ -19,7 +19,8 @@
 - 格高·参校证实：只有格高／半格宽离群、但参校字落在字形匹配前 3 名且邻格无反证的格（cv `geo_ref_ok`，2026-11-13 史記 R011／R013），
   只列不算结构、不挡闸；写本册抽看用（SJ 11-14：R011 那批里混有真错）；
 - 公用清格：只有装饰类 flag（FOR／Fend／Fpatch／Lh／Lv／端格只有框线／同字对照带框 FRAME、FRAME_HEAVY＝重档／邻格笔画溢入 BLEED，未量过）；
-- 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）。
+- 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）；
+- 书级提示：书级口径里只当提示的旗（`BOOK_HINT_FLAGS`／`seg_check.hint_flags`，史記写本的 BLOCK），只有这类旗的列。
 
 书配置（工作区 `workspace.yaml`）：
 
@@ -27,6 +28,7 @@
 seg_check:
   head_pages: 3                       # 每册前几页当卷首页单列（缺省 0）
   skip: {"01": "39-52,54,121,127,138-139", "04": "124"}   # 点名跳过的页：年表、卷首题署、整页御题印…
+  hint_flags: [BLOCK]                 # 这本书只当提示的旗（缺省按 BOOK_HINT_FLAGS：史記 BLOCK；[] 全按结构）
 ```
 
 同字对照切坏检测（2026-11-12 并进来，`--no-defect` 关）：`review/seg_defect.book_flags`，殿本尺子
@@ -56,7 +58,7 @@ RULER_SHARDS = {
 }
 LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
 ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
-         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "劈字弱·笔画相触": 4.7, "已钉": 5}
+         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "劈字弱·笔画相触": 4.7, "书级提示": 4.8, "已钉": 5}
 
 
 # ── 书配置 ──────────────────────────────────────────────────────────────────
@@ -87,6 +89,27 @@ def book_config(ws: Path | None) -> dict:
     import yaml
     d = yaml.safe_load((Path(ws) / "workspace.yaml").read_text(encoding="utf-8")) or {}
     return d.get("seg_check") or {}
+
+
+#: 各书只当提示的 seg check 旗（书级口径，按 book-text 条目 id；工作区 workspace.yaml `seg_check.hint_flags` 写了就以它为准，
+#: 写 [] 即全按结构算）。写本字距、笔画长短不匀，按刻本定的几何检查在写本上多是字形本来如此：
+#: - 史記（文淵閣寫本）BLOCK 字块过高：SJ 11-14 r59 20/37/41/42 册新增约 170 列，抽 25 列看图全是长笔／笔画相触、0 真错；
+#:   r59 之后人钉的 77 列里带 BLOCK 的 14 列都另有结构旗，只当提示不掉召回（A22 11-14）。殿本照旧算结构
+#:   （ZM 11-13 vol06 147:3、vol07 133:7 靠它抓到、已钉）。
+BOOK_HINT_FLAGS: dict[str, tuple[str, ...]] = {
+    "988g3f0wsu": ("BLOCK",),
+}
+
+
+def book_hint_flags(ws: Path | None) -> tuple[str, ...]:
+    """这本书只当提示的旗：workspace.yaml `seg_check.hint_flags` 优先，没写按 `BOOK_HINT_FLAGS`（认书用 workspace.yaml 的 id）。"""
+    cfg = book_config(ws)
+    if "hint_flags" in cfg:
+        return tuple(str(f) for f in (cfg.get("hint_flags") or ()))
+    if ws is None:
+        return ()
+    from .review import seg_defect as sd
+    return BOOK_HINT_FLAGS.get(sd.book_id_of(ws), ())
 
 
 def _skip_for(book: str, skip: dict[str, set[int]]) -> set[int]:
@@ -129,8 +152,9 @@ def seg_causes(products_dir: Path, book: str) -> dict[tuple[int, int], list[tupl
 # ── 按列汇总 ────────────────────────────────────────────────────────────────
 
 def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], causes: dict, skip: set[int],
-              head_pages: int = 0) -> list[dict]:
-    """cv 筛查的各张表＋原因码 → 按列一行（列、类、处置、结构分、装饰分、各项、例格）。"""
+              head_pages: int = 0, hint_flags: tuple[str, ...] = ()) -> list[dict]:
+    """cv 筛查的各张表＋原因码 → 按列一行（列、类、处置、结构分、装饰分、各项、例格）。
+    `hint_flags`：这本书只当提示的旗（书级口径，`book_hint_flags`），计数改记 `<旗>_HINT`、不算结构分。"""
     col: dict = collections.defaultdict(collections.Counter)
     ex: dict = collections.defaultdict(list)
 
@@ -229,6 +253,10 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     out = []
     for k in set(col) | set(pinned):
         cn = col[k]
+        for f in hint_flags:
+            if cn.get(f):
+                cn[f + "_HINT"] = cn.pop(f)
+        hinted = [f for f in hint_flags if cn.get(f + "_HINT")]
         cause_n = sum(cn[a] for a in SEG_CAUSES)
         struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["BLOCK"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
@@ -244,7 +272,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
         elif pg:
-            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["CUT_WEAK"] else "对位"), pg
+            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["CUT_WEAK"] or hinted else "对位"), pg
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
@@ -261,6 +289,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             cls, act = "提示", "对位串错·整页"
         elif cn["CUT_WEAK"]:
             cls, act = "提示", "劈字弱·笔画相触"
+        elif hinted:
+            cls, act = "提示", "书级提示"
         elif k in pinned:
             cls, act = "", "已钉"
         else:
@@ -492,13 +522,16 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
         rows["seg_defect"] = defect_rows(books, pages, skip, ws)
     write_seg_screen_report(rows, counts, out / "筛查")
     allrows = []
+    hint = book_hint_flags(ws)
+    if hint:
+        print(f"ℹ️ 本书只当提示的旗（书级口径）：{', '.join(hint)}", file=sys.stderr)
     for b in books:
         cz = seg_causes(prod, b) if causes else {}
         if pages:
             cz = {k: v for k, v in cz.items() if k[0] in pages}
         stale = {(int(r[1]), int(r[2])) for r in rows.get("pin_stale", []) if r[0] == b}
         pinned = {k for k in pinned_all[b] if (not pages or k[0] in pages) and k not in stale}
-        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages)
+        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages, hint)
     allrows.sort(key=lambda r: (ORDER.get(r["处置"], 9), -r["结构分"], -r["装饰分"]))
     fields = ["列", "类", "处置", "结构分", "装饰分", "各项", "例格"]
     with open(out / "列清单.tsv", "w", encoding="utf-8", newline="") as f:
