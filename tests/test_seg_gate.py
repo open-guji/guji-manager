@@ -58,3 +58,43 @@ def test_ledger_filtered_by_book(tmp_path):
     led = tmp_path / "l.tsv"
     led.write_text("\t".join(sg.LEDGER_COLS) + "\n" + "R1\t史記\t2\tx\t01:5\t在办\tSJ\t\t\n", encoding="utf-8")
     assert sg.read_ledger(led, "殿本") == [] and len(sg.read_ledger(led, "史記")) == 1
+
+
+def _write_geo(d, geo):
+    with open(d / "格几何.tsv", "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(["列", "格几何"])
+        for k, g in geo.items():
+            w.writerow([k, g])
+
+
+def test_geometry_same_not_regress(tmp_path):
+    """新冒出的结构列，格子与旧包一样（线挪 ≤0.05 格高）→ 不挡、切分未定里记「几何没变」；挪多了照挡；缺几何表照旧挡。"""
+    base = _write(tmp_path / "base", [])
+    new = _write(tmp_path / "new", [("031:5:1", "需钉子"), ("031:5:2", "需钉子"), ("031:5:3", "需钉子")])
+    g0 = "1:0,100,10,300;2:0,300,10,500;3:0,500,10,700#1:1,110,9,290"
+    _write_geo(base, {"031:5:1": g0, "031:5:2": g0, "031:5:3": g0})
+    _write_geo(new, {"031:5:1": "1:0,103,10,302;2:0,302,10,498;3:0,498,10,700#1:1,112,9,290",
+                     "031:5:2": "1:0,100,10,260;2:0,260,10,500;3:0,500,10,700#1:1,110,9,290",
+                     "031:5:3": "1:0,100,10,300;2:0,300,10,500;3a:5,500,10,700;3b:0,500,5,700#1:1,110,9,290"})
+    _, code = sg.run(new, base, tmp_path / "out")
+    meta = json.loads((tmp_path / "out" / "gate.json").read_text(encoding="utf-8"))
+    assert code == 3 and meta["n_regress"] == 2 and meta["n_geo_same"] == 1 and meta["geometry"]
+    with open(tmp_path / "out" / "切分未定.tsv", encoding="utf-8") as f:
+        rows = {r["列"]: r["回退"] for r in csv.DictReader(f, delimiter="\t")}
+    assert rows == {"1": "几何没变", "2": "是", "3": "是"}
+    (base / "格几何.tsv").unlink()
+    _, code = sg.run(new, base, tmp_path / "out2")
+    assert code == 3 and json.loads((tmp_path / "out2" / "gate.json").read_text(encoding="utf-8"))["n_regress"] == 3
+
+
+def test_r020_qtw_s1_regression_sample():
+    """全唐文 R020（2026-11-14）：s1 对 g1 闸挡 143 列，QTW 逐列看图。按 0.05 格高收掉「切分没变」53 列，32 列真回退一列不放。"""
+    from pathlib import Path
+    with open(Path(__file__).parent / "data" / "seg_gate_R020_qtw_s1.tsv", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f, delimiter="\t"))
+    assert len(rows) == 143
+    same = {r["列"] for r in rows if sg.geometry_same(r["s1格几何"], r["g1格几何"])}
+    real = {r["列"] for r in rows if r["结论"] == "s1 真回退"}
+    assert len(real) == 32 and not (same & real)
+    assert {r["结论"] for r in rows if r["列"] in same} == {"切分没变(闸误报)"} and len(same) == 53
