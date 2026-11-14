@@ -69,6 +69,13 @@ def test_align_drift_is_structural_even_with_ref_gap_codes():
     assert out["b:5:1"] == "需钉子" and out["b:5:2"] == "需钉子"
 
 
+def test_align_drift_whole_page_is_hint():
+    """同页报出 ≥3 列（cv 在 value 加 page）是整页的事（透印、版式），降成提示，不进闸。"""
+    rows = {"align_drift": [("b", 7, 1, "pair,page", "ObbbOO"), ("b", 7, 2, "run,page", "OBbBBO")]}
+    out = {r["列"]: (r["类"], r["处置"], r["结构分"]) for r in sc.aggregate("b", rows, set(), {}, skip=set())}
+    assert out == {"b:7:1": ("提示", "对位串错·整页", 0), "b:7:2": ("提示", "对位串错·整页", 0)}
+
+
 def test_cell_size_is_structural():
     rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
     assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]
