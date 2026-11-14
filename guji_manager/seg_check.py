@@ -13,6 +13,8 @@
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
+- 格高·参校证实：只有格高／半格宽离群、但参校字落在字形匹配前 3 名且邻格无反证的格（cv `geo_ref_ok`，2026-11-13 史記 R011／R013），
+  只列不算结构、不挡闸；写本册抽看用（SJ 11-14：R011 那批里混有真错）；
 - 公用清格：只有装饰类 flag（FOR／Fend／Fpatch／Lh／Lv／端格只有框线／同字对照带框 FRAME、FRAME_HEAVY＝重档／邻格笔画溢入 BLEED，未量过）；
 - 点名跳过、卷首页：书配置点名的页、卷首几页单列（SJ 第 3 条）。
 
@@ -51,7 +53,7 @@ RULER_SHARDS = {
 }
 LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
 ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
-         "公用清格": 4, "已钉": 5}
+         "公用清格": 4, "格高·参校证实": 4.5, "已钉": 5}
 
 
 # ── 书配置 ──────────────────────────────────────────────────────────────────
@@ -185,6 +187,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                 fl = "FRAME_HEAVY"
             col[k][fl] += 1
             ex[k].insert(0 if fl in ("MERGED", "CLIP") else len(ex[k]), f"{str(r[4]).split()[0]}{fl}")
+    for r in rows.get("geo_ref_ok", []):        # cv eval/seg_screen：格高／半格宽离群、但参校字证实，降成提示（不算结构）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["GEO_OK"] += 1
+            ex[k].append(f"{r[4]}证实")
     for r in rows.get("edge_frame_only", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -226,7 +233,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
         elif pg:
-            cls, act = ("结构" if struct else "装饰" if cosm else "对位"), pg
+            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] else "对位"), pg
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
@@ -237,6 +244,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             cls, act = "对位", "对位（○）"
         elif cosm:
             cls, act = "装饰", "公用清格"
+        elif cn["GEO_OK"]:
+            cls, act = "提示", "格高·参校证实"
         elif k in pinned:
             cls, act = "", "已钉"
         else:
