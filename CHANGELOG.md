@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：seg check 劈字弱档（cv `cut_through` level＝弱，挪不到 1/3 格高）记 `CUT_WEAK`，只当提示「劈字弱·笔画相触」，不进闸（史記 SJ 11-14 看图，A22 量过人钉列不掉召回）。要 cv 含 #1538。
+
 - PATCH：seg check 列清单：cv `align_drift` value 带 `page`（同页报出 ≥3 列）的记 `ALIGN_PAGE`，降成提示「对位串错·整页」，不进闸（史記 R017 SJ 抽看，A22 11-14）。要 cv 含 #1536。
 
 - PATCH：seg check 列清单收 cv `align_drift`（对位串错·疑整列错位，史記台账 R017，A22 11-14），flag `ALIGN`、算结构「需钉子」；不按 A6／A9 排除（劈出的那格整理本本来就没字）。要 cv 含 #1535。

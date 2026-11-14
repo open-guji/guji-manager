@@ -9,7 +9,7 @@
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
-  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判；
+  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判（弱档 CUT_WEAK 只当提示「劈字弱·笔画相触」）；
   对位串错 ALIGN＝cv align_drift，一列里连续对不上参校字、劈或并后整列错一格（史記 R017，11-14）；同页报出 ≥3 列的
   （cv 标 page）记 ALIGN_PAGE，只当提示「对位串错·整页」（透印、版式、整页没对上，SJ 抽看）。
   不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
@@ -56,7 +56,7 @@ RULER_SHARDS = {
 }
 LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
 ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
-         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "已钉": 5}
+         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "劈字弱·笔画相触": 4.7, "已钉": 5}
 
 
 # ── 书配置 ──────────────────────────────────────────────────────────────────
@@ -180,8 +180,9 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     for r in rows.get("cut_through", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
-            col[k]["CUT"] += 1
-            ex[k].insert(0, f"劈字{str(r[3])} {str(r[4]).split('，')[0]}")
+            weak = str(r[3]) == "弱"            # cv CUT_WEAK_MOVE：挪不到 1/3 格高，多是上下字笔画相触（SJ 11-14），只当提示
+            col[k]["CUT_WEAK" if weak else "CUT"] += 1
+            ex[k].insert(len(ex[k]) if weak else 0, f"劈字{r[3]!s} {str(r[4]).split('，')[0]}")
     for r in rows.get("seg_defect", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -243,7 +244,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
         elif pg:
-            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] else "对位"), pg
+            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["CUT_WEAK"] else "对位"), pg
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
@@ -258,6 +259,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             cls, act = "提示", "格高·参校证实"
         elif cn["ALIGN_PAGE"]:
             cls, act = "提示", "对位串错·整页"
+        elif cn["CUT_WEAK"]:
+            cls, act = "提示", "劈字弱·笔画相触"
         elif k in pinned:
             cls, act = "", "已钉"
         else:
