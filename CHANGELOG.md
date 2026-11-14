@@ -2,7 +2,7 @@
 
 版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
-## [未发版]
+## [0.4.49] - 2026-11-14
 
 - PATCH：`guji corpus build` 出书库清单前扫参校本（group=reference、root=ws 的 .txt）里的缅甸文码位 U+1000–U+109F（殆知阁缺字图占位码），有就拒绝出版本，报处数和前 5 处行号（A20 11-14，史記 v2 73 处、殿本 v17 233 处都是导入漏转，#577）。
 - PATCH：测试 `from_cv/test_code_deps_coverage.py` 跟 cv dev 同步：border_detect_gate 已不 import pagetype_model，删存量条目；seed_admit→groups.wu_shape（cv#1509，缺省关）登进 NOT_IN_FP 并注明模块代码不进指纹。
