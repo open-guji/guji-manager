@@ -61,6 +61,14 @@ def test_geo_ref_ok_is_hint_not_structural():
     assert out == {"b:5:1": ("提示", "格高·参校证实"), "b:5:2": ("结构", "需钉子")}
 
 
+def test_align_drift_is_structural_even_with_ref_gap_codes():
+    """cv align_drift（R017 对位串错）算结构「需钉子」；列里带 A6／A9 也照报（劈出来那格整理本本来就没字）。"""
+    rows = {"align_drift": [("b", 5, 1, "split,unsettled", "bnObOOb"), ("b", 5, 2, "run", "OObbbOO")]}
+    causes = {(5, 2): [("3", "A6", False)]}
+    out = {r["列"]: r["处置"] for r in sc.aggregate("b", rows, set(), causes, skip=set())}
+    assert out["b:5:1"] == "需钉子" and out["b:5:2"] == "需钉子"
+
+
 def test_cell_size_is_structural():
     rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
     assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]

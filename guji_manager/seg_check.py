@@ -9,7 +9,9 @@
 - 格号不符：钉子列 cell_shrink 出的格号集合 ≠ 钉子（钉子列只比格号、不跑墨账，SJ 第 5 条）；
 - 版式不符：非钉子列格位表格数 ≠ 实出（格数同只编号不同判过、只计数，SJ 第 4 条）；
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
-  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判）；
+  夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判；
+  对位串错 ALIGN＝cv align_drift，一列里连续对不上参校字、劈或并后整列错一格（史記 R017，11-14）。
+  不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
@@ -187,6 +189,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                 fl = "FRAME_HEAVY"
             col[k][fl] += 1
             ex[k].insert(0 if fl in ("MERGED", "CLIP") else len(ex[k]), f"{str(r[4]).split()[0]}{fl}")
+    for r in rows.get("align_drift", []):       # cv eval/seg_screen.align_drift：对位串错·疑整列错位（R017）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["ALIGN"] += 1
+            ex[k].insert(0, f"对位串错({r[3]}) {r[4]}")
     for r in rows.get("geo_ref_ok", []):        # cv eval/seg_screen：格高／半格宽离群、但参校字证实，降成提示（不算结构）
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -223,7 +230,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         struct = (cn["ORPH_mid"] * 5 + cn["JZW"] * 3 + cn["TALL"] * 3 + cn["BLOCK"] * 3 + cn["SHORT"] * 2 + cn["ORPH_head"]
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
-                  + cn["PIN"] * 10 + cause_n * 2)
+                  + cn["PIN"] * 10 + cause_n * 2
+                  + cn["ALIGN"] * 3)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
         if cn["PIN_STALE"]:
