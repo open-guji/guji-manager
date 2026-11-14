@@ -75,6 +75,33 @@ def _col_union(boxes: list[tuple[str, list]], pad: int):
     return [x0, y0, x1, y1], pad
 
 
+def ref_chars(align_ref: dict) -> dict[str, str]:
+    """格号 → 参校本字。以页钉坐标字（coord.ref_char）为准，缺了才用见证对位字（chars.align_char）。"""
+    out = {c["id"]: c.get("align_char") or "" for c in align_ref.get("chars", []) if c.get("id")}
+    for c in align_ref.get("coord", []) or []:
+        if c.get("id") and c.get("ref_char"):
+            out[c["id"]] = c["ref_char"]
+    return out
+
+
+def reading_order(seq: list[str]) -> list[str]:
+    """一列格号按阅读顺序：双行小注一段内先读完右行 a，再读左行 b；大字照格序。"""
+    out, run = [], []
+
+    def flush():
+        out.extend([k for k in run if k.endswith("a")] + [k for k in run if not k.endswith("a")])
+        run.clear()
+
+    for k in seq:
+        if k[-1] in "ab":
+            run.append(k)
+        else:
+            flush()
+            out.append(k)
+    flush()
+    return out
+
+
 def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str = "{page}.png",
                   pad: int = 12, ctx_n: int = 10, pack_dir: str | None = None, max_h: int = 700, span: int | None = 1) -> dict:
     """对每格出：<格号>_col.png（本格红框，只取本格及上下各 span 格；span=None 取整列）、_nbr.png／_nbl.png（右列、左列同一高度段）、同列 ±ctx_n 格的上下文字串。
@@ -115,8 +142,7 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
         if pack_dir:
             ar = Path(_fmt(pack_dir, v, p)) / "align_ref" / f"p{p:04d}.json"
             if ar.exists():
-                for c in json.loads(ar.read_text(encoding="utf-8")).get("align_ref", {}).get("chars", []):
-                    refc[c["id"]] = c.get("align_char") or ""
+                refc = ref_chars(json.loads(ar.read_text(encoding="utf-8")).get("align_ref", {}))
 
         def col_img(cn, mark=None, yr=None):
             bx = cols.get(cn)
@@ -139,6 +165,7 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
             col = int(i.split(":")[2])
             r: dict = {}
             seq = [k for k, _ in cols.get(col, [])]
+            rseq = reading_order(seq)
             yr = None
             if span is not None and i in seq:
                 j0 = seq.index(i)
@@ -155,9 +182,9 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
                     f = out / (i.replace(":", "_") + f"_{tag}.png"); ni.save(f); nb.append({"img": str(f), "label": lab})
             if nb:
                 r["nb_imgs"] = nb
-            if chars and i in seq:
-                j = seq.index(i)
-                a, b = seq[max(0, j - ctx_n):j], seq[j + 1:j + 1 + ctx_n]
+            if chars and i in rseq:
+                j = rseq.index(i)
+                a, b = rseq[max(0, j - ctx_n):j], rseq[j + 1:j + 1 + ctx_n]
                 tx = lambda ks: "".join((chars.get(k) or "？") for k in ks)
                 r["ctx"] = f"机器：{tx(a)}【】{tx(b)}"
                 if refc:
