@@ -46,6 +46,10 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.stroke_veto"):
         "只在 stroke_veto 开时跑笔画反向护栏（cv#1487，缺省空串＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 stroke_veto 之前要把本模块并入该册指纹（随启用的 PR 补）",
+    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.wu_shape"):
+        "只在 group_flow_wu_shape 开时跑嗚鳴刻形判法（cv#1509，缺省空串＝关，旧指纹不变）；开着时模型文件 sha256 经 \"ws\" 段进参数指纹。"
+        "但 wu_shape 模块代码本身不进指纹（同类 rr_shape 在 code_deps 里）——开它的书（全唐文）改了这个模块要手动判过期，"
+        "或随下次本来就要变 seed_admit code_hash 的 PR 把它补进 code_deps（A31 11-14 登记，已告知 A20）",
     ("open_guji_cv.steps.invert_detect", "open_guji_cv.utils.preclean"): "只解析预处理后的原图路径",
     ("open_guji_cv.steps.border_detect", "open_guji_cv.feedback.lookup"):
         "只读人裁逐列抬头（head-raise-columns）；裁决不进指纹、靠该页显式重跑生效，同 row_segment 读 manual-cells（#706）",
@@ -55,10 +59,6 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
 
 #: 存量缺口（2026-10-23 普查）：搭车补，只减不加。
 EXISTING_GAPS: dict[str, set[str]] = {
-    "open_guji_cv.gates.border_detect_gate": {
-        "open_guji_cv.pagetype_model.gate",
-        "open_guji_cv.pagetype_model.model",
-    },
     "open_guji_cv.gates.column_gate": {
         f"{KEBEN}.jiazhu_split",
     },

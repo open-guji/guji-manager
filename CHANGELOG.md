@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+- PATCH：`guji corpus build` 出书库清单前扫参校本（group=reference、root=ws 的 .txt）里的缅甸文码位 U+1000–U+109F（殆知阁缺字图占位码），有就拒绝出版本，报处数和前 5 处行号（A20 11-14，史記 v2 73 处、殿本 v17 233 处都是导入漏转，#577）。
+- PATCH：测试 `from_cv/test_code_deps_coverage.py` 跟 cv dev 同步：border_detect_gate 已不 import pagetype_model，删存量条目；seed_admit→groups.wu_shape（cv#1509，缺省关）登进 NOT_IN_FP 并注明模块代码不进指纹。
+
 - PATCH：seg check 加书级口径「只当提示的旗」：`BOOK_HINT_FLAGS`（按 book-text id）＋workspace.yaml `seg_check.hint_flags`（写了优先，[] 全按结构）；史記写本缺省 BLOCK 字块过高只当提示「书级提示」，殿本不变（A22 11-14：SJ 抽 25 列 0 真错；r59 后人钉 77 列里带 BLOCK 的 14 列都另有结构旗，召回不变）。
 
 - PATCH：seg check 劈字弱档（cv `cut_through` level＝弱，挪不到 1/3 格高）记 `CUT_WEAK`，只当提示「劈字弱·笔画相触」，不进闸（史記 SJ 11-14 看图，A22 量过人钉列不掉召回）。要 cv 含 #1538。
@@ -17,7 +20,7 @@
 - PATCH：`guji seg check` 读 cv 新表 `block_tall`，字块过高 BLOCK（cell_shrink 字块比本格格线高 ≥1.35 倍）计结构分 3、进「需钉子」（ZM 11-13，殿本 vol06 147:3:3：格线对、字块连上长竖线，旧版只有 Lv 判公用清格而漏）。要 cv ≥ #1522 的版本；旧 cv 没这张表时无影响。
 - PATCH：seg check 写本误报（史記台账 R011／R012，A22 11-13）：① 同字对照切坏检测认书先读 `workspace.yaml` 的 `id:`，认不出不再静默按殿本口径跑（会把写本长笔伸出格报成 CLIP，史記 15 册殿本口径 clipped 54 列、史記口径 2 列），改为提示；② merged 两团字要墨量小比大 ≥0.20（写本列尾字脚下的句读圈、残笔不算并格）；③ 召回不把 cv `geo_ref_ok` 豁免表算报出。
 
-- MINOR：新命令 `guji seg gate`（标 main 前的切分不回退闸，A22 11-13，Sheldon 定不要求清零）：比候选包与现役 main 两份 `guji seg check` 列清单，候选包新冒出的结构列（回退）或新页级错退出 3；已知未清的列按根因台账（ai-team `domain/CV/A22/切分根因台账.tsv`）挂根因号、没挂的列为「未登记」只提醒；出 `切分未定.tsv` 供下游跳过。文档：切分快筛十二节、四层工作法、轮报告与验收工具一览。
+- PATCH：新命令 `guji seg gate`（标 main 前的切分不回退闸，A22 11-13，Sheldon 定不要求清零）：比候选包与现役 main 两份 `guji seg check` 列清单，候选包新冒出的结构列（回退）或新页级错退出 3；已知未清的列按根因台账（ai-team `domain/CV/A22/切分根因台账.tsv`）挂根因号、没挂的列为「未登记」只提醒；出 `切分未定.tsv` 供下游跳过。文档：切分快筛十二节、四层工作法、轮报告与验收工具一览。
 
 ## [0.4.48] - 2026-11-13
 
