@@ -19,10 +19,11 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
-from .._cv import BASE_DIR, BASE_WS, ITEMS, PACK_DIR, core_corpus_pin_REPO_ROOT as REPO_ROOT, base_manifest_path, base_versions, check_files, collect, core_corpus_pin_load_manifest as load_manifest, manifest_path, pack_root, versions
+from .._cv import _base, BASE_DIR, BASE_WS, ITEMS, PACK_DIR, core_corpus_pin_REPO_ROOT as REPO_ROOT, base_manifest_path, base_versions, check_files, collect, core_corpus_pin_load_manifest as load_manifest, manifest_path, pack_root, versions
 
 
 def _never_match_hash() -> str:
@@ -71,6 +72,32 @@ def _resolve_base(ws: Path, base) -> int | None:
         raise FileNotFoundError(f"本机没有底库 b{b}（有 {have}）：先 guji db pull -w {ws}")
     return b
 
+GLYPH_PLACEHOLDER_RE = re.compile(r"[\u1000-\u109f]")
+"""殆知阁（daizhige）的缺字图占位码：缅甸文字母 U+1001 起、按条／叶重新编号，同条 `glyphs` 给字图。
+殿本 v17（233 处，cv #461）、史記 v2（73 处，A31 11-14）都是导入时漏转、原样进了整理本。
+我们收的整理本里不会有真的缅甸文，所以出书库清单前一律拦下。"""
+
+
+def glyph_placeholder_hits(ws: Path, items: list[dict], limit: int = 5) -> dict[str, dict]:
+    """参校本（group=reference）文本里的缅甸文码位：``{路径: {"n": 处数, "first": [行号:字, …]}}``。"""
+    out: dict[str, dict] = {}
+    for it in items:
+        if it.get("group") != "reference" or it.get("root") != "ws" or not it["path"].endswith(".txt"):
+            continue
+        p = _base("ws", it["path"], ws) / it["path"]       # 整理本在中心库数据目录，不在工作区仓里
+        if not p.is_file():
+            continue
+        n, first = 0, []
+        with open(p, encoding="utf-8", errors="replace") as f:
+            for ln, line in enumerate(f, 1):
+                for m in GLYPH_PLACEHOLDER_RE.finditer(line):
+                    n += 1
+                    if len(first) < limit:
+                        first.append(f"{ln}:U+{ord(m.group()):04X}")
+        if n:
+            out[it["path"]] = {"n": n, "first": first}
+    return out
+
 
 def build(ws: Path, version: int | None = None, note: str = "", base=None) -> Path:
     """出新版清单。已存在的版本号拒绝覆盖；缺省取现有最大号 + 1。
@@ -83,6 +110,10 @@ def build(ws: Path, version: int | None = None, note: str = "", base=None) -> Pa
         raise FileExistsError(f"语料库 v{v} 已存在（{out}），不覆盖；要新版请不给 --version")
     b = _resolve_base(ws, base)
     items = collect(ws)
+    hits = glyph_placeholder_hits(ws, items)
+    if hits:
+        raise ValueError(f"参校本里有殆知阁缺字图占位码（缅甸文 U+1000–U+109F）：{hits}；"
+                         "按 glyphs 换成 〓（或认出的真字）再出版本，见 open-guji-cv scripts/dzg_import.py 模块头")
     man = {
         "corpus_version": v,
         "created": datetime.date.today().isoformat(),
