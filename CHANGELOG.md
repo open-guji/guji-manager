@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：seg check 列清单：cv `align_drift` value 带 `page`（同页报出 ≥3 列）的记 `ALIGN_PAGE`，降成提示「对位串错·整页」，不进闸（史記 R017 SJ 抽看，A22 11-14）。要 cv 含 #1536。
+
 - PATCH：seg check 列清单收 cv `align_drift`（对位串错·疑整列错位，史記台账 R017，A22 11-14），flag `ALIGN`、算结构「需钉子」；不按 A6／A9 排除（劈出的那格整理本本来就没字）。要 cv 含 #1535。
 
 - PATCH：seg check 列清单把 cv `geo_ref_ok`（格高／半格宽离群但参校字证实、不报结构的格）列成处置「格高·参校证实」（类「提示」），不算结构、不进 `seg gate`，写本册可抽看（SJ 11-14：R011 那批里混有真错；A22 用 SJ 新钉 21 列量过，豁免没放过一列）。
