@@ -494,6 +494,63 @@ def job_text(report: str) -> str:
     return "\n".join(body + [f"- ○对位（不归切分）{n_dui} 列，明细见 report.md"] + head + tail)
 
 
+# ── 格几何（seg gate 用）────────────────────────────────────────────────────
+
+def col_geometry(row_segment: dict, char_index=None) -> dict[int, str]:
+    """一页 row_segment 产物（JSON）＋ cell_shrink char_index → {列: 格几何串}。
+
+    串＝`格框#字框`：格框是按格号排的 `格号[a|b]:x0,y0,x1,y1`（row_segment 切出的格，夹注左右分界也在里头），字框同写法
+    （cell_shrink 收墨后的框，cell_shrink 改了归墨也算切分变了）。都用整页坐标——列图原点会随 border_detect 挪，列图坐标不可比。
+    seg gate 拿两个包同一列的串比（`seg_gate.geometry_same`）：格号集合一样、线和框都挪不到 `GEO_SAME_TOL` 格高，就算切分没变，
+    seg check 报的差异只能来自对位、放行、参校本等下游（全唐文 R020，A22 11-14）。"""
+    rows: dict[int, list] = collections.defaultdict(list)
+    for cc in (row_segment.get("cells") or {}).get("columns") or []:
+        for x in cc.get("cells") or []:
+            qs = x.get("quad_page") or []
+            if qs:
+                xs, ys = [q[0] for q in qs], [q[1] for q in qs]
+                rows[int(cc["col"])].append((int(x["slot"]), str(x.get("sub") or ""),
+                                             round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))))
+    boxes: dict[int, list] = collections.defaultdict(list)
+    for cc in getattr(char_index, "columns", None) or []:
+        for x in cc.chars:
+            if x.bbox_page:
+                boxes[int(cc.col)].append((int(x.slot), str(x.sub or ""), *(round(v) for v in x.bbox_page)))
+    out = {}
+    for c in rows:
+        g = ";".join(f"{s}{sub}:{a},{b},{e},{f}" for s, sub, a, b, e, f in sorted(rows[c]))
+        bx = ";".join(f"{s}{sub}:{a},{b},{e},{f}" for s, sub, a, b, e, f in sorted(boxes.get(c, [])))
+        out[c] = f"{g}#{bx}"
+    return out
+
+
+def write_col_geometry(books: list[str], pages: set[int] | None, path: Path) -> int:
+    """查过的页每列一行 (列, 格几何)，给 `guji seg gate` 判「格几何没变」。读不到 row_segment 的页跳过。"""
+    from ._cv import ProductStore, page_key
+    store = ProductStore()
+    n = 0
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(["列", "格几何"])
+        for b in books:
+            pgs = sorted(int(q.stem[1:]) for q in store.step_dir(b, "row_segment").glob("p*.json") if q.stem[1:].isdigit())
+            for p in pgs:
+                if pages and p not in pages:
+                    continue
+                try:
+                    d = json.loads(store.path(b, "row_segment", page_key(p)).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                try:
+                    ci = store.read(b, "cell_shrink", page_key(p), "char_index")
+                except Exception:  # noqa: BLE001
+                    ci = None
+                for c, g in sorted(col_geometry(d, ci).items()):
+                    w.writerow([f"{b}:{p}:{c}", g])
+                    n += 1
+    return n
+
+
 # ── 一条命令 ────────────────────────────────────────────────────────────────
 
 def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dict[str, set[int]] | None = None,
@@ -538,6 +595,7 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
         w = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
         w.writeheader()
         w.writerows(allrows)
+    write_col_geometry(books, pages, out / "格几何.tsv")
     look = [r for r in allrows if r["处置"] in LOOK]
     n_img = montage(look, out, montage_limit) if look else 0
     cnt = collections.Counter(r["处置"] for r in allrows)

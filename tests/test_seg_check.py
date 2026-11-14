@@ -143,3 +143,18 @@ def test_block_tall_is_structural_even_with_lv():
     (r,) = sc.aggregate("b", rows, set(), {}, skip=set())
     assert (r["列"], r["处置"], r["结构分"]) == ("b:147:3", "需钉子", 3)
     assert r["例格"].startswith("字块过高×3.34")
+
+
+def test_col_geometry_page_coords():
+    """格几何用整页坐标：格框取 quad_page、字框取 bbox_page；夹注 a/b 分开记（seg gate R020）。"""
+    from types import SimpleNamespace as NS
+
+    from guji_manager import seg_check as sc
+    def q(y0, y1):
+        return [[10, y0], [0, y0], [0, y1], [10, y1]]
+    rs = {"cells": {"columns": [{"col": 2, "cells": [
+        {"slot": 2, "sub": None, "quad_page": q(300.4, 500)}, {"slot": 1, "sub": None, "quad_page": q(100, 300.4)},
+        {"slot": 3, "sub": "a", "quad_page": q(500, 700)}, {"slot": 3, "sub": "b", "quad_page": q(500, 700)}]}]}}
+    ci = NS(columns=[NS(col=2, chars=[NS(slot=1, sub=None, bbox_page=[1.2, 110, 9, 290]),
+                                      NS(slot=2, sub=None, bbox_page=None)])])
+    assert sc.col_geometry(rs, ci) == {2: "1:0,100,10,300;2:0,300,10,500;3a:0,500,10,700;3b:0,500,10,700#1:1,110,9,290"}
