@@ -152,7 +152,7 @@ def _find(doc, cid):
 def cells_from_pack(ids: list[str], pack_dir: str, lib_counts: dict[str, int] | None = None) -> list[Cell]:
     """pack_dir 可带 {vol}；各册须有 glyph_match / rare_candidates / align_ref。找不到 glyph_match 的格跳过。"""
     lib_counts = lib_counts or {}
-    out = []
+    out, refs = [], {}
     for cid in ids:
         vol, page = cid.split(":")[0], int(cid.split(":")[1])
         pk = Path(pack_dir.format(vol=vol))
@@ -160,12 +160,14 @@ def cells_from_pack(ids: list[str], pack_dir: str, lib_counts: dict[str, int] | 
         if g is None:
             continue
         r5 = _find(_load(pk, "rare_candidates", page), cid) or {}
-        ar = _find(_load(pk, "align_ref", page), cid) or {}
+        if (pk, page) not in refs:
+            from .crop import ref_chars
+            refs[(pk, page)] = ref_chars(_load(pk, "align_ref", page) or {})
         cands = g.get("candidates") or []
         lib, cov = (cands[0][0], float(cands[0][1])) if cands else ("", 0.0)
         emb = sorted(((x["char"], float(x["score"])) for x in r5.get("candidates", []) if x.get("font") == "emb"),
                      key=lambda t: -t[1])
-        out.append(Cell(cid, ar.get("align_char") or "", lib, cov, lib_counts.get(lib, 0), emb))
+        out.append(Cell(cid, refs[(pk, page)].get(cid, ""), lib, cov, lib_counts.get(lib, 0), emb))
     return out
 
 

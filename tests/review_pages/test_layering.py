@@ -81,3 +81,12 @@ def test_cells_from_pack(tmp_path):
     w("align_ref", {"chars": [{"id": cid, "align_char": "剄"}]})
     [c] = cells_from_pack([cid, "29:165:3:9"], str(tmp_path / "{vol}"), {"則": 4})
     assert (c.ref, c.lib, c.lib_n, c.top) == ("剄", "則", 4, ["剄", "到"])
+
+
+def test_ref_prefers_coord_and_reading_order():
+    from guji_manager.review_pages.crop import reading_order, ref_chars
+    ar = {"chars": [{"id": "1:1:1:2", "align_char": "甲"}],
+          "coord": [{"id": "1:1:1:2", "ref_char": "乙"}, {"id": "1:1:1:3a", "ref_char": "丙"}]}
+    assert ref_chars(ar) == {"1:1:1:2": "乙", "1:1:1:3a": "丙"}
+    seq = ["c:1", "c:2a", "c:2b", "c:3a", "c:3b", "c:4", "c:5a", "c:5b"]
+    assert reading_order(seq) == ["c:1", "c:2a", "c:3a", "c:2b", "c:3b", "c:4", "c:5a", "c:5b"]
