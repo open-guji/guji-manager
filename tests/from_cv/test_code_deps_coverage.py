@@ -50,6 +50,9 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
         "只在 group_flow_wu_shape 开时跑嗚鳴刻形判法（cv#1509，缺省空串＝关，旧指纹不变）；开着时模型文件 sha256 经 \"ws\" 段进参数指纹。"
         "但 wu_shape 模块代码本身不进指纹（同类 rr_shape 在 code_deps 里）——开它的书（全唐文）改了这个模块要手动判过期，"
         "或随下次本来就要变 seed_admit code_hash 的 PR 把它补进 code_deps（A31 11-14 登记，已告知 A20）",
+    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.part_shape"):
+        "只在 group_flow_part_shape 开时跑部件刻形判法（cv#1553，缺省空＝关，旧指纹不变）；开着时模型文件经 \"pt\" 段进参数指纹。"
+        "模块代码本身不进指纹（同 wu_shape）——开它的书改了这个模块要手动判过期，或随下次本来就要变 seed_admit code_hash 的 PR 补进 code_deps（A31 11-15 登记）",
     ("open_guji_cv.steps.invert_detect", "open_guji_cv.utils.preclean"): "只解析预处理后的原图路径",
     ("open_guji_cv.steps.border_detect", "open_guji_cv.feedback.lookup"):
         "只读人裁逐列抬头（head-raise-columns）；裁决不进指纹、靠该页显式重跑生效，同 row_segment 读 manual-cells（#706）",
