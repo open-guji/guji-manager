@@ -1,0 +1,224 @@
+<title>殿本参校待判</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&display=swap">
+<style>
+/* 版面：顶栏（册、进度、筛选）＋ 按组分节的审阅卡；每卡左图（本列／放大）右文（三家读法与点选） */
+:root{
+  --paper:#f7f6f2; --card:#ffffff; --ink:#1f2328; --muted:#646a73; --line:#dedcd5;
+  --zhu:#b8322a; --zhu-soft:#f6e3e0; --ok:#2d7a4f; --ok-soft:#e2f1e8; --chip:#efede7;
+  --serif:"Noto Serif TC","Songti TC","SimSun",serif;
+  --sans:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#17181a; --card:#212226; --ink:#e9e7e2; --muted:#a2a29c; --line:#36373b;
+  --zhu:#e2675d; --zhu-soft:#3b2524; --ok:#6cc392; --ok-soft:#1f3328; --chip:#2c2d31; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#17181a; --card:#212226; --ink:#e9e7e2; --muted:#a2a29c; --line:#36373b;
+  --zhu:#e2675d; --zhu-soft:#3b2524; --ok:#6cc392; --ok-soft:#1f3328; --chip:#2c2d31; color-scheme:dark}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+.wrap{max-width:1040px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border-bottom:1px solid var(--line);padding-block:12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+h1{font-family:var(--serif);font-size:20px;margin:0;font-weight:700}
+.batch{color:var(--muted);font-size:13px}
+.prog{font-variant-numeric:tabular-nums;font-size:14px}
+.prog b{color:var(--zhu)}
+.sp{flex:1}
+.tabs{display:flex;gap:4px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:4px 10px}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--zhu);outline-offset:2px}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.all{border-color:var(--zhu);color:var(--zhu)}
+.status{font-size:13px;color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:16px;margin-top:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:16px;align-items:start}
+.card.done{border-color:var(--ok)}
+.card.rule{grid-template-columns:minmax(0,1fr)}
+.colimg{height:380px;width:auto;border:1px solid var(--line);background:#fff}
+.zimg{width:200px;border:1px solid var(--line);background:#fff}
+.figs{display:contents}
+.info{min-width:0;display:flex;flex-direction:column;gap:8px}
+.meta{display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted)}
+.chip{background:var(--chip);border-radius:4px;padding:1px 7px}
+.chip.k{background:var(--zhu-soft);color:var(--zhu)}
+.ctx{font-family:var(--serif);font-size:22px;letter-spacing:.06em;word-break:break-all}
+.ctx em{font-style:normal;color:var(--zhu);border-bottom:2px solid var(--zhu)}
+.reads{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;font-size:13px}
+.reads div{background:var(--chip);border-radius:6px;padding:4px 8px}
+.reads span{display:block;color:var(--muted);font-size:11.5px}
+.reads b{font-family:var(--serif);font-size:20px;font-weight:500}
+.note{font-size:14px}
+.rec{font-size:14px}.rec b{font-family:var(--serif);font-size:18px;color:var(--zhu)}
+.picks{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pk{font-family:var(--serif);font-size:22px;min-width:52px;padding:4px 12px}
+.pk.r{border-color:var(--zhu)}
+.pk[aria-pressed="true"]{background:var(--ok);color:#fff;border-color:var(--ok)}
+.other{width:7em;font:inherit;font-family:var(--serif);font-size:18px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+textarea{font:inherit;width:100%;min-height:34px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);resize:vertical}
+.saved{font-size:13px;color:var(--ok)}
+.err{color:var(--zhu)}
+.why{color:var(--muted);font-size:14px}
+@media (max-width:720px){
+  .card{grid-template-columns:auto minmax(0,1fr)}
+  .info{grid-column:1/-1}
+  .colimg{height:300px}.zimg{width:150px}
+  .reads{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+<style>
+.vols{display:flex;flex-wrap:wrap;gap:4px}
+.vols button[aria-pressed="true"]{background:var(--zhu);color:#fff;border-color:var(--zhu)}
+.vols small{opacity:.8;font-variant-numeric:tabular-nums}
+.grp{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-top:22px;padding-bottom:6px;border-bottom:2px solid var(--ink)}
+.grp h2{font-family:var(--serif);font-size:18px;margin:0}
+.grp .n{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.colimg{height:300px}
+.card{padding:12px;gap:12px}
+.ctx{font-size:19px}
+.pk.none{font-family:var(--sans);font-size:14px}
+.addnote{font-size:12.5px;color:var(--muted);border:none;background:none;padding:0;text-decoration:underline}
+.intro{color:var(--muted);font-size:14px;margin-top:12px;max-width:62em}
+</style>
+<div class="wrap">
+  <header>
+    <div><h1>殿本参校待判</h1><div class="batch" id="batch"></div></div>
+    <div class="prog" id="prog"></div>
+    <div class="vols" id="vols" role="group" aria-label="册"></div>
+    <div class="sp"></div>
+    <div class="tabs" role="group" aria-label="筛选">
+      <button id="f-todo" aria-pressed="true">未判</button>
+      <button id="f-done" aria-pressed="false">已判</button>
+      <button id="f-all" aria-pressed="false">全部</button>
+    </div>
+    <div class="status" id="status">连接中…</div>
+  </header>
+  <p class="intro">这里是第1–5册与殆知阁本、维基文库不同、又不是异体或繁简转写的地方。点要录的字；底本对就点底本那个字。每组可以「本组未判的全部照底本」，要点两下才生效。红框是本格在原图上的位置。</p>
+  <div id="list"></div>
+</div>
+
+<script>
+const M = /*META*/null;
+const st = {vol: M.vols[0].vol, filter: 'todo', data: {}, dec: {}, db: null, arm: null};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ctxHtml = s => esc(s).replace(/【(.*?)】/, (m, x) => '<em>' + (x || '　') + '</em>');
+const show = s => s === '' ? '（无）' : s;
+const rare = s => [...(s||'')].filter(c => c.codePointAt(0) > 0xFFFF).map(c => 'U+' + c.codePointAt(0).toString(16).toUpperCase()).join(' ');
+const rb = s => esc(show(s)) + (rare(s) ? `<small style="display:block;font-size:11px;color:var(--muted)">${rare(s)}</small>` : '');
+$('#batch').textContent = M.batch;
+
+function opts(it){ const o = []; for (const c of [it.base, it.dzg, it.wiki]) if (c != null && !o.includes(c)) o.push(c); return o; }
+
+function cardHtml(it){
+  const d = st.dec[it.id], o = opts(it), p = d ? d.pick : null;
+  const other = p != null && !o.includes(p) ? p : '';
+  const lab = c => c === it.base ? '底本' : (c === it.dzg && c === it.wiki ? '两本' : c === it.dzg ? '殆知阁' : '维基');
+  return `${it.col ? `<img class="colimg" loading="lazy" src="${it.col}" alt="本格所在列，红框为本格">` : '<div class="why">无图</div>'}
+    ${it.zoom ? `<img class="zimg" loading="lazy" src="${it.zoom}" alt="本格放大" style="width:150px">` : '<span></span>'}
+    <div class="info">
+      <div class="meta"><span class="chip">第${+it.vol}册 ${esc(it.a0)}${it.a1 !== it.a0 ? '–' + esc(it.a1) : ''}</span>${it.no ? `<span class="chip">${esc(it.no)}</span>` : ''}</div>
+      <div class="ctx">${ctxHtml(it.ctx)}</div>
+      <div class="reads" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div><span>底本（现录）</span><b>${rb(it.base)}</b></div>
+        <div><span>殆知阁</span><b>${rb(it.dzg)}</b></div>
+        <div><span>维基</span><b>${rb(it.wiki)}</b></div>
+      </div>
+      <div class="picks">
+        ${o.map(c => `<button class="pk${c === '' ? ' none' : ''}" data-v="${esc(c)}" aria-pressed="${p === c}" title="照${lab(c)}">${c === '' ? '删去这几个字' : rb(c)}</button>`).join('')}
+        <input class="other" placeholder="其他" value="${esc(other)}" aria-label="录作其他字">
+        <button class="addnote">备注</button>
+      </div>
+      <textarea placeholder="备注（可不填）" aria-label="备注" ${d?.note ? '' : 'hidden'}>${esc(d?.note || '')}</textarea>
+      <div class="saved">${d ? '已存：' + esc(show(d.pick)) + (d.pick === it.base ? '（照底本）' : '') : ''}</div>
+    </div>`;
+}
+
+function wire(el, it){
+  el.querySelectorAll('.pk').forEach(b => b.onclick = () => save(it, b.dataset.v));
+  const o = el.querySelector('.other'); o.onchange = () => { const v = o.value.trim(); if (v) save(it, v); };
+  const n = el.querySelector('textarea');
+  el.querySelector('.addnote').onclick = () => { n.hidden = false; n.focus(); };
+  n.onchange = () => { const cur = st.dec[it.id]; if (cur) save(it, cur.pick); };
+}
+
+function mkCard(it){
+  const el = document.createElement('section');
+  el.className = 'card' + (st.dec[it.id] ? ' done' : ''); el.id = 'c-' + it.id;
+  el.innerHTML = cardHtml(it); wire(el, it); return el;
+}
+function refreshCard(it){
+  const el = document.getElementById('c-' + it.id); if (!el) return;
+  const n = el.querySelector('textarea'); if (document.activeElement === n || document.activeElement?.classList.contains('other')) return;
+  el.className = 'card' + (st.dec[it.id] ? ' done' : ''); el.innerHTML = cardHtml(it); wire(el, it);
+}
+
+function header(){
+  const vs = M.vols.map(v => { const d = v.ids.filter(i => st.dec[i]).length;
+    return `<button data-v="${v.vol}" aria-pressed="${v.vol === st.vol}">第${+v.vol}册 <small>${d}/${v.n}</small></button>`; }).join('');
+  $('#vols').innerHTML = vs; $('#vols').querySelectorAll('button').forEach(b => b.onclick = () => { st.vol = b.dataset.v; render(); });
+  const all = M.vols.reduce((s, v) => s + v.n, 0), done = M.vols.reduce((s, v) => s + v.ids.filter(i => st.dec[i]).length, 0);
+  $('#prog').innerHTML = `已判 <b>${done}</b> / ${all}`;
+}
+
+async function load(v){
+  if (!st.data[v]) { const r = await fetch(`data/vol${v}.json`); st.data[v] = await r.json(); }
+  return st.data[v];
+}
+
+async function render(){
+  header();
+  const list = $('#list'); list.innerHTML = '<p class="why">加载中…</p>';
+  let xs; try { xs = await load(st.vol); } catch(e){ list.innerHTML = '<p class="why err">这一册的数据没取到，刷新再试。</p>'; return; }
+  list.replaceChildren();
+  for (const [g, label] of M.groups){
+    const all = xs.filter(x => x.g === g); if (!all.length) continue;
+    const vis = all.filter(x => st.filter === 'all' || (st.filter === 'done') === !!st.dec[x.id]);
+    const todo = all.filter(x => !st.dec[x.id]).length;
+    const h = document.createElement('div'); h.className = 'grp';
+    h.innerHTML = `<h2>${esc(label)}</h2><span class="n">${all.length} 处，未判 ${todo}</span>` +
+      (st.db && todo ? `<button class="all">${st.arm === g ? `确认：本组 ${todo} 处全部照底本` : '本组未判的全部照底本'}</button>` : '');
+    const b = h.querySelector('.all'); if (b) b.onclick = () => bulk(g, all);
+    list.append(h);
+    if (!vis.length){ const p = document.createElement('p'); p.className = 'why'; p.textContent = st.filter === 'todo' ? '本组已判完。' : '本组还没有已判的。'; list.append(p); continue; }
+    const box = document.createElement('div'); box.className = 'list'; box.append(...vis.map(mkCard)); list.append(box);
+  }
+}
+
+async function bulk(g, all){
+  if (st.arm !== g){ st.arm = g; render(); return; }
+  st.arm = null;
+  for (const it of all) if (!st.dec[it.id]) await save(it, it.base, true);
+  render();
+}
+
+async function save(it, pick, quiet){
+  if (!st.db){ $('#status').textContent = '没连上存储，选择没有保存'; $('#status').className = 'status err'; return; }
+  const el = document.getElementById('c-' + it.id);
+  const note = (el?.querySelector('textarea')?.value || '').trim();
+  const doc = {pick, note, base: it.base, vol: it.vol, a0: it.a0, a1: it.a1, batch: M.batch, at: new Date().toISOString()};
+  st.dec[it.id] = doc;
+  if (!quiet){ refreshCard(it); header(); }
+  try { await st.db.collection('decisions').doc(it.id).set(doc); }
+  catch(e){ $('#status').textContent = '保存失败：' + (e?.message || e?.code || e); $('#status').className = 'status err'; }
+}
+
+for (const f of ['todo','done','all']) $('#f-' + f).onclick = () => {
+  st.filter = f; for (const g of ['todo','done','all']) $('#f-' + g).setAttribute('aria-pressed', g === f); render();
+};
+
+render();
+(async () => {
+  const timer = setTimeout(() => { if (!st.db) $('#status').textContent = '存储没响应，可以看，选择不会保存'; }, 10000);
+  const db = await (window.claude?.use?.('db') ?? Promise.resolve(null)).catch(() => null);
+  clearTimeout(timer);
+  if (!db){ $('#status').textContent = '只读：登录后才能保存选择'; return; }
+  st.db = db; let first = true;
+  db.collection('decisions').onSnapshot(snap => {
+    const dec = {}; for (const d of snap.docs) if (d.id.startsWith('r3-')) dec[d.id] = d.data();
+    const changed = Object.keys(dec).filter(k => JSON.stringify(dec[k]) !== JSON.stringify(st.dec[k]));
+    st.dec = dec; $('#status').textContent = '选择自动保存'; $('#status').className = 'status';
+    if (first){ first = false; render(); return; }
+    header(); for (const k of changed){ const it = (st.data[st.vol] || []).find(x => x.id === k); if (it) refreshCard(it); }
+  }, e => { $('#status').textContent = '读取失败：' + e.message; $('#status').className = 'status err'; });
+})();
+</script>

@@ -518,3 +518,33 @@ def test_upload_all_and_fetch_places_small_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(dc, "WorkerSource", lambda: None)
     r = cp.fetch_blobs(ws, 1)
     assert r["placed"] == 1 and small.read_bytes() == data and r["not_in_r2"] == []
+
+
+def test_same_output_pin_keeps_old_token_and_guards_manifest(two_level):
+    """语料等价登记（--same-output-as）：新总号沿用老总号的指纹；没证据、清单相同、开发中都拒绝；清单被改就报错。"""
+    from open_guji_cv.core import corpus_pin
+    book, data, _ = two_level
+    cp.build(book, base=1)                                                    # v1
+    (data / "corpus" / "ref.txt").write_text("甲乙丙丁", encoding="utf-8")
+    cp.build(book, base=1)                                                    # v2：改了 ref.txt
+    with pytest.raises(ValueError, match="证据"):
+        corpus_pin.append_pin(book, "vol01", from_n=1, book_ver=2, same_output_as=1)
+    with pytest.raises(ValueError, match="开发中"):
+        corpus_pin.append_pin(book, "vol01", from_n=1, book_ver=2, same_output_as=1, note="x", dev=True)
+    corpus_pin._TOKEN_CACHE.clear()
+    row = corpus_pin.append_pin(book, "vol01", from_n=1, book_ver=2, same_output_as=1,
+                                note="seed_admit 8 页逐字节相同")
+    assert row["same_output_as"] == 1 and row["same_output_paths"] == ["ws:corpus/ref.txt"]
+    assert corpus_pin.corpus_token(book, 2, "vol01") == corpus_pin.corpus_token(book, 1, "vol01") == "corpus-v1"
+    (data / "corpus" / "ref.txt").write_text("甲乙丙", encoding="utf-8")
+    cp.build(book, base=1)                                                    # v3：内容同 v1
+    with pytest.raises(ValueError, match="相同"):
+        corpus_pin.append_pin(book, "vol01", book_ver=3, same_output_as=1, note="x")
+    corpus_pin.append_pin(book, "vol01", book_ver=3)                          # 不登记：照常用内容哈希
+    assert corpus_pin.corpus_token(book, 3, "vol01") != "corpus-v1"
+    rows = corpus_pin.load_pins(book, "vol01")                                # 账被手改：差异对不上就报错
+    rows[1]["same_output_paths"] = ["ws:corpus/other.txt"]
+    corpus_pin.pins_path(book, "vol01").write_text(json.dumps({"rows": rows}, ensure_ascii=False), encoding="utf-8")
+    corpus_pin._TOKEN_CACHE.clear()
+    with pytest.raises(ValueError, match="对不上"):
+        corpus_pin.corpus_token(book, 2, "vol01")

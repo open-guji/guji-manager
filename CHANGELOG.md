@@ -2,6 +2,14 @@
 
 版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
+## [未发版]
+
+## [0.4.50] - 2026-11-15
+
+- 发版说明（A31 11-15）：dev 头 bdc138a，PATCH。主要为带上 #584（`guji corpus pin --same-output-as`，殿本／全唐文改钉底库 b25 用，要配 cv ≥0.7.40）；另含 #581、#582、#583、#558。rc 上补：测试 `from_cv/test_code_deps_coverage.py` 登记 seed_admit→groups.part_shape（cv #1553 新加，缺省关，同 wu_shape 口径），dev 头 CI 因此红。
+
+- PATCH：`guji corpus pin --same-output-as N`（A22 11-15）：语料等价登记，册的新总号沿用总号 N 的语料指纹（cv `corpus_pin.append_pin(same_output_as=)`，要 cv dev 含该功能；旧 cv 报「先升 cv」）。`--note` 写证据。
+
 ## [0.4.49] - 2026-11-14
 
 - PATCH：`guji corpus build` 出书库清单前扫参校本（group=reference、root=ws 的 .txt）里的缅甸文码位 U+1000–U+109F（殆知阁缺字图占位码），有就拒绝出版本，报处数和前 5 处行号（A20 11-14，史記 v2 73 处、殿本 v17 233 处都是导入漏转，#577）。
@@ -21,6 +29,8 @@
 - PATCH：seg check 写本误报（史記台账 R011／R012，A22 11-13）：① 同字对照切坏检测认书先读 `workspace.yaml` 的 `id:`，认不出不再静默按殿本口径跑（会把写本长笔伸出格报成 CLIP，史記 15 册殿本口径 clipped 54 列、史記口径 2 列），改为提示；② merged 两团字要墨量小比大 ≥0.20（写本列尾字脚下的句读圈、残笔不算并格）；③ 召回不把 cv `geo_ref_ok` 豁免表算报出。
 
 - PATCH：新命令 `guji seg gate`（标 main 前的切分不回退闸，A22 11-13，Sheldon 定不要求清零）：比候选包与现役 main 两份 `guji seg check` 列清单，候选包新冒出的结构列（回退）或新页级错退出 3；已知未清的列按根因台账（ai-team `domain/CV/A22/切分根因台账.tsv`）挂根因号、没挂的列为「未登记」只提醒；出 `切分未定.tsv` 供下游跳过。文档：切分快筛十二节、四层工作法、轮报告与验收工具一览。
+
+- `cellvotes draft --from-kv` 按单版读到票时，若该册还有按条目记的票，打警告提醒另跑 `--items`，免得漏落（PATCH，ZM 11-13，第五册 005-r13 的 25 票漏落）。
 
 ## [0.4.48] - 2026-11-13
 
