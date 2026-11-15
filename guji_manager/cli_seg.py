@@ -20,7 +20,7 @@ def add_parser(sub) -> None:
         def __call__(self, parser, ns, values, option_string=None):
             ns.edits = (ns.edits or []) + [(option_string.lstrip("-"), values)]
 
-    p = sub.add_parser("seg", help="切分的人定与检查：pin（整列写定 manual-cells）、check（切分核查）、ruler（召回尺子）")
+    p = sub.add_parser("seg", help="切分的人定与检查：pin（整列写定 manual-cells）、check（切分核查）、ruler（召回尺子）、gate（标 main 前不回退闸）")
     ss = p.add_subparsers(dest="seg_cmd", required=True)
     pin = ss.add_parser("pin", help="整列写定：从现行产物（或已有钉子）起稿、按编辑改、出草稿／叠框图／格号对照，--write 才写数据目录")
     pin.add_argument("target", help="册:页:列，如 vol01:88:4")
@@ -55,6 +55,16 @@ def add_parser(sub) -> None:
     rl.add_argument("-w", "--workspace", default=None)
     rl.add_argument("--out", default="seg-ruler.tsv")
 
+    gt = ss.add_parser("gate", help="标 main 前的切分不回退闸：比新旧两份 seg check，回退或新页级错退出 3，出切分未定清单")
+    gt.add_argument("new", help="候选包的 guji seg check 输出目录（或其 列清单.tsv）")
+    gt.add_argument("--base", required=True, help="现役 main 的 guji seg check 输出目录（同样页范围、同样开关）")
+    gt.add_argument("--ledger", default="", help="切分根因台账 TSV（ai-team domain/CV/A22/切分根因台账.tsv）")
+    gt.add_argument("--book", default="", help="台账里的书名（殿本／史記／全唐文…），给了 --ledger 必给")
+    gt.add_argument("--page-cols", type=int, default=4, help="一页几列结构列且过半算页级错（缺省 4）")
+    gt.add_argument("--new-label", default="", help="候选包标签，写进报告")
+    gt.add_argument("--base-label", default="", help="现役 main 包标签，写进报告")
+    gt.add_argument("--out", default="seg-gate", help="输出目录（gate.md、gate.json、切分未定.tsv）")
+
 
 def cmd_seg(args) -> None:
     if args.seg_cmd == "pin":
@@ -63,6 +73,17 @@ def cmd_seg(args) -> None:
         _cmd_check(args)
     elif args.seg_cmd == "ruler":
         _cmd_ruler(args)
+    elif args.seg_cmd == "gate":
+        _cmd_gate(args)
+
+
+def _cmd_gate(args) -> None:
+    from . import seg_gate
+    text, code = seg_gate.run(Path(args.new), Path(args.base), Path(args.out),
+                              ledger_path=Path(args.ledger) if args.ledger else None, page_cols=args.page_cols,
+                              new_label=args.new_label, base_label=args.base_label, book=args.book)
+    print(text)
+    raise SystemExit(code)
 
 
 def _use_ws(args) -> Path | None:

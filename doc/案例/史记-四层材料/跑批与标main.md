@@ -13,6 +13,7 @@
 - **版本怎么钉**：
   - cv 钉发版 tag（`"cv": "v0.7.9"`）。
   - 书级代码 k 写在中心库 book_defaults 的 `code:`。
+  - **执行机只跟书仓 origin/main，单子钉不了书仓 ref**（11-13 r59 教训）：r59 在跑时 A24 把 k9（要 cv ≥0.7.31）合进书仓 main，还没领单的 19、20、39、42 四册检出 k9 后报 BookCodeError 失败；A24 把 main 恢复成 k8 状态后原号重排才过。所以：**新 k 合回书仓 main 必须等本轮所有单跑完**。新 k 先只打 tag，本轮收口后由跑批线程通知收件箱，再由 k 的作者合回 main、排下一轮。新 k 要的 cv 版本还没出 tag 时，也不能先合 main。
   - 字形库 g 写在各册 yaml 的 `glyph_pin`，spec 里同时写 `book_overrides.glyph_pin`。
   - 新开关放到它原有的位置（如 `align_ref.coord_relaxed` 在各册 yaml 里，新开关就紧挨着它），不另加单书开关。
 - **从哪步起跑**：取受影响的最早一步，宁早勿晚。

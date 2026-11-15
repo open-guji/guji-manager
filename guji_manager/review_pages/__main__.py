@@ -110,6 +110,14 @@ def main(argv=None):
     p.add_argument("--out-dir", required=True); p.add_argument("--skip", nargs="*", default=[], help="已点过的格号文件")
     p.add_argument("--skip-chars", default="", help="不上页的字（如 木入八己已巳）")
     p.add_argument("--where", action="append", default=[], help="只取某列以某前缀开头的行，如 层=2（可重复）")
+    p = sub.add_parser("layer", help="少见字人审分层（快审/高/低/难认字/对位可疑），规则见 layering.py")
+    p.add_argument("--cells", required=True, help="格号文件（每行一个，或 jsonl 带 id）")
+    p.add_argument("--pack-dir", required=True, help="产物包目录，可带 {vol}；要 glyph_match/rare_candidates/align_ref")
+    p.add_argument("--exemplars", help="字形库 exemplars.jsonl（数库里每字刻例数）")
+    p.add_argument("--ref-trust", required=True, choices=["none", "medium", "high", "very_high"],
+                   help="本书参校本可信度（书级，定了就不改）")
+    p.add_argument("--col-len", type=int, default=21, help="每列字数，判列尾；0＝不判")
+    p.add_argument("--out", required=True, help="输出 jsonl，每行带 layer/why/pre/cands")
     p = sub.add_parser("hard-items"); p.add_argument("--items", required=True)
     p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
     p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
@@ -152,6 +160,16 @@ def main(argv=None):
         out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
         _write_jsonl(out / "hi.jsonl", hi); _write_jsonl(out / "lo.jsonl", lo)
         print(json.dumps(st, ensure_ascii=False))
+    elif a.cmd == "layer":
+        from collections import Counter
+        from . import layering as L
+        ids = [r["id"] for r in build_mod.read_items(a.cells)] if a.cells.endswith(".jsonl") else \
+            [x.strip() for x in Path(a.cells).read_text(encoding="utf-8").split() if x.strip()]
+        bp = L.BookParams(ref_trust=a.ref_trust, col_len=a.col_len or None, near_pairs=L.default_near_pairs())
+        counts = L.lib_counts_from_exemplars(a.exemplars) if a.exemplars else {}
+        rows = [L.to_row(c, bp) for c in L.cells_from_pack(ids, a.pack_dir, counts)]
+        _write_jsonl(a.out, rows)
+        print(dict(Counter(r["layer"] for r in rows)), f"共 {len(rows)} 格（{len(ids) - len(rows)} 格包里没有）→ {a.out}")
     elif a.cmd == "hard-items":
         from . import crop
         its = build_mod.read_items(a.items)
