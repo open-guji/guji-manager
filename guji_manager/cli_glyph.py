@@ -212,9 +212,14 @@ def cmd_corpus(args) -> None:
             print("✗ pin 要给 --vol <册 id>", file=sys.stderr)
             sys.exit(2)
         kw = {k: v for k, v in (("global_ver", args.global_ver), ("book_ver", args.book_ver),
-                                ("vol_ver", args.vol_ver)) if v is not None}
+                                ("vol_ver", args.vol_ver), ("same_output_as", args.same_output_as)) if v is not None}
         try:
             row = append_pin(ws, args.vol, from_n=args.from_n, note=args.note, dev=args.dev, **kw)
+        except TypeError as e:
+            if "same_output_as" not in str(e):
+                raise
+            print("✗ 装的 cv 还不认 --same-output-as（语料等价登记），先升 cv", file=sys.stderr)
+            sys.exit(1)
         except (ValueError, FileNotFoundError) as e:
             print(f"✗ {e}", file=sys.stderr)
             sys.exit(1)
@@ -423,6 +428,8 @@ def add_parser(sub) -> None:
     p.add_argument("--global-ver", type=int, default=None, help="pin：全局层（底库）版本；不给沿用最新一行")
     p.add_argument("--book-ver", type=int, default=None, help="pin：整套书层（书库）版本")
     p.add_argument("--vol-ver", type=int, default=None, help="pin：册层版本")
+    p.add_argument("--same-output-as", type=int, default=None,
+                   help="pin：语料等价登记——新总号指纹沿用总号 N 的，这册读语料的步不过期（只登记产物逐字节不变的改动，--note 写证据；要 cv ≥ 本功能）")
     p.add_argument("-w", "--workspace", default=None, help="工作区目录（清单落在 <工作区>/corpus-pack/vN/）")
     p = sub.add_parser("glyphlib", help="[v2] 共享刻例库：build 从一本书精选刻例出新版本（--push 推进中心库）")
     p.add_argument("action", choices=["build"])
