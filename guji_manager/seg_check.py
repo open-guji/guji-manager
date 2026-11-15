@@ -12,6 +12,8 @@
   夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判（弱档 CUT_WEAK 只当提示「劈字弱·笔画相触」）；
   对位串错 ALIGN＝cv align_drift，一列里连续对不上参校字、劈或并后整列错一格（史記 R017，11-14）；同页报出 ≥3 列的
   （cv 标 page）记 ALIGN_PAGE，只当提示「对位串错·整页」（透印、版式、整页没对上，SJ 抽看）。
+  字内落缝 GAP＝cv inner_gap：格线挨着对不上参校字且没放行的格、落在字内窄白缝（宮的两口之间、主／言的点与身之间），
+  旁边另有宽得多的字缝，上下两格各带半个字（史記 R002，11-14）；钉子列也查，报出记「已钉·复核」；
   不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag；
@@ -221,6 +223,11 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             whole_page = "page" in str(r[3]).split(",")     # 一页报出 ≥3 列：透印、版式、整页没对上，降成提示（SJ 11-14 抽看）
             col[k]["ALIGN_PAGE" if whole_page else "ALIGN"] += 1
             ex[k].insert(len(ex[k]) if whole_page else 0, f"对位串错({r[3]}) {r[4]}")
+    for r in rows.get("inner_gap", []):         # cv eval/seg_screen.inner_gap：字内落缝（史記 R002，11-14）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["GAP"] += 1
+            ex[k].insert(0, f"字内落缝 {r[3]} {str(r[4]).split('，格态')[0]}")
     for r in rows.get("geo_ref_ok", []):        # cv eval/seg_screen：格高／半格宽离群、但参校字证实，降成提示（不算结构）
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -262,7 +269,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2
-                  + cn["ALIGN"] * 3)
+                  + cn["ALIGN"] * 3 + cn["GAP"] * 3)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
         if cn["PIN_STALE"]:

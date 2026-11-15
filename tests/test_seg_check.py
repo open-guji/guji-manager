@@ -76,6 +76,15 @@ def test_align_drift_whole_page_is_hint():
     assert out == {"b:7:1": ("提示", "对位串错·整页", 0), "b:7:2": ("提示", "对位串错·整页", 0)}
 
 
+def test_inner_gap_is_structural_and_pinned_review():
+    """cv inner_gap（字内落缝，史記 R002）算结构「需钉子」；钉子列上报出记「已钉·复核」（切分线旧钉子也落进过字内白缝）。"""
+    rows = {"inner_gap": [("b", 5, 1, "1|2", "缝 0px，+34px 处有 17px 宽缝，格态 b/b"),
+                          ("b", 6, 7, "3|4", "缝 1px，-41px 处有 12px 宽缝，格态 b/b")]}
+    out = {r["列"]: (r["类"], r["处置"], r["例格"]) for r in sc.aggregate("b", rows, {(6, 7)}, {}, skip=set())}
+    assert out["b:5:1"] == ("结构", "需钉子", "字内落缝 1|2 缝 0px，+34px 处有 17px 宽缝")
+    assert out["b:6:7"][:2] == ("结构", "已钉·复核")
+
+
 def test_cell_size_is_structural():
     rows = {"cell_size": [("b", 5, 2, "tall", "18×1.88")]}
     assert [r["处置"] for r in sc.aggregate("b", rows, set(), {}, skip=set())] == ["需钉子"]
