@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.50] - 2026-11-15
+
+- 发版说明（A31 11-15）：dev 头 bdc138a，PATCH。主要为带上 #584（`guji corpus pin --same-output-as`，殿本／全唐文改钉底库 b25 用，要配 cv ≥0.7.40）；另含 #581、#582、#583、#558。
+
 - PATCH：`guji corpus pin --same-output-as N`（A22 11-15）：语料等价登记，册的新总号沿用总号 N 的语料指纹（cv `corpus_pin.append_pin(same_output_as=)`，要 cv dev 含该功能；旧 cv 报「先升 cv」）。`--note` 写证据。
 
 ## [0.4.49] - 2026-11-14
