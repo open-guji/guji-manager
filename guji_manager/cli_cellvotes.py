@@ -122,6 +122,12 @@ def _votes(args) -> tuple[list[dict], str]:
         if not tok:
             raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
         items = _fetch_kv(args.site_book, args.rev, tok)
+        if items:
+            # 两种记法并存（旧网站按单版、新网站按条目）：只读了其中一种，另一种的票不会落——11-13 第五册 005-r13 的 25 票就这么漏的
+            chap = args.rev.split("-r")[0].zfill(3)
+            n_item = sum(1 for v in _fetch_kv_items(args.site_book, tok) if str(v.get("vol") or "").zfill(3) == chap)
+            if n_item:
+                _print(f"⚠ 这一册还有 {n_item} 条按条目记的票没读（本次按单版读了 {len(items)} 票）：另跑一遍 --items 落它们，别漏。")
         if not items:
             # 新网站按条目记票，旧口径读到 0 条：自动改读条目票（下游 meta／write 也按条目处理）
             args.items = True
