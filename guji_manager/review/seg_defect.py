@@ -6,7 +6,7 @@ seed_admit／align_ref 产物与字块缓存，把疑似切坏的格列成表，
 
 四种 `seg_kind`（设计稿 ai-team domain/CV/质检/史記-r8-交A22/切坏检测判法设计稿-SJ.md）：
 
-- `merged`  两字并一格：墨高 ≥ `MERGED_H` 倍基准（整字格按格高 `period`，夹注半格按本列夹注半格墨高中位），
+- `merged`  两字并一格（另有「超高无低谷」一路：墨高 ≥ `MERGED_TALL_H`＝1.8 倍格高、整字格，不要求低谷，两字笔画相碰连成一片时低谷判不出）：墨高 ≥ `MERGED_H` 倍基准（整字格按格高 `period`，夹注半格按本列夹注半格墨高中位），
   且竖向投影中段有低谷（墨 < `MERGED_VALLEY` 峰值、长 ≥ `MERGED_GAP` 格高），低谷上下两团各高 ≥ `MERGED_PART` 格高
   （防「三」「二」这种字中间本来就有空行），且两团墨量小比大 ≥ `MERGED_INK`（史記写本列尾字脚下的句读圈、残笔、污点
   只是一小团，A22 11-13 R011）。
@@ -63,6 +63,7 @@ MERGED_H = 1.6
 MERGED_VALLEY = 0.10
 MERGED_GAP = 0.08
 MERGED_PART = 0.30
+MERGED_TALL_H = 1.8  # 超高无低谷：墨高 ≥ 它×基准、竖向投影找不到低谷（两字笔画相碰连成一片，殿本 vol14 32:7:14「書」＋「曰」叠成 1.94 格高），单字不会这么高，照样标 merged（11-15，用户点名）
 MERGED_INK = 0.20    # 低谷上下两团墨量的小比大 ≥ 它才算两个字：写本字脚下的句读圈、邻格残笔、污点只是一小团（史記 R011，A22 11-13）
 CLIP_SEAM_INK = 30   # 殿本 vol12：12–20 全误报（A22 11-04）
 SAME_H = 0.80        # 同字对照：墨高比低于它就算缺一截
@@ -478,6 +479,8 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
                 v = _valley_split(_patch(cache, book, resolve_patch_key(book, r.patch_key, store)), base)
                 if v:
                     hits.append(("merged", f"h={r.height:.0f}/{base:.0f} {v}"))
+                elif not r.sub and r.height >= MERGED_TALL_H * base:
+                    hits.append(("merged", f"h={r.height:.0f}/{base:.0f} 超高无低谷"))
             a = arec.get(r.id)
             si = None if stain_page or "seal_region" in r.flags else seam.get((cc.col, r.slot))
             if si:
