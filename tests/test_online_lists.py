@@ -82,3 +82,42 @@ def test_guji_cmd_falls_back_without_path(monkeypatch, tmp_path):
     assert cmd[0] == str(tmp_path / "python") and "open_guji_cv.cli_v2" in cmd[-1]
     monkeypatch.setenv("GUJI_BIN", "/x/guji")
     assert ol._guji_cmd() == ["/x/guji"]
+
+
+def test_cv_repo_env_wins(monkeypatch):
+    monkeypatch.setenv("GUJI_CV_REPO", "/x/cv")
+    assert OL._cfg()["cv"] == "/x/cv"
+
+
+def test_cv_repo_derived_from_installed_cv(monkeypatch, tmp_path):
+    """没设 GUJI_CV_REPO：取本解释器装的 open_guji_cv 所在仓（有 republish.py 才认），不用写死的老路径。"""
+    monkeypatch.delenv("GUJI_CV_REPO", raising=False)
+    (tmp_path / "open_guji_cv").mkdir()
+    (tmp_path / "open_guji_cv" / "__init__.py").write_text("")
+    (tmp_path / "scripts" / "zhengli").mkdir(parents=True)
+    (tmp_path / "scripts" / "zhengli" / "republish.py").write_text("")
+    import importlib.util as iu
+    class Spec:
+        origin = str(tmp_path / "open_guji_cv" / "__init__.py")
+    monkeypatch.setattr(iu, "find_spec", lambda name: Spec())
+    assert OL._cv_repo() == str(tmp_path)
+
+
+def test_follow_main_punct_layer_no_longer_blocks(capsys, monkeypatch, tmp_path):
+    """文本挂标点层的章照样进重出流程（以前直接 return 1）。"""
+    monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r"); monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "p")
+    monkeypatch.setenv("GUJI_BOOK_TEXT", str(tmp_path)); monkeypatch.setenv("GUJI_CV_REPO", str(tmp_path))
+    monkeypatch.setattr(OL.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr(OL, "ident", lambda v, w=None: ("bid0000000", "005"))
+    monkeypatch.setattr(OL, "_packs", lambda *a: [{"star": True, "label": "L", "size": 2}, {"star": False, "label": "rev-005-r2", "size": 1}])
+    d = tmp_path / OL.book_text_dir("", "bid0000000").lstrip("/") / "default"
+    d.mkdir(parents=True); (d / "005.punct.json").write_text("{}")
+    monkeypatch.setattr(OL, "_online_rev", lambda *a: "005-r2")
+    monkeypatch.setattr(OL, "_votes", lambda *a: 0)
+    calls = []
+    class R:  # noqa: D401
+        returncode = 0
+    monkeypatch.setattr(OL.subprocess, "run", lambda cmd, **k: (calls.append(cmd), R())[1])
+    assert OL.follow_main("005", "/tmp/ws") == 0
+    assert any("republish.py" in " ".join(map(str, c)) and "issue" in c for c in calls)
+    assert "标点" in capsys.readouterr().out

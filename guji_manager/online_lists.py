@@ -45,9 +45,25 @@ def _guji_cmd() -> list[str]:
 GUJI = _guji_cmd()
 
 
+def _cv_repo() -> str:
+    """cv 仓：GUJI_CV_REPO → 本解释器装的 open_guji_cv 所在仓 → 老默认。
+    写死老路径会用到过期 checkout（11-16：旧 cv 的 export_guji_format 要 --meta，007–015 自动重出全败）。"""
+    if os.environ.get("GUJI_CV_REPO"):
+        return os.environ["GUJI_CV_REPO"]
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("open_guji_cv")
+        if spec and spec.origin:
+            root = os.path.dirname(os.path.dirname(spec.origin))
+            if os.path.exists(os.path.join(root, "scripts", "zhengli", "republish.py")):
+                return root
+    except Exception:  # noqa: BLE001
+        pass
+    return "/home/user/open-guji/open-guji-cv"
+
+
 def _cfg() -> dict:
-    return {"book_text": os.environ.get("GUJI_BOOK_TEXT", "/home/user/book-text"),
-            "cv": os.environ.get("GUJI_CV_REPO", "/home/user/open-guji/open-guji-cv")}
+    return {"book_text": os.environ.get("GUJI_BOOK_TEXT", "/home/user/book-text"), "cv": _cv_repo()}
 
 
 def ident(book: str, ws: str | None = None) -> tuple[str | None, str | None]:
@@ -231,8 +247,9 @@ def follow_main(vol: str, ws: str) -> int:
     star = next((r for r in rows if r["star"]), None)
     if not star:
         print(f"{vol}: 没有 ★ main 包"); return 1
-    if os.path.exists(f"{book_text_dir(c['book_text'], bid)}/default/{ch}.punct.json"):
-        print(f"{vol}: 文本挂了标点／实体层，不自动重出；走 proof_cycle plan/apply（A32）"); return 1
+    # 标点／实体层不再挡：republish 的 bump_book_text 自己处理（格号不变带过去、变了记 punct-stale）。
+    # 真正要人工的是旧单已有票（下面 votes 闸，走 proof_cycle plan/apply）。
+    has_layers = os.path.exists(f"{book_text_dir(c['book_text'], bid)}/default/{ch}.punct.json")
     try:
         rev = _online_rev(bid, ch)
     except Exception as e:  # noqa: BLE001
@@ -245,7 +262,7 @@ def follow_main(vol: str, ws: str) -> int:
     n = _votes(vol, ws, c["cv"], read_env)
     if n != 0:
         print(f"{vol}: 旧单{'读不到票' if n < 0 else f'已有票（{n}）'}，不自动换；先走 proof_cycle plan/apply"); return 1
-    print(f"{vol}: 线上单 {rev} 落后于 main {star['label']}，重出单")
+    print(f"{vol}: 线上单 {rev} 落后于 main {star['label']}，重出单" + ("（文本挂标点／实体层）" if has_layers else ""))
     subprocess.run([*GUJI, "source", "pull", vol, "-w", ws], env=read_env, capture_output=True)
     rc = 1
     for _ in range(3):   # 读票接口偶发 500／握手失败
