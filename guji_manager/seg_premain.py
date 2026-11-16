@@ -18,6 +18,7 @@ from pathlib import Path
 
 TALL_RATIO = 1.6
 INK_BLANK = 0.10
+SLIVER_RATIO = 0.4   # INK_BLANK 只查高度够得上一个字的空格；框线残片（vol01 157–203 列尾 11px 的格）不报
 MIN_CELLS = 4
 
 
@@ -54,7 +55,8 @@ def scan_page(cell_shrink: dict, align_ref: dict | None) -> list[tuple[int, str,
         for y in ch:
             if y.get("height", 0) >= TALL_RATIO * med and y.get("cell_type") != "empty":
                 hits.append((c["col"], "TALL", f"格{y['slot']} 高 {y['height']:.0f}＝{y['height'] / med:.2f}×中位 {med:.0f}"))
-            elif y.get("cell_type") == "empty" and (y.get("ink_ratio") or 0) >= INK_BLANK:
+            elif (y.get("cell_type") == "empty" and (y.get("ink_ratio") or 0) >= INK_BLANK
+                  and y.get("height", 0) >= SLIVER_RATIO * med):   # 矮于正文格 0.4 倍的是框线残片（列尾 tail_junk），不是字
                 hits.append((c["col"], "INK_BLANK", f"格{y['slot']} 判空但墨比 {y['ink_ratio']:.2f}"))
     fb = ((align_ref or {}).get("align_ref") or {}).get("coord_fallback") or {}
     for k, v in fb.items():

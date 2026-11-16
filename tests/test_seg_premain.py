@@ -26,3 +26,9 @@ def test_allow(tmp_path):
     f.write_text("vol01\t5\t*\t看过\n", encoding="utf-8")
     a = sp.load_allow(f)
     assert sp._allowed(a, "vol01", 5, 3) and not sp._allowed(a, "vol01", 6, 3)
+
+
+def test_empty_sliver_not_inkblank():
+    """列尾 11px 的框线残片格（Step4 判空、tail_junk）墨比再高也不报 INK_BLANK。"""
+    chars = [_c(i, 110) for i in range(1, 6)] + [{**_c(6, 11), "cell_type": "empty", "ink_ratio": 0.46}]
+    assert sp.scan_page(_col(chars), None) == []
