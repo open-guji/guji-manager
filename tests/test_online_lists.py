@@ -155,3 +155,28 @@ def test_audit_fix_calls_follow_main(monkeypatch):
     called = []
     monkeypatch.setattr(OL, "follow_main", lambda v, w: (called.append(v), 0)[1])
     assert OL.audit(["005"], "/w", fix=True) == 0 and called == ["005"]
+
+
+def test_pypath_keeps_manager_and_old(monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", "/old")
+    parts = OL._pypath("/cv").split(os.pathsep)
+    assert parts[0] == "/cv" and "/old" in parts and any(p.endswith("guji-manager") or os.path.isdir(os.path.join(p, "guji_manager")) for p in parts)
+
+
+def test_packs_raises_when_moved_hint(monkeypatch):
+    class R:
+        stdout = "ⓘ products pack list 已搬到 guji-manager"
+        stderr = ""
+        returncode = 0
+    monkeypatch.setattr(OL.subprocess, "run", lambda *a, **k: R())
+    with pytest.raises(RuntimeError):
+        OL._packs("004", "/w", {})
+
+
+def test_audit_reports_packs_failure(monkeypatch, capsys):
+    monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r"); monkeypatch.setenv("GUJI_CV_REPO", "/x")
+    monkeypatch.setattr(OL, "ident", lambda v, w=None: ("bid0000000", v))
+    def boom(*a):
+        raise RuntimeError("没出包清单")
+    monkeypatch.setattr(OL, "_packs", boom)
+    assert OL.audit(["004"], "/w") == 1 and "✗" in capsys.readouterr().out
