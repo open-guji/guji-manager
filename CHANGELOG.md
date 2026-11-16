@@ -4,6 +4,12 @@
 
 ## [未发版]
 
+## [0.4.52] - 2026-11-16
+
+- 发版说明（A31 11-16）：dev 头 22e49e3，PATCH。为带上 #597（`guji pagekinds` 核半文半表页 `page_kinds.table_cols`、进度看板不把 `table_column` 拒掉的列算坏列；配 cv v0.7.47 史記 patch 线或 dev 含 #1590）。老 cv 读不到 table_cols 参数时为空，行为不变。
+
+- PATCH：`guji pagekinds` 读册生效的 `column_gate.table_cols`，核 column_gate 产物点名列是否都按 `table_column` 拒收，对不上报 ✗，报表多一行「半文半表页」；进度看板 `cols_bad` 不算 `table_column` 列（GUJI-772，#597）。
+
 ## [0.4.51] - 2026-11-16
 
 - 发版说明（A31 11-16）：dev 头 253340f，PATCH。主要为带上 #594（`pending_fields` 带 `pending_reason`，SJ v0.1 预检）；同带 #587、#591、#592、#593（seg premain 标 main 前硬检查）。配 cv ≥0.7.46 时 `pack_purity` 不再把只改语料钉判成混版本。
