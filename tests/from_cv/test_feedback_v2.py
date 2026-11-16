@@ -564,3 +564,20 @@ def test_route_and_consume_all_three_outlets_fan_out_and_idempotent(monkeypatch,
     out2 = route_and_consume(log, "r1", RouteTable.load(None), store,
                              db_path=db_path, list_path=excl_path)
     assert out2["results"] == []                         # 三个出口全部什么也不做
+
+
+def test_route_and_consume_only_runs_named_consumers(tmp_path):
+    """`only={"crop_exclude"}`：`cellvotes write --no-consume` 只补排除名单，
+    其余消费者（gold_add、glyphdb_admit…）不跑也不记账（ZM 11-16：图形票落了事件
+    却没进名单，格子下一轮又回待审单）。"""
+    log = EventLog(tmp_path / "feedback")
+    store = GoldStore(tmp_path / "dataset")
+    path = tmp_path / "crop_exclusions.jsonl"
+    e = make_event("r1", 1, "not_a_char", _cell_target("vol01:5:2:10", "vol01", 5, 2, 10), {})
+    log.append([e])
+    out = route_and_consume(log, "r1", RouteTable.load(None), store,
+                            only={"crop_exclude"}, list_path=str(path))
+    assert [r["consumer"] for r in out["results"]] == ["crop_exclude"]
+    assert out["results"][0]["added"] == 1
+    assert e.id in log.consumed_ids("crop_exclude")
+    assert e.id not in log.consumed_ids("gold_add")

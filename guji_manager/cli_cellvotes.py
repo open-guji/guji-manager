@@ -339,10 +339,33 @@ def cmd_write(args) -> None:
                        ProductStore(None), batch=args.batch, step="seed_admit", unit="cell", kind="confirm",
                        events=rows, request_id=rid, consume=not args.no_consume, reviewer=args.reviewer)
     _print(json.dumps(res, ensure_ascii=False, indent=1))
+    if args.no_consume and not res.get("duplicate"):
+        _exclude_now(args.batch, rows)
     if meta.get("items") and not res.get("duplicate"):
         _resolve_items(meta, rows, res, args.reviewer or "")
     if not res.get("duplicate"):
         _print("已写进数据目录；推库：guji db sync -w <工作区>（写中心库前先报告、等点头）")
+
+
+EXCLUDE_VS = ("figure", "not_a_char", "damaged")
+
+
+def _exclude_now(batch: str, rows: list[dict]) -> None:
+    """`--no-consume` 也要把图形／无字／破损票写进排除名单（只跑 `crop_exclude` 一个消费者）。
+
+    名单才是「不进库、不再出审查卡」的执行者：以前 `--no-consume` 连它一起跳过，图形票落了事件，
+    格子下一轮照样回待审单，用户在网站上又标一遍（ZM 11-16，019 的 5 格图形）。金标、产物失效等
+    其余消费者仍按 `--no-consume` 不跑。"""
+    if not any(r.get("v") in EXCLUDE_VS for r in rows):
+        return
+    from ._cv import EventLog, feedback_root
+    from .feedback.consumers import route_and_consume
+    out = route_and_consume(EventLog(feedback_root()), batch, only={"crop_exclude"})
+    n = sum(r.get("added", 0) for r in out.get("results", []))
+    errs = [x for r in out.get("results", []) for x in r.get("errors") or []]
+    _print(f"排除名单（图形／无字／破损）：新增 {n} 格" + (f"；出错 {errs[:3]}" if errs else ""))
+    if errs:
+        raise SystemExit("✗ 写排除名单出错（事件已落，补跑：guji events route <批次>）")
 
 
 def _resolve_items(meta: dict, rows: list[dict], res: dict, by: str) -> None:
