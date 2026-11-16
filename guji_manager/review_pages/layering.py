@@ -31,6 +31,7 @@ from pathlib import Path
 
 from ..review_triage.cells import COL_LEN, skip_reason
 from ..review_triage.rules import is_han
+from .family_cands import family_of, with_family
 
 TRUST_LEVELS = ("none", "medium", "high", "very_high")
 CONTEXT_CHARS = set("一二三己已巳日曰")          # 用户定：只凭字形不判，一律进难认字看上下文
@@ -116,14 +117,21 @@ def classify(c: Cell, bp: BookParams) -> tuple[str, str]:
     return "low", ("quick_but_" + pos) if (pos and _quick_ok(c, bp)) else "rest"
 
 
-def to_row(c: Cell, bp: BookParams) -> dict:
-    """出页用的一行：层、原因、预选字、候选（5b 前十 → 库首位 → 参校本）。"""
+FAMILY_LAYERS = ("hard", "low", "align")       # 这几层的卡并 5b 首位的异体族（align 也上低把握页）
+
+
+def to_row(c: Cell, bp: BookParams, family=family_of) -> dict:
+    """出页用的一行：层、原因、预选字、候选（5b 前十 → 库首位 → 参校本）。
+    难认字、低把握（含对位可疑）的格，候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个，
+    简体不上；见 family_cands.py）；family=None 不并。"""
     layer, why = classify(c, bp)
     cands, seen = [], set()
     for ch, src in [(x, "5b") for x in c.top[:10]] + [(c.lib, "库候选"), (c.ref, "参校本")]:
         if ch and ch != "?" and ch not in seen:
             seen.add(ch)
             cands.append([ch, src])
+    if layer in FAMILY_LAYERS and c.top and is_han(c.top[0]):
+        cands = with_family(cands, c.top[0], family)
     pre = c.ref if layer == "quick" else (c.top[0] if c.top else c.ref)
     return {"id": c.id, "layer": layer, "why": why, "pre": pre, "ref": c.ref, "lib": c.lib, "cov": c.cov,
             "lib_n": c.lib_n, "best5": c.best, "top5": c.top[:3], "cands": cands}
