@@ -12,6 +12,7 @@
 - 没点名却被自动跳过（页型 skip）：列出来让人确认是封面／题签／牌记，**探出完整栏格的特别标「疑似误判」**；
 - 点名了页号不在本册页范围里。
 职名页（roster）是 Step3 里的分支，看不到判定，只核页号在不在册内。
+半文半表页（`page_kinds.table_cols`，cv GUJI-772，2026-11-16）：读 `column_gate` 产物核点名的列是否都按 `table_column` 拒收。
 
 本模块在 ops，只读 `products.store` 的 JSON，不 import steps。不在任何 Step 的 `code_deps` 里。
 """
@@ -69,6 +70,21 @@ def judge(m: dict | None) -> dict:
             "n_cols": m.get("n_cols"), "expected_cols": m.get("expected_cols")}
 
 
+def table_cols_of(book) -> dict[int, list[int]]:
+    """册生效的 `column_gate.table_cols`（`{页: [列号…]}`，cv 读配置时已展开成整数）；没写或老 cv 返回空。"""
+    v = ((getattr(book, "params", None) or {}).get("column_gate") or {}).get("table_cols") or {}
+    from .._cv import _expand_pages
+    return {int(k): sorted(set(_expand_pages(list(c)))) for k, c in dict(v).items() if c}
+
+
+def table_cols_got(m: dict | None) -> list[int] | None:
+    """一页 `column_gate` 产物里按 `table_column` 拒收的列号；没产物返回 None。"""
+    if not m:
+        return None
+    return sorted(int(c["col"]) for c in (m.get("columns") or [])
+                  if any(str(r).startswith("table_column") for r in (c.get("reject") or [])))
+
+
 def build(book, store, pages: list[int]) -> dict:
     """对账。`book` 是 `BookSpec`，`pages` 是要看的页号（缺省整册）。返回可直接 JSON 化的字典。"""
     from .._cv import _expand_pages
@@ -99,8 +115,18 @@ def build(book, store, pages: list[int]) -> dict:
             full = bool(r["n_cols"] and r["expected_cols"] and r["n_cols"] >= r["expected_cols"])
             (issues["auto_skip_suspect"] if full else issues["auto_skip"]).append(
                 {"page": p, "auto": r["auto"], "n_cols": r["n_cols"], "expected_cols": r["expected_cols"]})
+    tcols = table_cols_of(book)
+    issues["table_cols"] = []
+    for p, want_cols in sorted(tcols.items()):
+        if p not in in_scope:
+            out_of_scope.setdefault("table_cols", []).append(p)
+            continue
+        got = table_cols_got((store.read_raw(book.id, "column_gate", page_key(p)) or {}).get("gate_manifest"))
+        if got != want_cols:
+            issues["table_cols"].append({"page": p, "want": want_cols, "got": got})
     counts = Counter(r["handling"] for r in rows.values())
     return {"book": book.id, "n_pages": len(pages), "configured": cfg, "configured_out_of_scope": out_of_scope,
+            "table_cols": {str(p): c for p, c in tcols.items()},
             "handling": {h: counts[h] for h in HANDLING if counts.get(h)},
             "issues": issues,
             "rows": {str(p): rows[p] for p in pages}}
@@ -110,6 +136,8 @@ def print_report(res: dict, *, show: int = 30) -> None:
     print(f"{res['book']} · 页型对账 · {res['n_pages']} 页")
     cfg = res["configured"]
     print("  册配置点名：" + ("；".join(f"{k} {fmt_pages(v)}" for k, v in cfg.items()) if cfg else "无（全部交页型规则判）"))
+    if res.get("table_cols"):
+        print("  半文半表页（table_cols）：" + "；".join(f"p{p} 列 {fmt_pages(c)}" for p, c in res["table_cols"].items()))
     print("  最后处理：" + "，".join(f"{h} {n}" for h, n in res["handling"].items()))
     iss = res["issues"]
     bad = False
@@ -122,6 +150,10 @@ def print_report(res: dict, *, show: int = 30) -> None:
         for (kind, h), n in c.items():
             ps = fmt_pages(x["page"] for x in iss["not_reflected"] if (x["kind"], x["handling"]) == (kind, h))
             print(f"  ✗ {kind} 点名了但产物里是「{h}」{n} 页：{ps}（还没重跑 Step1 闸，或页范围不含）")
+    for x in iss.get("table_cols") or []:
+        bad = True
+        got = "无 column_gate 产物" if x["got"] is None else (f"拒收列 {fmt_pages(x['got'])}" if x["got"] else "没有列按表格拒收")
+        print(f"  ✗ table_cols p{x['page']} 点名列 {fmt_pages(x['want'])}，产物里{got}（还没从 border_detect 重跑，或 Step1 列数对不上整页被拒）")
     if iss["redundant_body"]:
         bad = True
         print(f"  ⚠ body 点名但页型规则本来就判正文，可删 {len(iss['redundant_body'])} 页：{fmt_pages(iss['redundant_body'])}")

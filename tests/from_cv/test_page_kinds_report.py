@@ -76,3 +76,20 @@ def test_out_of_scope_and_clean(tmp_path, capsys):
     _put(store, "t3", 1)
     R.print_report(R.build(book, store, [1]))
     assert "✓" in capsys.readouterr().out
+
+
+def test_build_table_cols(tmp_path):
+    """半文半表页（page_kinds.table_cols，cv GUJI-772）：核 column_gate 产物里点名列都按 table_column 拒收。"""
+    store = ProductStore(tmp_path)
+    book = make_book("t2", params={"column_gate": {"table_cols": {2: [1, 2], 3: [8]}}})
+    for pg in (1, 2, 3):
+        _put(store, "t2", pg)
+    p = store.path("t2", "column_gate", page_key(2))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    cols = [{"col": c, "admitted": c > 2, "reject": (["table_column：册配置 page_kinds.table_cols 点名本列为表格列，不切"]
+                                                     if c <= 2 else [])} for c in range(1, 9)]
+    p.write_text(json.dumps({"gate_manifest": {"page": 2, "columns": cols}}), encoding="utf-8")
+    res = R.build(book, store, [1, 2, 3])
+    assert res["table_cols"] == {"2": [1, 2], "3": [8]}
+    assert res["issues"]["table_cols"] == [{"page": 3, "want": [8], "got": None}]   # 3 号没 column_gate 产物
+    R.print_report(res)
