@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。
+
 ## [0.4.50] - 2026-11-15
 
 - 发版说明（A31 11-15）：dev 头 bdc138a，PATCH。主要为带上 #584（`guji corpus pin --same-output-as`，殿本／全唐文改钉底库 b25 用，要配 cv ≥0.7.40）；另含 #581、#582、#583、#558。rc 上补：测试 `from_cv/test_code_deps_coverage.py` 登记 seed_admit→groups.part_shape（cv #1553 新加，缺省关，同 wu_shape 口径），dev 头 CI 因此红。
