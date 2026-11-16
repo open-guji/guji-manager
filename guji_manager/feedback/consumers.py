@@ -932,6 +932,7 @@ def route_and_consume(log: EventLog, batch: str | None = None,
                       table: RouteTable | None = None,
                       store: GoldStore | None = None,
                       dry_run: bool = False, event_ids: set[str] | None = None,
+                      only: set[str] | None = None,
                       **consumer_kw) -> dict:
     """把未消费的事件按路由表分发给各消费者；成功的记账。
 
@@ -958,6 +959,8 @@ def route_and_consume(log: EventLog, batch: str | None = None,
             evs_all = [e for e in evs_all if e.id in event_ids]
         dests = {e.id: table.destinations(e) for e in evs_all}
         for consumer, fn in CONSUMERS.items():
+            if only is not None and consumer not in only:   # `only`：只跑这几个消费者（cellvotes write --no-consume 只补排除名单）
+                continue
             mine = [e for e in evs_all if any(d.consumer == consumer for d in dests[e.id])]
             if not mine:
                 continue
