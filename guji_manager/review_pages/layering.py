@@ -122,8 +122,7 @@ FAMILY_LAYERS = ("hard", "low", "align")       # 这几层的卡并 5b 首位的
 
 def to_row(c: Cell, bp: BookParams, family=family_of) -> dict:
     """出页用的一行：层、原因、预选字、候选（5b 前十 → 库首位 → 参校本）。
-    难认字、低把握（含对位可疑）的格，候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个，
-    简体不上；见 family_cands.py）；family=None 不并。"""
+    难认字、低把握（含对位可疑）的格，候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个；见 family_cands.py）；family=None 不并。"""
     layer, why = classify(c, bp)
     cands, seen = [], set()
     for ch, src in [(x, "5b") for x in c.top[:10]] + [(c.lib, "库候选"), (c.ref, "参校本")]:

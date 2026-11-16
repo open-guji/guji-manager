@@ -43,7 +43,7 @@ def test_no_family_or_wrong_head_is_untouched():
     assert fc.with_family([["乙", "库首位"]], "步", fam) == [["乙", "库首位"]]   # 首位不是 5b 首位：不插
 
 
-def test_family_of_orders_by_sources_and_vetoes_simplified(monkeypatch):
+def test_family_of_orders_by_sources_and_keeps_simplified(monkeypatch):
     class E:
         def __init__(self, rel, src):
             self.rel, self.src = rel, src
@@ -56,11 +56,9 @@ def test_family_of_orders_by_sources_and_vetoes_simplified(monkeypatch):
 
     from guji_manager import _cv
     monkeypatch.setitem(_cv._LOCAL, "hanzi_shared", ("review_pages.family_cands", "_test_db"))
-    monkeypatch.setitem(_cv._LOCAL, "is_simplified", ("review_pages.family_cands", "_test_simp"))
     monkeypatch.setattr(fc, "_test_db", lambda: DB(), raising=False)
-    monkeypatch.setattr(fc, "_test_simp", lambda c: c == "内", raising=False)
-    assert fc.family_of("內") == ["𡗠", "納", "芮"]                  # 简体「内」否决；来源多的在前，异体先于部件对应
-    assert fc.family_of("內", no_simplified=False) == ["内", "𡗠", "納", "芮"]
+    # 来源多的在前，异体先于部件对应；简体形「内」不挡（刻本图里有时就是它）
+    assert fc.family_of("內") == ["内", "𡗠", "納", "芮"]
     assert fc.family_of("") == []
 
 
@@ -77,7 +75,7 @@ def test_family_of_without_relation_db_returns_empty(monkeypatch):
 
 
 def test_real_relation_db():
-    """真关系库：內 的族里有 𡗠（异体字字典），简体「内」被否决；步 的族里有 歩。"""
+    """真关系库：步 的族里有 歩；內 的族里有 内、黃 的族里有 黄（OpenCC 判简体的刻本俗写，不挡）。"""
     pytest.importorskip("open_guji_cv")
     try:
         from guji_manager._cv import hanzi_shared
@@ -85,9 +83,7 @@ def test_real_relation_db():
     except Exception as e:  # noqa: BLE001
         pytest.skip(f"关系库不可用：{e!r}")
     assert "歩" in fc.family_of("步")
-    assert "内" in fc.family_of("內", no_simplified=False)
-    pytest.importorskip("opencc")
-    assert "内" not in fc.family_of("內")
+    assert "内" in fc.family_of("內") and "黄" in fc.family_of("黃")
 
 
 # ---- 冷启动低把握页 ----

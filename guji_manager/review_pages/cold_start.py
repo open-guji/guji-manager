@@ -5,7 +5,7 @@
   高把握＝（库首位＝5b 首位，或 5b 领先第二名≥LEAD_HI）且 cov≥COV_HI 且库里该字有例 → 带「本页其余都对」，整页一点确认；
   低把握＝其余（库与 5b 不一致且领先小、库 0 例、cov<.90）→ 一格一卡、没点不算对。
 5b 领先量取自包里 rare_candidates 的 emb 候选（同一格 emb 分排序后首位减次位）。
-低把握页的候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个，简体不上；见 family_cands.py）。
+低把握页的候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个；见 family_cands.py）。
 """
 from __future__ import annotations
 

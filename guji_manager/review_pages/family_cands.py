@@ -9,10 +9,16 @@
 把 `family_of` 换成调它（`_cv._FALLBACK` 现在登记不了：旧 cv 没有那个模块，守卫测试会红）。
 
 排法：族里来源越多的排越前（多家字书都说是异体的更可信），其次「异体」先于「部件对应」，再按码位。
-简体否决照 5b 的口径（cv `charset_spec.is_simplified`）：刻本不印简体，族里的简体形不上卡。
+
+不做简体否决（Sheldon 11-16 定：刻本图里有时就是简体形）。5b 那条否决（cv `charset_spec` 的 `no-simplified`，
+判据 OpenCC `s2t(c) != c`）是 9-17 为了挡机器候选里 s2t／异体扩展造出来的简体字定的，判据把刻本常见的俗写和
+新旧字形（内、别、吕、黄、横、册）以及本来就是另一个字的（余、台、后、于）都算成简体：三书人裁金标里
+4.4%–5.0% 的格（类外字 6.7%–12.8%）金标字被它判成简体。审字卡是人看图点，多给几个不会自动放错，所以这里不挡；
+取消后族块平均只多 0.3 个字（6.6→6.9）。
 """
 from __future__ import annotations
 
+import unicodedata
 import warnings
 from collections.abc import Callable
 
@@ -22,7 +28,7 @@ FAMILY_MAX = 12
 _WARNED = False
 
 
-def family_of(ch: str, no_simplified: bool = True) -> list[str]:
+def family_of(ch: str) -> list[str]:
     """ch 的异体族，强的在前，不含 ch 自己。cv 或关系库取不到时返回 []（只警告一次，出页不因此失败）。"""
     global _WARNED
     if not ch:
@@ -35,22 +41,14 @@ def family_of(ch: str, no_simplified: bool = True) -> list[str]:
             _WARNED = True
             warnings.warn(f"取不到 cv 关系库，审字卡候选不并异体族：{e!r}", RuntimeWarning, stacklevel=2)
         return []
-    simp = _simplified_pred() if no_simplified else (lambda _c: False)
 
     def key(item):
         m, edges = item
         strong = sum(1 for e in edges if e.rel != "related")
         return (-len({e.src for e in edges}), -strong, ord(m[0]), m)
 
-    return [m for m, _ in sorted(fam.items(), key=key) if not simp(m)]
-
-
-def _simplified_pred() -> Callable[[str], bool]:
-    try:
-        from .._cv import is_simplified
-        return is_simplified
-    except Exception:  # noqa: BLE001
-        return lambda _c: False
+    # 兼容汉字（如 U+2F81D）折回去就是 ch 自己的不要：卡上会多一个看着一样的按钮
+    return [m for m, _ in sorted(fam.items(), key=key) if unicodedata.normalize("NFKC", m) != ch]
 
 
 def with_family(cands: list[list[str]], top: str, family: Callable[[str], list[str]] | None = family_of,
