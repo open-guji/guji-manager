@@ -348,6 +348,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     review += grown
     done = {(g[1], g[2]) for g in grown}
     left = [r for r in res["report"] if r[0] in ("punct", "entity") and (r[1], r[2]) not in done]
+    left, retargeted = _retarget_left_punct(res["punct"], new_char, left)
     if not problems:
         sys.path.insert(0, str(repo / "scripts"))
         import original_version as OV  # noqa: E402  book-text 自己的读写，保持排版
@@ -361,7 +362,60 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             "notes": notes, "human_pre": human_pre, "protected": len(prot_new),
             "chars": {k: len(v) for k, v in chars.items()}, "char_detail": chars,
             "remap": {"moved": res["moved"], "left": res["left"]}, "table": str(tsv),
-            "left": left, "review": review}
+            "left": left, "review": review, "retargeted": retargeted}
+
+
+_LACUNA_RE = re.compile(r"□→(.)")
+
+
+def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tuple[list, list]:
+    """remap 挪不了的标点里，两种情形可以确定地迁到新锚，不必整册卡住（bump punct 要锚点全对得上才升版）：
+    ① 旧校验字是 □、新包识出了字（原因码 ANCHOR_MISS｜校验字变了…□→X）：锚点不变（表里有新锚就用新锚），校验字改成 X；
+    ② 旧格被劈成 <旧锚>a、<旧锚>b…（原因码 ADD_DEL｜旧格无对应）：挂到最后一个新格。
+    迁之前核新文本里真有这个锚点、且字对得上；核不过的仍留在 left（人工清单）。
+    返回 (剩下的 left, 已迁清单[(层, 条目, 旧锚, 新锚, 新校验字, 情形)])。就地改 punct。"""
+    if not punct or not left:
+        return left, []
+    slots = _slots_any(new_char)
+    ps = punct.get("punctuations") or []
+    rest, done = [], []
+    for row in left:
+        layer, ent, old, new, _content, why = (list(row) + [""] * 6)[:6]
+        i = int(ent.lstrip("#")) if layer == "punct" and ent.lstrip("#").isdigit() else None
+        p = ps[i] if i is not None and i < len(ps) else None
+        if p is None or p.get("anchor") != old:
+            rest.append(row); continue
+        m = _LACUNA_RE.search(why)
+        if m and "ANCHOR_MISS" in why and p.get("pre_char") == "□":
+            a = new or old
+            if slots.get(a) == m.group(1):
+                p["anchor"], p["pre_char"] = a, m.group(1)
+                done.append((layer, ent, old, a, m.group(1), "□识出字")); continue
+        if "ADD_DEL" in why and not new and old not in slots:
+            cands = sorted((a for a in slots if a.startswith(old) and len(a) == len(old) + 1 and a[-1].isalpha()), key=lambda a: a[-1])
+            if cands:
+                a = cands[-1]
+                p["anchor"], p["pre_char"] = a, slots[a]
+                done.append((layer, ent, old, a, slots[a], "旧格劈开")); continue
+        rest.append(row)
+    return rest, done
+
+
+def _slots_any(new_char: dict) -> dict:
+    """递归找 {"a": 锚, "c": 字}：char.json 的格子结构变了也不至于全不迁。"""
+    out: dict = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            if isinstance(o.get("a"), str) and "c" in o:
+                out[o["a"]] = o["c"]
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(new_char)
+    return out
 
 
 def _grow_spans(entity: dict | None, new_char: dict, rows: list[dict], report: list) -> list[tuple]:
