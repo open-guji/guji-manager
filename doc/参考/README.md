@@ -7,4 +7,5 @@
 | [中心库.md](中心库.md) | 数据放哪、表结构、读写权限、日常命令、实验分支、备份（迁自 ai-team `通用/中心库设计.md`） | 已写（A20） |
 | [册配置.md](册配置.md) | 五层配置、合并规则、各层能写哪些字段、`--override`、`book split` | 已写（A20） |
 | [产物包与版本钉.md](产物包与版本钉.md) | `cv_version`／`corpus`／`glyph_pin`、降人审 D／S 轮怎么钉、产物包与 main、冻结登记、现状 | 已写（A20；11-05 补轮次） |
+| [5a相似度模型.md](5a相似度模型.md) | 5a 精验的度量学习 CNN：原理、`glyph_match.sim_model` 开关与配置、按书训／合训／微调、换权重流程、开新书用哪份模型 | 已写（OCR 研究 Project，11-16） |
 | [../../COMPAT.md](../../COMPAT.md) | manager 与 pipeline 契约兼容矩阵 | 已有 |
