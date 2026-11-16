@@ -5,12 +5,15 @@
   高把握＝（库首位＝5b 首位，或 5b 领先第二名≥LEAD_HI）且 cov≥COV_HI 且库里该字有例 → 带「本页其余都对」，整页一点确认；
   低把握＝其余（库与 5b 不一致且领先小、库 0 例、cov<.90）→ 一格一卡、没点不算对。
 5b 领先量取自包里 rare_candidates 的 emb 候选（同一格 emb 分排序后首位减次位）。
+低把握页的候选在 5b 首位之后并上它的异体族（来源「5b首位同族」，最多 12 个；见 family_cands.py）。
 """
 from __future__ import annotations
 
 import csv
 import json
 from pathlib import Path
+
+from .family_cands import family_of, with_family
 
 LEAD_HI = 0.03
 COV_HI = 0.90
@@ -48,8 +51,9 @@ def lead_5b(pack_dir: str, cell: str, _cache: dict | None = None) -> float:
 
 
 def classify(rows: list[dict], pack_dir: str, crops_dir: str, skip_cells: set[str] = frozenset(),
-             skip_chars: str = "", lead_hi: float = LEAD_HI, cov_hi: float = COV_HI):
-    """返回 (hi_items, lo_items, stats)；items 可直接喂 `review-pages build char_card`。"""
+             skip_chars: str = "", lead_hi: float = LEAD_HI, cov_hi: float = COV_HI, family=family_of):
+    """返回 (hi_items, lo_items, stats)；items 可直接喂 `review-pages build char_card`。
+    family：字 → 异体族（强的在前）；低把握格的候选在 5b 首位后并上它，None 不并。"""
     hi, lo, st, cache = [], [], {"skip_cell": 0, "skip_char": 0}, {}
     for r in rows:
         c = r["cell"]
@@ -66,6 +70,8 @@ def classify(rows: list[dict], pack_dir: str, crops_dir: str, skip_cells: set[st
         for ch, why in [(top5, "5b首位"), (lib, "库首位"), (r.get("参校本"), "参校本")] + [(x, "5b次选") for x in list(r.get("5b前三") or "")[1:]]:
             if ch and ch not in (x[0] for x in cands):
                 cands.append([ch, why])
+        if not high:
+            cands = with_family(cands, top5, family)
         it = {"id": c, "pre": top5, "pre_conf": "high" if high else "mid", "kind": "高把握" if high else "低把握",
               "img": crops_dir.format(cell=c.replace(":", "_")), "ctx": "",
               "note": f"库首位 {lib}，cov {r.get('cov')}，库例数 {ln}，5b 领先 {lead:.3f}；参校本 {r.get('参校本')}；{r.get('疑问', '')}",

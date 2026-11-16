@@ -371,6 +371,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "rare_for": ("clustering.rare_panel", "rare_for"),
     "JIAJIE_REL": ("report.tiers", "JIAJIE_REL"),
     "is_symbol": ("hanzi.symbols", "is_symbol"),
+    # 审字卡候选并 5b 首位的异体族（review_pages/family_cands.py，2026-11-16）
+    "hanzi_shared": ("hanzi.db", "shared"),
     "gold_store_verdict_store": ("gold.store", "verdict_store"),
     "unmojibake": ("feedback.mojibake", "unmojibake"),
     "binarize_page": ("utils.binarized", "binarize_page"),
