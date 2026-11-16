@@ -221,7 +221,9 @@ def _packs(vol: str, ws: str, env: dict) -> list[dict]:
     for ln in out.splitlines():
         parts = ln.lstrip("★ ").split("\t")
         if len(parts) >= 2 and parts[0].strip().startswith("products/"):
-            rows.append({"star": ln.startswith("★"), "label": parts[0].strip().rsplit("/", 1)[1], "size": int(parts[1])})
+            m = re.search(r"cv (\S+) 语料 (\d+)", ln)
+            rows.append({"star": ln.startswith("★"), "label": parts[0].strip().rsplit("/", 1)[1], "size": int(parts[1]),
+                         "cv": m.group(1) if m else None, "corpus": m.group(2) if m else None})
     return rows
 
 
@@ -268,7 +270,8 @@ def follow_main(vol: str, ws: str) -> int:
     except Exception as e:  # noqa: BLE001
         print(f"{vol}: 还没有线上单（首发另行决定）：{e}"); return 1
     rp = next((r for r in rows if r["label"] == f"rev-{rev}"), None)
-    if rp and rp["size"] == star["size"]:
+    same = (rp["corpus"] == star["corpus"]) if rp and rp.get("corpus") and star.get("corpus") else (rp and rp["size"] == star["size"])
+    if same:
         print(f"{vol}: 线上单 {rev} 已与 main 包 {star['label']} 一致"); return 0
     if not rp:
         print(f"{vol}: 线上单 {rev} 没存 rev 包，没法确认出自哪个包，不盲目重出；请人工 `republish.py issue`"); return 1
@@ -342,13 +345,17 @@ def audit(vols: list[str], ws: str, fix: bool = False) -> int:
         cells = doc.get("cells") or []
         no_alt = sum(1 for x in cells if not x.get("alt"))
         m = re.match(r"cv(\d+\.\d+\.\d+)-", star["label"])
-        if rp:
+        # 不比包大小：精校回合（proof_cycle）出的 rev 包是重跑后的产物，天然和 ★ main 包大小不同。
+        # 比「语料号」（人审单随 main 包的语料／字形一起换）和 cv 版本；两边读不出来才退到大小。
+        if rp and rp.get("corpus") and star.get("corpus"):
+            stale = rp["corpus"] != star["corpus"] or bool(m and doc.get("cv_version") not in (None, m.group(1)))
+        elif rp:
             stale = rp["size"] != star["size"]
         else:   # 没存 rev 包（手工 push 出的单）：认不出来源，退而比 cv 版本；一致就当没落后
             stale = bool(m) and doc.get("cv_version") != m.group(1)
         msgs = []
         if stale:
-            msgs.append(f"落后于 main {star['label']}（线上 {rev}，" + ("没存 rev 包、cv 版本也对不上" if not rp else "包大小不同") + "）")
+            msgs.append(f"落后于 main {star['label']}（线上 {rev}，" + ("没存 rev 包、cv 版本也对不上" if not rp else "语料号／cv 版本对不上") + "）")
         if no_alt:
             msgs.append(f"{no_alt}/{len(cells)} 格没有备选字 alt")
         if not msgs:
