@@ -121,3 +121,37 @@ def test_follow_main_punct_layer_no_longer_blocks(capsys, monkeypatch, tmp_path)
     assert OL.follow_main("005", "/tmp/ws") == 0
     assert any("republish.py" in " ".join(map(str, c)) and "issue" in c for c in calls)
     assert "标点" in capsys.readouterr().out
+
+
+def test_vol_list():
+    assert OL._vol_list("005-007,020") == ["005", "006", "007", "020"]
+
+
+def _audit_setup(monkeypatch, live, rows):
+    monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r")
+    monkeypatch.setenv("GUJI_CV_REPO", "/x")
+    monkeypatch.setattr(OL, "ident", lambda v, w=None: ("bid0000000", v))
+    monkeypatch.setattr(OL, "_packs", lambda *a: rows)
+    monkeypatch.setattr(OL, "_live_list", lambda b, c: live)
+
+
+def test_audit_ok(monkeypatch, capsys):
+    _audit_setup(monkeypatch, {"rev": "005-r3", "cells": [{"alt": [{"c": "己"}]}]},
+                 [{"star": True, "label": "L", "size": 5}, {"star": False, "label": "rev-005-r3", "size": 5}])
+    assert OL.audit(["005"], "/w") == 0 and "ok" in capsys.readouterr().out
+
+
+def test_audit_flags_stale_and_missing_alt(monkeypatch, capsys):
+    _audit_setup(monkeypatch, {"rev": "005-r2", "cells": [{"alt": []}, {}]},
+                 [{"star": True, "label": "L", "size": 5}, {"star": False, "label": "rev-005-r2", "size": 4}])
+    assert OL.audit(["005"], "/w") == 1
+    out = capsys.readouterr().out
+    assert "落后于 main" in out and "2/2 格没有备选字" in out
+
+
+def test_audit_fix_calls_follow_main(monkeypatch):
+    _audit_setup(monkeypatch, {"rev": "005-r2", "cells": [{"alt": [1]}]},
+                 [{"star": True, "label": "L", "size": 5}, {"star": False, "label": "rev-005-r2", "size": 4}])
+    called = []
+    monkeypatch.setattr(OL, "follow_main", lambda v, w: (called.append(v), 0)[1])
+    assert OL.audit(["005"], "/w", fix=True) == 0 and called == ["005"]

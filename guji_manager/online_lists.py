@@ -281,12 +281,82 @@ def follow_main(vol: str, ws: str) -> int:
     return rc
 
 
+def _vol_list(spec: str) -> list[str]:
+    """`005-015,020` → ['005',…,'015','020']（3 位册号）。"""
+    out: list[str] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part and part.replace("-", "").isdigit():
+            a, b = part.split("-", 1)
+            out += [str(i).zfill(len(a)) for i in range(int(a), int(b) + 1)]
+        else:
+            out.append(part)
+    return out
+
+
+def _live_list(bid: str, ch: str) -> dict:
+    with urllib.request.urlopen(f"{DATA}/proof/{bid}/{ch}.pending.json") as r:
+        return json.loads(r.read())
+
+
+def audit(vols: list[str], ws: str, fix: bool = False) -> int:
+    """核对网站上各册待审单：①单子出自的包 = 当前 ★ main 包？②每格 alt（相似字备选）非空？
+    不一致打印并返回非 0；`fix` 时对「落后于 main」的册调 follow_main 重出。
+    11-16 起因：x1 标 main 后自动重出大半失败，网站上 005–015 还是 11-08 的旧单，格子没有备选字，没人发现。
+    建议标 main 后（on_promote 已调 follow_main）和每日各跑一次。"""
+    c = _cfg()
+    read_env = {**os.environ, "PYTHONPATH": c["cv"], "GUJI_DATA_TOKEN": os.environ.get("GUJI_DATA_TOKEN_READ", os.environ.get("GUJI_DATA_TOKEN", ""))}
+    bad = 0
+    for vol in vols:
+        bid, ch = ident(vol, ws)
+        if not (bid and ch):
+            print(f"{vol}: 认不出书 id 或章号"); bad += 1; continue
+        rows = _packs(vol, ws, read_env)
+        star = next((r for r in rows if r["star"]), None)
+        if not star:
+            print(f"{vol}: 没有 ★ main 包，跳过"); continue
+        try:
+            doc = _live_list(bid, ch)
+        except Exception as e:  # noqa: BLE001
+            print(f"{vol}: 线上没有单子（{e}）"); bad += 1; continue
+        rev = doc.get("rev")
+        rp = next((r for r in rows if r["label"] == f"rev-{rev}"), None)
+        cells = doc.get("cells") or []
+        no_alt = sum(1 for x in cells if not x.get("alt"))
+        m = re.match(r"cv(\d+\.\d+\.\d+)-", star["label"])
+        if rp:
+            stale = rp["size"] != star["size"]
+        else:   # 没存 rev 包（手工 push 出的单）：认不出来源，退而比 cv 版本；一致就当没落后
+            stale = bool(m) and doc.get("cv_version") != m.group(1)
+        msgs = []
+        if stale:
+            msgs.append(f"落后于 main {star['label']}（线上 {rev}，" + ("没存 rev 包、cv 版本也对不上" if not rp else "包大小不同") + "）")
+        if no_alt:
+            msgs.append(f"{no_alt}/{len(cells)} 格没有备选字 alt")
+        if not msgs:
+            print(f"{vol}: ok（{rev}，{len(cells)} 格，alt 齐）"); continue
+        bad += 1
+        print(f"{vol}: ✗ " + "；".join(msgs))
+        if fix and stale:
+            if follow_main(vol, ws) == 0:
+                bad -= 1
+    return 1 if bad else 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="按 ★ main 包重出一册的线上待审单（标 main 后自动调，也可手动跑）")
-    ap.add_argument("--vol", required=True)
+    ap = argparse.ArgumentParser(description="按 ★ main 包重出一册的线上待审单（标 main 后自动调，也可手动跑）；--audit 核对各册")
+    ap.add_argument("--vol", help="单册：重出")
+    ap.add_argument("--audit", help="核对这些册（如 005-015,020）：单子出自的包是否 ★ main、每格 alt 是否非空；有问题退出码 1")
+    ap.add_argument("--fix", action="store_true", help="--audit 时顺带重出落后的册")
     ap.add_argument("-w", "--ws", required=True)
     ap.add_argument("--label", default="", help="（只做记录）刚标 main 的标签")
     a = ap.parse_args(argv)
+    if a.audit:
+        return audit(_vol_list(a.audit), a.ws, fix=a.fix)
+    if not a.vol:
+        ap.error("要 --vol 或 --audit")
     return follow_main(a.vol, a.ws)
 
 
