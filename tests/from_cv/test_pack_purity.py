@@ -22,6 +22,13 @@ def test_code_mixed_counts_only_own_code_staleness():
     assert PP.code_mixed(_st(seed_admit={1: {"status": "fresh"}})) == {}
 
 
+def test_corpus_pin_change_is_not_code_mixed():
+    """只改语料钉（cv ≥0.7.46 报「语料钉变了」）不算混版本；代码也变了照旧算（SJ r71 11-16）。"""
+    st = _st(glyph_match={1: {"status": "stale", "reason": "语料钉变了：corpus 6→8（代码未变）"},
+                          2: {"status": "stale", "reason": "代码或版本变了；语料钉也变了：corpus 6→8"}})
+    assert PP.code_mixed(st) == {"glyph_match": 1}
+
+
 def _book(tmp_path, rev=3, idx=None):
     d = tmp_path / "vol06"
     d.mkdir(parents=True, exist_ok=True)

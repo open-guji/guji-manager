@@ -25,7 +25,7 @@ import json
 import time
 from pathlib import Path
 
-#: 严格口径下「这一步自己的代码和产物对不上」的过期原因前缀（`Engine.stale_reason`）
+#: 严格口径下「这一步自己的代码和产物对不上」的过期原因前缀（`Engine.stale_reason`）。cv ≥0.7.46 只改语料钉报「语料钉变了」，不在此列
 CODE_REASONS = ("代码或版本变了", "代码或册配置变了")
 
 

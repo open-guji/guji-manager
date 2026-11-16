@@ -55,6 +55,13 @@ def add_parser(sub) -> None:
     rl.add_argument("-w", "--workspace", default=None)
     rl.add_argument("--out", default="seg-ruler.tsv")
 
+    pm = ss.add_parser("premain", help="标 main 前的硬检查（绝对、不比旧 main）：格高≥1.6倍、格数少于整理本字数、判空却有墨；命中退出 3，不许标 main")
+    pm.add_argument("books", nargs="+", help="册 id")
+    pm.add_argument("--products", default="", help="产物根（缺省取 GUJI 的 products 根；候选包先 guji products pack fetch --to <根>）")
+    pm.add_argument("--allow", default="", help="放行清单 TSV：册\t页\t列[\t原因]（页、列可写 *），看过图确认无害的列")
+    pm.add_argument("--pages", default="", help="只查这些页")
+    pm.add_argument("--out", default="", help="命中清单 TSV 输出（缺省不写）")
+
     gt = ss.add_parser("gate", help="标 main 前的切分不回退闸：比新旧两份 seg check，回退或新页级错退出 3，出切分未定清单")
     gt.add_argument("new", help="候选包的 guji seg check 输出目录（或其 列清单.tsv）")
     gt.add_argument("--base", required=True, help="现役 main 的 guji seg check 输出目录（同样页范围、同样开关）")
@@ -75,6 +82,23 @@ def cmd_seg(args) -> None:
         _cmd_ruler(args)
     elif args.seg_cmd == "gate":
         _cmd_gate(args)
+    elif args.seg_cmd == "premain":
+        _cmd_premain(args)
+
+
+def _cmd_premain(args) -> None:
+    from . import seg_check, seg_premain
+    from ._cv import products_root
+    root = Path(args.products) if args.products else Path(products_root())
+    rows = seg_premain.run(args.books, root, seg_premain.load_allow(args.allow or None),
+                           seg_check.parse_pages(args.pages) if args.pages else None)
+    if args.out:
+        Path(args.out).write_text("册\t页\t列\t类\t说明\n" + "".join("\t".join(map(str, r)) + "\n" for r in rows), encoding="utf-8")
+    for r in rows:
+        print(f"{r[0]}:{r[1]}:{r[2]}\t{r[3]}\t{r[4]}")
+    n = len({(r[0], r[1], r[2]) for r in rows})
+    print(f"seg premain：{'、'.join(args.books)} 命中 {len(rows)} 条（{n} 列）" + ("，不许标 main；看图确认无害的列写进 --allow 清单" if rows else "，通过"))
+    raise SystemExit(3 if rows else 0)
 
 
 def _cmd_gate(args) -> None:
