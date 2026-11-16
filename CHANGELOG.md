@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.51] - 2026-11-16
+
+- 发版说明（A31 11-16）：dev 头 253340f，PATCH。主要为带上 #594（`pending_fields` 带 `pending_reason`，SJ v0.1 预检）；同带 #587、#591、#592、#593（seg premain 标 main 前硬检查）。配 cv ≥0.7.46 时 `pack_purity` 不再把只改语料钉判成混版本。
+
 - PATCH：`review.proof_fields.pending_fields` 带上卡上已判好的 `pending_reason`／`pending_reason_detail`（`cards()` 出卡时 `stamp_cards` 判的）。SJ v0.1 预检 11-16：跑批本机拿 `cards()`＋`pending_fields` 离线出的 42 册待审单没有原因码，`pending-stats --from-dir` 全记 unknown。republish 出单随后照旧按 `reasons_for_pending` 重判覆盖，线上单不变。`ops/pack_purity` 补测试：cv ≥0.7.46 的「语料钉变了」不算混版本。
 
 ## [0.4.50] - 2026-11-15
