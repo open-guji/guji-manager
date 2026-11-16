@@ -180,3 +180,17 @@ def test_audit_reports_packs_failure(monkeypatch, capsys):
         raise RuntimeError("没出包清单")
     monkeypatch.setattr(OL, "_packs", boom)
     assert OL.audit(["004"], "/w") == 1 and "✗" in capsys.readouterr().out
+
+
+def test_audit_proof_cycle_rev_pack_size_differs_but_same_corpus_is_ok(monkeypatch, capsys):
+    _audit_setup(monkeypatch, {"rev": "008-r4", "cv_version": "0.7.42", "cells": [{"alt": [1]}]},
+                 [{"star": True, "label": "cv0.7.42-c78-x", "size": 5, "corpus": "78"},
+                  {"star": False, "label": "rev-008-r4", "size": 9, "corpus": "78"}])
+    assert OL.audit(["008"], "/w") == 0
+
+
+def test_audit_new_corpus_is_stale(monkeypatch):
+    _audit_setup(monkeypatch, {"rev": "008-r4", "cv_version": "0.7.42", "cells": [{"alt": [1]}]},
+                 [{"star": True, "label": "cv0.7.42-c79-x", "size": 5, "corpus": "79"},
+                  {"star": False, "label": "rev-008-r4", "size": 5, "corpus": "78"}])
+    assert OL.audit(["008"], "/w") == 1
