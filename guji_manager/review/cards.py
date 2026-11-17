@@ -215,7 +215,7 @@ def _align_ref_maps(st: ProductStore, book: str, pg: int) -> tuple[dict, dict]:
     main = ({c.id: (fold_radicals(c.align_char), c.align_op, c.ref_run) for c in ar.chars
              if c.align_char} if ar.anchored else {})
     coord = {c.id: fold_radicals(c.ref_char) for c in (getattr(ar, "coord", None) or [])
-             if c.ref_char and c.ref_char != "〓"}   # 逐列本的 PUA 生僻字占位，不当整理本字显示
+             if c.ref_char and c.ref_char not in ("〓", "▣")}   # 逐列本的 PUA 生僻字占位，不当整理本字显示
     return main, coord
 
 

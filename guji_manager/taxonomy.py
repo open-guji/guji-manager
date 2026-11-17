@@ -61,7 +61,7 @@ SUBS: dict[str, tuple[str, str, str, str, str]] = {
 _DISSENT = {"group_flow_disagree", "group_flow_ref_dissent", "group_flow_coord_dissent", "group_flow_ctx_contra",
             "group_flow_conflict"}
 _WEAK = {"group_flow_joint", "group_flow_weak"}
-_MISSING_REF = {"", "〓", None}
+_MISSING_REF = {"", "〓", "▣", None}
 
 #: 页内遮挡格 ≥ 这个数算「整页成片」
 OCC_PAGE_MIN = 15

@@ -113,7 +113,7 @@ def build(ws: Path, version: int | None = None, note: str = "", base=None) -> Pa
     hits = glyph_placeholder_hits(ws, items)
     if hits:
         raise ValueError(f"参校本里有殆知阁缺字图占位码（缅甸文 U+1000–U+109F）：{hits}；"
-                         "按 glyphs 换成 〓（或认出的真字）再出版本，见 open-guji-cv scripts/dzg_import.py 模块头")
+                         "按 glyphs 换成 ▣（以图代字；映不上的私用码才是 〓，或认出的真字）再出版本，见 open-guji-cv scripts/dzg_import.py 模块头")
     man = {
         "corpus_version": v,
         "created": datetime.date.today().isoformat(),
