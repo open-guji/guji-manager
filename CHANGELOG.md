@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。
+
 ## [0.4.53] - 2026-11-16
 
 - 发版说明（ZM 11-16）：dev 头 51787ff，PATCH。主要为带上 #607（整理本占位符区分：`reasons.ref_missing`、`taxonomy`、`causes`、`cards`、`sheet_audit`、`release_gates`、`exit_check`、`close_check`、`review_breakdown` 认 `▣` 以图代字为整理本缺字，成因 A2 `detail="image"`；配 cv ≥0.7.52，殿本换含 `▣` 的整理本新语料用）。同带 #600–#606、#608（swap.booktext 标点迁移、online_lists 落后判定与子进程路径、seg premain INK_BLANK、cellvotes `--no-consume` 补排除名单、粗校 R5 rough 第 12 项、5a 文档）。
