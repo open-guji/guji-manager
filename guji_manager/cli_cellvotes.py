@@ -350,12 +350,13 @@ def cmd_write(args) -> None:
 
 
 def _draft_pages(rows: list[dict]) -> list[int]:
-    """草稿行 id 形如 `vol15:25:4:11a`（册:页:列:格）；取页号，解析不了的跳过。"""
+    """草稿行 id 形如 `vol15:25:4:11a`（册:页:列:格），旧草稿可能不带册前缀（`25:4:11a`）；取页号，解析不了的跳过。"""
     out = set()
     for r in rows:
         parts = str(r.get("id") or "").split(":")
-        if len(parts) >= 4 and parts[1].isdigit():
-            out.add(int(parts[1]))
+        pg = parts[1] if len(parts) == 4 else parts[0] if len(parts) == 3 else ""
+        if pg.isdigit():
+            out.add(int(pg))
     return sorted(out)
 
 

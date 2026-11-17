@@ -75,8 +75,8 @@ def test_draft_carries_pending_reason_from_sheet(tmp_path, monkeypatch):
 
 
 def test_draft_pages_parses_ids():
-    rows = [{"id": "vol15:25:4:11a"}, {"id": "vol15:3:1:1"}, {"id": "vol15:25:2:2"}, {"id": "坏"}, {}]
-    assert C._draft_pages(rows) == [3, 25]
+    rows = [{"id": "vol15:25:4:11a"}, {"id": "vol15:3:1:1"}, {"id": "vol15:25:2:2"}, {"id": "7:1:2"}, {"id": "坏"}, {}]
+    assert C._draft_pages(rows) == [3, 7, 25]
 
 
 def test_write_refuses_on_stale_patch_cache(monkeypatch):
