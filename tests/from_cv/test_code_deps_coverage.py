@@ -43,6 +43,10 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
     ("open_guji_cv.steps.glyph_match", "open_guji_cv.clustering.sim_cnn"):
         "只在 sim_model 开时换精验（cv#1394，缺省 None＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "开着时权重 sha256＋sim_cnn 代码哈希经 sim_model_sha 进参数指纹，改 sim_cnn 照样判过期",
+    ("open_guji_cv.steps.glyph_match", "open_guji_cv.steps.glyph_stages"):
+        "只在 stages 开时跑库匹配之后的分段判定（cv#1589，缺省 None＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
+        "开着时 glyph_stages、near_route、shape_stage、groups.methods、ids_online、registry 的代码哈希＋形近字组表＋终判组模板库"
+        "经 stages_sha 进参数指纹，改这些模块照样判过期",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.stroke_veto"):
         "只在 stroke_veto 开时跑笔画反向护栏（cv#1487，缺省空串＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 stroke_veto 之前要把本模块并入该册指纹（随启用的 PR 补）",
