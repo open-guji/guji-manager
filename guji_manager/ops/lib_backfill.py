@@ -209,6 +209,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
         evs, n = [], 0
         for i, (ch, k, png, meta, v) in enumerate(picks, 1):
             bk, pg, col, slot = k.split(":")
+            slot = slot.rstrip("ab")          # 半格（19a／19b）：格号取数字部分，键仍带后缀（同库里现有刻例）
             e = make_event(batch, base + i, "confirm",
                            EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
                                        page=int(pg), col=int(col), slot=int(slot)),

@@ -453,6 +453,7 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
             continue
         try:
             book, pg, col, slot = key.split(":")
+            slot = slot.rstrip("ab")                   # 半格的格号取数字部分
             path = cache.get(book, "char_patch", p["patch_key"])
         except Exception as exc:                       # noqa: BLE001
             res.errors.append(f"{e.target.key}: 回库事件解析不了（{exc}）")
