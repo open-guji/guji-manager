@@ -42,9 +42,9 @@ _VARIANT = {"ref_lib_variant", "variant_indirect", "replace_form", "channel_off"
 
 
 def ref_missing(ch: str | None) -> bool:
-    """整理本这位是〓、缅甸文占位或私用码（没码位的生僻字）。私用码（U+E000–F8FF、15／16 平面）11-07 起也算（A24 R01 核实，
+    """整理本这位是〓（私用码未定字）、▣（以图代字，2026-11-16 起与〓分开，见 cv `utils/gap.py`）、缅甸文占位或私用码（没码位的生僻字）。私用码（U+E000–F8FF、15／16 平面）11-07 起也算（A24 R01 核实，
     sheldon 同意）：史記整理本直接带私用码，不是殿本那套缅文占位；原先它们落 P02／L01。"""
-    return bool(ch) and (ch == "〓" or any(0x1000 <= ord(c) <= 0x109F or 0xE000 <= ord(c) <= 0xF8FF or ord(c) >= 0xF0000
+    return bool(ch) and (ch in ("〓", "▣") or any(0x1000 <= ord(c) <= 0x109F or 0xE000 <= ord(c) <= 0xF8FF or ord(c) >= 0xF0000
                                            for c in ch))
 
 

@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.53] - 2026-11-16
+
+- 发版说明（ZM 11-16）：dev 头 51787ff，PATCH。主要为带上 #607（整理本占位符区分：`reasons.ref_missing`、`taxonomy`、`causes`、`cards`、`sheet_audit`、`release_gates`、`exit_check`、`close_check`、`review_breakdown` 认 `▣` 以图代字为整理本缺字，成因 A2 `detail="image"`；配 cv ≥0.7.52，殿本换含 `▣` 的整理本新语料用）。同带 #600–#606、#608（swap.booktext 标点迁移、online_lists 落后判定与子进程路径、seg premain INK_BLANK、cellvotes `--no-consume` 补排除名单、粗校 R5 rough 第 12 项、5a 文档）。
+
 ## [0.4.52] - 2026-11-16
 
 - 发版说明（A31 11-16）：dev 头 22e49e3，PATCH。为带上 #597（`guji pagekinds` 核半文半表页 `page_kinds.table_cols`、进度看板不把 `table_column` 拒掉的列算坏列；配 cv v0.7.47 史記 patch 线或 dev 含 #1590）。老 cv 读不到 table_cols 参数时为空，行为不变。

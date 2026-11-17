@@ -36,7 +36,7 @@ def load_edges(path: Path | None = None) -> dict[str, set]:
 
 
 def _missing(ch) -> bool:
-    return ch is None or ch == "〓" or any(0x1000 <= ord(c) <= 0x109F for c in ch)
+    return ch is None or ch in ("〓", "▣") or any(0x1000 <= ord(c) <= 0x109F for c in ch)
 
 
 def classify(r: dict, ref: str | None, cands: list, cand_variants, edges: dict) -> tuple[str, str]:
