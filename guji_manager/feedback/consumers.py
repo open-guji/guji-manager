@@ -401,11 +401,14 @@ def glyphdb_admit(events, db_path: str | None = None,
     # 一个错范本。口径见 `events.counts_as_human`（码位统一／乱码还原这类人裁的机械更正照旧进）。
     admits = [(e, d) for e, d in events
               if e.kind == "confirm" and (e.payload.get("v") or "confirm") == "confirm" and counts_as_human(e)]
-    res.skipped = len(events) - len(admits)       # 撤票也不进库，照旧算跳过；真撤了刻例另计 withdrawn
-    if not admits and not withdraws:
+    # 放行格回库（`ops/lib_backfill.py`，2026-11-17）：机器刻例的事件带 `backfill` 标，可以重放。
+    # `db sync` 遇到两边都改了字形库会取库里的、让本地新事件重新消费一遍；没有这一支，本机刚回的库就丢了。
+    backfills = [(e, d) for e, d in events if _is_backfill(e)]
+    res.skipped = len(events) - len(admits) - len(backfills)   # 撤票也不进库，照旧算跳过；真撤了刻例另计 withdrawn
+    if not admits and not withdraws and not backfills:
         return res
     if dry_run:
-        res.added = len(admits)
+        res.added = len(admits) + len(backfills)
         return res
 
     from .._cv import GlyphDB
@@ -418,10 +421,56 @@ def glyphdb_admit(events, db_path: str | None = None,
     occ_memo: dict = {}
     occ_tok = _OCC_BOOKS.set({})
     try:
-        return _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bindings_of or _bindings_lookup,
-                             withdraws=withdraws, ts_of=ts_of or _EventTs(events))
+        if admits or withdraws:
+            _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bindings_of or _bindings_lookup,
+                          withdraws=withdraws, ts_of=ts_of or _EventTs(events))
+        if backfills:
+            _admit_backfills(res, backfills, db, cache)
+        return res
     finally:
         _OCC_BOOKS.reset(occ_tok)
+
+
+def _is_backfill(e: Event) -> bool:
+    p = e.payload or {}
+    return e.kind == "confirm" and p.get("source") == "auto" and bool(p.get("backfill")) \
+        and (p.get("v") or "confirm") == "confirm"
+
+
+def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
+    """放行格回库事件的重放：按事件里记的字块键从缓存取图，照 `lib_backfill.run` 同一把二值化，以
+    `provenance="auto"` 进库。这一格已在库（人裁或机器）、或被撤过库的不进；缓存里没有字块的报错留着，
+    到有这一册产物与字块缓存的机器上再落（`auto_admit` 不给报错的事件记账）。核验结果在事件里，重放不重核。"""
+    import cv2
+    from .._cv import binarize_page
+    for e, _d in backfills:
+        key = e.target.key[3:] if e.target.key.startswith("v2:") else e.target.key
+        db_id, p = f"v2:{key}", e.payload
+        ch = p.get("shape") or ""
+        if (db.conn.execute("SELECT 1 FROM admissions WHERE instance_id=?", (db_id,)).fetchone()
+                or db.conn.execute("SELECT 1 FROM evictions WHERE instance_id=?", (db_id,)).fetchone()):
+            res.skipped += 1
+            continue
+        try:
+            book, pg, col, slot = key.split(":")
+            path = cache.get(book, "char_patch", p["patch_key"])
+        except Exception as exc:                       # noqa: BLE001
+            res.errors.append(f"{e.target.key}: 回库事件解析不了（{exc}）")
+            res.skipped += 1
+            continue
+        img = cv_imread(str(path), cv2.IMREAD_GRAYSCALE) if path is not None else None
+        if img is None:
+            res.errors.append(f"{e.target.key}: 缓存里没有字块 {p.get('patch_key')}")
+            res.skipped += 1
+            continue
+        png = cv2.imencode(".png", binarize_page(img, edge_margin=0))[1].tobytes()
+        meta = {k: p.get(k) for k in ("channel", "verdict", "cov", "verify")}
+        ok = db.admit_instance(db_id, ch, png, provenance="auto", shape=ch,
+                               evidence={"event": e.id, "batch": e.batch, "source": "auto", "backfill": True, **meta},
+                               page=pg, col=int(col), idx=int(slot))
+        res.added += bool(ok)
+        res.skipped += not ok
+    db.conn.commit()
 
 
 _WITHDRAW_V = ("seg_defect", "not_a_char", "damaged")
