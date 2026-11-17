@@ -783,9 +783,12 @@ def push_sheet(ws: Path, book: str, cv: Path) -> str:
         return "no-sheet（没有已出的新单）"
     rev = pubs[-1].name
     env = {**os.environ, "GUJI_WORKSPACE": str(ws), "GUJI_DB_NO_GLYPH": "1"}
+    script = cv / "scripts" / "zhengli" / "republish.py"
+    # cv 11-17 起 push 缺省推库并发站（cv #1641）；这里有意只写本机、最后统一 db sync，认得 --no-sync 就带上
+    no_sync = ["--no-sync"] if "--no-sync" in script.read_text(encoding="utf-8") else []
     for _ in range(3):
-        p = subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "republish.py"), "push", "--book", book, "-w", str(ws),
-                            "--rev", rev, "--yes", "--no-pack"], cwd=cv, env={**env, "PYTHONPATH": str(cv)}, capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(script), "push", "--book", book, "-w", str(ws),
+                            "--rev", rev, "--yes", "--no-pack", *no_sync], cwd=cv, env={**env, "PYTHONPATH": str(cv)}, capture_output=True, text=True)
         if p.returncode == 0:
             return f"pushed {rev}"
         if not re.search(r"Connection reset|timed out|HTTP Error 5", p.stdout + p.stderr):
