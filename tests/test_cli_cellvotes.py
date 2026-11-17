@@ -6,6 +6,10 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
+from guji_manager import cli_cellvotes as C
+
 BOOK, REV = "sitebk01", "004-r3"
 
 
@@ -68,3 +72,43 @@ def test_draft_carries_pending_reason_from_sheet(tmp_path, monkeypatch):
     rows = {r["id"]: r for r in map(json.loads, (out / "drafts.jsonl").read_text(encoding="utf-8").splitlines())}
     assert rows["vol04:1:1:1"]["pending_reason"] == "hard_pair"
     assert rows["vol04:1:1:2"]["pending_reason"] == "unknown"
+
+
+def test_draft_pages_parses_ids():
+    rows = [{"id": "vol15:25:4:11a"}, {"id": "vol15:3:1:1"}, {"id": "vol15:25:2:2"}, {"id": "坏"}, {}]
+    assert C._draft_pages(rows) == [3, 25]
+
+
+def test_write_refuses_on_stale_patch_cache(monkeypatch):
+    """ZM 11-17 建议 2：缓存与产物根对不上就拒写，免得静默写出指纹不符的锚。"""
+    import guji_manager._cv as CV
+    import guji_manager.ops.cache_verify as CVF
+    called = {}
+
+    class _B:
+        id = "vol15"
+    monkeypatch.setattr(CV, "load_book", lambda b: _B(), raising=False)
+    monkeypatch.setattr(CV, "default_pipeline_id", lambda b: "p", raising=False)
+    monkeypatch.setattr(CV, "_engine", lambda *a, **k: object(), raising=False)
+
+    def fake_verify(eng, pages, fix=False, log=None, full=False):
+        called["pages"], called["fix"] = list(pages), fix
+        return {"bad_columns": 2, "bad_pages": [25]}
+    monkeypatch.setattr(CVF, "verify_book", fake_verify)
+    with pytest.raises(SystemExit) as e:
+        C._check_patch_cache("vol15", [{"id": "vol15:25:4:11a"}])
+    assert called == {"pages": [25], "fix": True}
+    assert "guji cache warm --book vol15 --pages 25" in str(e.value)
+
+    monkeypatch.setattr(CVF, "verify_book", lambda *a, **k: {"bad_columns": 0, "bad_pages": []})
+    C._check_patch_cache("vol15", [{"id": "vol15:25:4:11a"}])     # 不抛
+
+
+def test_write_cache_check_soft_fails_without_engine(monkeypatch, capsys):
+    import guji_manager._cv as CV
+
+    def boom(b):
+        raise FileNotFoundError("没有册配置")
+    monkeypatch.setattr(CV, "load_book", boom, raising=False)
+    C._check_patch_cache("vol15", [{"id": "vol15:25:4:11a"}])
+    assert "没核字块缓存" in capsys.readouterr().out + capsys.readouterr().err
