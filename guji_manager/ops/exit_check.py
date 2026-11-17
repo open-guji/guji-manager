@@ -53,7 +53,7 @@ def lacuna_with_char(char_doc: dict) -> list[str]:
     for page in char_doc.get("pages", []):
         for col in page.get("columns", []):
             for c in col.get("cells", []):
-                if c.get("lacuna") and c.get("c") not in (None, "", "□", "〓"):
+                if c.get("lacuna") and c.get("c") not in (None, "", "□", "〓", "▣"):
                     bad.append(f"{c.get('a')}={c.get('c')}")
     return bad
 

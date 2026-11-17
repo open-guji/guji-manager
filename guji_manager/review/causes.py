@@ -79,6 +79,8 @@ def cause_of(char: dict, aligned: dict | None, coord: dict | None, col_fallback:
         return "C", ",".join(sorted(codes & _GROUP_CODES)) or "己已巳"
     if ref == "〓":
         return "A2", ""
+    if ref == "▣":                       # 以图代字（整理本侧表 kind=image）：同 A2，detail 标 image 方便单独统计／出图片格页
+        return "A2", "image"
     if not ref:
         if codes & _GARBLE_CODES:
             return "A6", ",".join(sorted(codes & _GARBLE_CODES))

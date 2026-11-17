@@ -312,7 +312,7 @@ def _export(export_dir: Path, chapter: str | None) -> list[dict]:
     pj = export_dir / f"{stem}.pages.json"
     chars = _plain_chars(lines.read_text(encoding="utf-8"))
     items = [_item("10", "lines.md", PASS, f"{lines.name}：{len(chars)} 字元（导出器口径，含阙文占位）",
-                   {"chars": len(chars), "lacuna": sum(1 for c in chars if c in ("〓", "□"))})]
+                   {"chars": len(chars), "lacuna": sum(1 for c in chars if c in ("〓", "▣", "□"))})]
     if not pj.exists():
         items.append(_item("11", "pages.json", FAIL, f"缺 {pj.name}"))
         return items

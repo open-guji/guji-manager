@@ -19,7 +19,7 @@ from ..closeout import anchors as A
 OVERTURN_NOTE = re.compile(r"机器改判「([^」]*)」→「([^」]*)」，?推翻人裁")
 #: 旧人裁已经不被采信的绑定状态（`feedback/bindings.py`：valid／rebound 才认）
 UNTRUSTED = {"unanchored", "review", "void"}
-BLANKS = {"", "□", "〓"}
+BLANKS = {"", "□", "〓", "▣"}
 
 BLOCK = {
     "overturn_empty": "「机器改判为 □／无字」不是推翻人裁（机器没认出字，如印章遮挡）：该留人裁字、不进复审",
