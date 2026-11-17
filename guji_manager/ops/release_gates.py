@@ -24,7 +24,7 @@ import json
 import re
 from pathlib import Path
 
-LACUNA = ("□", "〓")
+LACUNA = ("□", "〓", "▣")
 HOT_PAGE_COLS = 3
 """2d 里一页没交代的列 ≥ 这么多，就点名「整页处理」：重切清单写一个页号即覆盖全页。
 殿本 10 册离线量（2026-10-19，`doc/research/切分现状梳理与新方向-2026-10-19.md` §六·5）：Step3 结构与

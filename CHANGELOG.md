@@ -6,6 +6,22 @@
 
 - PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。
 
+## [0.4.53] - 2026-11-16
+
+- 发版说明（ZM 11-16）：dev 头 51787ff，PATCH。主要为带上 #607（整理本占位符区分：`reasons.ref_missing`、`taxonomy`、`causes`、`cards`、`sheet_audit`、`release_gates`、`exit_check`、`close_check`、`review_breakdown` 认 `▣` 以图代字为整理本缺字，成因 A2 `detail="image"`；配 cv ≥0.7.52，殿本换含 `▣` 的整理本新语料用）。同带 #600–#606、#608（swap.booktext 标点迁移、online_lists 落后判定与子进程路径、seg premain INK_BLANK、cellvotes `--no-consume` 补排除名单、粗校 R5 rough 第 12 项、5a 文档）。
+
+## [0.4.52] - 2026-11-16
+
+- 发版说明（A31 11-16）：dev 头 22e49e3，PATCH。为带上 #597（`guji pagekinds` 核半文半表页 `page_kinds.table_cols`、进度看板不把 `table_column` 拒掉的列算坏列；配 cv v0.7.47 史記 patch 线或 dev 含 #1590）。老 cv 读不到 table_cols 参数时为空，行为不变。
+
+- PATCH：`guji pagekinds` 读册生效的 `column_gate.table_cols`，核 column_gate 产物点名列是否都按 `table_column` 拒收，对不上报 ✗，报表多一行「半文半表页」；进度看板 `cols_bad` 不算 `table_column` 列（GUJI-772，#597）。
+
+## [0.4.51] - 2026-11-16
+
+- 发版说明（A31 11-16）：dev 头 253340f，PATCH。主要为带上 #594（`pending_fields` 带 `pending_reason`，SJ v0.1 预检）；同带 #587、#591、#592、#593（seg premain 标 main 前硬检查）。配 cv ≥0.7.46 时 `pack_purity` 不再把只改语料钉判成混版本。
+
+- PATCH：`review.proof_fields.pending_fields` 带上卡上已判好的 `pending_reason`／`pending_reason_detail`（`cards()` 出卡时 `stamp_cards` 判的）。SJ v0.1 预检 11-16：跑批本机拿 `cards()`＋`pending_fields` 离线出的 42 册待审单没有原因码，`pending-stats --from-dir` 全记 unknown。republish 出单随后照旧按 `reasons_for_pending` 重判覆盖，线上单不变。`ops/pack_purity` 补测试：cv ≥0.7.46 的「语料钉变了」不算混版本。
+
 ## [0.4.50] - 2026-11-15
 
 - 发版说明（A31 11-15）：dev 头 bdc138a，PATCH。主要为带上 #584（`guji corpus pin --same-output-as`，殿本／全唐文改钉底库 b25 用，要配 cv ≥0.7.40）；另含 #581、#582、#583、#558。rc 上补：测试 `from_cv/test_code_deps_coverage.py` 登记 seed_admit→groups.part_shape（cv #1553 新加，缺省关，同 wu_shape 口径），dev 头 CI 因此红。

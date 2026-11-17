@@ -58,7 +58,14 @@ def _refs(raw) -> list[dict]:
 
 def pending_fields(card: dict) -> dict:
     """卡 → 0.2 新增字段（键序固定；值为空的键不出）。不含 `img`／`ex`。"""
-    out: dict = {"why": why_codes(card)}
+    out: dict = {}
+    # 待审原因（`review/reasons.stamp_cards`，`cards()` 出卡时已判好）：卡上有就带上，离线拿卡出单（SJ 跑批
+    # mkpending）也有原因码，pending-stats 不再全记 unknown（SJ v0.1 预检 11-16）。republish 出单随后照旧重判覆盖。
+    if card.get("pending_reason"):
+        out["pending_reason"] = str(card["pending_reason"])
+        if card.get("pending_reason_detail"):
+            out["pending_reason_detail"] = str(card["pending_reason_detail"])
+    out["why"] = why_codes(card)
     # 卡片类别 `cls`／`cls_sub` 不再写进待审单（用户 11-04 定，单上的原因只看 `pending_reason`）；
     # 控制台按类别审仍用卡上的 `cls`，那是控制台自己的筛选，不出单。
     db = card.get("db")

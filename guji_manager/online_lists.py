@@ -45,9 +45,25 @@ def _guji_cmd() -> list[str]:
 GUJI = _guji_cmd()
 
 
+def _cv_repo() -> str:
+    """cv 仓：GUJI_CV_REPO → 本解释器装的 open_guji_cv 所在仓 → 老默认。
+    写死老路径会用到过期 checkout（11-16：旧 cv 的 export_guji_format 要 --meta，007–015 自动重出全败）。"""
+    if os.environ.get("GUJI_CV_REPO"):
+        return os.environ["GUJI_CV_REPO"]
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("open_guji_cv")
+        if spec and spec.origin:
+            root = os.path.dirname(os.path.dirname(spec.origin))
+            if os.path.exists(os.path.join(root, "scripts", "zhengli", "republish.py")):
+                return root
+    except Exception:  # noqa: BLE001
+        pass
+    return "/home/user/open-guji/open-guji-cv"
+
+
 def _cfg() -> dict:
-    return {"book_text": os.environ.get("GUJI_BOOK_TEXT", "/home/user/book-text"),
-            "cv": os.environ.get("GUJI_CV_REPO", "/home/user/open-guji/open-guji-cv")}
+    return {"book_text": os.environ.get("GUJI_BOOK_TEXT", "/home/user/book-text"), "cv": _cv_repo()}
 
 
 def ident(book: str, ws: str | None = None) -> tuple[str | None, str | None]:
@@ -189,13 +205,25 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
         print(f"（线上单自动重出没起来：{e}）")
 
 
+def _pypath(cv: str) -> str:
+    """子进程 PYTHONPATH：cv ＋ 本 manager ＋ 原来的。不能只写 cv：整个盖掉原值会把 guji-manager 挤出路径，
+    cv 里已搬走的命令（products pack list 等）就只打一句「已搬到 guji-manager」（11-16 --audit 12 册全报没有 ★ main 包）。"""
+    mgr = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.pathsep.join(x for x in (cv, mgr, os.environ.get("PYTHONPATH", "")) if x)
+
+
 def _packs(vol: str, ws: str, env: dict) -> list[dict]:
-    out = subprocess.run([*GUJI, "products", "pack", "list", vol, "-w", ws], capture_output=True, text=True, env=env).stdout
+    r = subprocess.run([*GUJI, "products", "pack", "list", vol, "-w", ws], capture_output=True, text=True, env=env)
+    out = r.stdout
+    if "已搬到" in out or (r.returncode and not out.strip()):
+        raise RuntimeError(f"`guji products pack list {vol}` 没出包清单（{(out or r.stderr).strip()[:120]}）：多半 guji-manager 不在子进程的 PYTHONPATH 上")
     rows = []
     for ln in out.splitlines():
         parts = ln.lstrip("★ ").split("\t")
         if len(parts) >= 2 and parts[0].strip().startswith("products/"):
-            rows.append({"star": ln.startswith("★"), "label": parts[0].strip().rsplit("/", 1)[1], "size": int(parts[1])})
+            m = re.search(r"cv (\S+) 语料 (\d+)", ln)
+            rows.append({"star": ln.startswith("★"), "label": parts[0].strip().rsplit("/", 1)[1], "size": int(parts[1]),
+                         "cv": m.group(1) if m else None, "corpus": m.group(2) if m else None})
     return rows
 
 
@@ -220,32 +248,37 @@ def _votes(vol: str, ws: str, cv: str, env: dict) -> int:
 def follow_main(vol: str, ws: str) -> int:
     """前台跑完整流程；返回 0＝已重出或无需重出，非 0＝该人工处理（原因已打印）。"""
     c = _cfg()
-    base = {**os.environ, "PYTHONPATH": c["cv"]}
+    base = {**os.environ, "PYTHONPATH": _pypath(c["cv"])}
     read_env = {**base, "GUJI_DATA_TOKEN": os.environ["GUJI_DATA_TOKEN_READ"]}
     write_env = {**base, "GUJI_DATA_TOKEN": os.environ["GUJI_DATA_TOKEN_PROD"], "GUJI_PRODUCTS_DIR": "/home/user/prod_issue"}
     os.makedirs("/home/user/prod_issue", exist_ok=True)
     bid, ch = ident(vol, ws)
     if not (bid and ch):
         print(f"{vol}: 认不出书 id 或章号（册 yaml 写上 book_id、volume）"); return 1
-    rows = _packs(vol, ws, read_env)
+    try:
+        rows = _packs(vol, ws, read_env)
+    except RuntimeError as e:
+        print(f"{vol}: {e}"); return 1
     star = next((r for r in rows if r["star"]), None)
     if not star:
         print(f"{vol}: 没有 ★ main 包"); return 1
-    if os.path.exists(f"{book_text_dir(c['book_text'], bid)}/default/{ch}.punct.json"):
-        print(f"{vol}: 文本挂了标点／实体层，不自动重出；走 proof_cycle plan/apply（A32）"); return 1
+    # 标点／实体层不再挡：republish 的 bump_book_text 自己处理（格号不变带过去、变了记 punct-stale）。
+    # 真正要人工的是旧单已有票（下面 votes 闸，走 proof_cycle plan/apply）。
+    has_layers = os.path.exists(f"{book_text_dir(c['book_text'], bid)}/default/{ch}.punct.json")
     try:
         rev = _online_rev(bid, ch)
     except Exception as e:  # noqa: BLE001
         print(f"{vol}: 还没有线上单（首发另行决定）：{e}"); return 1
     rp = next((r for r in rows if r["label"] == f"rev-{rev}"), None)
-    if rp and rp["size"] == star["size"]:
+    same = (rp["corpus"] == star["corpus"]) if rp and rp.get("corpus") and star.get("corpus") else (rp and rp["size"] == star["size"])
+    if same:
         print(f"{vol}: 线上单 {rev} 已与 main 包 {star['label']} 一致"); return 0
     if not rp:
         print(f"{vol}: 线上单 {rev} 没存 rev 包，没法确认出自哪个包，不盲目重出；请人工 `republish.py issue`"); return 1
     n = _votes(vol, ws, c["cv"], read_env)
     if n != 0:
         print(f"{vol}: 旧单{'读不到票' if n < 0 else f'已有票（{n}）'}，不自动换；先走 proof_cycle plan/apply"); return 1
-    print(f"{vol}: 线上单 {rev} 落后于 main {star['label']}，重出单")
+    print(f"{vol}: 线上单 {rev} 落后于 main {star['label']}，重出单" + ("（文本挂标点／实体层）" if has_layers else ""))
     subprocess.run([*GUJI, "source", "pull", vol, "-w", ws], env=read_env, capture_output=True)
     rc = 1
     for _ in range(3):   # 读票接口偶发 500／握手失败
@@ -264,12 +297,89 @@ def follow_main(vol: str, ws: str) -> int:
     return rc
 
 
+def _vol_list(spec: str) -> list[str]:
+    """`005-015,020` → ['005',…,'015','020']（3 位册号）。"""
+    out: list[str] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part and part.replace("-", "").isdigit():
+            a, b = part.split("-", 1)
+            out += [str(i).zfill(len(a)) for i in range(int(a), int(b) + 1)]
+        else:
+            out.append(part)
+    return out
+
+
+def _live_list(bid: str, ch: str) -> dict:
+    with urllib.request.urlopen(f"{DATA}/proof/{bid}/{ch}.pending.json") as r:
+        return json.loads(r.read())
+
+
+def audit(vols: list[str], ws: str, fix: bool = False) -> int:
+    """核对网站上各册待审单：①单子出自的包 = 当前 ★ main 包？②每格 alt（相似字备选）非空？
+    不一致打印并返回非 0；`fix` 时对「落后于 main」的册调 follow_main 重出。
+    11-16 起因：x1 标 main 后自动重出大半失败，网站上 005–015 还是 11-08 的旧单，格子没有备选字，没人发现。
+    建议标 main 后（on_promote 已调 follow_main）和每日各跑一次。"""
+    c = _cfg()
+    read_env = {**os.environ, "PYTHONPATH": _pypath(c["cv"]), "GUJI_DATA_TOKEN": os.environ.get("GUJI_DATA_TOKEN_READ", os.environ.get("GUJI_DATA_TOKEN", ""))}
+    bad = 0
+    for vol in vols:
+        bid, ch = ident(vol, ws)
+        if not (bid and ch):
+            print(f"{vol}: 认不出书 id 或章号"); bad += 1; continue
+        try:
+            rows = _packs(vol, ws, read_env)
+        except RuntimeError as e:
+            print(f"{vol}: ✗ {e}"); bad += 1; continue
+        star = next((r for r in rows if r["star"]), None)
+        if not star:
+            print(f"{vol}: 没有 ★ main 包，跳过"); continue
+        try:
+            doc = _live_list(bid, ch)
+        except Exception as e:  # noqa: BLE001
+            print(f"{vol}: 线上没有单子（{e}）"); bad += 1; continue
+        rev = doc.get("rev")
+        rp = next((r for r in rows if r["label"] == f"rev-{rev}"), None)
+        cells = doc.get("cells") or []
+        no_alt = sum(1 for x in cells if not x.get("alt"))
+        m = re.match(r"cv(\d+\.\d+\.\d+)-", star["label"])
+        # 不比包大小：精校回合（proof_cycle）出的 rev 包是重跑后的产物，天然和 ★ main 包大小不同。
+        # 比「语料号」（人审单随 main 包的语料／字形一起换）和 cv 版本；两边读不出来才退到大小。
+        if rp and rp.get("corpus") and star.get("corpus"):
+            stale = rp["corpus"] != star["corpus"] or bool(m and doc.get("cv_version") not in (None, m.group(1)))
+        elif rp:
+            stale = rp["size"] != star["size"]
+        else:   # 没存 rev 包（手工 push 出的单）：认不出来源，退而比 cv 版本；一致就当没落后
+            stale = bool(m) and doc.get("cv_version") != m.group(1)
+        msgs = []
+        if stale:
+            msgs.append(f"落后于 main {star['label']}（线上 {rev}，" + ("没存 rev 包、cv 版本也对不上" if not rp else "语料号／cv 版本对不上") + "）")
+        if no_alt:
+            msgs.append(f"{no_alt}/{len(cells)} 格没有备选字 alt")
+        if not msgs:
+            print(f"{vol}: ok（{rev}，{len(cells)} 格，alt 齐）"); continue
+        bad += 1
+        print(f"{vol}: ✗ " + "；".join(msgs))
+        if fix and stale:
+            if follow_main(vol, ws) == 0:
+                bad -= 1
+    return 1 if bad else 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="按 ★ main 包重出一册的线上待审单（标 main 后自动调，也可手动跑）")
-    ap.add_argument("--vol", required=True)
+    ap = argparse.ArgumentParser(description="按 ★ main 包重出一册的线上待审单（标 main 后自动调，也可手动跑）；--audit 核对各册")
+    ap.add_argument("--vol", help="单册：重出")
+    ap.add_argument("--audit", help="核对这些册（如 005-015,020）：单子出自的包是否 ★ main、每格 alt 是否非空；有问题退出码 1")
+    ap.add_argument("--fix", action="store_true", help="--audit 时顺带重出落后的册")
     ap.add_argument("-w", "--ws", required=True)
     ap.add_argument("--label", default="", help="（只做记录）刚标 main 的标签")
     a = ap.parse_args(argv)
+    if a.audit:
+        return audit(_vol_list(a.audit), a.ws, fix=a.fix)
+    if not a.vol:
+        ap.error("要 --vol 或 --audit")
     return follow_main(a.vol, a.ws)
 
 

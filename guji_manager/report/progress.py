@@ -70,9 +70,11 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
                "defect": 0, "excluded": 0, "cols_bad": 0, "rebind": rebind_by_page.get(pg, 0)}
         cells = st.read(book, step3, page_key(pg), CELLS_KIND)
         if cells is not None:
-            # 版心（筒子页第 10 列）被闸按 `non_body_column` 拒掉是版式如此，不是待办。
+            # 版心（筒子页第 10 列）被闸按 `non_body_column` 拒掉、半文半表页册配置点名的表格列（`table_column`，
+            # cv GUJI-772）都是版式如此，不是待办。
             row["cols_bad"] = sum(1 for c in cells.columns
-                                  if not c.ok and "non_body_column" not in (c.error or ""))
+                                  if not c.ok and "non_body_column" not in (c.error or "")
+                                  and "table_column" not in (c.error or ""))
         if st.exists(book, ADMIT_STEP, page_key(pg)) and cells is not None:
             try:
                 for s in page_slots(st, book, pg, []):

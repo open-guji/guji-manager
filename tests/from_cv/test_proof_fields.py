@@ -78,3 +78,12 @@ def test_dian_note_and_refs_without_char():
 def test_dian_refs_with_char():
     f = pending_fields(dict(CARD, dian={"char": "白", "why": "杜詩原句", "refs": [{"u": "https://a/b", "t": "杜詩"}]}))
     assert f["ctx"] == {"c": "白", "src": "punct_llm", "why": "杜詩原句"} and f["refs"] == [{"u": "https://a/b", "t": "杜詩"}]
+
+
+def test_pending_reason_carried_from_card():
+    """cards() 已在卡上判好 pending_reason：出单字段要带上（SJ v0.1 预检 11-16：离线出单全记 unknown）。"""
+    out = pending_fields({"doubts": ["occluded"], "pending_reason": "occluded", "pending_reason_detail": "x"})
+    assert list(out)[:3] == ["pending_reason", "pending_reason_detail", "why"]
+    assert out["pending_reason"] == "occluded" and out["pending_reason_detail"] == "x"
+    assert "pending_reason" not in pending_fields({"doubts": []})
+    assert "pending_reason" not in slim_fields({"doubts": [], "pending_reason": "occluded"})
