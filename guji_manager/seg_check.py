@@ -11,12 +11,15 @@
 - 需钉子：结构类 flag（漏切块、夹注并格 JZW、格高离群＝并格／拆格、列首列尾漏墨 edge_ink、格高对整页 PITCH、
   夹注半格宽 HALF、同字对照并格 MERGED／切笔 CLIP、格线劈字 CUT＝cv cut_through，过了 U-Net 归属裁判（弱档 CUT_WEAK 只当提示「劈字弱·笔画相触」）；
   对位串错 ALIGN＝cv align_drift，一列里连续对不上参校字、劈或并后整列错一格（史記 R017，11-14）；同页报出 ≥3 列的
-  （cv 标 page）记 ALIGN_PAGE，只当提示「对位串错·整页」（透印、版式、整页没对上，SJ 抽看）。
+  （cv 标 page）记 ALIGN_PAGE，只当提示「对位串错·整页」（透印、版式、整页没对上，SJ 抽看）；册配置
+  `reference_profile` 声明为 text／none（没有逐列参校）的页上只报 pair（和 page）的记 ALIGN_NOREF，只当提示
+  「对位串错·无逐列参校」（全唐文碑誌页放行少、凑够 pair 门槛，切分对，11-17 b1 闸 039:78:1）；split／run 照算结构。
   字内落缝 GAP＝cv inner_gap：格线挨着对不上参校字且没放行的格、落在字内窄白缝（宮的两口之间、主／言的点与身之间），
   旁边另有宽得多的字缝，上下两格各带半个字（史記 R002，11-14）；钉子列也查，报出记「已钉·复核」；
   不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
-- 已钉·复核：钉子列上有结构类 flag；
+- 已钉·复核：钉子列上有结构类 flag。钉子＝中心库人裁 manual-cells，加上册配置 `row_segment.page_map_overrides`
+  （corpus 下 jsonl）里带 `cuts` 或 `slots` 的覆盖行（人核过的格线／格位，`drop` 行不算；全唐文 11-17）；
 - 对位（○）：列里有○、原因码来自整理本不录○（只列不报，SJ 第 6 条）；
 - 格高·参校证实：只有格高／半格宽离群、但参校字落在字形匹配前 3 名且邻格无反证的格（cv `geo_ref_ok`，2026-11-13 史記 R011／R013），
   只列不算结构、不挡闸；写本册抽看用（SJ 11-14：R011 那批里混有真错）；
@@ -60,7 +63,7 @@ RULER_SHARDS = {
 }
 LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
 ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
-         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "劈字弱·笔画相触": 4.7, "书级提示": 4.8, "已钉": 5}
+         "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "对位串错·无逐列参校": 4.65, "劈字弱·笔画相触": 4.7, "书级提示": 4.8, "已钉": 5}
 
 
 # ── 书配置 ──────────────────────────────────────────────────────────────────
@@ -154,9 +157,10 @@ def seg_causes(products_dir: Path, book: str) -> dict[tuple[int, int], list[tupl
 # ── 按列汇总 ────────────────────────────────────────────────────────────────
 
 def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], causes: dict, skip: set[int],
-              head_pages: int = 0, hint_flags: tuple[str, ...] = ()) -> list[dict]:
+              head_pages: int = 0, hint_flags: tuple[str, ...] = (), noref_pages: set[int] | frozenset = frozenset()) -> list[dict]:
     """cv 筛查的各张表＋原因码 → 按列一行（列、类、处置、结构分、装饰分、各项、例格）。
-    `hint_flags`：这本书只当提示的旗（书级口径，`book_hint_flags`），计数改记 `<旗>_HINT`、不算结构分。"""
+    `hint_flags`：这本书只当提示的旗（书级口径，`book_hint_flags`），计数改记 `<旗>_HINT`、不算结构分。
+    `noref_pages`：册配置声明没有逐列参校的页（`noref_pages`），这些页上只有 pair 的对位串错记 ALIGN_NOREF、只当提示。"""
     col: dict = collections.defaultdict(collections.Counter)
     ex: dict = collections.defaultdict(list)
 
@@ -220,9 +224,12 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
     for r in rows.get("align_drift", []):       # cv eval/seg_screen.align_drift：对位串错·疑整列错位（R017）
         if mine(r):
             k = (int(r[1]), int(r[2]))
-            whole_page = "page" in str(r[3]).split(",")     # 一页报出 ≥3 列：透印、版式、整页没对上，降成提示（SJ 11-14 抽看）
-            col[k]["ALIGN_PAGE" if whole_page else "ALIGN"] += 1
-            ex[k].insert(len(ex[k]) if whole_page else 0, f"对位串错({r[3]}) {r[4]}")
+            kinds = set(str(r[3]).split(","))
+            whole_page = "page" in kinds     # 一页报出 ≥3 列：透印、版式、整页没对上，降成提示（SJ 11-14 抽看）
+            noref = k[0] in noref_pages and "pair" in kinds and not kinds & {"split", "run"}   # 没有逐列参校，放行少就凑够 pair（全唐文 11-17）
+            fl = "ALIGN_NOREF" if noref else "ALIGN_PAGE" if whole_page else "ALIGN"
+            col[k][fl] += 1
+            ex[k].insert(0 if fl == "ALIGN" else len(ex[k]), f"对位串错({r[3]}) {r[4]}")
     for r in rows.get("inner_gap", []):         # cv eval/seg_screen.inner_gap：字内落缝（史記 R002，11-14）
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -279,7 +286,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif cn["LAYOUT"] and not pg:
             cls, act = "结构", "版式不符"
         elif pg:
-            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["CUT_WEAK"] or hinted else "对位"), pg
+            cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["ALIGN_NOREF"]
+                         or cn["CUT_WEAK"] or hinted else "对位"), pg
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
@@ -294,6 +302,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             cls, act = "提示", "格高·参校证实"
         elif cn["ALIGN_PAGE"]:
             cls, act = "提示", "对位串错·整页"
+        elif cn["ALIGN_NOREF"]:
+            cls, act = "提示", "对位串错·无逐列参校"
         elif cn["CUT_WEAK"]:
             cls, act = "提示", "劈字弱·笔画相触"
         elif hinted:
@@ -560,6 +570,37 @@ def write_col_geometry(books: list[str], pages: set[int] | None, path: Path) -> 
 
 # ── 一条命令 ────────────────────────────────────────────────────────────────
 
+def _book_of(book: str):
+    from ._cv import load_book
+    return load_book(book)
+
+
+def override_pins(book: str) -> set[tuple[int, int]]:
+    """册配置 `row_segment.page_map_overrides`（corpus 下 jsonl，一行 `{"vol","page","col",字段…}`）里本册带 `cuts`
+    或 `slots` 的行 → {(页, 列)}：人核过格线／格位的列，算钉子（`drop` 删列的不算）。没配、文件不在给空。"""
+    from ._cv import corpus_path
+    rel = ((_book_of(book).params or {}).get("row_segment") or {}).get("page_map_overrides") or ""
+    p = Path(corpus_path(rel)) if rel else None
+    if p is None or not p.exists():
+        return set()
+    out = set()
+    for ln in p.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        r = json.loads(ln)
+        if str(r.get("vol")) == book and not r.get("drop") and (r.get("cuts") or r.get("slots")):
+            out.add((int(r["page"]), int(r["col"])))
+    return out
+
+
+def noref_pages(book: str, pages) -> set[int]:
+    """`pages` 里册配置 `reference_profile` 声明为 text／none（没有逐列参校）的页；没声明的册给空。"""
+    prof = getattr(_book_of(book), "reference_profile", None)
+    if prof is None or not getattr(prof, "declared", False):
+        return set()
+    return {int(p) for p in pages if prof.kind_of(int(p)) in ("text", "none")}
+
+
 def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dict[str, set[int]] | None = None,
         head_pages: int = 0, cell_checks: bool = True, causes: bool = True, montage_limit: int = 60,
         ruler_tsv: Path | None = None, defect: bool = True, ws: Path | None = None) -> tuple[str, int]:
@@ -574,6 +615,7 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
     rows: dict[str, list] = {}
     counts: dict = {}
     pinned_all: dict[str, set] = {}
+    noref_all: dict[str, set] = {}
     prod = Path(products_root())
     for b in books:
         screen_seg_book(b, pages, False, rows, counts, cell_checks=cell_checks)
@@ -582,6 +624,14 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
             pinned_all[b] = {(int(p), int(c)) for p, c in resolved_manual_cells(b)}
         except Exception:  # noqa: BLE001
             pinned_all[b] = set()
+        try:
+            pinned_all[b] |= override_pins(b)
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ {b}：读覆盖行钉子没成（{type(e).__name__}: {e}），只认 manual-cells", file=sys.stderr)
+        try:
+            noref_all[b] = noref_pages(b, {int(r[1]) for r in rows.get("align_drift", []) if r[0] == b})
+        except Exception:  # noqa: BLE001
+            noref_all[b] = set()
     if defect:
         rows["seg_defect"] = defect_rows(books, pages, skip, ws)
     write_seg_screen_report(rows, counts, out / "筛查")
@@ -595,7 +645,7 @@ def run(books: list[str], out: Path, *, pages: set[int] | None = None, skip: dic
             cz = {k: v for k, v in cz.items() if k[0] in pages}
         stale = {(int(r[1]), int(r[2])) for r in rows.get("pin_stale", []) if r[0] == b}
         pinned = {k for k in pinned_all[b] if (not pages or k[0] in pages) and k not in stale}
-        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages, hint)
+        allrows += aggregate(b, rows, pinned, cz, _skip_for(b, skip), head_pages, hint, noref_all.get(b, set()))
     allrows.sort(key=lambda r: (ORDER.get(r["处置"], 9), -r["结构分"], -r["装饰分"]))
     fields = ["列", "类", "处置", "结构分", "装饰分", "各项", "例格"]
     with open(out / "列清单.tsv", "w", encoding="utf-8", newline="") as f:
