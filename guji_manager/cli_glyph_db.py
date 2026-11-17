@@ -42,6 +42,19 @@ def cmd_glyph_db(args):
     if args.action in PIN_ACTIONS:
         _pin_action(args)
         return
+    if args.action == "backfill":      # 放行格回库（自己开关库，不走下面的公共 db 句柄）
+        from .ops import lib_backfill as LB
+        if not args.books:
+            raise SystemExit("backfill 要给 --books 册号（逗号分隔）")
+        kw = {}
+        if args.cap:
+            kw["cap"] = args.cap
+        if args.channels:
+            kw["channels"] = tuple(x.strip() for x in args.channels.split(",") if x.strip())
+        rep = LB.run([b.strip() for b in args.books.split(",") if b.strip()], apply=args.apply,
+                     batch=args.batch, report=args.report, log=print, **kw)
+        print(("✓ " if rep.get("admitted") else "（只报告，没动库）" if not args.apply else "") + LB.summary(rep))
+        return
     db_path = glyph_db_path()
     store_dir = glyph_store_path(args.store)
     db = GlyphDB(db_path)
@@ -208,7 +221,7 @@ def add_parser(sub) -> None:
     p.add_argument("action",
                    choices=["stats", "export", "rebuild",
                             "import-font", "drop-edition", "repair", "selfcheck",
-                            "set-edition", "font-pack-push", *PIN_ACTIONS])
+                            "set-edition", "font-pack-push", "backfill", *PIN_ACTIONS])
     p.add_argument("-w", "--workspace", default=None,
                    help="工作区仓根（含 books/、output/glyph.db）。同 v2 命令那个 -w：给了就覆盖"
                         "本次调用的 GUJI_WORKSPACE，不给就退回读环境变量。任务卡 #54 第13条：这个"
@@ -253,6 +266,13 @@ def add_parser(sub) -> None:
                    help="import-font 用：不找字体域预建件（本机或 R2），一律逐字渲染")
     p.add_argument("--keep-pack", action="store_true",
                    help="font-pack-push 用：推完把本机导出的包留在 cache/fontdb/（缺省删掉，省盘）")
+    p.add_argument("--books", default=None,
+                   help="backfill 用：册号，逗号分隔。把这些册机器放行、库里缺例的字核验后补进库"
+                        "（ops/lib_backfill.py；不加 --apply 只报告）")
+    p.add_argument("--batch", default=None, help="backfill 用：批次名（缺省 auto-backfill-<年月日>，整批撤回按它）")
+    p.add_argument("--cap", type=int, default=None, help="backfill 用：每字补到几例（缺省 3）")
+    p.add_argument("--channels", default=None, help="backfill 用：放行通道，逗号分隔（缺省 rare_ref,witness3）")
+    p.add_argument("--report", default=None, help="backfill 用：逐格报告写到这个 json")
     p.add_argument("--title", default=None, help="书名")
     p.add_argument("--pin", type=int, default=None,
                    help="pin-build / pin-verify / snapshot-upload 用：字形库版本号 N（g<N>）")

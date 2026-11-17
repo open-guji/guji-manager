@@ -185,6 +185,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "human_confirmed_counts": ("steps.glyph_match", "human_confirmed_counts"),
     "_rec_chars": ("steps.glyph_match", "_rec_chars"),
     "_patch": ("steps.glyph_match", "_patch"),
+    "to_canonical": ("clustering.canonical", "to_canonical"),     # 放行格回库：按库里实际存的图核验（2026-11-17）
     "normalize_patch": ("clustering.normalize", "normalize_patch"),
     "_SHAPE_PAIR_OF": ("clustering.match", "_SHAPE_PAIR_OF"),
     "_PARTNER": ("clustering.match", "_PARTNER"),
