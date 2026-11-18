@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -413,7 +414,11 @@ def test_corpus_adopt_push_and_pull(repo, conn, tmp_path):  # noqa: F811
     )
     src, cache, files, ws = _migrated(repo, conn, tmp_path)
     text = "欽定四庫全書總目\n卷一\n".encode("utf-8")
-    man = b'{"corpus_version": 1}\n'
+    # 清单要登记这两份整理本（push 前 cv 的 push_problems 拿最新一版清单核对工作区里的语料文件）
+    man = (json.dumps({"corpus_version": 1, "items": [
+        {"group": "corpus", "root": "ws", "path": p, "sha256": hashlib.sha256(b).hexdigest()}
+        for p, b in (("corpus/sub/0001.jsonl", b'{"a": 1}\n'), ("corpus/zongmu.txt", text))]},
+        ensure_ascii=False) + "\n").encode("utf-8")
     (ws / "corpus" / "sub").mkdir(parents=True)
     (ws / "corpus" / "zongmu.txt").write_bytes(text)
     (ws / "corpus" / "sub" / "0001.jsonl").write_bytes(b'{"a": 1}\n')
@@ -451,7 +456,8 @@ def test_corpus_adopt_push_and_pull(repo, conn, tmp_path):  # noqa: F811
     assert local_changes(fresh) == []
 
     (data / "corpus/zongmu.txt").unlink()
-    with pytest.raises(FileDeleteRefused, match="zongmu.txt"):
+    # 清单登记过的整理本没了：cv 的语料版本闸（push_problems）先拦；没清单时由删文件闸 FileDeleteRefused 拦
+    with pytest.raises((FileDeleteRefused, SystemExit), match="zongmu.txt"):
         push(conn, ws, actor="t")
 
 
