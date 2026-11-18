@@ -66,7 +66,7 @@ def _row(cat, lib="𡨥", text="寇", prov="auto"):
 def test_decide_machine_conflict_by_template_top1():
     assert LT.decide(_row("machine"), canon, "寇") == "relabel_auto"      # 模板认成文本的字：库改标
     assert LT.decide(_row("machine"), canon, "宼") == "review"            # 模板认成库标（码位归一后）：文本可疑
-    assert LT.decide(_row("machine"), canon, "冠") == "evict_review"      # 都不是：撤库例、回人审
+    assert LT.decide(_row("machine"), canon, "冠") == "review"            # 都不是：也送人看，库例不撤
     assert LT.decide(_row("machine"), canon, None) == "report"            # 没识别结果：只报
 
 

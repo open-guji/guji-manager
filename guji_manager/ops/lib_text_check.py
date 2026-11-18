@@ -17,7 +17,7 @@
 | `text_stale` 文本过期 | 库例入库时刻晚于这一页产物的写出时刻 | 这一页 `seed_admit` 标失效，`guji rerun --stale` 重算后文本跟上 |
 | `shifted` 库图错位 | 库标正是同一列上下邻格的字 | 库图是旧切分的字块、格号整体挪过：机器来路的撤库例（文本不动），人裁来路的只报 |
 | `follow_human` 文本是人裁 | 文本通道是人裁，库例是机器来路或更早的人裁 | 库例改成文本的字（`glyph_audit relabel`） |
-| `machine` 两边都是机器 | 文本机器放行，库例机器来路 | 库图过字体模板重新识别：认成文本的字 → 库例改标（仍是机器来路）；认成库标 → 文本可疑，这一格加进待审单复审；都不是 → 撤库例、这一格回人审 |
+| `machine` 两边都是机器 | 文本机器放行，库例机器来路 | 库图过字体模板重新识别：认成文本的字 → 库例改标（仍是机器来路）；认成库标 → 文本可疑，这一格加进待审单复审；都不是 → 也进待审单复审，库例不撤（史記 11-18：这类 13 格库图其实都对，撤了丢好刻例） |
 | `human_unapplied` 库是人裁、文本没采信 | 库例人裁来路，文本机器放行了别的字 | 多半是切分变过、人裁落在了别的格上：这一格加进待审单复审，库不动 |
 | `orphan` 格没了 | 库例的格在产物里不存在 | 机器来路的撤库例；人裁来路的只报 |
 | `pending` 格在待审 | 文本这一格没放行 | 不处理（人裁定了自然一致） |
@@ -143,9 +143,7 @@ def decide(row: dict, canon=None, top1: str | None = None, margin: float | None 
         if margin is not None and margin < MARGIN_MIN:
             return "review"             # 模板首位领先太少，不够当改库的证据：送人看
         return "relabel_auto" if _single_han(row.get("text")) else "report"
-    if canon(top1) == canon(row["lib"]):
-        return "review"
-    return "evict_review"
+    return "review"         # 认成库标（文本可疑）或两边都不是（都没佐证）：都送人看，库例不撤
 
 
 def _single_han(ch: str | None) -> bool:
