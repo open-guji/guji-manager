@@ -27,7 +27,7 @@
 
 ## 怎么触发
 
-- 自动：`workspace.yaml` 写了 `glyph_lib.auto_backfill`，`guji pipeline` 整册跑完没有失败页就对这一册跑一遍
+- 自动（缺省开，`workspace.yaml` 写 `glyph_lib.auto_backfill: false` 关）：`guji pipeline` 整册跑完没有失败页就对这一册跑一遍
   （`hooks.finished`；`GUJI_AUTO_BACKFILL=0` 临时关）。只改本机的库，随下一次 `guji db sync` 推上去。
 - 手动：`guji glyph-db backfill --books 001,002 [--apply]`（不加 `--apply` 只报告）。
 
@@ -73,13 +73,15 @@ def apply_problem(ws_dir: Path | str | None = None) -> str | None:
 
 
 def config(ws_dir: Path | str | None) -> dict | None:
-    """`workspace.yaml` 的 `glyph_lib.auto_backfill`：没写或 false → None；true → 缺省参数；
+    """`workspace.yaml` 的 `glyph_lib.auto_backfill`：false → None（关）；没写或 true → 缺省参数（缺省开）；
     写成对象可改 `channels`、`cap`。"""
     import yaml
     y = Path(ws_dir or ".") / "workspace.yaml"
     cfg = (yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}
-    v = (cfg.get("glyph_lib") or {}).get("auto_backfill")
-    if not v:
+    v = (cfg.get("glyph_lib") or {}).get("auto_backfill", True)
+    if v is None:
+        v = True
+    if v is False:
         return None
     v = v if isinstance(v, dict) else {}
     extra = set(v) - {"channels", "cap"}
@@ -274,7 +276,7 @@ def summary(rep: dict) -> str:
 
 
 def auto_backfill(args, eng, steps: list[str]) -> None:
-    """`hooks.finished`：整册跑完、`workspace.yaml` 开了 `glyph_lib.auto_backfill` → 对这一册回库。
+    """`hooks.finished`：整册跑完、`workspace.yaml` 没把 `glyph_lib.auto_backfill` 关掉 → 对这一册回库。
 
     只在 `--pages all` 且这次跑到了 `seed_admit` 时做；失败只提醒，不改跑批的返回码。"""
     import os

@@ -55,7 +55,7 @@ def _fresh(files, d: Path, src, cache, hooks=None) -> Path:
 
 def _data_files(data: Path) -> dict[str, bytes]:
     return {p.relative_to(data).as_posix(): p.read_bytes() for p in data.rglob("*")
-            if p.is_file() and p.name != ".central-state.json"}
+            if p.is_file() and p.name not in (".central-state.json", ".central-shacache.json")}
 
 
 def test_glyph_db_changes_are_exported_before_push(repo, conn, tmp_path):  # noqa: F811
