@@ -17,6 +17,10 @@
   字内落缝 GAP＝cv inner_gap：格线挨着对不上参校字且没放行的格、落在字内窄白缝（宮的两口之间、主／言的点与身之间），
   旁边另有宽得多的字缝，上下两格各带半个字（史記 R002，11-14）；钉子列也查，报出记「已钉·复核」；
   不按 A6／A9 原因码排除：劈出来的那格整理本本来就没字，r59 切分线钉的 23 列报出里 17 列带 A6／A9；R016 参校本缺字的 10 列只报 1 列）；
+- cv丢笔（2026-11-18，全唐文 R033／R038）：格位对、墨被清理步骤丢了——清界行把字笔抹了（ERASE，cv erased：「十」剩「亠」、
+  「恪」丢忄），或字所在那几行有成块墨落在所有字框外（DROP，cv bbox_drop：单字成列「制」丢刂）。覆盖行修不了 ERASE，要查 cv（书级开关
+  `column_warp.inner_bar_span`、`cell_shrink.long_rule_outer_only`）；DROP 也可能是整字被判成半格（「使」的亻在半格框外），
+  那种看图补覆盖行；排在需钉子之前，切分不回退闸照结构类算；
 - 原因码·看图：只有切分／对位类待审原因码（A1/A3/A4/A5/A6/A9）；
 - 已钉·复核：钉子列上有结构类 flag。钉子＝中心库人裁 manual-cells，加上册配置 `row_segment.page_map_overrides`
   （corpus 下 jsonl）里带 `cuts` 或 `slots` 的覆盖行（人核过的格线／格位，`drop` 行不算；全唐文 11-17）；
@@ -61,8 +65,8 @@ RULER_SHARDS = {
     "touching-cuts": "char-segmentation/touching-cuts",
     "solo-notes": "char-segmentation/solo-notes",
 }
-LOOK = ("钉子未生效", "格号不符", "版式不符", "需钉子", "已钉·复核", "原因码·看图")
-ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
+LOOK = ("钉子未生效", "格号不符", "版式不符", "cv丢笔", "需钉子", "已钉·复核", "原因码·看图")
+ORDER = {"钉子未生效": -1, "格号不符": 0, "版式不符": 0.5, "cv丢笔": 0.8, "需钉子": 1, "原因码·看图": 1.7, "已钉·复核": 2, "对位（○）": 3,
          "公用清格": 4, "格高·参校证实": 4.5, "对位串错·整页": 4.6, "对位串错·无逐列参校": 4.65, "劈字弱·笔画相触": 4.7, "书级提示": 4.8, "已钉": 5}
 
 
@@ -181,6 +185,16 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
             where = str(r[4]).split()[0]
             col[k]["ORPH_" + where] += 1
             ex[k].insert(0, f"漏切{where}{str(r[4]).split('bbox', 1)[-1].strip()}")
+    for r in rows.get("erased", []):            # cv eval/seg_screen.erased_strokes：清界行把字笔当界行抹了（全唐文 R033）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["ERASE"] += 1
+            ex[k].insert(0, f"清界行抹笔 {r[4]}")
+    for r in rows.get("bbox_drop", []):         # cv eval/seg_screen.bbox_drop：字框收墨丢了偏旁、或整字判成半格（R038）
+        if mine(r):
+            k = (int(r[1]), int(r[2]))
+            col[k]["DROP"] += 1
+            ex[k].insert(0, f"{r[3]}字框外丢墨 {r[4]}")
     for r in rows.get("edge_ink", []):
         if mine(r):
             k = (int(r[1]), int(r[2]))
@@ -276,7 +290,7 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
                   + cn["MERGED"] * 3 + cn["CLIP"] * 2 + cn["PITCH"] * 2 + cn["HALF"] * 2 + cn["CUT"] * 2
                   + cn["ORPH_tail"] + cn["EDGE"]
                   + cn["PIN"] * 10 + cause_n * 2
-                  + cn["ALIGN"] * 3 + cn["GAP"] * 3)
+                  + cn["ALIGN"] * 3 + cn["GAP"] * 3 + cn["ERASE"] * 3 + cn["DROP"] * 3)
         cosm = sum(cn[f] for f in COSM_FLAGS)
         pg = "点名跳过" if k[0] in skip else "卷首页" if k[0] <= head_pages else ""
         if cn["PIN_STALE"]:
@@ -288,6 +302,8 @@ def aggregate(book: str, rows: dict[str, list], pinned: set[tuple[int, int]], ca
         elif pg:
             cls, act = ("结构" if struct else "装饰" if cosm else "提示" if cn["GEO_OK"] or cn["ALIGN_PAGE"] or cn["ALIGN_NOREF"]
                          or cn["CUT_WEAK"] or hinted else "对位"), pg
+        elif cn["ERASE"] or cn["DROP"]:
+            cls, act = "结构", "cv丢笔"
         elif struct and k in pinned:
             cls, act = "结构", "已钉·复核"
         elif struct - cause_n * 2 > 0:
