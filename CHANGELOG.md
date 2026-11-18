@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：库文一致按史記首跑反馈修三处（SJ 11-18，75 格全看图）：页的计算时刻认 `seed_admit/_manifest.jsonl` 的 `ts`，不再用文件时刻（取包会刷新，两格该判文本过期的被判成跟人裁改标，`--apply` 会把刚更正的库例改回错字）；新增 `shifted` 类（库标正是同列上下邻格的字＝库图是旧切分字块，机器刻例撤、人裁刻例只报，排在人裁改标之前）；字体模板重新识别改库标要求首位领先次位 ≥0.03，不够的进待审复审；模板首位既不是库标也不是文本字的，改成只进待审复审、不撤库例（史記这类 13 格库图都对）。
 - PATCH：叠图底图可选彩图／二值／灰度＋二值体检可疑区（彩图书双层显示，用户 11-17 定）：`render.overlay.overlay(..., bg="color"|"bin"|"gray", qc=False)`，缺省与改前逐像素相同；`bin` 读 cv 整页二值副本，没生成退回原图；`qc` 画 cv `binarized/<书>/<页>.qc.json` 的 color_mark／bin_diff／speckle 框。`_cv`、`console_api` 登记 `binarized_or_none`、`read_qc`、`canon_box_suspect`（要 cv ≥ #1650）。文档：`参考/册配置.md` 加 `ink`，S0 开书体检加「墨层与二值」一步（新书缺省写 `ink: {}`）。
 - MINOR：库文一致（Sheldon 11-18「字形库和实际的文本应该要是一致的」，过程要自动）。新 `guji glyph-db text-check --books … [--apply]`（`ops/lib_text_check.py`）：库里每个刻例的字按书级码位归一后对本机 `seed_admit` 产物同一格的字，不一致的分类处理：库例晚于产物的页标失效待 `rerun --stale`；文本是人裁的库例跟着改标；两边都是机器的过字体模板重新识别（认成文本的字则库改标且保持机器来路，认成库标则这一格进待审单复审，都不是则撤库例并回人审）；库是人裁而文本没采信的进待审单复审；格已不在的机器刻例撤掉。`guji pipeline` 整册跑完自动比一遍，缺省只报告，`workspace.yaml` `glyph_lib.text_check: apply` 才处理、`false` 关，`GUJI_LIB_TEXT_CHECK=0` 临时关。`glyph_audit relabel` 认 `payload.provenance: "auto"`（只对机器来路刻例有效）。文档 `doc/01-粗校/开书/库文一致.md`。全唐文 b2 产物 001–045 册首跑：36,044 例里不一致 145（另 13 格在待审）。
 
