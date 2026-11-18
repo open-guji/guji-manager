@@ -55,6 +55,16 @@ def cmd_glyph_db(args):
                      batch=args.batch, report=args.report, log=print, **kw)
         print(("✓ " if rep.get("admitted") else "（只报告，没动库）" if not args.apply else "") + LB.summary(rep))
         return
+    if args.action == "text-check":    # 库文一致：库里每个刻例的字对这一册文本
+        from .ops import lib_text_check as LT
+        if not args.books:
+            raise SystemExit("text-check 要给 --books 册号（逗号分隔）")
+        rep = LT.run([b.strip() for b in args.books.split(",") if b.strip()], apply=args.apply,
+                     batch=args.batch, report=args.report, log=print)
+        if rep["skipped_no_product"]:
+            print(f"⚠ 本机没有 seed_admit 产物、没比的册：{', '.join(rep['skipped_no_product'])}（先 guji products pack fetch）")
+        print(("✓ 已处理：" if args.apply else "（只报告，没动）") + LT.summary(rep))
+        return
     db_path = glyph_db_path()
     store_dir = glyph_store_path(args.store)
     db = GlyphDB(db_path)
@@ -221,7 +231,7 @@ def add_parser(sub) -> None:
     p.add_argument("action",
                    choices=["stats", "export", "rebuild",
                             "import-font", "drop-edition", "repair", "selfcheck",
-                            "set-edition", "font-pack-push", "backfill", *PIN_ACTIONS])
+                            "set-edition", "font-pack-push", "backfill", "text-check", *PIN_ACTIONS])
     p.add_argument("-w", "--workspace", default=None,
                    help="工作区仓根（含 books/、output/glyph.db）。同 v2 命令那个 -w：给了就覆盖"
                         "本次调用的 GUJI_WORKSPACE，不给就退回读环境变量。任务卡 #54 第13条：这个"
@@ -267,7 +277,7 @@ def add_parser(sub) -> None:
     p.add_argument("--keep-pack", action="store_true",
                    help="font-pack-push 用：推完把本机导出的包留在 cache/fontdb/（缺省删掉，省盘）")
     p.add_argument("--books", default=None,
-                   help="backfill 用：册号，逗号分隔。把这些册机器放行、库里缺例的字核验后补进库"
+                   help="backfill／text-check 用：册号，逗号分隔。backfill 把这些册机器放行、库里缺例的字核验后补进库"
                         "（ops/lib_backfill.py；不加 --apply 只报告）")
     p.add_argument("--batch", default=None, help="backfill 用：批次名（缺省 auto-backfill-<年月日>，整批撤回按它）")
     p.add_argument("--cap", type=int, default=None, help="backfill 用：每字补到几例（缺省 3）")
