@@ -177,8 +177,8 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
     """对 `books` 各册跑一遍选格、核验、（`apply` 时）入库。返回报告。"""
     import cv2
     from .._cv import (EventLog, EventTarget, GlyphDB, ImageCache, ProductStore, RunContext,
-                       binarize_page, export_store, glyph_db_path, glyph_store_path, load_book,
-                       make_event, products_root)
+                       binarize_page, enrich_events, export_store, glyph_db_path, glyph_store_path,
+                       load_book, make_event, products_root)
     say = log or (lambda *_: None)
     if apply:
         bad = apply_problem()
@@ -235,25 +235,30 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
            "lib_before": {"instances": n_before, "chars": chars_before},
            "rejected": rejected, "picked": [{"key": k, "char": ch, **meta, **v} for ch, k, _p, meta, v in picks]}
     if apply and picks:
-        db = GlyphDB(dbp)
         base = elog.latest_seq(batch)
-        evs, n = [], 0
+        evs = []
         for i, (ch, k, png, meta, v) in enumerate(picks, 1):
             bk, pg, col, slot = k.split(":")
             slot = slot.rstrip("ab")          # 半格（19a／19b）：格号取数字部分，键仍带后缀（同库里现有刻例）
-            e = make_event(batch, base + i, "confirm",
-                           EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
-                                       page=int(pg), col=int(col), slot=int(slot)),
-                           {"v": "confirm", "shape": ch, "source": "auto", "backfill": True, **meta, "verify": v},
-                           actor="model")
-            evs.append(e)
+            evs.append(make_event(batch, base + i, "confirm",
+                                  EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
+                                              page=int(pg), col=int(col), slot=int(slot)),
+                                  {"v": "confirm", "shape": ch, "source": "auto", "backfill": True, **meta,
+                                   "verify": v},
+                                  actor="model"))
+        # 先补锚（带产物页表的 source_rev）、先写事件日志，再进库：换过图源的册（yaml 有 source_rev）
+        # 不带锚的事件会被日志拒写，原先这时库里已进了刻例、却没有事件，重放会丢（史记 36、42 册，11-18）
+        enrich_events(evs, store=ProductStore())
+        rep["events"] = elog.append(evs)
+        db = GlyphDB(dbp)
+        n = 0
+        for e, (ch, k, png, meta, v) in zip(evs, picks):
             n += bool(db.admit_instance(
                 f"v2:{k}", ch, png, provenance="auto", shape=ch,
                 evidence={"event": e.id, "batch": batch, "source": "auto", "backfill": True,
                           **{x: meta[x] for x in ("channel", "verdict", "cov")}, "verify": v},
-                page=pg, col=int(col), idx=int(slot)))
+                page=k.split(":")[1], col=e.target.col, idx=e.target.slot))
         rep["admitted"] = n
-        rep["events"] = elog.append(evs)
         # 已直接进库，给字形库消费者记账；`db sync` 取了库里的字形库时会删掉这笔账、从事件重放（`_admit_backfills`）
         elog.mark_consumed("glyphdb_admit", evs, note="放行格回库：入库时已直接进库")
         rep["export"] = export_store(db, glyph_store_path())
