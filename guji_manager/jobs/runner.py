@@ -134,9 +134,12 @@ class Job:
         while not self._stop.wait(HEARTBEAT_S):
             n += 1
             try:
-                db(S.worker_seen, S.who(), state="busy", job_id=self.id)
-                BOARD.publish(db)
+                # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
+                # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
                 why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress)
+                if why != "lost":
+                    db(S.worker_seen, S.who(), state="busy", job_id=self.id)
+                    BOARD.publish(db)
                 if REAP_EVERY > 0 and n % REAP_EVERY == 0 and why != "lost":
                     try:
                         for jid, st in db(S.reap):
@@ -216,9 +219,15 @@ class Job:
         t0 = time.time()
         self.ev("开始")
         try:
-            self.db(S.heartbeat, self.aid, stage=name, progress=None)
+            why = self.db(S.heartbeat, self.aid, stage=name, progress=None)
         except Exception:               # noqa: BLE001
-            pass
+            why = ""
+        if why:
+            # 租约已被收回（整机暂停后醒来，单已退回排队或在别的执行方上重跑）或有人叫停：这一步不再开跑，
+            # 尤其不能再存包（会和重跑的那份各存一个包）
+            self.lease_lost = self.lease_lost or why == "lost"
+            self.cancel.set()
+            raise Cancelled()
         fn()
         self.ev("完成", secs=round(time.time() - t0, 1))
 
