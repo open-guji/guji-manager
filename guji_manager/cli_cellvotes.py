@@ -32,6 +32,7 @@ draft 给 `--pack rev-004-r6`，就取回这个包当产物根（缓存在 `<产
 """
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import os
@@ -83,14 +84,15 @@ def _item_votes(args) -> tuple[list[dict], str]:
     chap = args.rev.split("-r")[0]
     store = P.ItemStore.open(feedback_root().parent, args.site_book, chap)
     out, lost = [], 0
-    for v in raw:
-        if str(v.get("vol") or "").zfill(3) != chap.zfill(3):
-            continue
+    mine = [v for v in raw if str(v.get("vol") or "").zfill(3) == chap.zfill(3)]
+    args._n_item_raw, args._item_lost = len(mine), 0      # --allow-empty 要核：这一章条目票原始条数
+    for v in mine:
         it = store.items.get(v.get("item") or "")
         if it is None:
             lost += 1
             continue
         out.append({**v, "a": it["cell"], "rev": args.rev, "item": it["id"]})
+    args._item_lost = lost
     return out, f"{where}：条目票 {len(out)} 条" + (f"（{lost} 条找不到条目，丢掉）" if lost else "")
 
 
@@ -122,6 +124,7 @@ def _votes(args) -> tuple[list[dict], str]:
         if not tok:
             raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
         items = _fetch_kv(args.site_book, args.rev, tok)
+        args._n_rev_raw = len(items)                       # 按单版读到几条（读失败会直接抛，到这里就是读全了）
         if items:
             # 两种记法并存（旧网站按单版、新网站按条目）：只读了其中一种，另一种的票不会落——11-13 第五册 005-r13 的 25 票就这么漏的
             chap = args.rev.split("-r")[0].zfill(3)
@@ -245,6 +248,28 @@ def _route(t, out: Path, rev: str) -> dict:
     return {"text": len(text), "structure": len(structure), "exclude": len(exclude), "held": len(held)}
 
 
+def _confirm_empty(args, where: str) -> dict:
+    """``--allow-empty``：这张单确实没人投（殿本 21–99 册旧单，ZM 11-18）。只认刚从网站读全的结果：
+    必须 ``--from-kv``（数据目录里的票文件可能是没同步的旧副本），按单版、按条目两种记法都读成功且这一章都是 0 条，
+    且没有「条目找不到」被丢掉的票。读接口失败会直接抛错，走不到这里，所以守卫防的读票断连不会被放过去。"""
+    if not args.from_kv or getattr(args, "from_file", None):
+        raise SystemExit(f"读到 0 票（{where}）：--allow-empty 只认 --from-kv 当场从网站读全的结果，不认票文件")
+    n_rev = getattr(args, "_n_rev_raw", None)
+    n_item = getattr(args, "_n_item_raw", None)
+    if n_item is None:                                  # 按单版读到 0 条时会自动改读条目票；没走到就补读一次
+        _item_votes(args)
+        n_item = getattr(args, "_n_item_raw", None)
+    lost = getattr(args, "_item_lost", 0)
+    if n_rev is None:                                   # 一开始就按条目读（--items）：按单版也核一遍
+        n_rev = len(_fetch_kv(args.site_book, args.rev, os.environ.get(args.token_env) or ""))
+    if n_rev or n_item or lost:
+        raise SystemExit(f"读到 0 条可用票，但网站上按单版 {n_rev or 0} 条、按条目 {n_item or 0} 条"
+                         f"（条目找不到 {lost} 条）：不是零票，别用 --allow-empty")
+    at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _print(f"确认零票：{args.site_book} {args.rev} 按单版 0 条、按条目 0 条（{at} 从网站读全），照出空草稿")
+    return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -253,8 +278,12 @@ def cmd_draft(args) -> None:
     if not args.cord and not args.no_box_check and not pack_root:
         raise SystemExit("要给 --cord（出单那一版 book-text 的 <册>.cord.json）或 --pack（出单版产物包），或显式 --no-box-check")
     raw, where = _votes(args)
+    empty_ok = None
     if not raw:
-        raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走")
+        if not getattr(args, "allow_empty", False):
+            raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走"
+                             f"（确实没人投、要照换单：加 --from-kv --allow-empty）")
+        empty_ok = _confirm_empty(args, where)
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
     human = latest_human(EventLog(feedback_root()).iter_all())
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
@@ -291,7 +320,8 @@ def cmd_draft(args) -> None:
             "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
-            "dropped": dropped, "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped}
+            "dropped": dropped, "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
+            **({"empty_confirmed": empty_ok} if empty_ok else {})}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# {args.book} 网页投票 → 事件草稿（{args.rev}）", "",
              f"- 票：{where}；原始 {len(raw)} 条，有效 {len(votes)} 条，丢弃 {dropped or 0}",
@@ -508,6 +538,8 @@ def add_parser(sub) -> None:
     p.add_argument("--no-none", dest="include_none", action="store_false", help="draft：「无字」票不写（挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
     p.add_argument("--from-kv", action="store_true", help="draft：票直接管理读网站")
+    p.add_argument("--allow-empty", action="store_true",
+                   help="draft：确实没人投（0 票）也出空草稿，好照常换单；只认 --from-kv 当场读全、按单版和按条目都是 0 条")
     p.add_argument("--items", action="store_true", help="draft：读按条目记的票（换成条目现在的格号；--rev 给现行单）")
     p.add_argument("--token-env", default="CELLREVIEW_TOKEN", help="draft --from-kv：令牌的环境变量名")
     p.add_argument("--source", default=DEFAULT_SOURCE, help="draft：写进 payload.source 的来源说明")

@@ -112,3 +112,41 @@ def test_write_cache_check_soft_fails_without_engine(monkeypatch, capsys):
     monkeypatch.setattr(CV, "load_book", boom, raising=False)
     C._check_patch_cache("vol15", [{"id": "vol15:25:4:11a"}])
     assert "没核字块缓存" in capsys.readouterr().out + capsys.readouterr().err
+
+
+def _empty_args(tmp_path, monkeypatch, **kw):
+    import argparse
+    ws = tmp_path / "ws"
+    (ws / "feedback" / "events").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("GUJI_WORKSPACE", str(ws))
+    monkeypatch.setenv("TOK", "t")
+    base = dict(book="vol04", site_book=BOOK, rev=REV, cord=None, no_box_check=True, tol=8.0, include_none=False,
+                from_file=None, from_kv=True, token_env="TOK", source="测试", out=str(tmp_path / "draft"),
+                pack=None, sheet=None, items=False, allow_empty=False)
+    return argparse.Namespace(**{**base, **kw})
+
+
+def test_draft_zero_votes_needs_allow_empty_and_full_site_read(tmp_path, monkeypatch):
+    """零票（殿本 21–99 册旧单，ZM 11-18）：缺省照旧拒绝；--allow-empty 且网站按单版、按条目都读全为 0 才出空草稿。"""
+    monkeypatch.setattr(C, "_fetch_kv", lambda *a, **k: [])
+    monkeypatch.setattr(C, "_fetch_kv_items", lambda *a, **k: [])
+    with pytest.raises(SystemExit, match="别拿空草稿"):
+        C.cmd_draft(_empty_args(tmp_path, monkeypatch))
+    args = _empty_args(tmp_path, monkeypatch, allow_empty=True)
+    C.cmd_draft(args)
+    meta = json.loads((tmp_path / "draft" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["ready"] == 0 and meta["n_votes"] == 0
+    assert meta["empty_confirmed"]["by_rev"] == 0 and meta["empty_confirmed"]["by_item"] == 0
+    assert (tmp_path / "draft" / "drafts.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_draft_allow_empty_refuses_file_or_lost_item_votes(tmp_path, monkeypatch):
+    votes = tmp_path / "votes.jsonl"
+    votes.write_text("", encoding="utf-8")
+    with pytest.raises(SystemExit, match="只认 --from-kv"):
+        C.cmd_draft(_empty_args(tmp_path, monkeypatch, from_kv=False, from_file=str(votes), allow_empty=True))
+    # 网站上这一章有条目票、但条目找不到（丢掉）→ 可用票 0 条，也不算零票
+    monkeypatch.setattr(C, "_fetch_kv", lambda *a, **k: [])
+    monkeypatch.setattr(C, "_fetch_kv_items", lambda *a, **k: [{"vol": "004", "item": "nope", "choice": "char"}])
+    with pytest.raises(SystemExit, match="不是零票"):
+        C.cmd_draft(_empty_args(tmp_path, monkeypatch, allow_empty=True))
