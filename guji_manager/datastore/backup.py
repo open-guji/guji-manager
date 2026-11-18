@@ -8,7 +8,7 @@ D1 自带 Time Travel（30 天内任意时刻可回滚，第一道保险）；�
 
 **导出**：对每张表按 rowid 分页 ``SELECT``（经 Worker ``/v1/sql``），每行一个 JSON 数组（按列序）写成 JSONL，
 gzip 后各存一个文件；``manifest.json`` 记每张表的列、行数、哈希（各行 JSON 排序后的 sha256，与行的物理顺序无关）、
-库版本 rev。D1 读没有快照：导出前后各读一次库版本，变了就重导那几张（最多 3 遍）。
+库版本 rev。D1 读没有快照：导出前后各读一次库版本，变了就只重导 changes 记到被改的表（changes、imports 只补新行），最多 8 轮。
 大文件原文（files.body_r2=1）不在表里，在正式桶 ``files/<sha256>``（内容寻址，只增不删），不另备份。
 
 **恢复**：只许恢复到 main 以外的分支（``--endpoint`` 必给，是 main 就拒绝）。清掉目标库清单上的表，逐表分批插回，
@@ -20,6 +20,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -46,10 +47,11 @@ def _line(row) -> bytes:
     return json.dumps([bindable(v) for v in row], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def _dump_table(cur, t: str, cols: list[str]) -> bytes:
+def _dump_rows(cur, t: str, cols: list[str], after: int = -1) -> list[tuple[int, bytes]]:
+    """``rowid > after`` 的行：[(rowid, JSON 行)]。"""
     sel = ", ".join(f'"{c}"' for c in cols)
     from .d1conn import OperationalError
-    out, last, n = [], -1, (20 if t in ("files", "imports") else PAGE_ROWS)    # 这两张表单行可上 MB
+    out, last, n = [], after, (20 if t in ("files", "imports") else PAGE_ROWS)    # 这两张表单行可上 MB
     while True:
         try:
             cur.execute(f'SELECT rowid, {sel} FROM "{t}" WHERE rowid > %s ORDER BY rowid LIMIT %s', (last, n))
@@ -65,13 +67,21 @@ def _dump_table(cur, t: str, cols: list[str]) -> bytes:
         for r in rows:
             b = _line(r[1:])
             size += len(b)
-            out.append(b)
+            out.append((r[0], b))
         last = rows[-1][0]
         if size > PAGE_BYTES and n > 1:
             n = max(1, n // 2)
         if len(rows) < n:
             break
-    return b"\n".join(out) + (b"\n" if out else b"")
+    return out
+
+
+def _join(rows: list[tuple[int, bytes]]) -> bytes:
+    return b"\n".join(b for _, b in rows) + (b"\n" if rows else b"")
+
+
+def _dump_table(cur, t: str, cols: list[str]) -> bytes:
+    return _join(_dump_rows(cur, t, cols))
 
 
 def _digest(data: bytes) -> tuple[int, str]:
@@ -82,31 +92,52 @@ def _digest(data: bytes) -> tuple[int, str]:
     return len(lines), hashlib.sha256(b"\n".join(lines)).hexdigest()
 
 
+#: 只追加的表（主键即 rowid）：重导时只补新行。imports 里还没收尾的那条会被 UPDATE，从上一轮库版本的 import_id 起重读
+APPEND_ONLY = {"changes", "imports"}
+
+
+def _first_open(cur, rows) -> int:
+    """imports 里第一条还没收尾（finished_at 空）的 import_id；都收尾了给个大数。"""
+    cur.execute("SELECT MIN(import_id) FROM imports WHERE finished_at IS NULL")
+    r = cur.fetchone()
+    return r[0] if r and r[0] is not None else 1 << 62
+
+
 def dump(conn) -> tuple[dict[str, bytes], dict]:
     """{文件名: gz 字节}, 清单。"""
-    files: dict[str, bytes] = {}
-    tables = {}
     cur = conn.cursor()
     todo = _tables(cur)
     rev = conn.heads()
-    for _ in range(6):
+    got: dict[str, list[tuple[int, bytes]]] = {}
+    cols: dict[str, list[str]] = {}
+    for _ in range(8):
         for t in todo:
-            cols = _columns(cur, t)
-            data = _dump_table(cur, t, cols)
-            n, h = _digest(data)
-            name = f"{t}.jsonl.gz"
-            files[name] = gzip.compress(data, compresslevel=6, mtime=0)
-            tables[t] = {"file": name, "columns": cols, "rows": n, "sha256": h, "bytes": len(data)}
+            cols[t] = _columns(cur, t)
+            if t in got and t in APPEND_ONLY:
+                keep = rev[0] if t == "changes" else min(rev[1], _first_open(cur, got[t])) - 1
+                old = [x for x in got[t] if x[0] <= keep]
+                got[t] = old + _dump_rows(cur, t, cols[t], old[-1][0] if old else -1)
+            else:
+                got[t] = _dump_rows(cur, t, cols[t])
+            print(f"  {t}: {len(got[t])} 行", file=sys.stderr, flush=True)
         now = conn.heads()
         if now == rev:
             break
-        # 导的过程中有人写了（D1 没有快照读）：只重导这段时间 changes 记到的表＋changes、imports，几轮就追上
+        # 导的过程中有人写了（D1 没有快照读）：只重导这段时间 changes 记到的表；changes、imports 只补新行
         cur.execute("SELECT DISTINCT tbl FROM changes WHERE rev > %s", (rev[0],))
-        touched = {r[0] for r in cur.fetchall()} | {"changes", "imports"}
+        touched = {r[0] for r in cur.fetchall()} | APPEND_ONLY
         todo = [t for t in _tables(cur) if t in touched]
         rev = now
     else:
         raise SystemExit("导出期间库一直在被写，导不出一致的备份；稍后再试")
+    files: dict[str, bytes] = {}
+    tables = {}
+    for t, rows in got.items():
+        data = _join(rows)
+        n, h = _digest(data)
+        name = f"{t}.jsonl.gz"
+        files[name] = gzip.compress(data, compresslevel=6, mtime=0)
+        tables[t] = {"file": name, "columns": cols[t], "rows": n, "sha256": h, "bytes": len(data)}
     man = {"format": FORMAT, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "rev": rev[0], "import_id": rev[1], "tables": tables}
     return files, man
