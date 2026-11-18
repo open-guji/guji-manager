@@ -36,6 +36,15 @@ def _cells(char: dict):
     return [c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []]
 
 
+def _set_char(cell: dict, c: str) -> None:
+    """写人改的字。改成真字时去掉 `lacuna`／`guess_c`（新包这格是 □ 阙文、人改成字：不能留成「标了 lacuna 却有字」，
+    阅读器会照阙文框画，exit-check E4 也不过；sheldon 11-18「只有真的阙字才显示阙文」）。"""
+    cell["c"] = c
+    if c not in ("□", "〓", "▣"):
+        cell.pop("lacuna", None)
+        cell.pop("guess_c", None)
+
+
 def overlay(char: dict, edits: list[dict], cellmap: dict[str, str], same=None) -> tuple[dict, OverlayReport]:
     """返回 (叠好的新 char 副本, 报告)。入参 char 不动。``same``：同字判定（charnorm），别／別 之类不算「机器又改了」。"""
     eq = same or (lambda p, q: p == q)
@@ -52,11 +61,11 @@ def overlay(char: dict, edits: list[dict], cellmap: dict[str, str], same=None) -
         elif eq(cell["c"], new_c):
             rep.already.append(rec)
         elif eq(cell["c"], old_c):
-            cell["c"] = new_c
+            _set_char(cell, new_c)
             rep.applied.append(rec)
         else:
             rep.overturned.append({**rec, "machine": cell["c"]})
-            cell["c"] = new_c               # 人改字保留；机器的字记在报告里，格进待审（machine_changed）
+            _set_char(cell, new_c)          # 人改字保留；机器的字记在报告里，格进待审（machine_changed）
     verify(char, out, {r["new_anchor"] for r in rep.applied + rep.overturned})
     return out, rep
 

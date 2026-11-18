@@ -173,6 +173,31 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
     return dict(rep)
 
 
+def fill_pending_blanks(new_char: dict, pending, protected: dict[str, str] | None = None) -> list:
+    """新单上的待审格落完还是 □（现行和新包都没字）：写首选字、去 lacuna（sheldon 11-09／11-18 定：book-text 只录首选字，
+    待审格不显示阙文；只有审过定阙的格才是阙文）。``pending`` 是 {格号: 新单条目}（``pending_cells_of``）才做；
+    只给格号集合（旧调用方、测试）时无从取首选字，不动。人裁／手改保护的格不动。返回 [(格, None, □, 首选字)]。"""
+    if not isinstance(pending, dict) or not pending:
+        return []
+    from ..formats.guji_char_cord import LACUNA_CHAR, first_choice
+    out = []
+    for _, x in _chars(new_char):
+        a = x.get("a")
+        e = pending.get(a)
+        if not isinstance(e, dict) or x.get("c") != LACUNA_CHAR or a in (protected or {}):
+            continue
+        if x.get("fig") is not None or x.get("unk") is not None or e.get("src") == "closeout_anchor":
+            continue
+        ch, _src = first_choice(e)
+        if ch is None:
+            continue
+        x["c"] = ch
+        x.pop("lacuna", None)
+        x.pop("guess_c", None)
+        out.append((a, None, LACUNA_CHAR, ch))
+    return out
+
+
 # ───────────────────────── 人裁与手改（受保护的格） ─────────────────────────
 
 def load_human(book: str) -> dict[str, str] | None:
@@ -345,6 +370,10 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
     chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
+    if merge:
+        filled = fill_pending_blanks(new_char, pending, prot_new)
+        if filled:
+            chars["pending_first_choice"] = filled
     ledger_probs += ledger_check(new_char, prot_new, same)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
@@ -620,7 +649,7 @@ def _copy_cord(src: Path, dst: Path, cv: Path | None) -> str | None:
 
 
 def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: str, push: bool,
-            pending: set[str], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True,
+            pending: set[str] | dict[str, dict], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True,
             cv: Path | None = None) -> dict:
     vdir = _bt_dir(wt, text_id) / "default"
     ch = _chapter(book)
@@ -791,14 +820,15 @@ def drop_stored_table(stored: Path) -> None:
             break
 
 
-def pending_cells_of(ws: Path, text_id: str, ch: str) -> set[str]:
-    """本册新单（`republish prep` 出在 reports/<册>/_publish/<rev>/ 的新单）格号；读不到就当没有（只影响「待审保持现字」一条）。"""
+def pending_cells_of(ws: Path, text_id: str, ch: str) -> dict[str, dict]:
+    """本册新单（`republish prep` 出在 reports/<册>/_publish/<rev>/ 的新单）{格号: 条目}；读不到就当没有
+    （影响「待审保持现字」与「待审 □ 格写首选字」两条）。"""
     for p in sorted((ws / "reports").glob(f"vol{int(ch):02d}/_publish/*/{ch}.pending.json"), key=lambda p: p.stat().st_mtime)[::-1]:
         try:
-            return {c["cell"] for c in json.loads(p.read_text(encoding="utf-8")).get("cells", []) if c.get("cell")}
+            return {c["cell"]: c for c in json.loads(p.read_text(encoding="utf-8")).get("cells", []) if c.get("cell")}
         except (OSError, ValueError, KeyError):
             continue
-    return set()
+    return {}
 
 
 def push_sheet(ws: Path, book: str, cv: Path) -> str:
