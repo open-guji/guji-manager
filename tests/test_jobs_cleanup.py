@@ -64,3 +64,18 @@ def test_sweep_cleans_all_books_but_not_other_dirs(tmp_path, monkeypatch):
     monkeypatch.delenv("GUJI_DATA_HOME", raising=False)
     freed = R._sweep_book_dirs(lambda m: None)
     assert freed == 50 and not a.exists() and not b.exists() and judge.exists() and other.exists()
+
+
+def test_disk_gate_sweep_cooldown(monkeypatch):
+    """剩余空间低于清扫阈值但高于领单门槛、又清不出东西时：只扫一次，冷却期内不重扫，且照常放行领单。"""
+    calls = []
+    monkeypatch.setattr(R, "_clean_job_dirs", lambda: None)
+    monkeypatch.setattr(R, "_prune_glyph_dbs", lambda say, keep_recent=None: None)
+    monkeypatch.setattr(R, "_free_gb", lambda: 7.9)
+    monkeypatch.setattr(R, "_sweep_book_dirs", lambda say=print: calls.append(1) or 0)
+    monkeypatch.setattr(R, "_sweep_at", 0.0)
+    msgs = []
+    assert R._disk_gate(msgs.append) is None
+    assert R._disk_gate(msgs.append) is None
+    assert len(calls) == 1
+    assert any("没有可清的" in m for m in msgs)

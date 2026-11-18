@@ -906,6 +906,9 @@ def _prune_glyph_dbs(say=print, keep_recent: int | None = None) -> int:
 
 #: 领单前空间低于这么多 GB 时，扫掉各工作区里所有册的 cache／products／data_full（缺省 8；0＝不扫）
 SWEEP_FREE_GB = float(os.environ.get("GUJI_JOBS_SWEEP_GB") or 8)
+#: 扫一遍后（不论清出多少）这么多秒内不再扫；空闲执行方每个轮询周期都过 _disk_gate
+SWEEP_COOLDOWN_S = int(os.environ.get("GUJI_JOBS_SWEEP_COOLDOWN_S") or 600)
+_sweep_at = 0.0
 
 
 def _workspace_roots() -> list[Path]:
@@ -957,10 +960,19 @@ def _disk_gate(say=print) -> str | None:
             _prune_glyph_dbs(say, keep_recent=GLYPH_DB_KEEP_RECENT)
     except Exception as e:      # noqa: BLE001 —— 清缓存失败不碍领单
         say(f"清旧字形库出错（忽略）：{e}")
-    if SWEEP_FREE_GB and _free_gb() < SWEEP_FREE_GB and os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") != "1":
+    global _sweep_at
+    if (SWEEP_FREE_GB and _free_gb() < SWEEP_FREE_GB and os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") != "1"
+            and time.time() - _sweep_at >= SWEEP_COOLDOWN_S):
+        # 冷却：空闲执行方每个轮询周期都过这里，清不出空间（剩 7.9G、没有可清的册目录）时不能每次都重扫一遍、每次都打日志
+        _sweep_at = time.time()
         try:
-            say(f"磁盘剩余 {_free_gb():.1f} GB，低于 {SWEEP_FREE_GB:g} GB，清各册 cache／products／data_full")
-            _sweep_book_dirs(say)
+            before = _free_gb()
+            freed = _sweep_book_dirs(say)
+            if freed:
+                say(f"磁盘剩余 {before:.1f} GB，低于 {SWEEP_FREE_GB:g} GB，已清各册 cache／products／data_full，释放 {freed / 2**20:.0f} MB")
+            else:
+                say(f"磁盘剩余 {before:.1f} GB，低于 {SWEEP_FREE_GB:g} GB，但各册目录里没有可清的；{SWEEP_COOLDOWN_S // 60} 分钟内不再重扫"
+                    f"（高于 {MIN_FREE_GB:g} GB 照常领单）")
         except Exception as e:  # noqa: BLE001
             say(f"清各册目录出错（忽略）：{e}")
     for cache in _CACHES:
