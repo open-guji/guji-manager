@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：执行方自更新（`_refresh_runner`）失败时把 merge 的 stderr／超时写进日志，merge 超时 120→300 秒（`GUJI_JOBS_REFRESH_TIMEOUT_S`）。11-18 多台 runner 同时「dev 有更新但拉不动」自退，检出是干净的 detached HEAD、手动 ff 正常，当时看不出原因。
+
 ## [0.4.62] - 2026-11-18
 
 - 发版说明（A31 11-18，PATCH；按用户 11-05「manager 发版一律 PATCH」，下面记 MINOR 的「库文一致」也按 PATCH 发）：dev 头 84f3084，含 #654、#661、#662、#664、#665、#666、#667（配 cv v0.7.68 的 seg check「cv丢笔」）。
