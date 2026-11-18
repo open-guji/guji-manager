@@ -10,11 +10,12 @@
 ## 比什么
 
 一册一册比：库里 `v2:<册>:…` 的每个刻例，对 `seed_admit` 产物里同一格。两边的字先按书级码位归一
-（`BookSpec.canonical_char`，陝／陜、寛／寬 这类不算不一致）再比。不一样的分七类，各有去处：
+（`BookSpec.canonical_char`，陝／陜、寛／寬 这类不算不一致）再比。不一样的分八类，各有去处：
 
 | 类 | 判据 | 处理（`--apply`） |
 |---|---|---|
 | `text_stale` 文本过期 | 库例入库时刻晚于这一页产物的写出时刻 | 这一页 `seed_admit` 标失效，`guji rerun --stale` 重算后文本跟上 |
+| `shifted` 库图错位 | 库标正是同一列上下邻格的字 | 库图是旧切分的字块、格号整体挪过：机器来路的撤库例（文本不动），人裁来路的只报 |
 | `follow_human` 文本是人裁 | 文本通道是人裁，库例是机器来路或更早的人裁 | 库例改成文本的字（`glyph_audit relabel`） |
 | `machine` 两边都是机器 | 文本机器放行，库例机器来路 | 库图过字体模板重新识别：认成文本的字 → 库例改标（仍是机器来路）；认成库标 → 文本可疑，这一格加进待审单复审；都不是 → 撤库例、这一格回人审 |
 | `human_unapplied` 库是人裁、文本没采信 | 库例人裁来路，文本机器放行了别的字 | 多半是切分变过、人裁落在了别的格上：这一格加进待审单复审，库不动 |
@@ -40,8 +41,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-CATS = ("ok", "pending", "text_stale", "follow_human", "machine", "human_unapplied", "orphan")
+CATS = ("ok", "pending", "text_stale", "shifted", "follow_human", "machine", "human_unapplied", "orphan")
 HUMAN = ("human",)
+MARGIN_MIN = 0.03     # 字体模板首位领先次位不到这么多，不凭它改库标（史記 11-18：黄 被认成 簧）
 
 
 def config(ws_dir: Path | str | None) -> str | None:
@@ -104,6 +106,8 @@ def classify(lib: dict[str, dict], cells: dict[str, dict], canon=None,
             row["cat"] = "text_stale"
         elif not cell.get("admit"):
             row["cat"] = "pending"
+        elif any(canon((cells.get(n) or {}).get("char") or "") == canon(r["label"]) for n in _neighbors(k)):
+            row["cat"] = "shifted"      # 库标正是上下邻格的字：库图是旧切分的字块，格号整体挪过
         elif _is_human(cell):
             row["cat"] = "follow_human"
         elif r["provenance"] in HUMAN:
@@ -114,7 +118,7 @@ def classify(lib: dict[str, dict], cells: dict[str, dict], canon=None,
     return rows
 
 
-def decide(row: dict, canon=None, top1: str | None = None) -> str:
+def decide(row: dict, canon=None, top1: str | None = None, margin: float | None = None) -> str:
     """一例该怎么办 → 动作名。纯函数。`top1`：库图过字体模板的首位字（只有 `machine` 类要）。
 
     `invalidate` 标这一页失效；`relabel` 库例改成文本的字（人裁来路）；`relabel_auto` 改标但保持机器来路；
@@ -125,6 +129,8 @@ def decide(row: dict, canon=None, top1: str | None = None) -> str:
         return "none"
     if cat == "text_stale":
         return "invalidate"
+    if cat == "shifted":
+        return "report" if row["lib_prov"] in HUMAN else "evict"
     if cat == "follow_human":
         return "relabel" if _single_han(row.get("text")) else "report"
     if cat == "human_unapplied":
@@ -134,6 +140,8 @@ def decide(row: dict, canon=None, top1: str | None = None) -> str:
     if top1 is None:
         return "report"
     if canon(top1) == canon(row.get("text") or ""):
+        if margin is not None and margin < MARGIN_MIN:
+            return "review"             # 模板首位领先太少，不够当改库的证据：送人看
         return "relabel_auto" if _single_han(row.get("text")) else "report"
     if canon(top1) == canon(row["lib"]):
         return "review"
@@ -147,6 +155,7 @@ def _single_han(ch: str | None) -> bool:
 def _seed(root: Path, book: str) -> tuple[dict[str, dict], dict[int, str]]:
     cells: dict[str, dict] = {}
     page_at: dict[int, str] = {}
+    made = _manifest_ts(root / book / "seed_admit" / "_manifest.jsonl")
     for f in sorted((root / book / "seed_admit").glob("p*.json")):
         d = json.loads(f.read_text(encoding="utf-8"))
         pm = d[next(iter(d))]
@@ -154,11 +163,37 @@ def _seed(root: Path, book: str) -> tuple[dict[str, dict], dict[int, str]]:
             page = int(pm.get("page") or f.stem.lstrip("p"))
         except ValueError:
             continue
-        page_at[page] = datetime.datetime.fromtimestamp(f.stat().st_mtime, datetime.timezone.utc).isoformat()
+        # 这一页是什么时候算的：认 manifest 的 `ts`（没重算的页存包、取包都不变）；没有才退回文件时刻
+        # （取包会把文件时刻刷成取包那一刻，史記 11-18 两格因此没判成文本过期）。
+        ts = made.get(f.stem) or f.stat().st_mtime
+        page_at[page] = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).isoformat()
         for col in pm.get("columns") or []:
             for r in col.get("chars") or []:
                 cells[r["id"]] = r
     return cells, page_at
+
+
+def _manifest_ts(path: Path) -> dict[str, float]:
+    out: dict[str, float] = {}
+    if not path.exists():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("key") and isinstance(e.get("ts"), (int, float)):
+            out[str(e["key"])] = float(e["ts"])       # 后到覆盖
+    return out
+
+
+def _neighbors(key: str) -> list[str]:
+    """同一列上下各一格的格键（半格 a／b 保持同侧）。"""
+    head, _, slot = key.rpartition(":")
+    num = slot.rstrip("ab")
+    if not num.lstrip("-").isdigit():
+        return []
+    return [f"{head}:{int(num) + d}{slot[len(num):]}" for d in (-1, 1)]
 
 
 class _Top1:
@@ -169,7 +204,7 @@ class _Top1:
         self.v = Verifier()
         self.db_path = db_path
 
-    def __call__(self, key: str) -> str | None:
+    def __call__(self, key: str) -> tuple[str, float] | None:
         import cv2
         from .._cv import normalize_patch
         np = self.v.np
@@ -182,7 +217,8 @@ class _Top1:
             return None
         q = np.asarray(self.v.cnn.embed([normalize_patch(img)]), dtype=np.float32)[0]
         sc = self.v.mat @ (q / (np.linalg.norm(q) + 1e-9))
-        return self.v.names[int(np.argmax(sc))]
+        o = np.argsort(-sc)[:2]
+        return self.v.names[int(o[0])], round(float(sc[o[0]] - sc[o[1]]), 4)
 
 
 def run(books: list[str], *, apply: bool = False, batch: str | None = None, top1=None, log=None,
@@ -212,12 +248,13 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None, top1
             stat[r["cat"]] += 1
             if r["cat"] in ("ok", "pending"):
                 continue
-            t = None
+            t = mg = None
             if r["cat"] == "machine":
                 top1 = top1 or _Top1(dbp)
-                t = top1(r["key"])
-                r["tpl_top1"] = t
-            r["action"] = decide(r, canon, t)
+                got = top1(r["key"])
+                t, mg = got if isinstance(got, tuple) else (got, None)
+                r["tpl_top1"], r["tpl_margin"] = t, mg
+            r["action"] = decide(r, canon, t, mg if r["cat"] == "machine" else None)
             acts[r["action"]] += 1
             todo.append(r)
         say(f"  {b}: 刻例 {len(rows)}，不一致 {sum(1 for r in rows if r['cat'] not in ('ok', 'pending'))}")
@@ -252,7 +289,7 @@ def _apply(todo: list[dict], batch: str, dbp) -> dict:
                  "provenance": "auto", "tpl_top1": r.get("tpl_top1"), "source": f"{src}:字体模板认成文本的字"}
         elif a in ("evict", "evict_review"):
             p = {"v": "evict", "instance_id": f"v2:{k}", "char_self": r["lib"],
-                 "source": f"{src}:" + ("格已不在" if a == "evict" else "库标与文本都不被字体模板支持")}
+                 "source": f"{src}:" + (("库图错位（旧切分）" if r["cat"] == "shifted" else "格已不在") if a == "evict" else "库标与文本都不被字体模板支持")}
             if a == "evict_review":
                 p["review"] = True
         else:

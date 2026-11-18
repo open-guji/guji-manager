@@ -111,3 +111,36 @@ def test_config_rejects_unknown_value(tmp_path):
     (tmp_path / "workspace.yaml").write_text("glyph_lib:\n  text_check: maybe\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         LT.config(tmp_path)
+
+
+def test_shifted_when_lib_label_is_the_neighbor_cell_char():
+    """库标正是同列邻格的字：库图是旧切分的字块（史記卷首题署列、全唐文 輪／上）。排在人裁改标之前。"""
+    lib = {"001:1:1:3": _lib("卷", "human"), "001:1:2:5a": _lib("校")}
+    cells = {"001:1:1:3": _cell("記", "human"), "001:1:1:4": _cell("卷", "human"),
+             "001:1:2:5a": _cell("勘"), "001:1:2:4a": _cell("校"), "001:1:2:5b": _cell("校")}
+    rows = {r["key"]: r for r in LT.classify(lib, cells, canon, PAGE_AT)}
+    assert rows["001:1:1:3"]["cat"] == rows["001:1:2:5a"]["cat"] == "shifted"
+    assert LT.decide(rows["001:1:1:3"]) == "report"       # 人裁刻例不自动撤
+    assert LT.decide(rows["001:1:2:5a"]) == "evict"       # 机器刻例撤掉，文本不动
+
+
+def test_neighbors_keep_half_cell_side():
+    assert LT._neighbors("001:1:2:5a") == ["001:1:2:4a", "001:1:2:6a"]
+    assert LT._neighbors("001:1:2:1") == ["001:1:2:0", "001:1:2:2"]
+
+
+def test_low_template_margin_goes_to_review_not_relabel():
+    assert LT.decide(_row("machine"), canon, "寇", LT.MARGIN_MIN - 0.01) == "review"
+    assert LT.decide(_row("machine"), canon, "寇", LT.MARGIN_MIN + 0.01) == "relabel_auto"
+
+
+def test_page_time_prefers_manifest_ts_over_file_mtime(tmp_path):
+    """取包会刷新文件时刻：页的计算时刻认 manifest 的 ts。"""
+    import json
+    d = tmp_path / "001" / "seed_admit"
+    d.mkdir(parents=True)
+    (d / "p0001.json").write_text(json.dumps({"seed_admit": {"page": 1, "columns": [
+        {"col": 1, "chars": [{"id": "001:1:1:1", "char": "之", "admit": True}]}]}}), encoding="utf-8")
+    (d / "_manifest.jsonl").write_text(json.dumps({"key": "p0001", "ts": 1700000000.0}) + "\n", encoding="utf-8")
+    cells, page_at = LT._seed(tmp_path, "001")
+    assert set(cells) == {"001:1:1:1"} and page_at[1].startswith("2023-11-14")
