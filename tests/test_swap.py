@@ -9,8 +9,9 @@ from guji_manager import swap
 
 def test_parse_books_expands_ranges_and_dedups():
     assert swap.parse_books("vol20-vol22,vol21,vol30") == ["vol20", "vol21", "vol22", "vol30"]
+    assert swap.parse_books("20-22") == ["20", "21", "22"]      # 纯数字册名（全唐文、史記）也能写区间
     with pytest.raises(SystemExit):
-        swap.parse_books("20-22")
+        swap.parse_books("vol1-3")
 
 
 def test_chunks():
@@ -82,3 +83,12 @@ def test_data_problem(tmp_path):
     (tmp_path / "corpus" / "daizhige").mkdir(parents=True)
     (tmp_path / "corpus" / "daizhige" / "0001.jsonl").write_text("{}\n")
     assert swap.data_problem(tmp_path) is None
+
+
+def test_parse_books_numeric_and_chapter():
+    from guji_manager import swap as S
+    assert S.parse_books("001-003,010") == ["001", "002", "003", "010"]
+    assert S.parse_books("01-02") == ["01", "02"]
+    assert S.parse_books("vol9-vol10") == ["vol09", "vol10"]
+    assert S.chapter_of("vol07") == "007" and S.chapter_of("07") == "007" and S.chapter_of("045") == "045"
+    assert S.parse_cycle_log("045\t→ done\t写人裁 3 条")["045"]["verdict"] == "done"
