@@ -4,6 +4,17 @@
 
 ## [未发版]
 
+## [0.4.54] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。主要为带上 #617 放行格回库（全唐文开 `glyph_lib.auto_backfill` 用；缺省关的新功能按规矩算 PATCH，下面条目里写的 MINOR 以此为准）和 #622 字形库推库补洞（回库前必须有）；同带 #612、#615、#618、#619、#620、#623（`guji job precheck`／`job stats`）与 #590 任务库失联不占重试额度。
+
+- PATCH：`guji job precheck` 交单前逐册核生效的 cv／code／glyph_pin／corpus 钉子；`guji job stats` 按领单记录算排队、运行与多次领单的时间账（#623）。
+- PATCH：字形库推库补两个洞（全唐文开放行格回库前查出，2026-11-18）。①`db pull --no-rebuild`（含换单 `GUJI_DB_NO_GLYPH` 的 sync）拉到新字形账本却没重建 glyph.db 时，状态记 `glyph_db_stale`；之后 glyph.db 没被动过的，下一次正常 `db sync` 先按账本重建；被动过（回库、落库写进了旧库）就拒导出，免得旧库盖掉账本、推库删掉别人新加的刻例（少于 5% 缩水闸拦不住）。`GUJI_ALLOW_STALE_GLYPH_EXPORT=1` 放行。②`GUJI_GLYPH_DB` 指着别的书的库时，`db pull/sync` 的字形库钩子与 `glyph-db backfill --apply` 一律拒跑。③放行格回库入库前另核：部分副本（`pull --exclude`）推不上中心库，拒入库。
+- PATCH（原记 MINOR）：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（缺省关，`GUJI_AUTO_BACKFILL=0` 临时关）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
+- PATCH：seg check 钉子集合加上册配置 `row_segment.page_map_overrides` 里带 `cuts`／`slots` 的覆盖行（人核格线／格位；`drop` 不算），这些列有结构旗记「已钉·复核」、不进闸；`reference_profile` 声明 text／none（无逐列参校）的页上只有 pair 的对位串错记 `ALIGN_NOREF`，只当提示「对位串错·无逐列参校」，split／run 照算结构（全唐文 11-17 b1 闸 039:78:1：碑誌 text 页放行少凑够 pair、切分对，覆盖行已钉仍报需钉子）。
+- PATCH：R01 `ref_lacuna` 卡片提示、判定说明带上 ▣（以图代字）；文档 `01-粗校/待审原因/ref_lacuna/README.md` 写明〓／▣ 口径（语义相同、只在成因 A2 明细上分开、换含 ▣ 语料先钉认 ▣ 的 cv）。
+- PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。
+
 ## [0.4.53] - 2026-11-16
 
 - 发版说明（ZM 11-16）：dev 头 51787ff，PATCH。主要为带上 #607（整理本占位符区分：`reasons.ref_missing`、`taxonomy`、`causes`、`cards`、`sheet_audit`、`release_gates`、`exit_check`、`close_check`、`review_breakdown` 认 `▣` 以图代字为整理本缺字，成因 A2 `detail="image"`；配 cv ≥0.7.52，殿本换含 `▣` 的整理本新语料用）。同带 #600–#606、#608（swap.booktext 标点迁移、online_lists 落后判定与子进程路径、seg premain INK_BLANK、cellvotes `--no-consume` 补排除名单、粗校 R5 rough 第 12 项、5a 文档）。

@@ -167,3 +167,42 @@ def test_col_geometry_page_coords():
     ci = NS(columns=[NS(col=2, chars=[NS(slot=1, sub=None, bbox_page=[1.2, 110, 9, 290]),
                                       NS(slot=2, sub=None, bbox_page=None)])])
     assert sc.col_geometry(rs, ci) == {2: "1:0,100,10,300;2:0,300,10,500;3a:0,500,10,700;3b:0,500,10,700#1:1,110,9,290"}
+
+
+def test_align_pair_on_noref_page_is_hint():
+    """册配置声明没有逐列参校（reference_profile text／none）的页，只有 pair 的对位串错是放行少凑够门槛，降成提示；
+    split／run 照算结构（全唐文 11-17 b1 闸 039:78:1）。"""
+    rows = {"align_drift": [("b", 78, 1, "pair", "NnNnnnNNNnNN"), ("b", 78, 2, "split", "bnOO"),
+                            ("b", 79, 1, "pair", "NnNnnnNNNnNN")]}
+    out = {r["列"]: (r["类"], r["处置"], r["结构分"]) for r in sc.aggregate("b", rows, set(), {}, skip=set(), noref_pages={78})}
+    assert out["b:78:1"] == ("提示", "对位串错·无逐列参校", 0)
+    assert out["b:78:2"][1] == "需钉子" and out["b:79:1"][1] == "需钉子"
+
+
+def test_override_pins(tmp_path, monkeypatch):
+    """page_map_overrides 里带 cuts／slots 的行算钉子（drop、只改 pitch 的不算；别册的不算）。"""
+    f = tmp_path / "ov.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in [
+        {"vol": "039", "page": 78, "col": 1, "slots": [1, 2], "cuts": [1, 200, 400], "col_h": 450},
+        {"vol": "039", "page": 18, "col": 9, "cuts": [1, 300], "col_h": 310},
+        {"vol": "039", "page": 5, "col": 2, "slots": [2, 3]},
+        {"vol": "039", "page": 6, "col": 1, "pitch": "free"},
+        {"vol": "039", "page": 7, "col": 1, "drop": True},
+        {"vol": "040", "page": 78, "col": 1, "slots": [1]},
+    ]) + "\n\n", encoding="utf-8")
+
+    class B:
+        params = {"row_segment": {"page_map_overrides": "ov.jsonl"}}
+    monkeypatch.setattr(sc, "_book_of", lambda b: B)
+    import guji_manager._cv as cvm
+    monkeypatch.setattr(cvm, "corpus_path", lambda rel: tmp_path / rel, raising=False)
+    assert sc.override_pins("039") == {(78, 1), (18, 9), (5, 2)}
+    B.params = {}
+    assert sc.override_pins("039") == set()
+
+
+def test_pinned_column_with_struct_is_review_not_need_pin():
+    """钉子列（含覆盖行钉子）上有结构旗记「已钉·复核」，不进闸的「需钉子」。"""
+    rows = {"align_drift": [("b", 78, 1, "pair", "NnNnnn")]}
+    (r,) = sc.aggregate("b", rows, {(78, 1)}, {}, skip=set())
+    assert r["处置"] == "已钉·复核"

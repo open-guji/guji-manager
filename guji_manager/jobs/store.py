@@ -15,6 +15,14 @@ from importlib import resources
 from .spec import book_id as _book_id
 
 LEASE_MIN = int(os.environ.get("GUJI_JOBS_LEASE_MIN", "10"))
+#: 执行机整机暂停导致的失联（租约过期）不是任务的错：每条单最多这么多次失联不占重试额度，超过的才占。0＝恢复旧行为。
+LOST_FREE = int(os.environ.get("GUJI_JOBS_LOST_FREE", "5"))
+
+
+def lost_exhausted(attempts: int, max_attempts: int, lost: int, free: int | None = None) -> bool:
+    """失联后这条单的重试额度是否用完。前 `free` 次失联不计入已用次数（平台暂停，不是单子的问题）。"""
+    free = LOST_FREE if free is None else free
+    return attempts - min(max(lost, 0), max(free, 0)) >= max_attempts
 RETRY_BACKOFF_MIN = int(os.environ.get("GUJI_JOBS_BACKOFF_MIN", "5"))   # 环境类失败重排后隔几分钟（×次数）
 #: 瞬时超时（中心库一时慢、几十台同时拉库读超时）：仍是环境类、换个时间再试，但不计入连续环境失败暂停；重排时间随机错峰
 TRANSIENT = "环境（瞬时）："
@@ -233,7 +241,9 @@ def reap(conn) -> list[tuple[int, str]]:
                                   (a["job_id"],)))
             if j is None or j["status"] != "running":
                 continue
-            if j["attempts"] >= j["max_attempts"]:
+            n_lost = _one(conn.execute("SELECT count(*) AS n FROM jobs.attempt WHERE job_id=%s AND outcome='lost'",
+                                       (a["job_id"],)))["n"]
+            if lost_exhausted(j["attempts"], j["max_attempts"], n_lost):
                 conn.execute("UPDATE jobs.job SET status='failed', finished_at=now(), updated_at=now(),"
                              " error=%s WHERE id=%s",
                              (f"执行会话失联 {j['attempts']} 次（租约过期）", a["job_id"]))

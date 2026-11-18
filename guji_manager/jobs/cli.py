@@ -104,6 +104,21 @@ def fill(p: argparse.ArgumentParser) -> None:
 
     js.add_parser("init", help="建表（幂等）")
 
+    s = js.add_parser("precheck", help="交单前逐册核生效的 cv_version／code／glyph_pin／corpus／model（与来源层）；不连任务库")
+    s.add_argument("--books", required=True, help="vol01-vol20｜001-045｜vol03,vol07｜all")
+    s.add_argument("--cv", default=None, help="本轮要钉的 cv 版本（如 0.7.58）")
+    s.add_argument("--code", default=None, help="本轮要钉的书级代码号（3 或 k3）")
+    s.add_argument("--glyph-pin", default=None, help="本轮要钉的字形库号（24 或 g24）")
+    s.add_argument("--corpus", default=None, help="本轮要钉的语料号（27 或 b27 写数字）")
+
+    s = js.add_parser("stats", help="按轮统计一本书的时间账：排队（首领−交单）、真运行、失联次数与耗时、失败三分类")
+    s.add_argument("--book-id", default=None, help="书 ID；不给统计全部")
+    s.add_argument("--by", choices=["why", "change"], default="why", help="轮次取 why 里的轮号（史記、全唐文）或存包改动名（殿本）")
+    s.add_argument("--last", type=int, default=0, help="只列最近几轮")
+    s.add_argument("--limit", type=int, default=2000, help="最多取多少单")
+    s.add_argument("--from-json", default=None, help="读 `guji_jobs ls --all --json` 的导出（不连库；没有逐次领单，退回任务级时间）")
+    s.add_argument("--json", action="store_true")
+
 
 def _spec_from_args(a) -> dict:
     if a.file:
@@ -230,6 +245,12 @@ def cmd_job(a) -> None:
             except Exception:       # noqa: BLE001 —— 看板写不上不影响交单
                 pass
         return
+    if act == "precheck":
+        from .precheck import main as _precheck
+        sys.exit(_precheck(a))
+    if act == "stats":
+        from .stats import main as _stats
+        sys.exit(_stats(a))
     db = S.DB()
     if act == "init":
         db(S.init)

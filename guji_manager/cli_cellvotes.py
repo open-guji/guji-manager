@@ -333,6 +333,8 @@ def cmd_write(args) -> None:
     if not rows:
         _print("没有可写的格")
         return
+    if not getattr(args, "no_cache_check", False):
+        _check_patch_cache(args.book, rows)
     # 幂等键：同一份草稿重跑 write 不重复写（控制台写入路径按 payload.request_id 判重）
     rid = "cellvotes-" + hashlib.sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
     res = write_events(EventLog(feedback_root()), BatchStore(batches_root()), GoldStore(verdicts_root()),
@@ -345,6 +347,43 @@ def cmd_write(args) -> None:
         _resolve_items(meta, rows, res, args.reviewer or "")
     if not res.get("duplicate"):
         _print("已写进数据目录；推库：guji db sync -w <工作区>（写中心库前先报告、等点头）")
+
+
+def _draft_pages(rows: list[dict]) -> list[int]:
+    """草稿行 id 形如 `vol15:25:4:11a`（册:页:列:格），旧草稿可能不带册前缀（`25:4:11a`）；取页号，解析不了的跳过。"""
+    out = set()
+    for r in rows:
+        parts = str(r.get("id") or "").split(":")
+        pg = parts[1] if len(parts) == 4 else parts[0] if len(parts) == 3 else ""
+        if pg.isdigit():
+            out.add(int(pg))
+    return sorted(out)
+
+
+def _check_patch_cache(book: str, rows: list[dict]) -> None:
+    """写人裁前核本地字块缓存是不是对着当前产物根切的（ZM 11-17 框架建议 2）。
+
+    事件锚的内容指纹按本地 `char_patch` 缓存算；重切后换了产物根（出单版包）却没重建缓存，
+    会**静默**写出指纹不符的锚（绑定 status=review，人裁不生效）。这里对草稿涉及的页跑
+    `cache verify --fix`：有戳的页免查；查出错位就清掉这些页的缓存并拒写，提示先重建再写。
+    引擎起不来（没有册配置、测试环境）只提示一句，不挡。"""
+    pages = _draft_pages(rows)
+    if not pages:
+        return
+    try:
+        from ._cv import _engine, default_pipeline_id, load_book
+        from .ops.cache_verify import verify_book
+        eng = _engine(book, default_pipeline_id(load_book(book)), quiet=True)
+        res = verify_book(eng, pages, fix=True, log=lambda *_: None)
+    except Exception as e:                               # noqa: BLE001
+        _print(f"（没核字块缓存：{type(e).__name__}: {e}；重切过的册写前请自己 `guji cache verify --book {book} --fix`）")
+        return
+    if res.get("bad_columns"):
+        pg = ",".join(str(p) for p in res.get("bad_pages") or [])
+        raise SystemExit(
+            f"字块缓存与当前产物根对不上：{len(res.get('bad_pages') or [])} 页、{res['bad_columns']} 列（已清掉这些页的缓存）。\n"
+            f"照这样写出的锚指纹会不符。先重建：guji cache warm --book {book} --pages {pg}（产物根同本次 write），"
+            f"再重跑这条 write；确知无碍可加 --no-cache-check")
 
 
 EXCLUDE_VS = ("figure", "not_a_char", "damaged")
@@ -484,6 +523,8 @@ def add_parser(sub) -> None:
     p.add_argument("--new-rev", default=None, help="migrate：迁出的票改写成这个待审单 rev（缺省不改）")
     p.add_argument("--book-id", default=None, help="rebase：网站书 id（页表在 R2 的 <书>/<册>/r<rev>.json），如 96mid1ogzk")
     p.add_argument("--no-consume", action="store_true", help="write：只写不消费")
+    p.add_argument("--no-cache-check", action="store_true",
+                   help="write：不核本地字块缓存（缺省对草稿涉及的页跑 cache verify --fix，缓存与产物根对不上就拒写）")
 
 
 def cmd_cellvotes(args) -> None:
