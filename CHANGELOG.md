@@ -4,8 +4,12 @@
 
 ## [未发版]
 
+## [0.4.55] - 测试中
+
+- 发版说明（A31 11-18）：PATCH。带 #624 放行格自动回库**对所有书缺省开**（Sheldon 11-18 在卡片上定）和 #628 db sync 增量推。回库只改本机字形库：跑批机不 `db sync` 结果就留在本机；上中心库须在有完整副本的机器上 `guji db pull`（不要 `--no-rebuild`）后 `guji db sync`，推前先 `guji db push --dry-run` 看 glyphs／glyph_instances／glyph_exemplars／glyph_admissions 各表 delete=0。关法：`workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或 `GUJI_AUTO_BACKFILL=0`。
+
 - PATCH：`db sync`／`db push` 增量推（2026-11-18，收单提速）。只改了待审单、人裁事件、册 yaml 这类主键带文件路径的文件时，只扫、只比这几个文件的行（字形库各表照旧全量）；文件清单的 sha 按大小＋修改时间缓存在数据目录 `.central-shacache.json`；`_walk` 改 `os.walk`。殿本一册有本地改动的 sync 从 64 秒降到 8 秒。`GUJI_DB_FULL_SCAN=1` 退回全量、`GUJI_DB_NO_SHA_CACHE=1` 关缓存。
-- MINOR：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
+- PATCH（原记 MINOR）：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
 
 ## [0.4.54] - 2026-11-17
 
