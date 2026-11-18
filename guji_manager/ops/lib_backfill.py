@@ -515,6 +515,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
                                          "harm": drop[ch][:20]})
                         state["counts"][ch] -= 1
                         state["in_lib"].discard(f"v2:{k}")
+                        embs.pop(ch, None)      # 被拦的例不算已有例：向量丢掉，要用时从库里重算
                     else:
                         kept.append((ch, k, png, meta, v))
                 picks[n0:] = kept
@@ -542,7 +543,7 @@ def run_pools(paths: list[str], *, apply: bool = False, batch: str | None = None
               log=None, report: str | None = None) -> dict:
     """一次性补历史册的第二步：把各册 `run(..., pool=…)` 存下的候选合起来，按册序统一挑有区别的例、（`apply` 时）入库。
 
-    候选已核验过，这里不再取图；对着现库重查一遍「已在库／已有人裁／撤过库」，上限、每册每字几例、去重、离群同 `run`。"""
+    候选已核验过，这里不再取图，也**不做抢首位核验**（`steal_check` 开了也不生效，补完按轮事后核）；对着现库重查一遍「已在库／已有人裁／撤过库」，上限、每册每字几例、去重、离群同 `run`。"""
     import pickle
     from .._cv import EventLog, glyph_db_path
     say = log or (lambda *_: None)
@@ -599,7 +600,6 @@ def run_pools(paths: list[str], *, apply: bool = False, batch: str | None = None
         rep.update(admit(picks, batch, dbp=dbp, elog=elog))
     if report:
         Path(report).write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
-    rep["_picks"] = picks
     return rep
 
 
