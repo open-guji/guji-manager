@@ -59,6 +59,28 @@ def test_lib_state_counts_only_live_instances(tmp_path):
     assert st["counts"] == {"榭": 2} and st["evicted"] == {"v2:gone"} and st["in_lib"] == {"v2:a", "v2:b"}
 
 
+def test_lib_state_skips_borrowed(tmp_path):
+    """借来的刻例不算本书已有例：借库的新书，本书没有的字要能补。"""
+    p = tmp_path / "g.db"
+    c = sqlite3.connect(p)
+    c.executescript("""
+        CREATE TABLE glyphs(glyph_id INTEGER PRIMARY KEY, char TEXT);
+        CREATE TABLE instances(instance_id TEXT PRIMARY KEY);
+        CREATE TABLE exemplars(glyph_id INTEGER, instance_id TEXT);
+        CREATE TABLE admissions(instance_id TEXT);
+        CREATE TABLE evictions(instance_id TEXT);
+        CREATE TABLE borrowed(instance_id TEXT PRIMARY KEY, store TEXT);
+        INSERT INTO glyphs VALUES (1,'樹'),(2,'榭');
+        INSERT INTO instances VALUES ('v2:own'),('v2:b1'),('v2:b2'),('v2:b3');
+        INSERT INTO admissions VALUES ('v2:own');
+        INSERT INTO exemplars VALUES (2,'v2:own'),(1,'v2:b1'),(1,'v2:b2'),(1,'v2:b3');
+        INSERT INTO borrowed VALUES ('v2:b1','x'),('v2:b2','x'),('v2:b3','x');
+    """)
+    c.commit()
+    c.close()
+    assert LB.lib_state(p)["counts"] == {"榭": 1}
+
+
 def test_config(tmp_path):
     assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP}      # 缺省开
     y = tmp_path / "workspace.yaml"

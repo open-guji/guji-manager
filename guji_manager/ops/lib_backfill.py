@@ -93,14 +93,18 @@ def config(ws_dir: Path | str | None) -> dict | None:
 def lib_state(db_path: Path | str) -> dict:
     """现库的四样：在库实例、撤过的实例、各字现有刻例数、总数。
 
-    刻例数要连 `instances` 数：撤库不删 `exemplars` 的行，只数 `exemplars` 会把撤掉的也算进去。"""
+    刻例数要连 `instances` 数：撤库不删 `exemplars` 的行，只数 `exemplars` 会把撤掉的也算进去。
+    **借来的刻例不算**（`borrowed` 表）：借库的书（新书冷启动）库里装着被借那本书的几万例，把它们算成「已有例」，
+    本书一例都没有的字也会被当成不缺例而永远不补（脉经 11-18：本书 570 个字头，连借库数是 4,336 个）。"""
     with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as c:
+        has_borrowed = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='borrowed'").fetchone()
+        own = " WHERE e.instance_id NOT IN (SELECT instance_id FROM borrowed)" if has_borrowed else ""
         return {
             "in_lib": {r[0] for r in c.execute("SELECT instance_id FROM admissions")},
             "evicted": {r[0] for r in c.execute("SELECT instance_id FROM evictions")},
             "counts": collections.Counter(r[0] for r in c.execute(
                 "SELECT g.char FROM exemplars e JOIN glyphs g USING(glyph_id) "
-                "JOIN instances i ON i.instance_id = e.instance_id")),
+                "JOIN instances i ON i.instance_id = e.instance_id" + own)),
         }
 
 
