@@ -133,7 +133,7 @@ def test_pull_push_on_exp_branch_keeps_main_copy_apart(repo, conn, tmp_path, mon
     from test_datastore_workcopy import _data_files, _fresh, _setup
 
     from open_guji_cv.core import workspace as W
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.workcopy import (
         data_dir,
         local_changes,

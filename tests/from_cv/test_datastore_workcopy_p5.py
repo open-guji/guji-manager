@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -13,7 +14,6 @@ import pytest
 from pg_fixtures import DSN, _commit, _git, _line, conn, repo  # noqa: F401  (fixtures)
 from test_datastore_pull import _Cache, _tables, _workspace
 
-psycopg = pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 
@@ -25,7 +25,7 @@ def _home(tmp_path, monkeypatch):
 
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
@@ -324,7 +324,7 @@ def test_sync_glyph_store_clash_without_new_events_still_stops(repo, conn, tmp_p
 
 def test_anchor_patches_round_trip(repo, conn, tmp_path):  # noqa: F811
     """锚图只记在 anchor_patches_meta（不进 source_files）：迁移不该把它们当差异，新机器 pull 要还原出来。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, local_changes, migrate
     files = _workspace(tmp_path)
@@ -346,7 +346,7 @@ def test_anchor_patches_round_trip(repo, conn, tmp_path):  # noqa: F811
 
 def test_push_refuses_dropping_anchor_patches(repo, conn, tmp_path):  # noqa: F811
     """数据目录里缺了锚图（v0.4.0 及更早的 pull 不还原锚图）时，push 不能把库里的锚图删掉。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import (
         FileDeleteRefused,
@@ -369,7 +369,7 @@ def test_push_refuses_dropping_anchor_patches(repo, conn, tmp_path):  # noqa: F8
 
 def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path):  # noqa: F811
     """库里已有的图不再交给 uploader（每次推都核两万张会拖到连接被断）；只传新图。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, migrate, push
     files = _workspace(tmp_path)
@@ -390,7 +390,7 @@ def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path):  # noqa: F811
 # ---- 整理本进中心库（共享方案 2.2 节，S1）----
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
@@ -414,7 +414,11 @@ def test_corpus_adopt_push_and_pull(repo, conn, tmp_path):  # noqa: F811
     )
     src, cache, files, ws = _migrated(repo, conn, tmp_path)
     text = "欽定四庫全書總目\n卷一\n".encode("utf-8")
-    man = b'{"corpus_version": 1}\n'
+    # 清单要登记这两份整理本（push 前 cv 的 push_problems 拿最新一版清单核对工作区里的语料文件）
+    man = (json.dumps({"corpus_version": 1, "items": [
+        {"group": "corpus", "root": "ws", "path": p, "sha256": hashlib.sha256(b).hexdigest()}
+        for p, b in (("corpus/sub/0001.jsonl", b'{"a": 1}\n'), ("corpus/zongmu.txt", text))]},
+        ensure_ascii=False) + "\n").encode("utf-8")
     (ws / "corpus" / "sub").mkdir(parents=True)
     (ws / "corpus" / "zongmu.txt").write_bytes(text)
     (ws / "corpus" / "sub" / "0001.jsonl").write_bytes(b'{"a": 1}\n')
@@ -452,7 +456,8 @@ def test_corpus_adopt_push_and_pull(repo, conn, tmp_path):  # noqa: F811
     assert local_changes(fresh) == []
 
     (data / "corpus/zongmu.txt").unlink()
-    with pytest.raises(FileDeleteRefused, match="zongmu.txt"):
+    # 清单登记过的整理本没了：cv 的语料版本闸（push_problems）先拦；没清单时由删文件闸 FileDeleteRefused 拦
+    with pytest.raises((FileDeleteRefused, SystemExit), match="zongmu.txt"):
         push(conn, ws, actor="t")
 
 
@@ -527,7 +532,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
@@ -581,7 +586,7 @@ def test_pull_materializes_borrowed_store_and_follows_its_updates(repo, conn, tm
 
 
 def test_borrow_of_missing_or_self_workspace_is_refused(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [tws]\n"
@@ -596,7 +601,7 @@ def test_borrow_of_missing_or_self_workspace_is_refused(repo, conn, tmp_path):  
 def test_shared_workspaces_are_read_only(repo, conn, tmp_path):  # noqa: F811
     """corpus-base、glyphlib-*：普通 push 拒绝；升级脚本（shared_writer）能写 corpus-base，
     glyphlib-* 发布过就不能再写。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, pull, push
     files = {"C/workspace.yaml": b"id: corpus-base\n", "C/books/a.yaml": b"id: a\n",

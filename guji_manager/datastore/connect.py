@@ -1,35 +1,16 @@
-"""连中心库 Postgres：``GUJI_DATA_PG_DSN``，没有就从 ``NEON_DATABASE_URL`` 在本进程起 443 桥。"""
-from __future__ import annotations
+"""连中心库。2026-11-18 起中心库是 Cloudflare D1，只能经 guji-data Worker（``GUJI_DATA_URL``、``GUJI_DATA_TOKEN``）；
+返回的连接模仿 psycopg（见 ``d1conn``）。``GUJI_DATA_SQLITE=<文件>`` 改连本机 SQLite（测试、核对）。
 
-import os
+旧的 ``endpoint=``（Neon 端点 id）现在就是分支名：``connect(endpoint="exp/GUJI-9-x")`` 连那个实验分支。
+"""
+from __future__ import annotations
 
 
 def main_endpoint() -> str | None:
-    """``NEON_DATABASE_URL`` 指的端点 id（正式库 main）。"""
-    import urllib.parse as u
-    url = os.environ.get("NEON_DATABASE_URL")
-    if not url:
-        return None
-    return (u.urlparse(url).hostname or "").split(".")[0].removesuffix("-pooler") or None
+    """正式库在 D1 上就叫 main（旧代码拿它和 ``--endpoint`` 比，防止恢复演练打到正式库）。"""
+    return "main"
 
 
-def _app_name() -> str:
-    """连 Neon 时带上「谁、跑什么命令」，Neon 的 pg_stat_activity 里能看出是谁在连（查谁让中心库不休眠用）。"""
-    import socket
-    import sys
-    who = os.environ.get("GUJI_JOBS_WHO") or os.environ.get("GUJI_ACTOR") or socket.gethostname()
-    cmd = " ".join(a for a in sys.argv[1:4] if not a.startswith("-"))
-    return f"guji/{who}/{cmd}"[:63]
-
-
-def connect(endpoint: str | None = None):
-    """``endpoint`` 给了就连 Neon 的那个端点（同项目、同账号的别的分支，如 ci）。"""
-    import psycopg
-    dsn = None if endpoint else os.environ.get("GUJI_DATA_PG_DSN")
-    if not dsn:
-        url = os.environ.get("NEON_DATABASE_URL")
-        if not url:
-            raise SystemExit("要连库：设 GUJI_DATA_PG_DSN，或 NEON_DATABASE_URL（自动经 443 桥）")
-        from .wsbridge import neon_dsn_via_bridge
-        dsn = neon_dsn_via_bridge(url, endpoint=endpoint)
-    return psycopg.connect(dsn, application_name=_app_name())
+def connect(endpoint: str | None = None, *, branch: str | None = None):
+    from .d1conn import connect as d1_connect
+    return d1_connect(branch or endpoint or "main")

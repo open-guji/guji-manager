@@ -20,7 +20,7 @@
   guji-manager progress-sync --fix              # 报告并补
   guji-manager progress-sync --fix --book 96mid1ogzk --no-packs
 
-连库：GUJI_DATA_PG_DSN，或 NEON_DATABASE_URL（自动起 443 桥）。--fix 的写库需要有写看板的权限。
+连库：中心库（D1）经 Worker，要 GUJI_DATA_TOKEN（2026-11-18 起）。--fix 的写库需要有写看板的权限。
 """
 
 from __future__ import annotations

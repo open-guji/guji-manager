@@ -92,12 +92,12 @@ def book_text_dir(book_text: str, book_id: str) -> str:
 
 def record_main(book: str, label: str, ws: str | None = None) -> None:
     """把「这册现在的 ★ main 标签」记到后台看板（progress.volume.extra 的 a31.main），页面据此标出线上单有没有追上 main。
-    只写看板、永远不抛；连不上库（没有 NEON_DATABASE_URL／没装 cv）就静默跳过。"""
+    只写看板、永远不抛；连不上库（没有 GUJI_DATA_TOKEN／没装 cv）就静默跳过。"""
     try:
         bid, ch = ident(book, ws)
         if not (bid and ch):
             return
-        if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
+        if not (os.environ.get("GUJI_DATA_TOKEN") or os.environ.get("GUJI_DATA_SQLITE")):
             return
         from ._cv import connect
         payload = json.dumps({"extra": {"a31.main": {"label": label, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}})
@@ -142,12 +142,12 @@ def _promote_from_packs(bid: str, ch: str, label: str) -> bool:
 
 def push_pack_rate(book: str, ws: str | None, label: str | None = None) -> None:
     """标 main 后在后台统计这册 ★main 包的人审率，写进后台看板（progress.volume.extra['cv.pack']）。
-    要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、NEON_DATABASE_URL；缺了就静默跳过。永远不抛。"""
+    要 ai-team 检出（GUJI_AITEAM_REPO，缺省 ~/ai-team）、工作区、GUJI_DATA_TOKEN；缺了就静默跳过。永远不抛。"""
     try:
         bid, ch = ident(book, ws)
         if not ws or not (bid and ch):
             return
-        if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
+        if not (os.environ.get("GUJI_DATA_TOKEN") or os.environ.get("GUJI_DATA_SQLITE")):
             return
         if label:
             _note_round(bid, label)   # 先占位：后面的统计跑不成，看板也看得到这一轮
