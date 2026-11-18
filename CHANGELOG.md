@@ -7,8 +7,18 @@
 - PATCH：任务库 `finish` 先查这次领单是否已被 `reap` 收回；已收回（整机暂停后醒来的旧会话）只记事件、不改任务状态。以前旧会话心跳拿不到租约当成「有人要求停下」，把已退回排队／在别处重跑的单写成 cancelled（殿本 r12g24d #4991–4995，查不到取消人）。
 - PATCH：任务库心跳区分「有人要求停下」（`cancel`）与「租约已被收回」（`lost`），后者日志记「租约已失」；执行方跑单时每 5 拍（`GUJI_JOBS_REAP_EVERY`，0＝关）顺手 `reap` 一次，失联单不再等到有执行方空下来才退回排队（史記 r79 #5107 收尾晚于租约 16 分）。A30 11-17 建议。
 - PATCH：领单排序在同优先级里让失联被收回的单先领（`_CLAIM` 加 `outcome='lost'` 一项）。被退回的单 `created_at` 不变，以前排在更早交的整批单后面，史記 r72／r79 重领要等 44–50 分（SJ 11-17 核实，不是同册互斥）。
+- PATCH：`guji swap run／book-text／finish-merged` 支持非殿本：`--books` 认纯数字册名与区间（`001-045`、`01-42`），章号、线上单 rev、发布 `only=`、字形库格键前缀、对照表一律按册名推（不再 `int(册名[3:])`）；纯数字册名不给 `--text-id` 就停；book-text 提交说明不再写死「殿本」。
+## [0.4.56] - 2026-11-17
 
-- MINOR：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
+- 发版说明（A31 11-18）：PATCH。为带上 #634（swap book-text 1.x／0.x 只差码位归一的格文本留现行字，ZM 报 vol01 26 格改反）。
+
+- PATCH：`swap book-text`（含 1.x `swap/<册>-1x`）只差码位归一的格文本留现行字，同 0.x 出单（ZM 11-18：vol01 26 格 宫→宮、歩→步 等被改反）。两处：①码位表直接读数据目录 `config/codepoints.yaml` < `book_defaults.yaml` < 册 yaml（`charnorm.codepoints_of`），不再靠 cv 找册、找不到静默退成字面比；②有人裁且人裁与现行只差码位时留现行字，不落人裁的原码位。码位表为空时在报告 notes 里提示。
+## [0.4.55] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。带 #624 放行格自动回库**对所有书缺省开**（Sheldon 11-18 在卡片上定）和 #628 db sync 增量推。回库只改本机字形库：跑批机不 `db sync` 结果就留在本机；上中心库须在有完整副本的机器上 `guji db pull`（不要 `--no-rebuild`）后 `guji db sync`，推前先 `guji db push --dry-run` 看 glyphs／glyph_instances／glyph_exemplars／glyph_admissions 各表 delete=0。关法：`workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或 `GUJI_AUTO_BACKFILL=0`。
+
+- PATCH：`db sync`／`db push` 增量推（2026-11-18，收单提速）。只改了待审单、人裁事件、册 yaml 这类主键带文件路径的文件时，只扫、只比这几个文件的行（字形库各表照旧全量）；文件清单的 sha 按大小＋修改时间缓存在数据目录 `.central-shacache.json`；`_walk` 改 `os.walk`。殿本一册有本地改动的 sync 从 64 秒降到 8 秒。`GUJI_DB_FULL_SCAN=1` 退回全量、`GUJI_DB_NO_SHA_CACHE=1` 关缓存。
+- PATCH（原记 MINOR）：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
 
 ## [0.4.54] - 2026-11-17
 
