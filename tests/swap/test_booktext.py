@@ -253,3 +253,20 @@ def test_codepoints_of_reads_data_dir(tmp_path):
     (tmp_path / "books" / "vol01.yaml").write_text("codepoints:\n  别: 另\n", encoding="utf-8")
     assert codepoints_of(tmp_path, "vol01") == {"宮": "宫", "别": "另"}
     assert codepoints_of(tmp_path / "nope") == {}
+
+
+def test_fill_pending_blanks_writes_first_choice_not_lacuna():
+    """待审格换完还是 □（现行、新包都没字）：写首选字、去 lacuna；人裁保护格、图片格、没候选的不动（sheldon 11-18）。"""
+    new_c = _char({1: "□□□□"})
+    cells = new_c["pages"][0]["columns"][0]["cells"]
+    cells[0]["lacuna"] = True
+    cells[2]["fig"] = ""
+    pending = {"1:1:1": {"cell": "1:1:1", "lib_top": [{"c": "日", "s": 0.98}, {"c": "曰", "s": 0.94}]},
+               "1:1:2": {"cell": "1:1:2", "lib_top": [{"c": "注"}]},
+               "1:1:3": {"cell": "1:1:3", "lib_top": [{"c": "圖"}]},
+               "1:1:4": {"cell": "1:1:4"}}
+    out = bt.fill_pending_blanks(new_c, pending, protected={"1:1:2": "□"})
+    assert out == [("1:1:1", None, "□", "日")]
+    assert cells[0] == {"a": "1:1:1", "c": "日"}
+    assert cells[1]["c"] == "□" and cells[2]["c"] == "□" and cells[3]["c"] == "□"
+    assert bt.fill_pending_blanks(_char({1: "□"}), {"1:1:1"}) == []       # 只给格号集合：取不到首选字，不动
