@@ -108,3 +108,10 @@ def test_precheck_nondianben_data_problem_not_fatal(tmp_path, monkeypatch, capsy
         assert False
     except SystemExit as e:
         assert "待收字登记表" in str(e)
+
+
+def test_parse_cycle_log_fresh_is_terminal():
+    from guji_manager.swap import parse_cycle_log
+    r = parse_cycle_log("004\tfresh\t线上单 004-r4 就是基于现在的 main 包出的\n009\tgo\t零票\n009\t→ done\t写人裁 0 条\n")
+    assert r["004"]["verdict"] == "fresh"
+    assert r["009"]["verdict"] == "done"
