@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：中心库按页读（备份、开分支复制、SqlSource）对 files、imports 起步 20 行，Worker 回包太大回 500 时页减半；之前首份 D1 备份在这两张表上失败。
 ## [0.4.61] - 2026-11-17
 
 - PATCH（#653，随 dev 头带入本版）：待审格与人改字不留阙文（用户 11-18「只有真的阙字才显示阙文」）。swap book-text 换完仍是 □ 的待审格按新单 `first_choice` 写首选字、去 lacuna；`overlay_edits` 人改字叠回新包改成真字时去 lacuna／guess_c（殿本 68 格「标了 lacuna 却有字」即此来）。

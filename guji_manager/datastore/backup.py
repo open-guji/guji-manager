@@ -48,9 +48,16 @@ def _line(row) -> bytes:
 
 def _dump_table(cur, t: str, cols: list[str]) -> bytes:
     sel = ", ".join(f'"{c}"' for c in cols)
-    out, last, n = [], -1, PAGE_ROWS
+    from .d1conn import OperationalError
+    out, last, n = [], -1, (20 if t in ("files", "imports") else PAGE_ROWS)    # 这两张表单行可上 MB
     while True:
-        cur.execute(f'SELECT rowid, {sel} FROM "{t}" WHERE rowid > %s ORDER BY rowid LIMIT %s', (last, n))
+        try:
+            cur.execute(f'SELECT rowid, {sel} FROM "{t}" WHERE rowid > %s ORDER BY rowid LIMIT %s', (last, n))
+        except OperationalError:            # 回包太大 Worker 回 500：页减半再来
+            if n == 1:
+                raise
+            n = max(1, n // 2)
+            continue
         rows = cur.fetchall()
         if not rows:
             break
