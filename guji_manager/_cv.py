@@ -102,6 +102,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "library_summary": ("clustering.glyph_ledger", "library_summary"),
     "core_model_pack": ("core.model_pack", None),
     "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
+    "book_config_layers": ("core.book_config", "layers"),   # guji job precheck：钉子来自哪一层（2026-11-17）
+    "lib_pins_expand": ("core.lib_pins", "expand_layer"),
     "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
     "groups_registry": ("groups.registry", None),
