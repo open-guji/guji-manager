@@ -292,7 +292,7 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
-                  book: str | None = None, require_human: bool = False) -> dict:
+                  book: str | None = None, require_human: bool = False, ws: Path | None = None) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
@@ -319,8 +319,19 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
-    from ..charnorm import load_norm
-    same = load_norm(book or f"vol{int(chapter):02d}").same     # 同字判定（别／別 不算冲突）
+    from ..charnorm import codepoints_of, load_norm
+    bk = book or f"vol{int(chapter):02d}"
+    extra = {}
+    if ws is not None:                                          # 直接读数据目录的码位表，不靠 cv 找册（找不到会静默退成字面比）
+        from ..datastore.workcopy import data_dir
+        try:
+            extra = codepoints_of(data_dir(Path(ws)), bk)
+        except SystemExit:
+            extra = codepoints_of(Path(ws), bk)
+    norm = load_norm(bk, extra)
+    same = norm.same     # 同字判定（别／別 不算冲突）；只差码位的格文本留现行字
+    if not norm:
+        notes.append("码位归一表是空的：只差码位的格会按字面比（当成机器改字）")
     prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
     chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
@@ -371,7 +382,8 @@ _LACUNA_RE = re.compile(r"□→(.)")
 def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tuple[list, list]:
     """remap 挪不了的标点里，两种情形可以确定地迁到新锚，不必整册卡住（bump punct 要锚点全对得上才升版）：
     ① 旧校验字是 □、新包识出了字（原因码 ANCHOR_MISS｜校验字变了…□→X）：锚点不变（表里有新锚就用新锚），校验字改成 X；
-    ② 旧格被劈成 <旧锚>a、<旧锚>b…（原因码 ADD_DEL｜旧格无对应）：挂到最后一个新格。
+    ② 旧格被劈成 <旧锚>a、<旧锚>b…（原因码 ADD_DEL｜旧格无对应）：挂到最后一个新格；
+    ③ 旧锚是 NNb（劈开的后半）、新包把 NNa／NNb 合回了一格 NN：挂到 NN（11-17 全唐文 010 的 92:2:14b）。
     迁之前核新文本里真有这个锚点、且字对得上；核不过的仍留在 left（人工清单）。
     返回 (剩下的 left, 已迁清单[(层, 条目, 旧锚, 新锚, 新校验字, 情形)])。就地改 punct。"""
     if not punct or not left:
@@ -397,6 +409,10 @@ def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tupl
                 a = cands[-1]
                 p["anchor"], p["pre_char"] = a, slots[a]
                 done.append((layer, ent, old, a, slots[a], "旧格劈开")); continue
+        if "ADD_DEL" in why and not new and old not in slots and old[-1:] == "b" and old[:-1] in slots:
+            a = old[:-1]               # ③ 旧格是劈开的 NNa／NNb、新包又合回一个 NN：挂在 NN 上（标点在后半格之后＝合并格之后）
+            p["anchor"], p["pre_char"] = a, slots[a]
+            done.append((layer, ent, old, a, slots[a], "劈开的格合回一格")); continue
         rest.append(row)
     return rest, done
 
@@ -633,7 +649,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             if not t.exists() or t.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, t)
     one_x = str(tv).split(".")[0] not in ("0", "")
-    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x)
+    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")

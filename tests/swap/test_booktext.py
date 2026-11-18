@@ -233,3 +233,23 @@ def test_sync_headings_keeps_unreadable_chapters(tmp_path):
     ch = json.loads((v / "index.json").read_text(encoding="utf-8"))["chapters"]
     assert ch[0]["headings"] == old                       # 001 文件不在：原样保留
     assert ch[1]["headings"] == [{"label": "new"}]        # 003 在盘上：照常重算
+
+
+def test_merge_keeps_current_codepoint_when_only_norm_differs():
+    """只差码位归一的格文本留现行字（同 0.x 出单）；人裁写的是另一码位也留现行（ZM 11-18 vol01 1.x 26 格改反）。"""
+    from guji_manager.charnorm import CharNorm
+    same = CharNorm({"宮": "宫", "步": "歩"}).same
+    old_c, new_c = _char({1: "宫歩東"}), _char({1: "宮步東"})
+    rows = bt.cell_table(old_c, _cord({1: "宫歩東"}), new_c, _cord({1: "宮步東"}))
+    bt.merge_chars(old_c, new_c, rows, protected={"1:1:2": "步"}, same=same)
+    assert "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"]) == "宫歩東"
+
+
+def test_codepoints_of_reads_data_dir(tmp_path):
+    from guji_manager.charnorm import codepoints_of
+    (tmp_path / "config").mkdir()
+    (tmp_path / "books").mkdir()
+    (tmp_path / "config" / "codepoints.yaml").write_text("codepoints:\n  宮: 宫\n  别: 別\n", encoding="utf-8")
+    (tmp_path / "books" / "vol01.yaml").write_text("codepoints:\n  别: 另\n", encoding="utf-8")
+    assert codepoints_of(tmp_path, "vol01") == {"宮": "宫", "别": "另"}
+    assert codepoints_of(tmp_path / "nope") == {}

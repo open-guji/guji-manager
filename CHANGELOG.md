@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.56] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。为带上 #634（swap book-text 1.x／0.x 只差码位归一的格文本留现行字，ZM 报 vol01 26 格改反）。
+
+- PATCH：`swap book-text`（含 1.x `swap/<册>-1x`）只差码位归一的格文本留现行字，同 0.x 出单（ZM 11-18：vol01 26 格 宫→宮、歩→步 等被改反）。两处：①码位表直接读数据目录 `config/codepoints.yaml` < `book_defaults.yaml` < 册 yaml（`charnorm.codepoints_of`），不再靠 cv 找册、找不到静默退成字面比；②有人裁且人裁与现行只差码位时留现行字，不落人裁的原码位。码位表为空时在报告 notes 里提示。
 ## [0.4.55] - 2026-11-17
 
 - 发版说明（A31 11-18）：PATCH。带 #624 放行格自动回库**对所有书缺省开**（Sheldon 11-18 在卡片上定）和 #628 db sync 增量推。回库只改本机字形库：跑批机不 `db sync` 结果就留在本机；上中心库须在有完整副本的机器上 `guji db pull`（不要 `--no-rebuild`）后 `guji db sync`，推前先 `guji db push --dry-run` 看 glyphs／glyph_instances／glyph_exemplars／glyph_admissions 各表 delete=0。关法：`workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或 `GUJI_AUTO_BACKFILL=0`。
