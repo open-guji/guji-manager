@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -103,7 +104,43 @@ def bt_dir(bt: Path, text_id: str) -> Path:
     return bt / "Book" / text_id[-3] / text_id[-2] / text_id[-1] / text_id
 
 
-def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: str, note: str) -> None:
+def _cn_num(s: str) -> int | None:
+    """「三十一」「百一」「二十」「7」→ 整数（1–999）；认不出返回 None"""
+    if s.isdigit():
+        return int(s)
+    D = {"〇": 0, "零": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    tot = cur = 0
+    for ch in s:
+        if ch == "百":
+            tot, cur = tot + (cur or 1) * 100, 0
+        elif ch == "十":
+            tot, cur = tot + (cur or 1) * 10, 0
+        elif ch in D:
+            cur = D[ch]
+        else:
+            return None
+    return tot + cur or None
+
+
+def parse_juan(spec: str | None, title: str) -> list[int] | None:
+    """册含的原书卷号 [起, 止]：优先 --juan「3-6」；没给就从章题「卷三至卷六」「总目三、卷一至卷二」里取；取不到（序、总目）返回 None 不写。
+    index.json 的章条目 ``juan`` 是对校（book-text-util）按册取对照本卷的固定字段，不再让它解析章题。"""
+    if spec:
+        a, _, b = spec.partition("-")
+        lo, hi = int(a), int(b or a)
+    else:
+        m = re.search(r"卷([\d〇零一二三四五六七八九十百]+)(?:\s*[至到—–-]\s*卷?([\d〇零一二三四五六七八九十百]+))?", title)
+        if not m:
+            return None
+        lo, hi = _cn_num(m[1]), _cn_num(m[2] or m[1])
+        if lo is None or hi is None:
+            return None
+    if not (1 <= lo <= hi):
+        sys.exit(f"✗ 卷号 {lo}-{hi} 不合法")
+    return [lo, hi]
+
+
+def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: str, note: str, juan: list[int] | None = None) -> None:
     """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
     d = bt_dir(bt, text_id)
     dd = d / "default"
@@ -121,6 +158,8 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
     ent = {"n": int(chapter), "file": chapter, "title": title, "char_file": f"{chapter}.char.json",
            "cord_file": f"{chapter}.cord.json", "norm_file": f"{chapter}.norm.json",
            "pages": f"{pages[0]}-{pages[-1]}" if pages else "", "text_version": tv, "proofing": True}
+    if juan:
+        ent["juan"] = juan
     chs = [c for c in idx["chapters"] if c.get("file") != chapter] + [ent]
     idx["chapters"] = sorted(chs, key=lambda c: int(c["n"]))
     idx["total_chapters"] = len(idx["chapters"])
@@ -153,6 +192,7 @@ def main() -> int:
     ap.add_argument("--label", required=True, help="main 包标签（guji products pack list <册>）")
     ap.add_argument("--book-text")
     ap.add_argument("--title", help="章题，如「卷三至卷六」")
+    ap.add_argument("--juan", help="本册含的原书卷号「3-6」，写进章条目 juan（对校按它取对照本的卷）；不给就从 --title 取")
     ap.add_argument("--gate-only", action="store_true", help="只判停、出收口清单")
     ap.add_argument("--force", action="store_true", help="有算法再处理也往下走（只在人定放行时用）")
     ap.add_argument("--promote", metavar="WHY", help="顺手把包标 main（写令牌），WHY 是 dev cv 包进 main 的理由")
@@ -215,7 +255,7 @@ def main() -> int:
     export = ws / "reports" / book / "_publish" / f"export-{a.label}"
     note = (f"粗校 v0.1：产物包 {a.label}（cv {man.get('cv_version') or '?'}），待审 {s['n']} 格（收口全留人审），"
             f"proofing: true")
-    bt_add_chapter(bt, text_id, chapter, export, a.title, note)
+    bt_add_chapter(bt, text_id, chapter, export, a.title, note, parse_juan(a.juan, a.title))
     subprocess.run([py, "scripts/local_check.py", "--dev"], cwd=bt)
     pub = sorted((ws / "reports" / book / "_publish").glob(f"{chapter}-r*"))
     rev = pub[-1].name if pub else "<rev>"

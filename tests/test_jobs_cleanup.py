@@ -39,3 +39,28 @@ def test_keep_switch(tmp_path, monkeypatch):
 
 def test_missing_dirs_ok(tmp_path):
     assert R._clean_book_artifacts(str(tmp_path / "nope"), "vol79") == 0
+
+
+def test_cleans_raw_images_of_this_book_only(tmp_path):
+    ws = tmp_path / "ws"
+    raw79, raw68 = _mk(ws, "data_full", "vol79", 50), _mk(ws, "data_full", "vol68", 50)
+    freed = R._clean_book_artifacts(str(ws), "vol79")
+    assert freed == 50 and not raw79.exists() and raw68.exists()
+
+
+def test_sweep_cleans_all_books_but_not_other_dirs(tmp_path, monkeypatch):
+    import json
+    home = tmp_path / "home"
+    ws = home / "repo"
+    ws.mkdir(parents=True)
+    (ws / ".central.json").write_text(json.dumps({"ws": "wsid1"}), encoding="utf-8")
+    data = home / ".guji-data" / "main" / "wsid1" / "books"
+    data.mkdir(parents=True)
+    for v in ("vol01", "vol02"):
+        (data / f"{v}.yaml").write_text("x", encoding="utf-8")
+    a, b = _mk(ws, "cache", "vol01", 20), _mk(ws, "data_full", "vol02", 30)
+    judge, other = _mk(ws, "cache", "_judge"), _mk(ws, "cache", "glyph-derived")
+    monkeypatch.setattr(R.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.delenv("GUJI_DATA_HOME", raising=False)
+    freed = R._sweep_book_dirs(lambda m: None)
+    assert freed == 50 and not a.exists() and not b.exists() and judge.exists() and other.exists()
