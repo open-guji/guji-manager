@@ -26,6 +26,7 @@ URL = "wss://relay.open-guji.com/jobsdb"   # 云端代理会断裸 IP＋自签�
 PIN = "0D:47:DD:9E:65:97:42:6A:4E:5A:A9:A7:D6:D3:C9:D0:29:E3:FA:84:B3:17:2C:E2:0A:B1:10:5E:1B:9D:33:27"
 _lock = threading.Lock()
 _port: int | None = None
+_thread: threading.Thread | None = None
 
 
 def enabled() -> bool:
@@ -84,7 +85,7 @@ async def _handle(r: asyncio.StreamReader, w: asyncio.StreamWriter, tok: str) ->
         w.close()
 
 
-def _start(port: int, tok: str) -> None:
+def _start(port: int, tok: str) -> threading.Thread:
     loop = asyncio.new_event_loop()
 
     async def main() -> None:
@@ -94,19 +95,29 @@ def _start(port: int, tok: str) -> None:
         async with srv:
             await srv.serve_forever()
 
-    threading.Thread(target=lambda: loop.run_until_complete(main()), daemon=True, name="jobsdb-tunnel").start()
+    def run() -> None:
+        try:
+            loop.run_until_complete(main())
+        except BaseException as e:      # noqa: BLE001 —— 线程死了要留痕，下一次 _tunnel_port 会重建
+            sys.stderr.write(f"jobsdb 隧道线程退出：{type(e).__name__} {str(e)[:200]}\n")
+
+    t = threading.Thread(target=run, daemon=True, name="jobsdb-tunnel")
+    t.start()
+    return t
 
 
 def _tunnel_port(tok: str) -> int:
-    """本进程只起一条隧道，后续连接复用。"""
-    global _port
+    """本进程只起一条隧道，后续连接复用；隧道线程若死了（事件循环崩了），换个端口重建。"""
+    global _port, _thread
     with _lock:
-        if _port is None:
+        if _port is None or _thread is None or not _thread.is_alive():
+            if _port is not None:
+                sys.stderr.write("jobsdb: 隧道线程已死，重建\n")
             s = socket.socket()
             s.bind(("127.0.0.1", 0))
             _port = s.getsockname()[1]
             s.close()
-            _start(_port, tok)
+            _thread = _start(_port, tok)
     return _port
 
 
