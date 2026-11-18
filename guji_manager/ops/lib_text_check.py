@@ -16,7 +16,7 @@
 |---|---|---|
 | `text_stale` 文本过期 | 库例入库时刻晚于这一页产物的写出时刻 | 这一页 `seed_admit` 标失效，`guji rerun --stale` 重算后文本跟上 |
 | `shifted` 库图错位 | 库标正是同一列上下邻格的字 | 库图是旧切分的字块、格号整体挪过：机器来路的撤库例（文本不动），人裁来路的只报 |
-| `follow_human` 文本是人裁 | 文本通道是人裁，库例是机器来路或更早的人裁 | 库例改成文本的字（`glyph_audit relabel`） |
+| `follow_human` 文本是人裁 | 文本通道是人裁，库例是机器来路或更早的人裁 | 库图过字体模板：认成文本的字 → 库例改成文本的字（`glyph_audit relabel`）；不是 → 库例多半挂着旧格号，机器来路的撤、人裁来路的只报 |
 | `machine` 两边都是机器 | 文本机器放行，库例机器来路 | 库图过字体模板重新识别：认成文本的字 → 库例改标（仍是机器来路）；认成库标 → 文本可疑，这一格加进待审单复审；都不是 → 也进待审单复审，库例不撤（史記 11-18：这类 13 格库图其实都对，撤了丢好刻例） |
 | `human_unapplied` 库是人裁、文本没采信 | 库例人裁来路，文本机器放行了别的字 | 多半是切分变过、人裁落在了别的格上：这一格加进待审单复审，库不动 |
 | `orphan` 格没了 | 库例的格在产物里不存在 | 机器来路的撤库例；人裁来路的只报 |
@@ -43,6 +43,7 @@ from pathlib import Path
 
 CATS = ("ok", "pending", "text_stale", "shifted", "follow_human", "machine", "human_unapplied", "orphan")
 HUMAN = ("human",)
+SAME_GROUP = frozenset("己已巳")     # 同 cv `utils/ji_yi_si.FAMILY`
 MARGIN_MIN = 0.03     # 字体模板首位领先次位不到这么多，不凭它改库标（史記 11-18：黄 被认成 簧）
 
 
@@ -100,8 +101,8 @@ def classify(lib: dict[str, dict], cells: dict[str, dict], canon=None,
             page = int(k.split(":")[1])
         except (IndexError, ValueError):
             page = -1
-        if ch and canon(ch) == canon(r["label"]):
-            row["cat"] = "ok"
+        if ch and (canon(ch) == canon(r["label"]) or (ch in SAME_GROUP and r["label"] in SAME_GROUP)):
+            row["cat"] = "ok"           # 己／已／巳 字形本就不分，库记刻形、文本记读法，不算不一致
         elif r["at"] and page_at.get(page) and r["at"][:19] > page_at[page][:19]:
             row["cat"] = "text_stale"
         elif not cell.get("admit"):
@@ -119,7 +120,7 @@ def classify(lib: dict[str, dict], cells: dict[str, dict], canon=None,
 
 
 def decide(row: dict, canon=None, top1: str | None = None, margin: float | None = None) -> str:
-    """一例该怎么办 → 动作名。纯函数。`top1`：库图过字体模板的首位字（只有 `machine` 类要）。
+    """一例该怎么办 → 动作名。纯函数。`top1`：库图过字体模板的首位字（`machine`、`follow_human` 两类要）。
 
     `invalidate` 标这一页失效；`relabel` 库例改成文本的字（人裁来路）；`relabel_auto` 改标但保持机器来路；
     `review` 这一格进待审单复审；`evict_review` 撤库例并让这一格回人审；`evict` 只撤库例；`report` 只报；`none` 不动。"""
@@ -132,7 +133,12 @@ def decide(row: dict, canon=None, top1: str | None = None, margin: float | None 
     if cat == "shifted":
         return "report" if row["lib_prov"] in HUMAN else "evict"
     if cat == "follow_human":
-        return "relabel" if _single_han(row.get("text")) else "report"
+        if not _single_han(row.get("text")):
+            return "report"
+        if top1 is not None and canon(top1) != canon(row["text"]):
+            # 库图不像人裁的那个字：多半是重切后库例还挂着旧格号（殿本 vol01 15 例），不能拿文本去改它的标
+            return "report" if row["lib_prov"] in HUMAN else "evict"
+        return "relabel"
     if cat == "human_unapplied":
         return "review"
     if cat == "orphan":
@@ -247,7 +253,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None, top1
             if r["cat"] in ("ok", "pending"):
                 continue
             t = mg = None
-            if r["cat"] == "machine":
+            if r["cat"] in ("machine", "follow_human"):
                 top1 = top1 or _Top1(dbp)
                 got = top1(r["key"])
                 t, mg = got if isinstance(got, tuple) else (got, None)
@@ -287,7 +293,7 @@ def _apply(todo: list[dict], batch: str, dbp) -> dict:
                  "provenance": "auto", "tpl_top1": r.get("tpl_top1"), "source": f"{src}:字体模板认成文本的字"}
         elif a in ("evict", "evict_review"):
             p = {"v": "evict", "instance_id": f"v2:{k}", "char_self": r["lib"],
-                 "source": f"{src}:" + (("库图错位（旧切分）" if r["cat"] == "shifted" else "格已不在") if a == "evict" else "库标与文本都不被字体模板支持")}
+                 "source": f"{src}:" + ({"shifted": "库图错位（旧切分）", "follow_human": "库图不像人裁的字（疑似旧格号）"}.get(r["cat"], "格已不在") if a == "evict" else "库标与文本都不被字体模板支持")}
             if a == "evict_review":
                 p["review"] = True
         else:
