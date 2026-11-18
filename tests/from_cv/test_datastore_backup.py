@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 
 from test_datastore_pg import DSN, _commit, conn, repo  # noqa: F401  (fixtures)
-from test_datastore_pull import _workspace
+from test_datastore_pull import _line, _workspace
 
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
@@ -75,3 +75,29 @@ def test_backup_restore_roundtrip(repo, conn, other, tmp_path):  # noqa: F811
 
     assert B.prune(st, 10, today=date(2026, 10, 20)) == ["2026-10-01"]
     assert [d["date"] for d in st.list_backups()] == ["2026-10-19"]
+
+
+def test_backup_catches_up_with_concurrent_write(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """导出途中有人写入：只补被改的表、changes/imports 只补新行，结果要和写完后整导一致。"""
+    from guji_manager.datastore import backup as B
+    from guji_manager.datastore.importer import import_commit
+    ws = _workspace(tmp_path)
+    import_commit(conn, repo, _commit(repo, ws, "c1"))
+    real, fired = B._dump_rows, []
+
+    def hooked(cur, t, cols, after=-1):
+        out = real(cur, t, cols, after)
+        if t == "workspaces" and not fired:                     # 第一轮导完最后一张表时，别人写了一次
+            fired.append(1)
+            more = {"W/feedback/events/b.jsonl": ws["W/feedback/events/b.jsonl"]
+                    + (_line(id="evt_b_2", batch="b", seq=2, kind="confirm") + "\n").encode()}
+            import_commit(conn, repo, _commit(repo, more, "c2"))
+        return out
+
+    monkeypatch.setattr(B, "_dump_rows", hooked)
+    files, man = B.dump(conn)
+    monkeypatch.setattr(B, "_dump_rows", real)
+    files2, man2 = B.dump(conn)
+    assert fired and man["rev"] == man2["rev"] > 0
+    assert {t: (s["rows"], s["sha256"]) for t, s in man["tables"].items()} == \
+           {t: (s["rows"], s["sha256"]) for t, s in man2["tables"].items()}
