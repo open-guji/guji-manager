@@ -17,7 +17,10 @@
    过字体模型（十万字模板）：模板首位必须就是放行字，墨量 >`INK_MIN`。不过的不进库，只记进报告。
    这一条是为了不重蹈 11-11 至 11-13「看图加厚」批的错：那一批凭「看着与参校本同形」入库，分不开形近字，
    占库 13% 却占查实错标的 75%。字体模板首位在十万字里选一，形近字的另一边就在候选里，认成它就不过。
-3. **入库**：`GlyphDB.admit_instance(provenance="auto")`，同时追加一条 `confirm` 事件
+3. **抢首位核验**（2026-11-18，史記 r80）：这一册核验过的候选整批模拟进库（cv `BackfillProbe.steal_check`），
+   用本册已放行格回放，库首位被新字抢走（harm）、又没有格被它救回（help）的字整字不进，记 `near_common`。
+   只看形状的门槛分不开好坏（回库字多半库里 0 例，近邻全是别字），所以直接模拟。cv 早于 #1679 时不闸、摘要里报 ⚠。
+4. **入库**：`GlyphDB.admit_instance(provenance="auto")`，同时追加一条 `confirm` 事件
    （`actor=model`、`payload.source="auto"`、`backfill: true`，不算人裁，不进绑定表），证据里带通道、批次和
    核验结果，可按批次整批撤回（cv `scripts/book_lib_auto.py --withdraw <批次>`）。之后人裁同一格，以人裁为准。
    事件可重放：`db sync` 遇到两边都改了字形库会取库里的、让本地新事件重新消费，`glyphdb_admit` 认得带
@@ -75,7 +78,7 @@ def apply_problem(ws_dir: Path | str | None = None) -> str | None:
 
 def config(ws_dir: Path | str | None) -> dict | None:
     """`workspace.yaml` 的 `glyph_lib.auto_backfill`：false → None（关）；没写或 true → 缺省参数（缺省开）；
-    写成对象可改 `channels`、`cap`。"""
+    写成对象可改 `channels`、`cap`、`steal_check`（抢首位核验，缺省开）、`steal_cells_max`（每册回放格数上限，0＝不限）。"""
     import yaml
     y = Path(ws_dir or ".") / "workspace.yaml"
     cfg = (yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}
@@ -85,10 +88,15 @@ def config(ws_dir: Path | str | None) -> dict | None:
     if v is False:
         return None
     v = v if isinstance(v, dict) else {}
-    extra = set(v) - {"channels", "cap"}
+    extra = set(v) - {"channels", "cap", "steal_check", "steal_cells_max"}
     if extra:
-        raise SystemExit(f"glyph_lib.auto_backfill 只认 channels、cap，不认 {sorted(extra)}")
-    return {"channels": tuple(v.get("channels") or CHANNELS), "cap": int(v.get("cap") or CAP)}
+        raise SystemExit(f"glyph_lib.auto_backfill 只认 channels、cap、steal_check、steal_cells_max，不认 {sorted(extra)}")
+    out = {"channels": tuple(v.get("channels") or CHANNELS), "cap": int(v.get("cap") or CAP)}
+    if "steal_check" in v:
+        out["steal_check"] = bool(v["steal_check"])
+    if "steal_cells_max" in v:
+        out["steal_cells_max"] = int(v["steal_cells_max"] or 0)
+    return out
 
 
 def lib_state(db_path: Path | str) -> dict:
@@ -204,15 +212,17 @@ def steal_gate(book: str, book_picks: list, sa: dict, cs: dict, ctx, dbp, *, cel
 
     返回（该拦下的字 → 被抢的格键，统计）。cv 太旧（没有 `BackfillProbe`）时不闸，统计里记 `skipped`。
     已放行格超过 `cells_max` 时等距抽样（记 `sampled`）；每格要取字块图，量大，所以设上限。"""
+    import time
     import cv2
     import numpy as np
     from .._cv import binarize_page
+    t0 = time.monotonic()
     info: dict = {"book": book, "new": len(book_picks)}
     if probe_cls is None:
         try:
             from .._cv import BackfillProbe as probe_cls
         except Exception:      # noqa: BLE001 —— 装的 cv 早于 #1679
-            info["skipped"] = "cv 没有 BackfillProbe（要 cv dev 59deab6 之后的版本），这一册没做抢首位核验"
+            info["skipped"] = "装的 cv 没有 BackfillProbe（要含 cv #1679 的版本），这一册没做抢首位核验、候选照常进库"
             if say:
                 say("  ⚠ " + info["skipped"])
             return {}, info
@@ -233,12 +243,14 @@ def steal_gate(book: str, book_picks: list, sa: dict, cs: dict, ctx, dbp, *, cel
             img = None
         if img is not None:
             cells.append((k, sa[k]["char"], _norm(binarize_page(img, edge_margin=0))))
+    t1 = time.monotonic()
     probe = probe_cls(str(dbp), **_knn_params(ctx))
     sim = probe.steal_check(new_items, cells)
     drop = steal_drop(sim, {ch for ch, *_ in book_picks})
     info.update(cells=sim.get("cells", len(cells)), checked=sim.get("checked"),
                 harm={c: len(v) for c, v in (sim.get("harm") or {}).items()},
-                help={c: len(v) for c, v in (sim.get("help") or {}).items()}, dropped=sorted(drop))
+                help={c: len(v) for c, v in (sim.get("help") or {}).items()}, dropped=sorted(drop),
+                img_s=round(t1 - t0, 1), sim_s=round(time.monotonic() - t1, 1))
     return drop, info
 
 
@@ -262,12 +274,15 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
     chars_before = sum(1 for v in state["counts"].values() if v > 0)
     stat: collections.Counter = collections.Counter()
     picks, rejected, steal = [], [], []
+    blocked: set[str] = set()      # 抢首位核验拦下的字：同一次跑后面的册不再选
     cache = ImageCache()
     for b in books:
         sa = _seed_cells(root, b, "seed_admit")
         cs = _seed_cells(root, b, "cell_shrink")
         cand, st = select(sa, state, human, channels=channels, cap=cap)
         stat.update(st)
+        for ch in blocked & set(cand):
+            stat["前册已拦"] += len(cand.pop(ch))
         if not cand:
             continue
         verifier = verifier or Verifier()
@@ -309,6 +324,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
                 drop, info = {}, {"book": b, "error": f"{type(e).__name__}: {e}"}
                 say(f"  ⚠ {b}: 抢首位核验出错，这一册没闸：{info['error']}")
             steal.append(info)
+            blocked |= set(drop)
             if drop:
                 kept = []
                 for ch, k, png, meta, v in picks[n0:]:
@@ -324,7 +340,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
         say(f"  {b}: 候选字 {len(cand)}，累计可入库 {len(picks)} 格")
     batch = batch or f"auto-backfill-{datetime.date.today():%Y%m%d}"
     rep = {"db": str(dbp), "books": books, "batch": batch, "apply": apply, "channels": list(channels), "cap": cap,
-           "stat": dict(stat), "picks": len(picks), "chars": len({p[0] for p in picks}), "steal_check": steal,
+           "stat": dict(stat), "picks": len(picks), "chars": len({p[0] for p in picks}), "steal_check": steal if steal_check else None,
            "lib_before": {"instances": n_before, "chars": chars_before},
            "rejected": rejected, "picked": [{"key": k, "char": ch, **meta, **v} for ch, k, _p, meta, v in picks]}
     if apply and picks:
@@ -369,8 +385,14 @@ def summary(rep: dict) -> str:
             f"核验不过 {s.get('核验不过', 0)}，取不到字块 {s.get('取不到字块', 0)}")
     if s.get("抢常用字首位"):
         line += f"，会抢常用字首位没进 {s['抢常用字首位']} 格"
-    if any(x.get("skipped") or x.get("error") for x in rep.get("steal_check") or []):
-        line += "（⚠ 有册没做抢首位核验）"
+    sc = rep.get("steal_check")
+    bad = [x["book"] for x in sc or [] if x.get("skipped") or x.get("error")]
+    if sc is None:
+        line += "（⚠ 抢首位核验已关）"
+    elif bad:
+        line += f"（⚠ {','.join(bad)} 没做抢首位核验，候选照常进库：{(sc[0].get('skipped') or sc[0].get('error') or '')[:60]}）"
+    elif sc:
+        line += f"，抢首位核验 {sum(x.get('img_s', 0) + x.get('sim_s', 0) for x in sc):.0f} 秒"
     if "admitted" in rep:
         line += (f"；已入库 {rep['admitted']} 格，库 {rep['lib_before']['instances']}→{rep['lib_after']['instances']} 例、"
                  f"{rep['lib_before']['chars']}→{rep['lib_after']['chars']} 字，批次 {rep['batch']}")

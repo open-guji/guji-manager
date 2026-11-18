@@ -189,6 +189,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "_patch": ("steps.glyph_match", "_patch"),
     "to_canonical": ("clustering.canonical", "to_canonical"),     # 放行格回库：按库里实际存的图核验（2026-11-17）
     "normalize_patch": ("clustering.normalize", "normalize_patch"),
+    "BackfillProbe": ("clustering.backfill_probe", "BackfillProbe"),   # 回库抢首位核验（cv #1679，2026-11-18）
     "_SHAPE_PAIR_OF": ("clustering.match", "_SHAPE_PAIR_OF"),
     "_PARTNER": ("clustering.match", "_PARTNER"),
     "_safe": ("clustering.glyph_db", "_safe"),

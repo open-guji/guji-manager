@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：放行格回库加抢首位核验（史記 r80：g26 回库 9,678 例后多出 987 格待审，482 格是常用字格的库首位被回库进来的形近少见字／异体抢走，SJ 事后剔 403 字出 g27）。字体模板核验过的候选按册整批模拟进库（cv #1679 `BackfillProbe.steal_check`，A22），用本册已放行格回放：库首位被新字抢走、又没有格被它救回的字整字不进，报告记 `near_common`，同一次跑后面的册不再选。只看形状的门槛（形近常用字进前 3、分差 <0.01）A22 与 A31 各自标定都分不开好坏，不用。每册最多回放 8,000 格（`workspace.yaml` `glyph_lib.auto_backfill.steal_cells_max`，0＝全部；`steal_check: false` 关；手动 `--steal-cells-max`／`--no-steal-check`）。cv 没有 `BackfillProbe`（早于 #1679）或核验出错时不挡回库，但摘要行带「⚠ 没做抢首位核验」。`_cv` 登记 `BackfillProbe`。文档 `doc/01-粗校/开书/放行格回库.md` 第三节补「抢首位核验」。要 cv ≥ 含 #1679 的版本才生效。
+
 - PATCH：执行方领单前的各册目录清扫（`GUJI_JOBS_SWEEP_GB`，缺省 8 GB）加冷却：扫一遍后 10 分钟内（`GUJI_JOBS_SWEEP_COOLDOWN_S`）不再重扫，清不出东西时只打一行说明。原来剩余空间在 3–8 GB 之间且没有可清的册目录时，空闲执行方每个轮询周期都重扫、重打日志（worker-34 剩 7.9G 的空转）。高于领单门槛（3 GB）一直照常领单。
 
 - 修：字形库体检撤库／改标（`glyph_audit evict`／`relabel`）作废人裁事件的范围收窄（殿本 vol01，11-18）。作废标记按格号记在 `feedback/lists/stale_verdicts.tsv`，会作废该格此刻以前的全部人裁；库例挂着旧格号、或库文一致按文本的人裁改库标时，这格现行的人裁定的是另一个字，被一并作废后下一轮掉回机器字（vol01 `ZM-vol01-libfix-20261118` 26 条里 21 格）。现在只在这格最后一条人裁定的就是被撤／被改的旧字时才作废，否则不动事件、`decisions.jsonl` 记 `kept_human_event`；查不到人裁事件的照旧作废。
