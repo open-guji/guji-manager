@@ -89,7 +89,7 @@ def dump(conn) -> tuple[dict[str, bytes], dict]:
     cur = conn.cursor()
     todo = _tables(cur)
     rev = conn.heads()
-    for _ in range(3):
+    for _ in range(6):
         for t in todo:
             cols = _columns(cur, t)
             data = _dump_table(cur, t, cols)
@@ -100,7 +100,10 @@ def dump(conn) -> tuple[dict[str, bytes], dict]:
         now = conn.heads()
         if now == rev:
             break
-        # 导的过程中有人写了：changes、imports 和这次改到的表重导（简单起见整库重导）
+        # 导的过程中有人写了（D1 没有快照读）：只重导这段时间 changes 记到的表＋changes、imports，几轮就追上
+        cur.execute("SELECT DISTINCT tbl FROM changes WHERE rev > %s", (rev[0],))
+        touched = {r[0] for r in cur.fetchall()} | {"changes", "imports"}
+        todo = [t for t in _tables(cur) if t in touched]
         rev = now
     else:
         raise SystemExit("导出期间库一直在被写，导不出一致的备份；稍后再试")
