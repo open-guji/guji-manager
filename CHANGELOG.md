@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.58] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。为带上 #640（db pull／sync 增量拉，收单提速）；同带 #641（文档：收单真源）。
+
 - PATCH：`guji db pull`／`db sync` 增量拉（A31 11-18，收单提速）：库里在基准 rev 之后有改动时，按 `changes` 表只取改了的文件，不再读整个工作区的清单和全部文件；逐行大台账（字形库 instances、exemplars、events 等）本机那份还是基准版本时，只按变更主键补改了／新增的行，整文件 sha 对上才用，对不上该文件照旧整取。殿本（6665 个文件）有 4 个文件远端改动的 sync 97 s→20 s；增量 pull 结果与整拉逐字节同（实测 rev 1071330）。整批导入、变更超过 2 万条、文件超过 400 个、旧数据源、`pull --force／--exclude／--repair-gaps`、新机器都照旧整拉；`GUJI_DB_FULL_PULL=1` 强制整拉。输出多 `scan`（incremental／full）、`changed_files`、`patched`。
 ## [0.4.57] - 2026-11-17
 
