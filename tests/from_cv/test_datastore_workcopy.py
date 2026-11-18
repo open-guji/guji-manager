@@ -13,7 +13,6 @@ import pytest
 from test_datastore_pg import DSN, _commit, _git, _line, conn, repo  # noqa: F401  (fixtures)
 from test_datastore_pull import _Cache, _tables, _workspace
 
-psycopg = pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 
@@ -25,7 +24,7 @@ def _home(tmp_path, monkeypatch):
 
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
@@ -79,7 +78,7 @@ def test_migrate_refuses_differences_unless_keep_local(repo, conn, tmp_path):  #
 # ---- 整理本进中心库（共享方案 2.2 节，S1）----
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
@@ -111,7 +110,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
@@ -134,7 +133,7 @@ def _fake_hooks(db: Path, calls: list):
 def test_glyphlib_publish_creates_once(repo, conn, tmp_path):  # noqa: F811
     """共享刻例库：升级脚本第一次推新开工作区、图按 png 进 R2；同一版再推拒绝（版本不可改）。"""
     from open_guji_cv.core.workspace import central_data_dir
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import apply_schema
     from guji_manager.ops.glyphlib import publish
     apply_schema(conn)                                                  # 空库（真库早有表）

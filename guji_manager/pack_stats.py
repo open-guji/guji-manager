@@ -98,7 +98,7 @@ def record(book: str, label: str, root: Path | str, steps: list[str] | None = No
     try:
         if steps:                   # 只打了几步的包不算整册，不记人审率
             return False
-        if not (os.environ.get("NEON_DATABASE_URL") or os.environ.get("GUJI_DATA_PG_DSN")):
+        if not (os.environ.get("GUJI_DATA_TOKEN") or os.environ.get("GUJI_DATA_SQLITE")):
             return False
         stat = count(root, book, human_ruled_keys(book))
         if not stat or not stat["cells"]:

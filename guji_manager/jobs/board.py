@@ -20,7 +20,7 @@ SECTION, KEY, WRITER = "jobs", "board", "任务库"
 RECENT = 40                 # 表里留最近结束的几条
 _MIN_GAP_S = 120            # 节流：本进程两次写之间至少隔这么久（force 不受限）
 _last = 0.0
-_central = None             # 看板写中心库 progress（Neon），与任务库分开连
+_central = None             # 看板写中心库 progress（D1，经 Worker），与任务库分开连
 
 _STATUS = {"running": "在跑", "queued": "排队", "succeeded": "完成", "failed": "失败", "blocked": "拦下",
            "cancelled": "已取消"}
@@ -198,13 +198,15 @@ def _report(db, msg: str) -> None:
 
 
 def _put(conn, table: dict, text: str) -> None:
-    import psycopg
+    from ..datastore.d1conn import ProgrammingError
     try:
-        with conn.transaction():
+        with conn.transaction(guard=False):
             conn.execute("INSERT INTO progress.section (section, title, owner, description, sort) VALUES"
                          " (%s, '重跑任务', 'A30', '重跑、A/B、评测任务：配置、状态、已跑多久、预计完成（任务库 guji_jobs 的快照）', 40)"
                          " ON CONFLICT (section) DO NOTHING", (SECTION,))
             conn.execute("SELECT progress.put_metric('', '', %s, %s, %s, NULL, NULL, %s, %s, %s::jsonb, 10)",
                          (SECTION, KEY, "重跑任务", WRITER, text, json.dumps({"table": table}, ensure_ascii=False)))
-    except psycopg.errors.UndefinedFunction:
-        raise RuntimeError("中心库还没有 progress schema（网站 ops/text-progress/schema.sql）") from None
+    except ProgrammingError as e:
+        if "no such table" in str(e):
+            raise RuntimeError("中心库还没有 progress 表（schema_d1.sql）") from None
+        raise

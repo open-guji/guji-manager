@@ -13,7 +13,6 @@ import pytest
 from pg_fixtures import DSN, _commit, _git, _line, conn, repo  # noqa: F401  (fixtures)
 from test_datastore_pull import _Cache, _tables, _workspace
 
-psycopg = pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 
@@ -25,7 +24,7 @@ def _home(tmp_path, monkeypatch):
 
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
@@ -144,7 +143,7 @@ def test_pull_push_between_two_machines(repo, conn, tmp_path, monkeypatch):  # n
 # ---- 整理本进中心库（共享方案 2.2 节，S1）----
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
@@ -176,7 +175,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
