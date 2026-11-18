@@ -43,6 +43,7 @@ from pathlib import Path
 
 CHANNELS = ("rare_ref", "witness3")
 CAP = 3
+STEAL_CELLS_MAX = 8000     # 抢首位核验每册最多拿多少已放行格去模拟（0＝不限）
 INK_MIN = 0.03
 TRIES = 3          # 每个空位最多试几格（核验不过就换下一格）
 
@@ -176,9 +177,75 @@ class Verifier:
                 "tpl_margin": round(float(sc[o[0]] - sc[o[1]]), 4), "ink": round(ink, 4)}
 
 
+def _knn_params(ctx) -> dict:
+    """这一册 `glyph_match` 的 kNN 参数（探针要和 5a 同一口径）；取不到用 cv 缺省。"""
+    try:
+        p = ctx.params_for(ctx.pipeline.step("glyph_match"))
+        return {"knn_k": int(p.knn_k), "per_char": int(p.knn_per_char), "per_char_top": int(p.knn_per_char_top)}
+    except Exception:      # noqa: BLE001
+        return {"knn_k": 10, "per_char": 0, "per_char_top": 0}
+
+
+def _norm(bin_img):
+    """字块二值图 → 归一图，与入库存图、`Verifier.check` 同一口径。"""
+    from .._cv import normalize_patch, to_canonical
+    return normalize_patch(to_canonical(bin_img))
+
+
+def steal_drop(sim: dict, new_chars: set[str]) -> dict[str, list[str]]:
+    """回库模拟结果 → 该拦下的新字：抢了已放行格的库首位（harm）、又没救回任何格（help）的。字 → 被抢的格键。纯函数。"""
+    harm, helped = sim.get("harm") or {}, sim.get("help") or {}
+    return {ch: list(keys) for ch, keys in harm.items() if ch in new_chars and keys and not helped.get(ch)}
+
+
+def steal_gate(book: str, book_picks: list, sa: dict, cs: dict, ctx, dbp, *, cells_max: int = STEAL_CELLS_MAX,
+               probe_cls=None, say=None) -> tuple[dict[str, list[str]], dict]:
+    """抢首位核验（2026-11-18，史記 r80）：把这一册核验过的候选整批加进库做模拟，看本册已放行格谁的库首位被抢。
+
+    返回（该拦下的字 → 被抢的格键，统计）。cv 太旧（没有 `BackfillProbe`）时不闸，统计里记 `skipped`。
+    已放行格超过 `cells_max` 时等距抽样（记 `sampled`）；每格要取字块图，量大，所以设上限。"""
+    import cv2
+    import numpy as np
+    from .._cv import binarize_page
+    info: dict = {"book": book, "new": len(book_picks)}
+    if probe_cls is None:
+        try:
+            from .._cv import BackfillProbe as probe_cls
+        except Exception:      # noqa: BLE001 —— 装的 cv 早于 #1679
+            info["skipped"] = "cv 没有 BackfillProbe（要 cv dev 59deab6 之后的版本），这一册没做抢首位核验"
+            if say:
+                say("  ⚠ " + info["skipped"])
+            return {}, info
+    new_keys = {k for _ch, k, *_ in book_picks}
+    new_items = [(k, ch, _norm(cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_GRAYSCALE)))
+                 for ch, k, png, _m, _v in book_picks]
+    keys = sorted(k for k, r in sa.items() if r.get("admit") and k not in new_keys
+                  and len(r.get("char") or "") == 1 and (cs.get(k) or {}).get("patch_key"))
+    if cells_max and len(keys) > cells_max:
+        step = len(keys) / cells_max
+        keys = [keys[int(i * step)] for i in range(cells_max)]
+        info["sampled"] = True
+    cells = []
+    for k in keys:
+        try:
+            img = ctx.image("char_patch", cs[k]["patch_key"])
+        except Exception:      # noqa: BLE001
+            img = None
+        if img is not None:
+            cells.append((k, sa[k]["char"], _norm(binarize_page(img, edge_margin=0))))
+    probe = probe_cls(str(dbp), **_knn_params(ctx))
+    sim = probe.steal_check(new_items, cells)
+    drop = steal_drop(sim, {ch for ch, *_ in book_picks})
+    info.update(cells=sim.get("cells", len(cells)), checked=sim.get("checked"),
+                harm={c: len(v) for c, v in (sim.get("harm") or {}).items()},
+                help={c: len(v) for c, v in (sim.get("help") or {}).items()}, dropped=sorted(drop))
+    return drop, info
+
+
 def run(books: list[str], *, apply: bool = False, batch: str | None = None,
-        channels=CHANNELS, cap: int = CAP, verifier=None, log=None, report: str | None = None) -> dict:
-    """对 `books` 各册跑一遍选格、核验、（`apply` 时）入库。返回报告。"""
+        channels=CHANNELS, cap: int = CAP, verifier=None, log=None, report: str | None = None,
+        steal_check: bool = True, steal_cells_max: int = STEAL_CELLS_MAX, probe_cls=None) -> dict:
+    """对 `books` 各册跑一遍选格、核验、抢首位核验、（`apply` 时）入库。返回报告。"""
     import cv2
     from .._cv import (EventLog, EventTarget, GlyphDB, ImageCache, ProductStore, RunContext,
                        binarize_page, enrich_events, export_store, glyph_db_path, glyph_store_path,
@@ -194,7 +261,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
     n_before = sum(state["counts"].values())
     chars_before = sum(1 for v in state["counts"].values() if v > 0)
     stat: collections.Counter = collections.Counter()
-    picks, rejected = [], []
+    picks, rejected, steal = [], [], []
     cache = ImageCache()
     for b in books:
         sa = _seed_cells(root, b, "seed_admit")
@@ -205,6 +272,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
             continue
         verifier = verifier or Verifier()
         ctx = RunContext(load_book(b), ProductStore(), cache, log=lambda *_: None)
+        n0 = len(picks)
         for ch, keys in sorted(cand.items()):
             room = cap - state["counts"][ch]
             for k in keys[:room * TRIES]:
@@ -232,10 +300,31 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
                 state["counts"][ch] += 1
                 state["in_lib"].add(f"v2:{k}")
                 room -= 1
+        if steal_check and len(picks) > n0:
+            # 抢首位核验：这一册的候选整批模拟进库，只害不帮的字整字不进（同一字的几格一起退），等人裁
+            try:
+                drop, info = steal_gate(b, picks[n0:], sa, cs, ctx, dbp, cells_max=steal_cells_max,
+                                        probe_cls=probe_cls, say=say)
+            except Exception as e:      # noqa: BLE001 —— 核验自己出错不挡回库，报出来
+                drop, info = {}, {"book": b, "error": f"{type(e).__name__}: {e}"}
+                say(f"  ⚠ {b}: 抢首位核验出错，这一册没闸：{info['error']}")
+            steal.append(info)
+            if drop:
+                kept = []
+                for ch, k, png, meta, v in picks[n0:]:
+                    if ch in drop:
+                        stat["抢常用字首位"] += 1
+                        rejected.append({"key": k, "char": ch, **meta, **v, "reason": "near_common",
+                                         "harm": drop[ch][:20]})
+                        state["counts"][ch] -= 1
+                        state["in_lib"].discard(f"v2:{k}")
+                    else:
+                        kept.append((ch, k, png, meta, v))
+                picks[n0:] = kept
         say(f"  {b}: 候选字 {len(cand)}，累计可入库 {len(picks)} 格")
     batch = batch or f"auto-backfill-{datetime.date.today():%Y%m%d}"
     rep = {"db": str(dbp), "books": books, "batch": batch, "apply": apply, "channels": list(channels), "cap": cap,
-           "stat": dict(stat), "picks": len(picks), "chars": len({p[0] for p in picks}),
+           "stat": dict(stat), "picks": len(picks), "chars": len({p[0] for p in picks}), "steal_check": steal,
            "lib_before": {"instances": n_before, "chars": chars_before},
            "rejected": rejected, "picked": [{"key": k, "char": ch, **meta, **v} for ch, k, _p, meta, v in picks]}
     if apply and picks:
@@ -278,6 +367,10 @@ def summary(rep: dict) -> str:
     s = rep["stat"]
     line = (f"缺例字的放行格 {s.get('缺例字的放行格', 0)}，核验过 {rep['picks']} 格（{rep['chars']} 字），"
             f"核验不过 {s.get('核验不过', 0)}，取不到字块 {s.get('取不到字块', 0)}")
+    if s.get("抢常用字首位"):
+        line += f"，会抢常用字首位没进 {s['抢常用字首位']} 格"
+    if any(x.get("skipped") or x.get("error") for x in rep.get("steal_check") or []):
+        line += "（⚠ 有册没做抢首位核验）"
     if "admitted" in rep:
         line += (f"；已入库 {rep['admitted']} 格，库 {rep['lib_before']['instances']}→{rep['lib_after']['instances']} 例、"
                  f"{rep['lib_before']['chars']}→{rep['lib_after']['chars']} 字，批次 {rep['batch']}")
