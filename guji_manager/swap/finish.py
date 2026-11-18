@@ -11,6 +11,16 @@
 """
 from __future__ import annotations
 
+
+def _vol(book: str) -> int:
+    from . import vol_no
+    return vol_no(book)
+
+
+def _chapter(book: str) -> str:
+    from . import chapter_of
+    return chapter_of(book)
+
 import csv
 import json
 from datetime import datetime, timezone
@@ -46,10 +56,10 @@ def redirect_map(tables: list[list[dict]]) -> dict[str, str | None]:
     return {k: v for k, v in cur.items() if v != k}
 
 
-def unanchored_human(rows: list[dict], human: dict[str, str], vol: int) -> tuple[list[str], list[tuple]]:
+def unanchored_human(rows: list[dict], human: dict[str, str], vol: int | str) -> tuple[list[str], list[tuple]]:
     """human：{旧格号（不带册前缀）: 人裁字}。返回 (recheck 清单行, 被删格上的人裁 [(旧格, 字)])。
     改号格上的人裁→按新格号进 recheck；对照表里没有的人裁格（切分已大改）也进报告（无新格号，不能上单）。"""
-    pre = f"vol{vol:02d}:"
+    pre = f"{vol}:" if isinstance(vol, str) else f"vol{vol:02d}:"      # 册名前缀；整数＝殿本 volNN
     by_old = {r["old"]: r for r in rows if r["old"]}
     lines, gone = [], []
     for old, ch in sorted(human.items()):
@@ -63,7 +73,7 @@ def unanchored_human(rows: list[dict], human: dict[str, str], vol: int) -> tuple
 
 def finish(ws: Path, book: str, rows: list[dict], human: dict[str, str] | None, *, run: str, commit: str = "") -> dict:
     """写 recheck 清单、metrics，返回报告。rows 是 ``cell_table`` 的行。"""
-    vol = int(book[3:])
+    vol = book
     out = Path(ws) / "reports" / "_swap" / "finish" / book
     out.mkdir(parents=True, exist_ok=True)
     rep: dict = {"book": book, "run": run}
