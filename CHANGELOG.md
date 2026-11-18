@@ -5,6 +5,7 @@
 ## [未发版]
 
 - PATCH：执行方成功存包后，除 `cache/<册>`、`products/<册>` 外也清 `data_full/<册>`（`guji source pull` 取的原图，真源在中心库，下一张单 prep 会再 pull）。执行机磁盘总不够：书仓本身很小（殿本约 157 MB），占盘大头是跑单产生的本地数据，原图一直没人清。只改 `jobs/runner.py::_clean_book_artifacts`，`GUJI_JOBS_KEEP_ARTIFACTS=1` 仍可关。
+- PATCH：领单前磁盘低于 `GUJI_JOBS_SWEEP_GB`（缺省 8 GB，0＝关）时，扫掉本机各工作区所有册的 `cache/<册>`、`products/<册>`、`data_full/<册>`（册号取自数据目录 books/*.yaml，`cache/_judge` 等非册号目录不动），再才轮到清 uv、guji-data 缓存。成功存包只清了本册，失联、失败的单和更早的册的残留一直在（worker-27 实测：全唐文仓 data_full 3.1G、cache 2.4G，史記仓 cache 3.4G）。`GUJI_JOBS_KEEP_ARTIFACTS=1` 同样关掉它。只改 `jobs/runner.py::_disk_gate`。
 
 - MINOR：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（缺省关，`GUJI_AUTO_BACKFILL=0` 临时关）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
 - PATCH：seg check 钉子集合加上册配置 `row_segment.page_map_overrides` 里带 `cuts`／`slots` 的覆盖行（人核格线／格位；`drop` 不算），这些列有结构旗记「已钉·复核」、不进闸；`reference_profile` 声明 text／none（无逐列参校）的页上只有 pair 的对位串错记 `ALIGN_NOREF`，只当提示「对位串错·无逐列参校」，split／run 照算结构（全唐文 11-17 b1 闸 039:78:1：碑誌 text 页放行少凑够 pair、切分对，覆盖行已钉仍报需钉子）。
