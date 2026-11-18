@@ -292,7 +292,7 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
-                  book: str | None = None, require_human: bool = False) -> dict:
+                  book: str | None = None, require_human: bool = False, ws: Path | None = None) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
@@ -319,8 +319,19 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             human_missing = True
             notes.append("人裁账没核：取不到事件（没装 cv 或没有事件目录），只核 char-edits 手改")
     edits = (_show(repo, base, f"{rel}/{chapter}.char-edits.json") or {}).get("edits") or []
-    from ..charnorm import load_norm
-    same = load_norm(book or f"vol{int(chapter):02d}").same     # 同字判定（别／別 不算冲突）
+    from ..charnorm import codepoints_of, load_norm
+    bk = book or f"vol{int(chapter):02d}"
+    extra = {}
+    if ws is not None:                                          # 直接读数据目录的码位表，不靠 cv 找册（找不到会静默退成字面比）
+        from ..datastore.workcopy import data_dir
+        try:
+            extra = codepoints_of(data_dir(Path(ws)), bk)
+        except SystemExit:
+            extra = codepoints_of(Path(ws), bk)
+    norm = load_norm(bk, extra)
+    same = norm.same     # 同字判定（别／別 不算冲突）；只差码位的格文本留现行字
+    if not norm:
+        notes.append("码位归一表是空的：只差码位的格会按字面比（当成机器改字）")
     prot_old, human_pre = protected_cells(old["char"], human, edits, same)
     prot_new, ledger_probs = human_ledger(rows, prot_old, new_char)
     chars = merge_chars(old["char"], new_char, rows, pending, prot_new, same) if merge else {}
@@ -638,7 +649,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             if not t.exists() or t.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, t)
     one_x = str(tv).split(".")[0] not in ("0", "")
-    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x)
+    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")
