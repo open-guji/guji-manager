@@ -60,8 +60,10 @@ def test_lib_state_counts_only_live_instances(tmp_path):
 
 
 def test_config(tmp_path):
-    assert LB.config(tmp_path) is None
+    assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP}      # 缺省开
     y = tmp_path / "workspace.yaml"
+    y.write_text("glyph_lib:\n  auto_backfill: false\n", encoding="utf-8")
+    assert LB.config(tmp_path) is None
     y.write_text("glyph_lib:\n  auto_backfill: true\n", encoding="utf-8")
     assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP}
     y.write_text("glyph_lib:\n  auto_backfill: {cap: 5, channels: [rare_ref]}\n", encoding="utf-8")
