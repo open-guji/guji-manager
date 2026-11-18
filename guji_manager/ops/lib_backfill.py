@@ -20,6 +20,8 @@
 3. **抢首位核验**（2026-11-18，史記 r80）：这一册核验过的候选整批模拟进库（cv `BackfillProbe.steal_check`），
    用本册已放行格回放，库首位被新字抢走（harm）、又没有格被它救回（help）的字整字不进，记 `near_common`。
    只看形状的门槛分不开好坏（回库字多半库里 0 例，近邻全是别字），所以直接模拟。cv 早于 #1679 时不闸、摘要里报 ⚠。
+   **缺省关**（`workspace.yaml` `glyph_lib.auto_backfill.steal_check: true` 开）：史記第 02 册 5 万格真格回放，拦下的字里
+   已知害字只占 17/68、已知有用字也拦了 8/47，整册要 40 分钟，分辨力不够当缺省闸。
 4. **入库**：`GlyphDB.admit_instance(provenance="auto")`，同时追加一条 `confirm` 事件
    （`actor=model`、`payload.source="auto"`、`backfill: true`，不算人裁，不进绑定表），证据里带通道、批次和
    核验结果，可按批次整批撤回（cv `scripts/book_lib_auto.py --withdraw <批次>`）。之后人裁同一格，以人裁为准。
@@ -47,6 +49,7 @@ from pathlib import Path
 CHANNELS = ("rare_ref", "witness3")
 CAP = 3
 STEAL_CELLS_MAX = 8000     # 抢首位核验每册最多拿多少已放行格去模拟（0＝不限）
+STEAL_CHECK = False        # 抢首位核验缺省关：史記第 02 册真格实测分不开好坏、每册 20–40 分钟（见文档第三节），要用的书在 workspace.yaml 开
 INK_MIN = 0.03
 TRIES = 3          # 每个空位最多试几格（核验不过就换下一格）
 
@@ -78,7 +81,7 @@ def apply_problem(ws_dir: Path | str | None = None) -> str | None:
 
 def config(ws_dir: Path | str | None) -> dict | None:
     """`workspace.yaml` 的 `glyph_lib.auto_backfill`：false → None（关）；没写或 true → 缺省参数（缺省开）；
-    写成对象可改 `channels`、`cap`、`steal_check`（抢首位核验，缺省开）、`steal_cells_max`（每册回放格数上限，0＝不限）。"""
+    写成对象可改 `channels`、`cap`、`steal_check`（抢首位核验，缺省关）、`steal_cells_max`（每册回放格数上限，0＝不限）。"""
     import yaml
     y = Path(ws_dir or ".") / "workspace.yaml"
     cfg = (yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}
@@ -256,7 +259,7 @@ def steal_gate(book: str, book_picks: list, sa: dict, cs: dict, ctx, dbp, *, cel
 
 def run(books: list[str], *, apply: bool = False, batch: str | None = None,
         channels=CHANNELS, cap: int = CAP, verifier=None, log=None, report: str | None = None,
-        steal_check: bool = True, steal_cells_max: int = STEAL_CELLS_MAX, probe_cls=None) -> dict:
+        steal_check: bool = STEAL_CHECK, steal_cells_max: int = STEAL_CELLS_MAX, probe_cls=None) -> dict:
     """对 `books` 各册跑一遍选格、核验、抢首位核验、（`apply` 时）入库。返回报告。"""
     import cv2
     from .._cv import (EventLog, EventTarget, GlyphDB, ImageCache, ProductStore, RunContext,
@@ -388,7 +391,7 @@ def summary(rep: dict) -> str:
     sc = rep.get("steal_check")
     bad = [x["book"] for x in sc or [] if x.get("skipped") or x.get("error")]
     if sc is None:
-        line += "（⚠ 抢首位核验已关）"
+        line += "（抢首位核验未开）"
     elif bad:
         line += f"（⚠ {','.join(bad)} 没做抢首位核验，候选照常进库：{(sc[0].get('skipped') or sc[0].get('error') or '')[:60]}）"
     elif sc:

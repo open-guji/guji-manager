@@ -51,8 +51,8 @@ def cmd_glyph_db(args):
             kw["cap"] = args.cap
         if args.channels:
             kw["channels"] = tuple(x.strip() for x in args.channels.split(",") if x.strip())
-        if args.no_steal_check:
-            kw["steal_check"] = False
+        if args.steal_check:
+            kw["steal_check"] = True
         if args.steal_cells_max is not None:
             kw["steal_cells_max"] = args.steal_cells_max
         rep = LB.run([b.strip() for b in args.books.split(",") if b.strip()], apply=args.apply,
@@ -287,8 +287,8 @@ def add_parser(sub) -> None:
     p.add_argument("--cap", type=int, default=None, help="backfill 用：每字补到几例（缺省 3）")
     p.add_argument("--channels", default=None, help="backfill 用：放行通道，逗号分隔（缺省 rare_ref,witness3）")
     p.add_argument("--report", default=None, help="backfill 用：逐格报告写到这个 json")
-    p.add_argument("--no-steal-check", action="store_true",
-                   help="backfill 用：不做抢首位核验（缺省做：候选整批模拟进库，本册放行格的库首位被抢、又没救回格的字不进）")
+    p.add_argument("--steal-check", action="store_true",
+                   help="backfill 用：做抢首位核验（缺省不做）：候选整批模拟进库，本册放行格的库首位被抢、又没救回格的字不进")
     p.add_argument("--steal-cells-max", type=int, default=None,
                    help="backfill 用：抢首位核验每册最多回放几格放行格（缺省 8000，0＝全部）")
     p.add_argument("--title", default=None, help="书名")

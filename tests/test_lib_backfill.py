@@ -199,10 +199,16 @@ def test_steal_gate_old_cv_is_loud(monkeypatch):
     assert drop == {} and "没做抢首位核验" in info["skipped"] and said
     rep = {"stat": {}, "picks": 1, "chars": 1, "steal_check": [info]}
     assert "⚠ 01 没做抢首位核验" in LB.summary(rep)
-    assert "抢首位核验已关" in LB.summary({"stat": {}, "picks": 1, "chars": 1, "steal_check": None})
+    assert "抢首位核验未开" in LB.summary({"stat": {}, "picks": 1, "chars": 1, "steal_check": None})
 
 
 def test_backfill_probe_registered():
     """闸靠 `from .._cv import BackfillProbe`：没登记会永远走「cv 太旧」那条路、闸从不生效（OCR WIP 里漏了）。"""
     from guji_manager import _cv
     assert _cv._FALLBACK["BackfillProbe"] == ("clustering.backfill_probe", "BackfillProbe")
+
+
+def test_steal_check_default_off():
+    """真格实测分不开好坏（史記第 02 册），缺省关；要用的书在 workspace.yaml 开。"""
+    import inspect
+    assert LB.STEAL_CHECK is False and inspect.signature(LB.run).parameters["steal_check"].default is False
