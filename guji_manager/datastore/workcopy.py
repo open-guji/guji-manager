@@ -413,12 +413,222 @@ def _materialize(src, ws: str, tmp: Path, cache, bucket: str, retries: int = 3,
     raise SystemExit("读的过程中工作区一直有新写入，稍后再拉")
 
 
+#: 增量拉（只取基准 rev 之后库里改了的文件，11-18）：设 1 退回整拉（每次都读整个工作区的清单和文件）
+FULL_PULL_ENV = "GUJI_DB_FULL_PULL"
+#: 变更记录超过这么多条、或要取的文件超过这么多个，就整拉（按路径分批取省不了多少）
+INCR_MAX_CHANGES = 20000
+INCR_MAX_FILES = 400
+
+
+def _change_rows(src, ws: str, rev: int, cap: int) -> list[dict]:
+    """库里工作区 ``ws`` 在 ``rev`` 之后的变更记录（tbl、op、pk），至多读 ``cap + 1`` 条。"""
+    if hasattr(src, "conn"):                         # 直连 Postgres（测试、库机器）
+        cur = src.conn.cursor()
+        cur.execute("SELECT tbl, op, pk FROM changes WHERE ws = %s AND rev > %s ORDER BY rev LIMIT %s",
+                    (ws, int(rev), cap + 1))
+        return [{"tbl": t, "op": o, "pk": k} for t, o, k in cur.fetchall()]
+    out: list[dict] = []
+    for r in src._rows("changes", ws, None, {"since_rev": int(rev)}):
+        out.append(r)
+        if len(out) > cap:
+            break
+    return out
+
+
+def _remote_delta(src, ws: str, rev: int, extra: set[str] = frozenset()):
+    """基准 rev 之后库里改了的文件路径和刻例实例 id；拿不准（整批导入、太多、旧数据源）回 None 走整拉。
+
+    文件一级的改动都记在 ``source_files``／``BLOB_TABLES`` 的变更里（主键就是路径）；刻例图换了记在
+    ``glyph_instances``（主键实例 id，指纹含 patch_sha）。行在文件里挪位置不记变更，但那个文件的 sha 变了，
+    ``source_files`` 照样有一条。"""
+    if os.environ.get(FULL_PULL_ENV) == "1":
+        return None
+    try:
+        rows = _change_rows(src, ws, rev, INCR_MAX_CHANGES)
+    except Exception:                                 # noqa: BLE001 —— 旧 Worker、简易数据源：整拉
+        return None
+    if len(rows) > INCR_MAX_CHANGES:
+        return None
+    paths: set[str] = set()
+    inst: set[str] = set()
+    keys: dict[str, list[list]] = {}
+    for r in rows:
+        pk = r["pk"]
+        if isinstance(pk, str):
+            pk = json.loads(pk)
+        if not isinstance(pk, list) or not pk:       # {"bulk_rows": n}：首次整批导入，不知道是哪些文件
+            return None
+        if r["tbl"] == "source_files" or r["tbl"] in BLOB_TABLES:
+            paths.add(str(pk[0]))
+        elif r["op"] != "delete":
+            keys.setdefault(r["tbl"], []).append(pk)
+            if r["tbl"] == "glyph_instances":
+                inst.add(str(pk[0]))
+    return paths, inst, set(extra) - paths, keys
+
+
+#: 按主键补行时，一次请求带这么多个键值（URL 长度）；一张表要补的键超过 PATCH_MAX_KEYS 就整文件取
+PATCH_KEY_BATCH = 200
+PATCH_MAX_KEYS = 4000
+
+
+def _patch_lines(src, ws: str, need: dict[str, dict], base: dict[str, str], keys: dict[str, list[list]],
+                 reuse) -> dict[str, bytes]:
+    """逐行表的文件只差几行时，不整文件向库要（殿本 instances 一份 1.5 万行、要 20 多次请求、约 30 s）：
+    本机那份还是基准版本的，就按变更记录里的主键只取改了／新增的行，盖到本机行上，按库里登记的行数截齐，
+    整文件 sha 对得上才用。行挪了位置（中间删行）不记变更，sha 会对不上，那个文件照旧整文件取。"""
+    from .materialize import LINE_COLS, NOT_LINE, _rows
+    from .scope import split_lines
+    out: dict[str, bytes] = {}
+    if reuse is None:
+        return out
+    by_tbl: dict[str, dict[str, list[str]]] = {}
+    for p, f in need.items():
+        tbl = f["tbl"]
+        if tbl in NOT_LINE or tbl not in TABLES or not base.get(p):
+            continue
+        lp = reuse(p)
+        if lp is None:
+            continue
+        try:
+            b = Path(lp).read_bytes()
+        except OSError:
+            continue
+        if sha256(b) != base[p]:
+            continue
+        by_tbl.setdefault(tbl, {})[p] = split_lines(b)[0]
+    for tbl, have in by_tbl.items():
+        kcols = TABLES[tbl].key
+        pks = keys.get(tbl, [])
+        if not kcols or len(pks) > PATCH_MAX_KEYS or any(len(k) != len(kcols) for k in pks):
+            continue
+        # 用不同值最多的那一列过滤（src_path 只在它是唯一主键列时用）
+        cand = [i for i, c in enumerate(kcols) if c != "src_path"] or [0]
+        col = max(cand, key=lambda i: len({str(k[i]) for k in pks}))
+        vals = sorted({str(k[col]) for k in pks})
+        got: dict[str, dict[int, str]] = {p: {} for p in have}
+        try:
+            for i in range(0, len(vals), PATCH_KEY_BATCH):
+                for r in _rows(src, tbl, ws, LINE_COLS, **{kcols[col]: vals[i:i + PATCH_KEY_BATCH]}):
+                    if r["src_path"] in got:
+                        got[r["src_path"]][int(r["src_line"])] = r["raw"]
+        except Exception:                             # noqa: BLE001 —— 数据源不认这个过滤：整文件取
+            continue
+        for p, lines in have.items():
+            f = need[p]
+            n = int(f["n_lines"])
+            new = (lines + [None] * n)[:n]
+            for i, raw in got[p].items():
+                if i < n:
+                    new[i] = raw
+            if any(x is None for x in new):
+                continue
+            b = ("\n".join(new) + ("\n" if f["final_newline"] else "")).encode("utf-8")
+            if sha256(b) == f["sha256"] and len(b) == int(f["bytes"]):
+                out[p] = b
+    return out
+
+
+def _materialize_delta(src, ws: str, tmp: Path, cache, bucket: str, base: dict[str, str], rev: int, *,
+                       reuse=None, extra: set[str] = frozenset(), want_patch=lambda name: True,
+                       retries: int = 3):
+    """``_materialize`` 的增量版：只把基准 ``rev`` 之后库里改了的文件（加上 ``extra``，库里现在的版本）还原到 ``tmp``，
+    库里清单由 ``base`` 加这些改动算出。返回 (rev, 库里清单, 统计)；不能增量就回 None（调用方整拉）。"""
+    from .materialize import MaterializeError, _rows, _safe, _texts
+    prefixes = (WS_YAML,) + SCOPE
+    sel = lambda p: p.startswith(prefixes)          # noqa: E731
+    for _ in range(retries):
+        r0 = src.status()
+        d = _remote_delta(src, ws, rev, extra)
+        if d is None:
+            return None
+        changed, inst, more, keys = d
+        want = sorted(changed | more)
+        if len(want) > INCR_MAX_FILES or len(inst) > INCR_MAX_CHANGES:
+            return None
+        try:
+            files = {r["src_path"]: r for r in _rows(src, "source_files", ws, None, src_path=want)} if want else {}
+            blobs: dict[str, dict[str, str]] = {}
+            for tbl in BLOB_TABLES:
+                blobs[tbl] = ({r["src_path"]: r["sha256"] for r in _rows(src, tbl, ws, ("src_path", "sha256"),
+                                                                          src_path=want)} if want else {})
+            patch = ({r["instance_id"]: r.get("patch_sha") for r in
+                      _rows(src, "glyph_instances", ws, ("instance_id", "patch_sha"), instance_id=sorted(inst))}
+                     if inst and sel(GS + "patches/") else {})
+        except Exception:                             # noqa: BLE001 —— 数据源不认按路径过滤：整拉
+            return None
+        remote = {k: v for k, v in base.items() if k not in changed}
+        remote.update({p: r["sha256"] for p, r in files.items() if p in changed})
+        for got in blobs.values():
+            remote.update({p: sha for p, sha in got.items() if p in changed})
+        need = {p: r for p, r in files.items() if sel(p) and r["tbl"] not in BLOB_TABLES}
+        patched = _patch_lines(src, ws, need, base, keys, reuse)
+        try:
+            texts, reused, fetched, _ = _texts(src, ws, {p: r for p, r in need.items() if p not in patched}, reuse)
+            texts.update(patched)
+        except MaterializeError:
+            if src.status() != r0:
+                continue
+            return None
+        images: dict[str, str] = {}
+        by_ext: dict[str, set[str]] = {}
+        for i, sha in patch.items():
+            name = f"{_safe(i)}.png"
+            if sha and want_patch(name):
+                images[f"{GS}patches/{name}"] = sha
+                by_ext.setdefault("png", set()).add(sha)
+        for tbl, got in blobs.items():
+            for p, sha in got.items():
+                if sel(p):
+                    images[p] = sha
+                    by_ext.setdefault(BLOB_TABLES[tbl], set()).add(sha)
+        absent: set[str] = set()
+        if images:
+            if cache is None:
+                from .._cv import BlobCache
+                cache = BlobCache()
+            for ext in sorted(by_ext):
+                absent.update(cache.ensure(src, by_ext[ext], bucket=bucket, ext=ext).get("missing", ()))
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        tmp.mkdir(parents=True)
+        for p, b in texts.items():
+            (tmp / p).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / p).write_bytes(b)
+        for p, sha in images.items():
+            if sha not in absent:
+                (tmp / p).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cache.path(sha), tmp / p)
+        if src.status() == r0 or not src.changes_since(ws, r0, limit=1):
+            return r0, remote, {"scan": "incremental", "changed_files": len(changed), "files": len(texts),
+                                "patched": len(patched),
+                                "reused": reused, "fetched": fetched, "images": len(images) - len(absent)}
+    return None
+
+
 def _install(tmp: Path, ws_dir: Path, data: Path) -> tuple[int, int]:
     """把 tmp 里还原的文件换进数据目录（镜像；没被引用的刻例图留着），workspace.yaml 进工作区。"""
     got = {p.relative_to(tmp).as_posix() for p in tmp.rglob("*") if p.is_file()}
     removed = 0
     for rel, p in list(_walk(data)):
         if rel not in got and classify(rel) != "patch":
+            p.unlink()
+            removed += 1
+    for rel in sorted(got):
+        dst = (Path(ws_dir) if rel == WS_YAML else data) / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(tmp / rel, dst)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return len(got), removed
+
+
+def _install_delta(tmp: Path, ws_dir: Path, data: Path, changed: set[str]) -> tuple[int, int]:
+    """增量拉的 ``_install``：tmp 里的文件换上去（刻例图也覆盖，库里换了图），库里删掉的 ``changed`` 路径本机也删。"""
+    got = {p.relative_to(tmp).as_posix() for p in tmp.rglob("*") if p.is_file()}
+    removed = 0
+    for rel in sorted(changed - got):
+        p = (Path(ws_dir) if rel == WS_YAML else data) / rel
+        if p.is_file() and classify(rel) != "patch":
             p.unlink()
             removed += 1
     for rel in sorted(got):
@@ -744,12 +954,22 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
     if seed_rev is not None:                     # 新机器：先用快照里的文件，库里只要之后变了的
         here = reuse
         reuse = lambda rel: here(rel) or ((seed / rel) if (seed / rel).is_file() else None)  # noqa: E731
-    try:
-        rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude, repair_gaps=repair_gaps)
-    finally:
-        shutil.rmtree(seed, ignore_errors=True)
-    written, removed = _install(tmp, ws_dir, data)
-    base = _db_manifest(src, ws)
+    delta = None
+    if st is not None and not force and not exclude and not st.get("exclude") and not repair_gaps and seed_rev is None:
+        # 本机和基准一致（上面查过没有未推改动）：只取库里改了的文件换上去（11-18）
+        delta = _materialize_delta(src, ws, tmp, cache, bucket, old_base, int(st["rev"]), reuse=reuse)
+    if delta is not None:
+        rev, base, stats = delta
+        written, removed = _install_delta(tmp, ws_dir, data, set(_diff(old_base, base)))
+    else:
+        try:
+            rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude,
+                                      repair_gaps=repair_gaps)
+        finally:
+            shutil.rmtree(seed, ignore_errors=True)
+        written, removed = _install(tmp, ws_dir, data)
+        base = _db_manifest(src, ws)
+        stats = {"scan": "full", **stats}
     if exclude:
         base = {k: v for k, v in base.items() if not any(k.startswith(x) for x in exclude)}
     store_changed = any(old_base.get(k) != base.get(k) for k in set(old_base) | set(base) if k.startswith(GS))
@@ -1334,8 +1554,16 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
     tmp = data.parent / f".{data.name}.sync.tmp"
     if tmp.exists():
         shutil.rmtree(tmp)
-    rev, _ = _materialize(src, ws, tmp, cache, bucket, reuse=_local(ws_dir, data))
-    remote = _db_manifest(src, ws)
+    # 只取库里改了的文件（加本地改了的那些在库里的版本，合并要用）；拿不准就整拉（11-18：殿本 sync 读整库 81 s）
+    delta = _materialize_delta(src, ws, tmp, cache, bucket, base, int(st["rev"]), reuse=_local(ws_dir, data),
+                               extra=mine, want_patch=lambda n: not (data / GS / "patches" / n).exists())
+    if delta is not None:
+        rev, remote, pstats = delta
+    else:
+        rev, pstats = _materialize(src, ws, tmp, cache, bucket, reuse=_local(ws_dir, data))
+        remote = _db_manifest(src, ws)
+        pstats = {"scan": "full", **{k: v for k, v in pstats.items() if k in ("files", "reused", "fetched")}}
+    out["pull"] = pstats
     theirs = set(_diff(base, remote))
     both = sorted(mine & theirs)
     merged: dict[str, bytes] = {}
