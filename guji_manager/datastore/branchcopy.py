@@ -24,11 +24,18 @@ def _tables(cur) -> list[tuple[str, list[str]]]:
 def _copy(src, dst, t: str, cols: list[str], where: str, args: list) -> int:
     from .d1sql import bindable
     sel = ", ".join(f'"{c}"' for c in cols)
+    from .d1conn import OperationalError
     cur = src.cursor()
-    last, n = -1, 0
+    last, n, page = -1, 0, (20 if t in ("files", "imports") else PAGE)    # 这两张表单行可上 MB
     while True:
-        cur.execute(f'SELECT rowid, {sel} FROM "{t}" WHERE {where} AND rowid > %s ORDER BY rowid LIMIT %s',
-                    (*args, last, PAGE))
+        try:
+            cur.execute(f'SELECT rowid, {sel} FROM "{t}" WHERE {where} AND rowid > %s ORDER BY rowid LIMIT %s',
+                        (*args, last, page))
+        except OperationalError:            # 回包太大 Worker 回 500：页减半再来
+            if page == 1:
+                raise
+            page = max(1, page // 2)
+            continue
         rows = cur.fetchall()
         if not rows:
             return n
