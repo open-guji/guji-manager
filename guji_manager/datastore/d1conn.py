@@ -160,9 +160,21 @@ class HttpBackend:
     def __init__(self, branch: str = "main", base: str | None = None, token: str | None = None):
         self.branch = branch
         self.base = (base or os.environ.get("GUJI_DATA_URL", "https://data.open-guji.com")).rstrip("/")
-        self.token = token or os.environ.get("GUJI_DATA_TOKEN")
-        if not self.token:
-            raise SystemExit("连中心库要 GUJI_DATA_TOKEN（中心库已迁到 Cloudflare D1，只能经 Worker）")
+        # 令牌：先 GUJI_DATA_TOKEN（调用方/执行器按读写给的），再按团队惯例 GUJI_DATA_TOKEN_PROD（实验分支先
+        # GUJI_DATA_TOKEN_EXP）、GUJI_DATA_TOKEN_READ。某把回 401（令牌无效）就换下一把——有的环境 GUJI_DATA_TOKEN 是占位值。
+        if token:
+            self.tokens = [token]
+        else:
+            names = ["GUJI_DATA_TOKEN"] + ([] if branch == "main" else ["GUJI_DATA_TOKEN_EXP"]) + \
+                ["GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ"]
+            self.tokens = []
+            for n in names:
+                v = (os.environ.get(n) or "").strip()
+                if v and v not in self.tokens:
+                    self.tokens.append(v)
+        if not self.tokens:
+            raise SystemExit("连中心库要 GUJI_DATA_TOKEN_PROD／GUJI_DATA_TOKEN（中心库已迁到 Cloudflare D1，只能经 Worker）")
+        self.token = self.tokens[0]
         import ssl
         ca = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
         self.ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
@@ -176,8 +188,9 @@ class HttpBackend:
         url = f"{self.base}/v1/sql?branch={urllib.parse.quote(self.branch, safe='')}"
         hdr = {"authorization": f"Bearer {self.token}", "content-type": "application/json",
                "user-agent": "guji-manager-d1"}
-        tries = 5 if retry else 1
-        for i in range(tries):
+        tries = 5 if retry else 1          # 写不重试（401 换令牌除外：401 时什么都没写）
+        i = 0
+        while i < tries:
             req = urllib.request.Request(url, data=data, method="POST", headers=hdr)
             try:
                 with urllib.request.urlopen(req, context=self.ctx, timeout=120) as r:
@@ -187,11 +200,15 @@ class HttpBackend:
                     j = json.loads(e.read())
                 except ValueError:
                     j = {}
+                if e.code == 401 and self._next_token():
+                    hdr["authorization"] = f"Bearer {self.token}"
+                    continue
                 if e.code == 409 and j.get("error") == "stale":
                     d = j.get("detail") or {}
                     raise Stale(j.get("message") or "stale", d.get("rev"), d.get("import_id")) from None
                 if (e.code == 429 or e.code >= 500) and i + 1 < tries:
                     time.sleep(min(30, 2 * 2 ** i))
+                    i += 1
                     continue
                 msg = f"中心库 {e.code} {j.get('error', '')}：{j.get('message', '')}"
                 if e.code >= 500 or e.code == 429:
@@ -202,9 +219,17 @@ class HttpBackend:
             except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
                 if i + 1 < tries:
                     time.sleep(min(30, 2 * 2 ** i))
+                    i += 1
                     continue
                 raise OperationalError(f"连不上中心库 Worker：{e}") from e
         raise OperationalError("连不上中心库 Worker")
+
+    def _next_token(self) -> bool:
+        i = self.tokens.index(self.token)
+        if i + 1 >= len(self.tokens):
+            return False
+        self.token = self.tokens[i + 1]
+        return True
 
     def read(self, sql, params):
         j = self._post({"query": {"sql": sql, "params": params or []}}, retry=True)
