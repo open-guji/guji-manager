@@ -115,3 +115,100 @@ def test_apply_problem_guards(tmp_path, monkeypatch):
     assert "部分副本" in LB.apply_problem(ws)
     W.write_state(data, ws="t", rev=1, base={}, **{W.GLYPH_DB_STALE: True})
     assert "比字形账本旧" in LB.apply_problem(ws)
+
+
+# ---- 抢首位核验（cv #1679 BackfillProbe.steal_check，2026-11-18 史記 r80） ----
+
+def test_steal_drop_only_harm_without_help():
+    sim = {"harm": {"蒍": ["01:1:1:1", "01:2:1:1"], "揄": ["01:3:1:1"], "<爲>": ["01:4:1:1"], "庾": []},
+           "help": {"揄": ["01:5:1:1"]}}
+    # 揄 有害也有帮→留；<爲> 不是这批新字→不管；庾 没害→留
+    assert LB.steal_drop(sim, {"蒍", "揄", "庾"}) == {"蒍": ["01:1:1:1", "01:2:1:1"]}
+    assert LB.steal_drop({}, {"蒍"}) == {}
+
+
+def test_config_steal_keys(tmp_path):
+    y = tmp_path / "workspace.yaml"
+    y.write_text("glyph_lib:\n  auto_backfill: {steal_check: false, steal_cells_max: 0}\n", encoding="utf-8")
+    assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP, "steal_check": False, "steal_cells_max": 0}
+
+
+class _Ctx:
+    """假 RunContext：字块图一律给一张小黑块；kNN 参数取不到走缺省。"""
+    def __init__(self, missing=()):
+        self.missing = set(missing)
+
+    def image(self, kind, key):
+        import numpy as np
+        if key in self.missing:
+            return None
+        a = np.full((40, 40), 255, np.uint8)
+        a[10:30, 10:30] = 0
+        return a
+
+
+def _picks(*pairs):
+    import cv2
+    import numpy as np
+    png = cv2.imencode(".png", np.zeros((40, 40), np.uint8))[1].tobytes()
+    return [(ch, k, png, {"channel": "rare_ref"}, {"tpl_top1": ch}) for ch, k in pairs]
+
+
+def test_steal_gate_samples_cells_and_skips_new(monkeypatch):
+    pytest.importorskip("cv2")
+    monkeypatch.setattr(LB, "_norm", lambda img: img)
+    monkeypatch.setattr(LB, "_knn_params", lambda ctx: {"knn_k": 15, "per_char": 3, "per_char_top": 10})
+    from guji_manager import _cv
+    monkeypatch.setattr(_cv, "binarize_page", lambda img, edge_margin=0: img, raising=False)
+    seen = {}
+
+    class Probe:
+        def __init__(self, db, **kw):
+            seen["kw"] = kw
+
+        def steal_check(self, new_items, cells):
+            seen["new"] = [k for k, _c, _n in new_items]
+            seen["cells"] = [k for k, _c, _n in cells]
+            return {"harm": {"蒍": [cells[0][0]]}, "help": {}, "checked": len(cells), "cells": len(cells)}
+
+    sa = {f"01:{i}:1:1": {"admit": True, "char": "為"} for i in range(10)}
+    sa["01:99:1:1"] = {"admit": True, "char": "蒍"}          # 本批新例自己：不当回放格
+    sa["01:98:1:1"] = {"admit": False, "char": "之"}         # 没放行
+    cs = {k: {"patch_key": k} for k in sa}
+    drop, info = LB.steal_gate("01", _picks(("蒍", "01:99:1:1")), sa, cs, _Ctx(), "g.db", cells_max=4, probe_cls=Probe)
+    assert seen["new"] == ["01:99:1:1"] and len(seen["cells"]) == 4 and "01:99:1:1" not in seen["cells"]
+    assert seen["kw"] == {"knn_k": 15, "per_char": 3, "per_char_top": 10}
+    assert drop == {"蒍": [seen["cells"][0]]} and info["sampled"] and info["dropped"] == ["蒍"]
+    assert "img_s" in info and "sim_s" in info
+
+
+def test_steal_gate_old_cv_is_loud(monkeypatch):
+    from guji_manager import _cv
+
+    real = _cv.__getattr__
+
+    def boom(name):
+        if name == "BackfillProbe":
+            raise ModuleNotFoundError("No module named 'open_guji_cv.clustering.backfill_probe'")
+        if name == "binarize_page":
+            return lambda img, edge_margin=0: img
+        return real(name)
+    monkeypatch.setattr(_cv, "__getattr__", boom)
+    said = []
+    drop, info = LB.steal_gate("01", _picks(("蒍", "01:9:1:1")), {}, {}, _Ctx(), "g.db", say=said.append)
+    assert drop == {} and "没做抢首位核验" in info["skipped"] and said
+    rep = {"stat": {}, "picks": 1, "chars": 1, "steal_check": [info]}
+    assert "⚠ 01 没做抢首位核验" in LB.summary(rep)
+    assert "抢首位核验未开" in LB.summary({"stat": {}, "picks": 1, "chars": 1, "steal_check": None})
+
+
+def test_backfill_probe_registered():
+    """闸靠 `from .._cv import BackfillProbe`：没登记会永远走「cv 太旧」那条路、闸从不生效（OCR WIP 里漏了）。"""
+    from guji_manager import _cv
+    assert _cv._FALLBACK["BackfillProbe"] == ("clustering.backfill_probe", "BackfillProbe")
+
+
+def test_steal_check_default_off():
+    """真格实测分不开好坏（史記第 02 册），缺省关；要用的书在 workspace.yaml 开。"""
+    import inspect
+    assert LB.STEAL_CHECK is False and inspect.signature(LB.run).parameters["steal_check"].default is False
