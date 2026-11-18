@@ -63,7 +63,7 @@ def test_resume_skips_issued_books(tmp_path, monkeypatch):
     sp = ws / "state.json"
     swap.save_state(sp, {"books": {"vol20": {"status": "done"}, "vol21": {"status": "publish-mismatch"},
                                    "vol22": {"status": "verified"}, "vol23": {"status": "need-A33"}}})
-    monkeypatch.setattr(swap, "precheck", lambda ws, state: None)
+    monkeypatch.setattr(swap, "precheck", lambda ws, state, *a: None)
     a = argparse.Namespace(workspace=str(ws), state=str(sp), text_id="x", cv=str(ws), book_text=str(ws),
                            books="vol20-vol24", batch_size=6, dry_run=True)
     import io, contextlib
@@ -92,3 +92,19 @@ def test_parse_books_numeric_and_chapter():
     assert S.parse_books("vol9-vol10") == ["vol09", "vol10"]
     assert S.chapter_of("vol07") == "007" and S.chapter_of("07") == "007" and S.chapter_of("045") == "045"
     assert S.parse_cycle_log("045\t→ done\t写人裁 3 条")["045"]["verdict"] == "done"
+
+
+def test_precheck_nondianben_data_problem_not_fatal(tmp_path, monkeypatch, capsys):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setenv("GUJI_ACTOR", "t")
+    monkeypatch.setattr("guji_manager.datastore.workcopy.data_dir", lambda w: tmp_path / "dd")
+    monkeypatch.setattr(swap, "ledger_counts", lambda dd: {})
+    state = {"books": {}}
+    swap.precheck(ws, state, "995ejelvk0")          # 全唐文：数据目录没有殿本的数据，不拦
+    assert "非殿本，不拦" in capsys.readouterr().err
+    try:
+        swap.precheck(ws, state)                    # 殿本：照拦
+        assert False
+    except SystemExit as e:
+        assert "待收字登记表" in str(e)
