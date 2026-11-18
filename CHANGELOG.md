@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.4.55] - 测试中
+## [0.4.55] - 2026-11-17
 
 - 发版说明（A31 11-18）：PATCH。带 #624 放行格自动回库**对所有书缺省开**（Sheldon 11-18 在卡片上定）和 #628 db sync 增量推。回库只改本机字形库：跑批机不 `db sync` 结果就留在本机；上中心库须在有完整副本的机器上 `guji db pull`（不要 `--no-rebuild`）后 `guji db sync`，推前先 `guji db push --dry-run` 看 glyphs／glyph_instances／glyph_exemplars／glyph_admissions 各表 delete=0。关法：`workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或 `GUJI_AUTO_BACKFILL=0`。
 
