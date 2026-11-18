@@ -275,7 +275,7 @@ def import_scans(conn, scans: list[ScanResult], *, label: str, allow_delete: boo
     （如 ``feedback.migrate_v1``），省得为了改几行台账把整个工作区连图带库拉下来再整推。"""
     commit = label
     rep = ImportReport(commit=commit, dry_run=dry_run)
-    with conn.transaction():
+    with conn.transaction(guard=True):
         cur = conn.cursor()
         if guard is not None:
             guard(cur)

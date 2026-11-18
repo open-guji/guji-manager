@@ -15,10 +15,10 @@
     guji db diff    -w <工作区> --branch exp/<名> [--against main]   # 实验分支与正式库逐文件比
 
 连接：`GUJI_DATA_URL`（缺省 https://data.open-guji.com）、`GUJI_DATA_TOKEN`、`GUJI_DATA_BRANCH`（缺省 main）。
-push 直连 Postgres：`GUJI_DATA_PG_DSN`，没有就用 `NEON_DATABASE_URL` 在本进程起 443 桥；新图经 Worker 传正式桶。
+push 写中心库（2026-11-18 起 Cloudflare D1）：经 Worker `/v1/sql`（同一个 `GUJI_DATA_TOKEN`）；新图经 Worker 传正式桶。
 
 实验分支（`--branch exp/GUJI-号-说明` 或 `GUJI_DATA_BRANCH`）：数据目录换成 `$GUJI_DATA_HOME/exp__GUJI-…/<工作区>/`，
-glyph.db 与 products 也放进去；pull／push／sync 都对那个分支，push 经 Neon API（`NEON_API_KEY`）找到该分支的端点，
+glyph.db 与 products 也放进去；pull／push／sync 都对那个分支（D1 上每个实验分支是独立的库，开分支时按工作区从 main 复制），
 新图传实验桶。只许 main 与 `exp/*`；ci 只给测试。
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _check_write_branch(branch: str) -> None:
 
 
 def _pg_conn(branch: str | None = None):
-    """连 ``branch``（缺省 ``GUJI_DATA_BRANCH`` 或 main）的 Postgres。实验分支经 Neon API 找端点。"""
+    """连 ``branch``（缺省 ``GUJI_DATA_BRANCH`` 或 main）的中心库（D1，经 Worker；实验分支是独立的 D1 库）。"""
     from ._cv import connect
     branch = branch or _branch()
     if branch == "main":
@@ -345,7 +345,19 @@ def cmd_db(args) -> None:
         if op == "list":
             _print(src.branches())
         elif op == "create" and len(args.args) == 2:
-            _print(src.create_branch(args.args[1], from_rev=args.from_rev))
+            res = src.create_branch(args.args[1], from_rev=args.from_rev)
+            # D1：新分支是空库，按工作区从 main 复制（-w 的工作区，加上 --ws 给的）
+            wss = list(args.ws or [])
+            if ws_dir is not None:
+                from ._cv import workspace_id
+                wss.append(workspace_id(ws_dir))
+            if wss and res.get("empty"):
+                from .datastore.branchcopy import copy_workspaces
+                with _pg_conn("main") as main, _pg_conn(args.args[1]) as exp:
+                    res["copied"] = copy_workspaces(main, exp, sorted(set(wss)))
+            elif res.get("empty"):
+                res["hint"] = "新分支是空库：加 -w <工作区> 或 --ws <工作区 id> 从 main 复制数据"
+            _print(res)
         elif op == "delete" and len(args.args) == 2:
             _print(src.delete_branch(args.args[1]))
         else:
@@ -392,7 +404,9 @@ def add_parser(sub) -> None:
                    help="migrate：工作区里与库不一致的文件以本地为准，迁完成为待推改动")
     p.add_argument("--allow-delete", action="store_true",
                    help="push：允许删库里的文件、只追加台账里的行（确认是真删）")
-    p.add_argument("--from-rev", type=int, default=None, help="branch create：从哪个 rev 开")
+    p.add_argument("--from-rev", type=int, default=None, help="branch create：从哪个 rev 开（D1 起停用）")
+    p.add_argument("--ws", action="append", default=None, metavar="工作区 id",
+                   help="branch create：从 main 复制哪些工作区到新分支（可多次；-w 的工作区自动带上）")
     p.add_argument("--from", dest="from_branch", default=None, help="import：实验分支名")
     p.add_argument("--to", default="main", help="import：导入到哪个分支（缺省 main）")
     p.add_argument("--events", default=None, help="import：事件 id 清单文件（一行一个）；不给就导入目标没有的全部")

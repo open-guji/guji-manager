@@ -1,14 +1,13 @@
 """``python -m guji_manager.datastore``：中心库导入 / 核对 / R2 上传计划。
 
-连库：``--dsn`` 或环境变量 ``GUJI_DATA_PG_DSN``（直连 Postgres 的连接串；Neon 的「ci」「main」
-分支各一个）。连接串含口令，只放环境变量，不写进命令历史、仓库或卡片。
+连库（2026-11-18 起中心库是 Cloudflare D1）：经 guji-data Worker（``GUJI_DATA_URL``、``GUJI_DATA_TOKEN``），
+``--dsn`` 给分支名（缺省 main）；``GUJI_DATA_SQLITE=<文件>`` 改连本机 SQLite（核对用）。
 
-    # 先灌 ci，再灌 main（同一个提交）
     python -m guji_manager.datastore import  --repo <guji-workspace> --commit <sha>
     python -m guji_manager.datastore verify  --repo <guji-workspace> --commit <sha>
     python -m guji_manager.datastore r2-plan --repo <guji-workspace> --commit <sha> --manifest plan.jsonl
-    python -m guji_manager.datastore backup                       # 每日备份（GUJI-611）
-    python -m guji_manager.datastore restore-check --endpoint <ci 端点>   # 恢复演练
+    python -m guji_manager.datastore backup                       # 每周备份（GUJI-611；D1 另有 30 天 Time Travel）
+    python -m guji_manager.datastore restore-check --endpoint <exp/…>   # 恢复演练（恢复到实验分支）
 """
 
 from __future__ import annotations
@@ -20,11 +19,11 @@ import sys
 
 
 def _connect(args):
-    import psycopg
-    dsn = args.dsn or os.environ.get("GUJI_DATA_PG_DSN")
-    if not dsn:
-        raise SystemExit("没有连接串：给 --dsn 或设 GUJI_DATA_PG_DSN")
-    return psycopg.connect(dsn)
+    """2026-11-18 中心库迁 D1：``--dsn`` 改为分支名（缺省 main），经 Worker 连；``GUJI_DATA_SQLITE`` 可改连本机 SQLite。"""
+    from .connect import connect
+    if args.dsn and ("://" in args.dsn or "=" in args.dsn):
+        raise SystemExit("中心库已迁到 D1，不再收 Postgres 连接串；--dsn 给分支名（如 exp/GUJI-9-x）或不给（main）")
+    return connect(branch=args.dsn or None)
 
 
 def _print(obj) -> None:
@@ -40,7 +39,7 @@ def main(argv=None) -> int:
         p.add_argument("--repo", required=True, help="guji-workspace 的本地克隆")
         p.add_argument("--commit", default="HEAD", help="钉住的提交（默认 HEAD）")
         if db:
-            p.add_argument("--dsn", help="Postgres 连接串（缺省读 GUJI_DATA_PG_DSN）")
+            p.add_argument("--dsn", help="分支名（缺省 main）")
 
     p = sub.add_parser("schema", help="只建表（可重复执行）")
     p.add_argument("--dsn")
@@ -69,7 +68,7 @@ def main(argv=None) -> int:
     p.add_argument("--keep-days", type=int, default=30)
     p.add_argument("--date", default=None, help="存成哪天（缺省今天，UTC）")
     p = sub.add_parser("restore-check", help="把某天的备份恢复到 main 以外的端点并逐表核对")
-    p.add_argument("--endpoint", required=True, help="Neon 端点 id（如 ci 分支的），不许是 main 的")
+    p.add_argument("--endpoint", required=True, help="恢复到哪个分支（实验分支名，D1 上是独立库），不许是 main")
     p.add_argument("--date", default=None, help="哪天的备份（缺省最新一份完整的）")
 
     args = ap.parse_args(argv)
@@ -147,7 +146,7 @@ def main(argv=None) -> int:
         if args.manifest:
             r2.write_manifest(objs, args.manifest)
             out["manifest"] = args.manifest
-        if args.dsn or os.environ.get("GUJI_DATA_PG_DSN"):
+        if args.dsn or os.environ.get("GUJI_DATA_TOKEN"):
             with _connect(args) as conn:
                 out["db_check"] = r2.check_against_db(conn, objs)
         if args.execute:

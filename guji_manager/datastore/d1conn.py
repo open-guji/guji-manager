@@ -5,7 +5,7 @@
 
 D1 没有交互式事务，所以语义有两点不同（调用处要知道）：
 
-1. **事务里的写先攒着**，``transaction()`` 退出时连同「守卫」一起一批提交；守卫核对进事务时读到的
+1. **事务里的写先攒着**，``transaction()`` 退出时一批提交；``transaction(guard=True)`` 还带「守卫」，核对进事务时读到的
    库版本（max(changes.rev)、max(imports.import_id)），提交时变了就整批回滚、抛 ``Stale``。
    所以事务里**读不到自己刚写的**；要用新号（rev、import_id）自己按读到的版本往上算（``conn.heads()``）。
 2. 一批太大（参数超过几 MB）会自动拆成几段依次提交，每段各自原子、各自带守卫（后一段的守卫是前一段提交后的版本）。
@@ -307,8 +307,8 @@ class Conn:
         return self._buf is not None
 
     @contextlib.contextmanager
-    def transaction(self, guard: bool = True):
-        """攒写、退出时带守卫一批提交。嵌套时并进外层。``guard=False`` 不核库版本（只写与 changes 无关的表时用）。"""
+    def transaction(self, guard: bool = False):
+        """攒写、退出时一批提交。嵌套时并进外层。``guard=True`` 时提交前核库版本（写 changes 的导入要用）。"""
         if self._buf is not None:
             yield self
             return
@@ -353,6 +353,12 @@ class Conn:
         """→ (columns, rows, rowcount)。"""
         if d1sql.is_noop(sql):
             return [], [], -1
+        m = _PROGRESS_CALL.match(sql)
+        if m:                                       # 原 Postgres 函数 progress.put_*，改在客户端做
+            from . import progress
+            args = _call_args(m.group(2), list(params or []))
+            out = getattr(progress, f"put_{m.group(1)}")(self, *args)
+            return ["put_" + m.group(1)], [(out,)], 1
         if re.match(r"^\s*TRUNCATE\b", sql, re.I):
             sqls = d1sql.truncate_to_delete(sql).split(";")
             for s in sqls[:-1]:
@@ -370,6 +376,27 @@ class Conn:
         (res,), h = self.backend.batch([(q, p)], None)
         self.last_heads = h
         return res
+
+
+_PROGRESS_CALL = re.compile(r"^\s*SELECT\s+progress\.put_(volume|metric)\s*\((.*)\)\s*;?\s*$", re.I | re.S)
+
+
+def _call_args(text: str, params: list) -> list:
+    """``%s, '', NULL, 10, %s::jsonb`` → 实参列表（%s 依次取 params）。"""
+    out, it = [], iter(params)
+    for a in re.findall(r"'(?:[^']|'')*'|[^,]+", text):
+        a = re.sub(r"::\s*\w+$", "", a.strip())
+        if a == "%s":
+            out.append(next(it))
+        elif a.upper() == "NULL":
+            out.append(None)
+        elif a.upper() in ("TRUE", "FALSE"):
+            out.append(a.upper() == "TRUE")
+        elif a.startswith("'"):
+            out.append(a[1:-1].replace("''", "'").replace("%%", "%"))
+        else:
+            out.append(float(a) if "." in a else int(a))
+    return out
 
 
 def _chunks(entries):

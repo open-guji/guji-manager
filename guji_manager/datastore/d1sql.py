@@ -100,6 +100,7 @@ def translate(sql: str, params=None) -> tuple[str, list]:
     """Postgres 写法 → SQLite 写法；返回 (sql, 绑定参数列表)。"""
     if isinstance(params, dict):
         raise Untranslatable("具名参数 %(x)s 不支持，改成 %s")
+    pct = params is not None          # 同 psycopg：给了参数才把 %% 当转义（字符串字面量里也是）
     params = list(params or [])
     parts = _split_strings(sql)
     code = "".join(s if not lit else "''" for lit, s in parts)
@@ -115,9 +116,10 @@ def translate(sql: str, params=None) -> tuple[str, list]:
                     pieces.append("char(10)")
                     continue
                 raise Untranslatable(f"E'…' 字符串只认 E'\\n'：{s}")
-            pieces.append(s)
+            pieces.append(s.replace("%%", "%") if pct else s)
             continue
-        s = s.replace("%%", "\x00").replace("%s", "?").replace("\x00", "%")
+        if pct:
+            s = s.replace("%%", "\x00").replace("%s", "?").replace("\x00", "%")
         for rx, rep in _SIMPLE:
             s = rx.sub(rep, s)
         pieces.append(s)
