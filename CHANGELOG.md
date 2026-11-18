@@ -4,8 +4,9 @@
 
 ## [未发版]
 
+- MINOR：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
 - PATCH：字形库推库补两个洞（全唐文开放行格回库前查出，2026-11-18）。①`db pull --no-rebuild`（含换单 `GUJI_DB_NO_GLYPH` 的 sync）拉到新字形账本却没重建 glyph.db 时，状态记 `glyph_db_stale`；之后 glyph.db 没被动过的，下一次正常 `db sync` 先按账本重建；被动过（回库、落库写进了旧库）就拒导出，免得旧库盖掉账本、推库删掉别人新加的刻例（少于 5% 缩水闸拦不住）。`GUJI_ALLOW_STALE_GLYPH_EXPORT=1` 放行。②`GUJI_GLYPH_DB` 指着别的书的库时，`db pull/sync` 的字形库钩子与 `glyph-db backfill --apply` 一律拒跑。③放行格回库入库前另核：部分副本（`pull --exclude`）推不上中心库，拒入库。
-- MINOR：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（缺省关，`GUJI_AUTO_BACKFILL=0` 临时关）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
+- MINOR：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（当时缺省关，后改缺省开，见上一条）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
 - PATCH：seg check 钉子集合加上册配置 `row_segment.page_map_overrides` 里带 `cuts`／`slots` 的覆盖行（人核格线／格位；`drop` 不算），这些列有结构旗记「已钉·复核」、不进闸；`reference_profile` 声明 text／none（无逐列参校）的页上只有 pair 的对位串错记 `ALIGN_NOREF`，只当提示「对位串错·无逐列参校」，split／run 照算结构（全唐文 11-17 b1 闸 039:78:1：碑誌 text 页放行少凑够 pair、切分对，覆盖行已钉仍报需钉子）。
 - PATCH：R01 `ref_lacuna` 卡片提示、判定说明带上 ▣（以图代字）；文档 `01-粗校/待审原因/ref_lacuna/README.md` 写明〓／▣ 口径（语义相同、只在成因 A2 明细上分开、换含 ▣ 语料先钉认 ▣ 的 cv）。
 - PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。
