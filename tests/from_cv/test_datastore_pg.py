@@ -13,9 +13,7 @@ import uuid
 
 import pytest
 
-psycopg = pytest.importorskip("psycopg")
-DSN = os.environ.get("GUJI_TEST_PG_DSN")
-pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
+DSN = "sqlite"      # 2026-11-18 中心库迁 D1：库换成本机 SQLite（建表同 D1）
 
 
 def _line(**kw) -> str:
@@ -49,14 +47,11 @@ def repo(tmp_path):
 
 @pytest.fixture
 def conn():
-    schema = "t_" + uuid.uuid4().hex[:10]
-    c = psycopg.connect(DSN, autocommit=True)
-    c.execute(f"CREATE SCHEMA {schema}")
-    c.execute(f"SET search_path TO {schema}")
+    from guji_manager.datastore.d1conn import Conn, SqliteBackend
+    c = Conn(SqliteBackend())
     try:
         yield c
     finally:
-        c.execute(f"DROP SCHEMA {schema} CASCADE")
         c.close()
 
 

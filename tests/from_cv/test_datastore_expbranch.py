@@ -42,19 +42,14 @@ def test_write_branch_rules_and_endpoint_lookup(monkeypatch):
     cli_db._check_write_branch(EXP)
     assert cli_db._bucket("main") == "main" and cli_db._bucket(EXP) == "exp"
 
+    # 2026-11-18 中心库迁 D1：分支直接按名字连（Worker 的 /v1/sql?branch=），不再查 Neon 端点
     calls = []
-    monkeypatch.setattr(neonapi, "_get", lambda path: {
-        "branches": [{"name": "main", "id": "br-m"}, {"name": EXP, "id": "br-x"}],
-        "endpoints": [{"id": "ep-m", "branch_id": "br-m", "type": "read_write"},
-                      {"id": "ep-x", "branch_id": "br-x", "type": "read_write"}],
-    })
     monkeypatch.setattr(connect, "connect", lambda endpoint=None: calls.append(endpoint) or "conn")
-    assert cli_db._pg_conn(EXP) == "conn" and calls == ["ep-x"]
+    assert cli_db._pg_conn(EXP) == "conn" and calls == [EXP]
     monkeypatch.setenv("GUJI_DATA_BRANCH", EXP)
     cli_db._pg_conn()
-    assert calls[-1] == "ep-x"
-    with pytest.raises(SystemExit, match="没有分支"):
-        neonapi.branch_endpoint("exp/GUJI-1-none")
+    assert calls[-1] == EXP
+    assert neonapi.branch_endpoint("exp/GUJI-1-none") == "exp/GUJI-1-none"
 
 
 class _Src:

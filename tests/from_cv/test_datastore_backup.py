@@ -11,7 +11,6 @@ import pytest
 from test_datastore_pg import DSN, _commit, conn, repo  # noqa: F401  (fixtures)
 from test_datastore_pull import _workspace
 
-psycopg = pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 
@@ -40,14 +39,11 @@ class _Store:
 
 @pytest.fixture
 def other():
-    schema = "r_" + uuid.uuid4().hex[:10]
-    c = psycopg.connect(DSN, autocommit=True)
-    c.execute(f"CREATE SCHEMA {schema}")
-    c.execute(f"SET search_path TO {schema}")
+    from guji_manager.datastore.d1conn import Conn, SqliteBackend
+    c = Conn(SqliteBackend())
     try:
         yield c
     finally:
-        c.execute(f"DROP SCHEMA {schema} CASCADE")
         c.close()
 
 
@@ -61,7 +57,7 @@ def test_backup_restore_roundtrip(repo, conn, other, tmp_path):  # noqa: F811
 
     st = _Store()
     B.upload(st, "2026-10-19", files, man)
-    st.put_backup("2026-10-01", "x.copy.gz", b"", "")                # 没有清单＝不完整
+    st.put_backup("2026-10-01", "x.jsonl.gz", b"", "")                # 没有清单＝不完整
     assert B.complete_dates(st) == ["2026-10-19"]
     files2, man2 = B.fetch(st, "2026-10-19")
 
@@ -72,8 +68,7 @@ def test_backup_restore_roundtrip(repo, conn, other, tmp_path):  # noqa: F811
     cur = other.cursor()
     cur.execute("SELECT coalesce(max(rev), 0) FROM changes")
     assert cur.fetchone()[0] == man["rev"]
-    cur.execute("SELECT nextval('changes_rev_seq')")                # 序列接着往下走，不撞号
-    assert cur.fetchone()[0] > man["rev"]
+    assert other.heads() == (man["rev"], man["import_id"])            # 号码接着往下走，不撞号
 
     other.execute("UPDATE events SET raw = raw || ' '")
     assert not B.check(other, man2)["ok"]

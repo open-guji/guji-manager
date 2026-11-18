@@ -20,7 +20,6 @@ import pytest
 
 from pg_fixtures import DSN, _commit, _git, _line, conn, repo  # noqa: F401  (fixtures)
 
-psycopg = pytest.importorskip("psycopg")
 needs_pg = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 _spec = importlib.util.spec_from_file_location(
@@ -80,7 +79,7 @@ def _tables(db_path: Path) -> dict[str, list]:
 
 @needs_pg
 def test_materialize_refuses_tampered_db(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.materialize import MaterializeError, materialize
 
@@ -109,7 +108,7 @@ class _FakeDst:
 
 @needs_pg
 def test_import_events_from_exp_branch(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.pull import import_events
 

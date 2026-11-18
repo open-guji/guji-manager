@@ -13,7 +13,6 @@ import pytest
 from pg_fixtures import DSN, _commit, _git, _line, conn, repo  # noqa: F401  (fixtures)
 from test_datastore_pull import _Cache, _tables, _workspace
 
-psycopg = pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
 
 
@@ -25,7 +24,7 @@ def _home(tmp_path, monkeypatch):
 
 
 def _setup(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     c1 = _commit(repo, files, "c1")
@@ -324,7 +323,7 @@ def test_sync_glyph_store_clash_without_new_events_still_stops(repo, conn, tmp_p
 
 def test_anchor_patches_round_trip(repo, conn, tmp_path):  # noqa: F811
     """锚图只记在 anchor_patches_meta（不进 source_files）：迁移不该把它们当差异，新机器 pull 要还原出来。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, local_changes, migrate
     files = _workspace(tmp_path)
@@ -346,7 +345,7 @@ def test_anchor_patches_round_trip(repo, conn, tmp_path):  # noqa: F811
 
 def test_push_refuses_dropping_anchor_patches(repo, conn, tmp_path):  # noqa: F811
     """数据目录里缺了锚图（v0.4.0 及更早的 pull 不还原锚图）时，push 不能把库里的锚图删掉。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import (
         FileDeleteRefused,
@@ -369,7 +368,7 @@ def test_push_refuses_dropping_anchor_patches(repo, conn, tmp_path):  # noqa: F8
 
 def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path):  # noqa: F811
     """库里已有的图不再交给 uploader（每次推都核两万张会拖到连接被断）；只传新图。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, migrate, push
     files = _workspace(tmp_path)
@@ -390,7 +389,7 @@ def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path):  # noqa: F811
 # ---- 整理本进中心库（共享方案 2.2 节，S1）----
 
 def _migrated(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import migrate
     files = _workspace(tmp_path)
@@ -527,7 +526,7 @@ def _lib_store(tmp_path) -> dict[str, bytes]:
 
 def _borrowing(repo, conn, tmp_path):  # noqa: F811
     """库里两个工作区：tws 借 lib 的字形库（workspace.yaml 写工作区名）。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [lib]\n"
@@ -581,7 +580,7 @@ def test_pull_materializes_borrowed_store_and_follows_its_updates(repo, conn, tm
 
 
 def test_borrow_of_missing_or_self_workspace_is_refused(repo, conn, tmp_path):  # noqa: F811
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     files = _workspace(tmp_path)
     files["W/workspace.yaml"] = b"id: tws\nglyph_lib:\n  borrow: [tws]\n"
@@ -596,7 +595,7 @@ def test_borrow_of_missing_or_self_workspace_is_refused(repo, conn, tmp_path):  
 def test_shared_workspaces_are_read_only(repo, conn, tmp_path):  # noqa: F811
     """corpus-base、glyphlib-*：普通 push 拒绝；升级脚本（shared_writer）能写 corpus-base，
     glyphlib-* 发布过就不能再写。"""
-    from open_guji_cv.datastore.client import PgSource
+    from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, pull, push
     files = {"C/workspace.yaml": b"id: corpus-base\n", "C/books/a.yaml": b"id: a\n",
