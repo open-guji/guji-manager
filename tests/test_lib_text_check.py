@@ -144,3 +144,18 @@ def test_page_time_prefers_manifest_ts_over_file_mtime(tmp_path):
     (d / "_manifest.jsonl").write_text(json.dumps({"key": "p0001", "ts": 1700000000.0}) + "\n", encoding="utf-8")
     cells, page_at = LT._seed(tmp_path, "001")
     assert set(cells) == {"001:1:1:1"} and page_at[1].startswith("2023-11-14")
+
+
+def test_ji_yi_si_family_is_not_a_mismatch():
+    lib = {"001:1:1:1": _lib("巳", "human"), "001:1:1:2": _lib("己")}
+    cells = {"001:1:1:1": _cell("已", "human"), "001:1:1:2": _cell("已")}
+    assert set(_cats(lib, cells).values()) == {"ok"}
+
+
+def test_follow_human_relabels_only_when_library_image_looks_like_the_text_char():
+    """库图不像人裁的字：重切后库例挂着旧格号（殿本 vol01），不改标。"""
+    row = _row("follow_human", lib="主", text="王")
+    assert LT.decide(row, canon, "王") == "relabel"
+    assert LT.decide(row, canon, "主") == "evict"                         # 机器刻例撤掉
+    assert LT.decide(_row("follow_human", lib="主", text="王", prov="human"), canon, "主") == "report"
+    assert LT.decide(row, canon, None) == "relabel"                       # 没有识别结果时照旧
