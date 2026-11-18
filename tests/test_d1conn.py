@@ -81,3 +81,27 @@ def test_progress_functions():
     c.execute("SELECT progress.put_metric('', '', %s, %s, %s, NULL, '%%', %s, %s, %s::jsonb, 10)",
               ("jobs", "k.x", "重跑", "A30", "t", json.dumps({"t": 1})))
     assert c.execute("SELECT unit, detail, sort FROM progress_metric").fetchone() == ("%", {"t": 1}, 10)
+
+
+def test_http_token_fallback_on_401(monkeypatch):
+    """GUJI_DATA_TOKEN 是占位值（401）时换 GUJI_DATA_TOKEN_PROD；写也只在 401 时重发（什么都没写）。"""
+    import io
+    import urllib.error
+    import urllib.request
+    monkeypatch.setenv("GUJI_DATA_TOKEN", "placeholder")
+    monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "prod")
+    monkeypatch.delenv("GUJI_DATA_TOKEN_READ", raising=False)
+    seen = []
+
+    def fake(req, context=None, timeout=None):
+        tok = req.headers["Authorization"].split()[1]
+        seen.append(tok)
+        if tok != "prod":
+            raise urllib.error.HTTPError(req.full_url, 401, "x", {}, io.BytesIO(b'{"error":"unauthorized"}'))
+        return io.BytesIO(json.dumps({"results": [], "rev": 1, "import_id": 0}).encode())
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    b = d1conn.HttpBackend("main")
+    assert b.batch([("DELETE FROM db_meta WHERE key = ?", ["x"])]) == ([], (1, 0))
+    assert seen == ["placeholder", "prod"]
+    b.batch([("DELETE FROM db_meta WHERE key = ?", ["x"])])
+    assert seen[-1] == "prod" and len(seen) == 3                 # 之后直接用好的那把
