@@ -277,6 +277,8 @@ WITH c AS (
     AND (%(only)s::bigint IS NULL OR j.id = %(only)s)
     AND (j.run_after IS NULL OR j.run_after <= now() OR %(only)s::bigint IS NOT NULL)
   ORDER BY j.priority,
+    -- 失联被收回的单同优先级里先领（原本已在跑，created_at 不变会排到更早交的整批单后面，史記 r72／r79 重领等 44–50 分）
+    EXISTS (SELECT 1 FROM jobs.attempt l WHERE l.job_id = j.id AND l.outcome = 'lost') DESC,
     EXISTS (SELECT 1 FROM jobs.attempt f WHERE f.job_id = j.id AND f.worker = %(who)s AND f.outcome = 'failed'),
     (j.book IS NOT DISTINCT FROM %(aff)s) DESC, j.created_at, j.id
   FOR UPDATE SKIP LOCKED LIMIT 1)

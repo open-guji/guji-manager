@@ -67,3 +67,9 @@ def test_heartbeat_tells_lost_from_cancel():
     assert S.heartbeat(HBConn(False), 7) == "lost"
     assert S.heartbeat(HBConn(True, cancel=True), 7) == "cancel"
     assert S.heartbeat(HBConn(True), 7) == ""
+
+
+def test_claim_prefers_lost_jobs_within_priority():
+    i = S._CLAIM.index("ORDER BY j.priority,")
+    tail = S._CLAIM[i:]
+    assert tail.index("outcome = 'lost'") < tail.index("j.created_at")
