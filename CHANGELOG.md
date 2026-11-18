@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.4.60] - 测试中
+## [0.4.60] - 2026-11-17
 
 - 发版说明（A20 11-18）：dev 头，PATCH。中心库切 D1（用户 11-18「开始切换」），执行方升级后只要 GUJI_DATA_TOKEN。
 - PATCH（按用法算接近 MINOR，用户 11-18 定切换时一并发）：中心库从 Neon 迁 Cloudflare D1。`datastore` 全部改走 data.open-guji.com 的 `/v1/sql`（`d1conn`／`d1sql` 垫片翻译老的 Postgres 写法，写入带库版本守卫、整批原子）；执行方只要 `GUJI_DATA_TOKEN`，不再要 `NEON_DATABASE_URL`／psycopg。大文件原文进 R2；`progress.put_*` 改 Python 实现；实验分支＝独立 D1 库，`db branch create -w` 按工作区复制。
