@@ -449,7 +449,7 @@ def recall(ruler: list[dict], rows: dict[str, list], products_dir: Path, books: 
         for r in rs:
             if str(r[2]).lstrip("-").isdigit():
                 flagged[name].add((r[0], int(r[1]), int(r[2])))
-            elif name in ("colnet_page", "layout_col_shift", "frame_margin"):
+            elif name in ("colnet_page", "layout_col_shift", "frame_margin", "gutter_ink"):
                 flagged[name].add((r[0], int(r[1]), None))
     stale_pins = {(r[0], int(r[1]), int(r[2])) for r in rows.get("pin_stale", [])}
     run_ts = {b: page_run_ts(products_dir, b) for b in books}
