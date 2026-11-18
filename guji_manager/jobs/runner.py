@@ -588,19 +588,33 @@ def _refresh_manager() -> None:
         pass
 
 
+#: 自更新 merge 的超时（秒）。落后几百个提交时 checkout 慢，原来 120 秒偏紧
+REFRESH_TIMEOUT_S = int(os.environ.get("GUJI_JOBS_REFRESH_TIMEOUT_S") or 300)
+
+
 def _refresh_runner() -> bool:
-    """把执行方自己的检出快进到 origin/dev（并把 guji-manager 检出切到 main）。只有 HEAD 真的等于 origin/dev 才算成（否则 exec 完还会判定过期、来回折腾）。"""
+    """把执行方自己的检出快进到 origin/dev（并把 guji-manager 检出切到 main）。只有 HEAD 真的等于 origin/dev 才算成（否则 exec 完还会判定过期、来回折腾）。
+
+    失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
+    当时看不出是超时还是 merge 报错。"""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     _refresh_manager()
     try:
-        subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
-                       text=True, timeout=120, env=env, check=True)
+        r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
+                           text=True, timeout=REFRESH_TIMEOUT_S, env=env)
+        if r.returncode != 0:
+            print(f"[runner 自更新] git merge --ff-only origin/dev 失败（退出码 {r.returncode}）："
+                  f"{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+            return False
         head = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
                               timeout=30).stdout.strip()
         tip = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "origin/dev"], capture_output=True, text=True,
                              timeout=30).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[runner 自更新] {type(e).__name__}: {str(e)[:300]}", flush=True)
         return False
+    if not (head and head == tip):
+        print(f"[runner 自更新] merge 后 HEAD {head[:8]} 不等于 origin/dev {tip[:8]}", flush=True)
     return bool(head) and head == tip
 
 
