@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：执行方自更新（`_refresh_runner`）ff 失败时，若 runner 检出工作区干净（准备脚本把它切到了单上钉的 cv：tag、rc 头、功能分支提交，HEAD 不在 origin/dev 线上），改为 `checkout --detach origin/dev`，不再「拉不动」自退；有未提交改动仍不动并写日志。
+
 - PATCH：放行格回库数「各字现有刻例」时不再把借来的刻例算进去（`ops/lib_backfill.lib_state` 排除 `borrowed` 表；OCR 研究 Project 11-18，Sheldon：新书快审能否部分自动入库）。借库的新书此前本书没有的字被当成不缺例，一格都不补（脉经本书 570 字头被数成 4,336）。不借库的书行为不变。文档 `doc/01-粗校/开书/放行格回库.md` 加第七节：借库阶段把 `match_ref` 加进回库通道顶替大部分冷启动快审，附脉经第 1 册实测（人审 1,189 格与机器放行字全部一致）。
 
 - PATCH：执行方自更新（`_refresh_runner`）失败时把 merge 的 stderr／超时写进日志，merge 超时 120→300 秒（`GUJI_JOBS_REFRESH_TIMEOUT_S`）。11-18 多台 runner 同时「dev 有更新但拉不动」自退，检出是干净的 detached HEAD、手动 ff 正常，当时看不出原因。
