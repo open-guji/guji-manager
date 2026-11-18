@@ -15,19 +15,69 @@ def _cell(ch, channel="rare_ref", cov=0.9, admit=True):
     return {"admit": admit, "char": ch, "channel": channel, "evidence": {"cov": cov}}
 
 
-def test_select_only_sparse_chars_from_witnessed_channels():
+def test_select_tiers_and_caps():
     cells = {
         "001:1:1:1": _cell("樹", cov=0.80),
         "001:2:1:1": _cell("樹", cov=0.95),
-        "001:3:1:1": _cell("之"),                          # 库里已够 3 例
-        "001:4:1:1": _cell("鄲", channel="match_ref"),      # 通道不在名单
+        "001:3:1:1": _cell("之", channel="match_ref"),      # 乙档：库里不足 cap（20）就是候选
+        "001:3:2:1": _cell("之", channel="witness3"),       # 丙档：库里已够 thin（3）例，不选
+        "001:4:1:1": _cell("以", channel="match_ref"),      # 库里已满 cap
         "001:5:1:1": _cell("蟲", admit=False),              # 没放行
         "001:6:1:1": _cell("⿰木寸"),                       # 不是单个汉字
-        "001:7:1:1": _cell("瘞", channel="witness3"),
+        "001:7:1:1": _cell("瘞", channel="witness3"),       # 丙档：库里 0 例，选
+        "001:7:2:1": _cell("瘞", channel="rare_ref", cov=0.5),   # 乙档排在丙档前
+        "001:8:1:1": _cell("鄲", channel="context"),        # 文意通道不在名单
+        "001:9:1:1": _cell("已", channel="match_ref"),      # 按文意定的字组不进
     }
-    cand, stat = LB.select(cells, _state({"之": 3}), set())
-    assert cand == {"樹": ["001:2:1:1", "001:1:1:1"], "瘞": ["001:7:1:1"]}   # 覆盖度高的在前
-    assert stat["放行格"] == 6 and stat["不是单个汉字"] == 1
+    cand, stat = LB.select(cells, _state({"之": 3, "以": 20}), set())
+    assert cand == {"樹": ["001:2:1:1", "001:1:1:1"], "之": ["001:3:1:1"], "瘞": ["001:7:2:1", "001:7:1:1"]}
+    assert stat["放行格"] == 10 and stat["不是单个汉字"] == 1 and stat["文意字组"] == 1
+
+
+def test_select_match_ref_gap():
+    cells = {k: _cell("郎", channel="match_ref") for k in ("001:1:1:1", "001:2:1:1", "001:3:1:1", "001:4:1:1")}
+    gm = {"001:1:1:1": {"candidates": [["郎", 0.99], ["郞", 0.989]]},       # 两形贴得近：不进
+          "001:2:1:1": {"candidates": [["郎", 0.99], ["朗", 0.95]]},
+          "001:3:1:1": {"candidates": [["朗", 0.99]]}}                      # 放行字不在候选里：不进；第 4 格没有记录：不进
+    cand, stat = LB.select(cells, _state(), set(), gm=gm)
+    assert cand == {"郎": ["001:2:1:1"]} and stat["match_ref 分差不足"] == 3
+    assert LB.match_gap({"candidates": [["郎", 0.99]]}, "郎") == pytest.approx(0.99)
+
+
+def test_spread():
+    ks = [str(i) for i in range(10)]
+    assert LB.spread(ks, 4) == ["0", "3", "6", "9"] and LB.spread(ks[:3], 6) == ks[:3]
+    assert LB.spread(ks, 1) == ["0"] and LB.spread(ks, 0) == []
+
+
+def _v(*xs):
+    import numpy as np
+    a = np.array(xs, dtype=np.float32)
+    return a / np.linalg.norm(a)
+
+
+def test_pick_diverse_farthest_first_and_dedup():
+    exist = [_v(1, 0, 0)]
+    cands = [(_v(1, 0.01, 0), False),      # 与已有例几乎一样：重复
+             (_v(1, 0.5, 0), False),
+             (_v(1, 1, 0), False),         # 离已有例最远：先挑
+             (_v(1, 0.6, 0), True)]        # 丙档：已有例不足 thin 才用
+    chosen, dropped = LB.pick_diverse(exist, cands, 2, n_exist=1, dup_sim=0.97, far_sim=0.1)
+    assert [i for i, _ in chosen] == [2, 1] and dropped[0][0] == "dup"
+    chosen, _ = LB.pick_diverse(exist, cands[:1] + cands[3:], 2, n_exist=1, dup_sim=0.97, far_sim=0.1)
+    assert [i for i, _ in chosen] == [1]                       # 乙档没有了才用丙档
+    chosen, _ = LB.pick_diverse(exist, cands[3:], 2, n_exist=3, dup_sim=0.97, far_sim=0.1)
+    assert chosen == []                                        # 已够 thin 例，丙档不进
+
+
+def test_pick_diverse_outlier_and_empty_lib():
+    far = (_v(0, 0, 1), False)
+    chosen, dropped = LB.pick_diverse([_v(1, 0, 0)] * 3, [far], 2, n_exist=3, dup_sim=0.97, far_sim=0.5)
+    assert chosen == [] and dropped[0][0] == "far"             # 已有 3 例而全都不像：离群，不自动进
+    chosen, dropped = LB.pick_diverse([_v(1, 0, 0)], [far], 2, n_exist=1, dup_sim=0.97, far_sim=0.5)
+    assert [i for i, _ in chosen] == [0]                       # 例数还少时不判离群
+    chosen, _ = LB.pick_diverse([], [(_v(1, 0, 0), False), (_v(1, 0.01, 0), False), (_v(0, 1, 0), False)], 2, n_exist=0)
+    assert [i for i, _ in chosen] == [0, 2]                    # 库里没有例：先取第一个，再取离它最远的；重复的不取
 
 
 def test_select_skips_in_lib_human_and_evicted_cells():
@@ -90,6 +140,9 @@ def test_config(tmp_path):
     assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP}
     y.write_text("glyph_lib:\n  auto_backfill: {cap: 5, channels: [rare_ref]}\n", encoding="utf-8")
     assert LB.config(tmp_path) == {"channels": ("rare_ref",), "cap": 5}
+    y.write_text("glyph_lib:\n  auto_backfill: {per_book: 3, dup_sim: 0.95, tier_c: [witness3]}\n", encoding="utf-8")
+    assert LB.config(tmp_path) == {"channels": LB.CHANNELS, "cap": LB.CAP, "per_book": 3, "dup_sim": 0.95,
+                                   "tier_c": ("witness3",)}
     y.write_text("glyph_lib:\n  auto_backfill: {caps: 5}\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         LB.config(tmp_path)

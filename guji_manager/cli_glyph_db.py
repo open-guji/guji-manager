@@ -44,9 +44,24 @@ def cmd_glyph_db(args):
         return
     if args.action == "backfill":      # 放行格回库（自己开关库，不走下面的公共 db 句柄）
         from .ops import lib_backfill as LB
+        if args.from_pool:             # 一次性补历史册的第二步：合各册候选统一挑、入库
+            import glob as _glob
+            kw = {"cap": args.cap} if args.cap else {}
+            rep = LB.run_pools(sorted(_glob.glob(str(Path(args.from_pool) / "*.pkl"))), apply=args.apply,
+                               batch=args.batch, report=args.report, log=print, **kw)
+            print(("✓ " if rep.get("admitted") else "（只报告，没动库）" if not args.apply else "") + LB.summary(rep))
+            return
         if not args.books:
             raise SystemExit("backfill 要给 --books 册号（逗号分隔）")
         kw = {}
+        if args.pool:
+            Path(args.pool).mkdir(parents=True, exist_ok=True)
+            for b in [x.strip() for x in args.books.split(",") if x.strip()]:
+                rep = LB.run([b], pool=str(Path(args.pool) / f"{b}.pkl"), log=print,
+                             **({"channels": tuple(x.strip() for x in args.channels.split(",") if x.strip())}
+                                if args.channels else {}))
+                print(f"  {b}: 候选 {rep.get('pooled', 0)} 格存到 {args.pool}/{b}.pkl；{LB.summary(rep)}")
+            return
         if args.cap:
             kw["cap"] = args.cap
         if args.channels:
@@ -297,8 +312,12 @@ def add_parser(sub) -> None:
                    help="backfill／text-check 用：册号，逗号分隔。backfill 把这些册机器放行、库里缺例的字核验后补进库"
                         "（ops/lib_backfill.py；不加 --apply 只报告）")
     p.add_argument("--batch", default=None, help="backfill 用：批次名（缺省 auto-backfill-<年月日>，整批撤回按它）")
-    p.add_argument("--cap", type=int, default=None, help="backfill 用：每字补到几例（缺省 3）")
-    p.add_argument("--channels", default=None, help="backfill 用：放行通道，逗号分隔（缺省 rare_ref,witness3）")
+    p.add_argument("--cap", type=int, default=None, help="backfill 用：每字最多几例（缺省 20）")
+    p.add_argument("--channels", default=None, help="backfill 用：收哪些放行通道，逗号分隔（缺省乙档 match_ref,rare_ref 加丙档 witness3 等，见 ops/lib_backfill.py）")
+    p.add_argument("--pool", default=None,
+                   help="backfill 用（一次性补历史册第一步）：只选格、核验，各册候选连图存到这个目录的 <册>.pkl，不挑不入库，可并行")
+    p.add_argument("--from-pool", default=None,
+                   help="backfill 用（第二步）：合这个目录里各册的候选，按册序统一挑有区别的例；加 --apply 入库")
     p.add_argument("--report", default=None, help="backfill／backfill-audit 用：逐格报告写到这个 json")
     p.add_argument("--before", default=None, help="backfill-audit 用：前一轮（回库前的库跑的）产物根")
     p.add_argument("--after", default=None, help="backfill-audit 用：后一轮（回库后的库跑的）产物根")
