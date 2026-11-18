@@ -48,7 +48,8 @@ def connect():
 
 
 def connect_neon():
-    """连 Neon 中心库（旧路）。中心库的 progress 看板仍写这里，不随任务库切走。"""
+    """连中心库（名字沿用；2026-11-18 起是 D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
+    ``GUJI_JOBS_BRANCH`` 只给测试连别的分支。"""
     from ..datastore.connect import connect as _connect
     br = os.environ.get("GUJI_JOBS_BRANCH")
     if br and br != "main":
@@ -73,13 +74,19 @@ class DB:
     def __call__(self, fn, *a, **kw):
         import time
 
-        import psycopg
+        from ..datastore import d1conn
+        errs: tuple = (d1conn.OperationalError,)
+        try:
+            import psycopg
+            errs += (psycopg.OperationalError, psycopg.InterfaceError, psycopg.errors.FeatureNotSupported)
+        except ImportError:
+            pass
         for i in range(6):
             try:
                 if self.c is None or self.c.closed:
                     self.c = self.factory()
                 return fn(self.c, *a, **kw)
-            except (psycopg.OperationalError, psycopg.InterfaceError, psycopg.errors.FeatureNotSupported):
+            except errs:
                 # FeatureNotSupported：表加列后老连接缓存的计划失效（cached plan must not change result type），重连即好
                 self.close()
                 if i == 5:

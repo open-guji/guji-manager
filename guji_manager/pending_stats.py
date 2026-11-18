@@ -17,7 +17,7 @@
 全册格数分母仍是 `progress.volume.cells_total`（含非正文页，库里没有分页格数），所以正文人审率略偏低。
 
 统计的是「线上单」，不是 ★main 包：单子落后于 main 包时数字也落后（报告里列了每册单子的版本和时间，落后的先重出单）。
-连库：GUJI_DATA_PG_DSN，或 NEON_DATABASE_URL（自动起 443 桥）。
+连库：中心库（D1）经 Worker，要 GUJI_DATA_TOKEN（2026-11-18 起）。
 过渡期直接 import open_guji_cv 的 datastore.connect、groups.registry（用户 10-27 允许），装了 cv 才能跑；离线 `--from-dir` 且待审单自带 `grp` 时不需要。
 """
 from __future__ import annotations

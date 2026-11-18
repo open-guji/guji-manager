@@ -13,9 +13,7 @@ import uuid
 
 import pytest
 
-psycopg = pytest.importorskip("psycopg")
-DSN = os.environ.get("GUJI_TEST_PG_DSN")
-pytestmark = pytest.mark.skipif(not DSN, reason="没有 GUJI_TEST_PG_DSN（测试用 Postgres）")
+DSN = "sqlite"      # 2026-11-18 中心库迁 D1：库换成本机 SQLite（建表同 D1）
 
 
 def _line(**kw) -> str:
@@ -49,14 +47,11 @@ def repo(tmp_path):
 
 @pytest.fixture
 def conn():
-    schema = "t_" + uuid.uuid4().hex[:10]
-    c = psycopg.connect(DSN, autocommit=True)
-    c.execute(f"CREATE SCHEMA {schema}")
-    c.execute(f"SET search_path TO {schema}")
+    from guji_manager.datastore.d1conn import Conn, SqliteBackend
+    c = Conn(SqliteBackend())
     try:
         yield c
     finally:
-        c.execute(f"DROP SCHEMA {schema} CASCADE")
         c.close()
 
 
@@ -187,3 +182,18 @@ def test_import_only_paths_touches_just_those_files(repo, conn):
     files["W/feedback/consumed/glyphdb_admit.jsonl"] = (_line(event="evt_b_000001", ts="t", note="b") + "\n").encode()
     c2 = _commit(repo, files, "c2")
     assert verify_commit(conn, repo, c2)["ok"]               # 库里拼回来就是改后的提交
+
+
+def test_branch_copy_keeps_revs(repo, conn):  # noqa: F811
+    """D1 开实验分支是空库：按工作区从 main 复制，rev／import_id 原样，复制后核对通过。"""
+    from guji_manager.datastore.branchcopy import copy_workspaces
+    from guji_manager.datastore.d1conn import Conn, SqliteBackend
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.verify import verify_commit
+    c1 = _commit(repo, _base(), "c1")
+    import_commit(conn, repo, c1)
+    exp = Conn(SqliteBackend())
+    st = copy_workspaces(conn, exp, ["tws"])
+    assert st["events"] == 2 and st["changes"] > 0 and st["imports"] == 1
+    assert exp.heads() == conn.heads()
+    assert verify_commit(exp, repo, c1)["ok"]

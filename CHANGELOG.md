@@ -5,6 +5,15 @@
 ## [未发版]
 
 - PATCH：叠图底图可选彩图／二值／灰度＋二值体检可疑区（彩图书双层显示，用户 11-17 定）：`render.overlay.overlay(..., bg="color"|"bin"|"gray", qc=False)`，缺省与改前逐像素相同；`bin` 读 cv 整页二值副本，没生成退回原图；`qc` 画 cv `binarized/<书>/<页>.qc.json` 的 color_mark／bin_diff／speckle 框。`_cv`、`console_api` 登记 `binarized_or_none`、`read_qc`、`canon_box_suspect`（要 cv ≥ #1650）。文档：`参考/册配置.md` 加 `ink`，S0 开书体检加「墨层与二值」一步（新书缺省写 `ink: {}`）。
+
+## [0.4.61] - 2026-11-17
+
+- PATCH（#653，随 dev 头带入本版）：待审格与人改字不留阙文（用户 11-18「只有真的阙字才显示阙文」）。swap book-text 换完仍是 □ 的待审格按新单 `first_choice` 写首选字、去 lacuna；`overlay_edits` 人改字叠回新包改成真字时去 lacuna／guess_c（殿本 68 格「标了 lacuna 却有字」即此来）。
+- PATCH：连中心库的令牌先 GUJI_DATA_TOKEN、再 GUJI_DATA_TOKEN_PROD（实验分支先 _EXP）、_READ，回 401 换下一把（云端会话的 GUJI_DATA_TOKEN 是占位值）；测试一律清掉中心库令牌（之前有测试会真写看板）。
+## [0.4.60] - 2026-11-17
+
+- 发版说明（A20 11-18）：dev 头，PATCH。中心库切 D1（用户 11-18「开始切换」），执行方升级后只要 GUJI_DATA_TOKEN。
+- PATCH（按用法算接近 MINOR，用户 11-18 定切换时一并发）：中心库从 Neon 迁 Cloudflare D1。`datastore` 全部改走 data.open-guji.com 的 `/v1/sql`（`d1conn`／`d1sql` 垫片翻译老的 Postgres 写法，写入带库版本守卫、整批原子）；执行方只要 `GUJI_DATA_TOKEN`，不再要 `NEON_DATABASE_URL`／psycopg。大文件原文进 R2；`progress.put_*` 改 Python 实现；实验分支＝独立 D1 库，`db branch create -w` 按工作区复制。
 - PATCH：任务库隧道线程（`jobs/jobsdb.py`）若死了（事件循环崩），`_tunnel_port` 换端口重建，不再一直连不上；线程退出会在 stderr 留一行（专家 11-18，runner 大批消失排查时发现的小洞，没证据真发生过）。
 
 ## [0.4.59] - 2026-11-17

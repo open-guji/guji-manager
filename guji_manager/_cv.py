@@ -160,7 +160,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "_BOOK": ("feedback.keys", "_BOOK"),
     "_ID_PATTERNS": ("feedback.keys", "_ID_PATTERNS"),
     "parse_card_id": ("feedback.keys", "parse_card_id"),
-    "PgSource": ("datastore.client", "PgSource"),
+    "PgSource": ("datastore.client", "PgSource"),   # 旧；中心库迁 D1 后 manager 用 datastore.sqlsource.SqlSource
     "INVERTED_BAND_SHARD": ("utils.preclean", "INVERTED_BAND_SHARD"),
     "read_view": ("products.alt_view", "read_view"),
     "page_slots": ("report.slots", "page_slots"),

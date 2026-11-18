@@ -497,7 +497,7 @@ def main(argv=None) -> None:
     import argparse
     import sys
 
-    from .._cv import PgSource
+    from ..datastore.sqlsource import SqlSource as PgSource
     from .._cv import connect
     from .._cv import import_scans
     from .._cv import materialize_materialize as materialize
