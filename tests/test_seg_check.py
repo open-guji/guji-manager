@@ -179,6 +179,18 @@ def test_align_pair_on_noref_page_is_hint():
     assert out["b:78:2"][1] == "需钉子" and out["b:79:1"][1] == "需钉子"
 
 
+def test_ink_loss_is_cv_disposition():
+    """清界行抹笔（erased）、字框外丢墨（bbox_drop）→「cv丢笔」，排在需钉子前；同列另有漏切块也归 cv丢笔（单字成列「制」，全唐文 R038）。"""
+    rows = {"erased": [("b", 121, 1, 1128, "bbox [262, 1214, 281, 1304]")],
+            "bbox_drop": [("b", 33, 7, "5", "墨 2716px bbox [215, 851, 258, 1034]")],
+            "orphan": [("b", 33, 7, 0.49, "mid 墨 2739px bbox [215, 851, 258, 1039]")]}
+    out = sc.aggregate("b", rows, set(), {}, skip=set())
+    got = {r["列"]: (r["类"], r["处置"]) for r in out}
+    assert got == {"b:121:1": ("结构", "cv丢笔"), "b:33:7": ("结构", "cv丢笔")}
+    from guji_manager.seg_gate import STRUCT_ACTS
+    assert "cv丢笔" in STRUCT_ACTS
+
+
 def test_override_pins(tmp_path, monkeypatch):
     """page_map_overrides 里带 cuts／slots 的行算钉子（drop、只改 pitch 的不算；别册的不算）。"""
     f = tmp_path / "ov.jsonl"
