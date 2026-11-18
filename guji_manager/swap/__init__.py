@@ -150,8 +150,8 @@ def parse_cycle_log(text: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for line in text.splitlines():
         p = line.split("\t")
-        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and (p[1].startswith("→") or p[1] == "fresh"):
-            # fresh：线上单已基于现在的 main 包，不用换（auto_cycle 的计划行不带「→」，只有 fresh 是终态）
+        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and (p[1].startswith("→") or p[1] in ("fresh", "waiting")):
+            # fresh：线上单已基于现在的 main 包，不用换；waiting：线上单的票还没投完，等着（计划行都不带「→」）
             out[p[0]] = {"verdict": p[1].lstrip("→ ").strip(), "why": p[2] if len(p) > 2 else ""}
     return out
 
