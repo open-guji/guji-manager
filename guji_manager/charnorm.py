@@ -43,6 +43,28 @@ class CharNorm:
 IDENT = CharNorm()      # 不归一：same 即 ==
 
 
+def codepoints_of(data_dir, book: str | None = None) -> dict[str, str]:
+    """直接读数据目录里的码位表：``config/codepoints.yaml`` < ``book_defaults.yaml`` 的 codepoints < 册 yaml（同 cv
+    ``core.book`` 与 cv ``proof_cycle.codepoint_map`` 的优先级）。不靠 cv 找工作区——``load_book`` 找不到册时会静默
+    退成字面比较（ZM 11-18 vol01 1.x 换包把只差码位的 26 格改了字）。读不到返回空。"""
+    from pathlib import Path
+    import yaml
+    d = Path(data_dir)
+    out: dict[str, str] = {}
+    files = [d / "config" / "codepoints.yaml", d / "config" / "book_defaults.yaml"]
+    if book:
+        files.append(d / "books" / f"{book}.yaml")
+    for f in files:
+        try:
+            y = yaml.safe_load(f.read_text(encoding="utf-8")) or {} if f.exists() else {}
+        except (OSError, yaml.YAMLError):
+            continue
+        cps = y.get("codepoints") if isinstance(y, dict) else None
+        if isinstance(cps, Mapping):
+            out.update({str(k): str(v) for k, v in cps.items()})
+    return out
+
+
 def load_norm(book: str | None = None, extra: Mapping[str, str] | None = None) -> CharNorm:
     """取本书的归一表。cv 读不到时只用 ``extra``（永不抛错：归一是增强，拿不到就按字面比，和旧行为一致）。"""
     m: dict[str, str] = {}
