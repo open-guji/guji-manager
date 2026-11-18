@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- MINOR：库文一致（Sheldon 11-18「字形库和实际的文本应该要是一致的」，过程要自动）。新 `guji glyph-db text-check --books … [--apply]`（`ops/lib_text_check.py`）：库里每个刻例的字按书级码位归一后对本机 `seed_admit` 产物同一格的字，不一致的分类处理：库例晚于产物的页标失效待 `rerun --stale`；文本是人裁的库例跟着改标；两边都是机器的过字体模板重新识别（认成文本的字则库改标且保持机器来路，认成库标则这一格进待审单复审，都不是则撤库例并回人审）；库是人裁而文本没采信的进待审单复审；格已不在的机器刻例撤掉。`guji pipeline` 整册跑完自动比一遍，缺省只报告，`workspace.yaml` `glyph_lib.text_check: apply` 才处理、`false` 关，`GUJI_LIB_TEXT_CHECK=0` 临时关。`glyph_audit relabel` 认 `payload.provenance: "auto"`（只对机器来路刻例有效）。文档 `doc/01-粗校/开书/库文一致.md`。全唐文 b2 产物 001–045 册首跑：36,044 例里不一致 145（另 13 格在待审）。
+
 ## [0.4.61] - 2026-11-17
 
 - PATCH（#653，随 dev 头带入本版）：待审格与人改字不留阙文（用户 11-18「只有真的阙字才显示阙文」）。swap book-text 换完仍是 □ 的待审格按新单 `first_choice` 写首选字、去 lacuna；`overlay_edits` 人改字叠回新包改成真字时去 lacuna／guess_c（殿本 68 格「标了 lacuna 却有字」即此来）。
