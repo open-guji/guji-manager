@@ -11,6 +11,7 @@ def _job(why):
     j = object.__new__(R.Job)
     j.stage = "x"
     j.aid = 1
+    j.id = 5
     j.log = io.StringIO()
     j.cancel = threading.Event()
     j.lease_lost = False
