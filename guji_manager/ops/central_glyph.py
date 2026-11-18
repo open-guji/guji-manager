@@ -85,8 +85,31 @@ def export_signature(db: Path) -> str:
     return h.hexdigest()
 
 
+def foreign_glyph_db(ws_dir: Path) -> str | None:
+    """设了 ``GUJI_GLYPH_DB`` 且指的不是本工作区自己的 glyph.db（如全唐文借四庫库跑批）时返回说明，否则 None。
+
+    这时 ``db pull/sync`` 的重建、导出、回库都会落到那个库上：拿别的书的库重建、或把它导出成本书账本推上中心库
+    （2026-11-18 全唐文开放行格回库前查出）。中心库读写一律用本书库。"""
+    import os
+    env = os.environ.get("GUJI_GLYPH_DB")
+    if not env:
+        return None
+    os.environ.pop("GUJI_GLYPH_DB")
+    try:
+        own = _db_path(ws_dir)
+    finally:
+        os.environ["GUJI_GLYPH_DB"] = env
+    if Path(env).expanduser().resolve() == Path(own).resolve():
+        return None
+    return (f"GUJI_GLYPH_DB={env} 不是本工作区的字形库（{own}）：中心库同步、回库只能用本书库，"
+            f"先 unset GUJI_GLYPH_DB 再跑")
+
+
 def glyph_hooks(ws_dir: Path):
     from .._cv import GlyphHooks
+    bad = foreign_glyph_db(ws_dir)
+    if bad:
+        raise SystemExit("✗ " + bad)
     return GlyphHooks(fingerprint=export_signature, export=export_db, rebuild=rebuild_db,
                       db_path=_db_path(ws_dir))
 

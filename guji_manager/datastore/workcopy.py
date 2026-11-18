@@ -127,6 +127,9 @@ GLYPH_SHRINK_RATIO = 0.95                                # 导出后某个账本
 
 
 ALLOW_DUP_KEYS_ENV = "GUJI_ALLOW_DUP_KEYS"
+#: 状态里的标记：数据目录的字形账本比 glyph.db 新（``db pull --no-rebuild`` 拉到了新账本却没重建库）
+GLYPH_DB_STALE = "glyph_db_stale"
+ALLOW_STALE_GLYPH_ENV = "GUJI_ALLOW_STALE_GLYPH_EXPORT"
 
 
 def dup_key_problems(problems: list[str], changed: set[str]) -> list[str]:
@@ -173,6 +176,14 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
     fp = glyph.fingerprint(glyph.db_path)
     if state is not None and fp == state.get("glyph_db_fp"):
         return False
+    if state is not None and state.get(GLYPH_DB_STALE) and os.environ.get(ALLOW_STALE_GLYPH_ENV) != "1":
+        # 2026-11-18（全唐文开放行格回库前查出的洞）：`db pull --no-rebuild` 拉到了新的字形账本、glyph.db 却还是旧的，
+        # 状态里的指纹也还是旧库的。之后有人往这个旧库里写（回库、人裁落库），导出就会拿旧库把新账本整个盖掉，
+        # 别人新加的刻例在推库时被删——少于 5% 时缩水闸拦不住。
+        raise SystemExit(
+            f"✗ 本机 glyph.db 比数据目录的字形账本旧（上次 `guji db pull` 带了 --no-rebuild），之后又被改过：导出会用旧库"
+            f"盖掉账本、推库时删掉别人新加的刻例，已停下、没导出。先备份要留的本地改动，`guji db pull --force`"
+            f"（重建 glyph.db，会丢本地没推的改动），再重做刚才的回库／落库；确知本机库是新的设 {ALLOW_STALE_GLYPH_ENV}=1。")
     store = data / GS.rstrip("/")
     before = _jsonl_rows(store)
     backup: dict[str, bytes] = {f.name: f.read_bytes() for f in store.glob("*.jsonl")} if store.is_dir() else {}
@@ -186,6 +197,26 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
             "先 `guji db pull --force -w <工作区>`（会重建字形库，约 2 分钟）再 sync／push；"
             f"确要缩小的人为清理设 {ALLOW_GLYPH_SHRINK_ENV}=1。")
     return True
+
+
+def _refresh_stale_db(glyph: GlyphHooks | None, ws_dir: Path, data: Path, st: dict, *, src=None, cache=None,
+                      bucket: str = "main") -> dict:
+    """账本比 glyph.db 新、而 glyph.db 自那以后没被动过（指纹仍是状态里记的）：现在按账本重建，清掉标记。
+
+    换单（``GUJI_DB_NO_GLYPH``）的 sync 只拉不重建，之后一次正常 sync 就在这里补上；库被动过就不碰，
+    交 ``_export_if_changed`` 拦下（重建会丢掉那些改动）。"""
+    if glyph is None or not st.get(GLYPH_DB_STALE) or not Path(glyph.db_path).exists():
+        return st
+    if glyph.fingerprint(glyph.db_path) != st.get("glyph_db_fp"):
+        return st
+    if borrow_entries(ws_dir) and src is None:          # 借库要连库解析，拿不到就不重建（重建成不带借库的库更糟）
+        return st
+    extras = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)[0] if borrow_entries(ws_dir) else []
+    glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
+    st = {k: v for k, v in st.items() if k not in (GLYPH_DB_STALE, "at")}
+    st["glyph_db_fp"] = glyph.fingerprint(glyph.db_path)
+    write_state(data, **st)
+    return st
 
 
 def local_changes(ws_dir: Path, glyph: GlyphHooks | None = None) -> list[str]:
@@ -664,6 +695,8 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
         out["corpus_base"] = cb
     fp = (st or {}).get("glyph_db_fp")
     bsig = (st or {}).get("borrow", [])
+    # 没重建就记下「库比账本旧」，重建了再清。新机器第一次拉（还没有状态）不记：那时本机多半还没有 glyph.db
+    stale = bool((st or {}).get(GLYPH_DB_STALE)) or (store_changed and st is not None)
     if glyph is not None:
         extras, bsig = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)
         if extras:
@@ -671,8 +704,12 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
         if store_changed or not Path(glyph.db_path).exists() or force or bsig != (st or {}).get("borrow", []):
             out["glyph_db"] = glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
             fp = glyph.fingerprint(glyph.db_path)
+            stale = False
+    if stale:
+        out[GLYPH_DB_STALE] = True
     write_state(data, ws=ws, branch=str(m.get("branch") or "main"), rev=rev, base=base, glyph_db_fp=fp,
-                borrow=bsig, **({"exclude": list(exclude)} if exclude else {}))
+                borrow=bsig, **({"exclude": list(exclude)} if exclude else {}),
+                **({GLYPH_DB_STALE: True} if stale else {}))
     if seed_rev is not None:
         out["snapshot_rev"] = seed_rev
     if exclude:
@@ -857,7 +894,8 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                     else:
                         new_base.pop(rel, None)
         write_state(data, ws=sc.ws, branch=st.get("branch", "main"), rev=rep.rev_to,
-                    base=new_base, glyph_db_fp=fp, borrow=st.get("borrow", []))
+                    base=new_base, glyph_db_fp=fp, borrow=st.get("borrow", []),
+                    **({GLYPH_DB_STALE: True} if st.get(GLYPH_DB_STALE) else {}))
     return out
 
 
@@ -1192,6 +1230,7 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         raise SystemExit(f"数据目录 {data} 没有 {STATE}：先 guji db pull -w {ws_dir}")
     _partial_guard(st, "sync")
     ws = str(st["ws"])
+    st = _refresh_stale_db(glyph, ws_dir, data, st, src=src, cache=cache, bucket=bucket)
     exported = _export_if_changed(glyph, data, st)
     base = st["base"]
     local = manifest(ws_dir, data)
@@ -1302,12 +1341,14 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         store_changed = True
         out["replay_unconsumed"] = _drop_glyph_consumed(data, replay_ids)
     fp = st.get("glyph_db_fp")
+    stale = bool(st.get(GLYPH_DB_STALE)) or store_changed
     if glyph is not None and store_changed and Path(glyph.db_path).exists():
         extras, _ = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)
         out["glyph_db"] = glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
         fp = glyph.fingerprint(glyph.db_path)
+        stale = False
     write_state(data, ws=ws, branch=st.get("branch", "main"), rev=rev, base=remote, glyph_db_fp=fp,
-                borrow=st.get("borrow", []))
+                borrow=st.get("borrow", []), **({GLYPH_DB_STALE: True} if stale else {}))
     if replay_ids:
         out["replay"] = replay(replay_ids)
         _export_if_changed(glyph, data, read_state(data))  # 重新消费写的是 glyph.db，导出成字形库再比对、推
