@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：叠图底图可选彩图／二值／灰度＋二值体检可疑区（彩图书双层显示，用户 11-17 定）：`render.overlay.overlay(..., bg="color"|"bin"|"gray", qc=False)`，缺省与改前逐像素相同；`bin` 读 cv 整页二值副本，没生成退回原图；`qc` 画 cv `binarized/<书>/<页>.qc.json` 的 color_mark／bin_diff／speckle 框。`_cv`、`console_api` 登记 `binarized_or_none`、`read_qc`、`canon_box_suspect`（要 cv ≥ #1650）。文档：`参考/册配置.md` 加 `ink`，S0 开书体检加「墨层与二值」一步（新书缺省写 `ink: {}`）。
 - PATCH：任务库隧道线程（`jobs/jobsdb.py`）若死了（事件循环崩），`_tunnel_port` 换端口重建，不再一直连不上；线程退出会在 stderr 留一行（专家 11-18，runner 大批消失排查时发现的小洞，没证据真发生过）。
 
 ## [0.4.59] - 2026-11-17

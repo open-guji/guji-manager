@@ -57,20 +57,63 @@ def draw_vline(img: np.ndarray, v: dict, W: int, H: int, color, thick: int = 3) 
     cv2.polylines(img, [np.array(pts, dtype=np.int32)], False, color, thick)
 
 
+#: 叠图底图（11-18，彩图书双层显示）：`color` 原图原样（缺省，与改前同），`bin` 整页二值副本，`gray` 亮度图。
+OVERLAY_BG = ("color", "bin", "gray")
+#: 二值体检可疑区的描边色（BGR）
+QC_COLOR = {"color_mark": (0, 0, 220), "bin_diff": (200, 0, 200), "speckle": (0, 160, 220)}
+
+
+def overlay_base(b, page: int, bg: str = "color") -> np.ndarray:
+    """叠图底图：三种都与原图同尺寸、同坐标（cv `utils/ink.py`），所以产物照原样画上去。
+    `bin` 没生成二值副本时退回原图（同控制台字块 `?src=bin` 的约定）。"""
+    if bg not in OVERLAY_BG:
+        raise Unsupported(f"bg 只能是 {OVERLAY_BG}")
+    if bg == "bin":
+        from .._cv import binarized_or_none
+        p = binarized_or_none(b.id, page)
+        if p is not None:
+            g = cv_imread(str(p), cv2.IMREAD_GRAYSCALE)
+            if g is not None:
+                return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
+    img = cv_imread(str(effective_raw_path(b, page)))
+    if img is None:
+        raise ImageMissing("原图缺失")
+    if bg == "gray":
+        img = cv2.cvtColor(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+    return img
+
+
+def draw_qc(img: np.ndarray, book: str, page: int) -> int:
+    """把二值体检（cv `utils/binqc.py`，`binarized/<书>/<页>.qc.json`）的可疑区画上去；返回画了几块。"""
+    from .._cv import binarized_or_none, read_qc
+    qc = read_qc(binarized_or_none(book, page))
+    if not qc:
+        return 0
+    for r in qc.get("regions", []):
+        x0, y0, x1, y1 = (int(v) for v in r["bbox"])
+        c = QC_COLOR.get(r["reason"], (0, 0, 220))
+        cv2.rectangle(img, (x0, y0), (x1, y1), c, 3)
+        cv2.putText(img, r["reason"], (x0 + 4, max(24, y0 + 24)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, c, 2)
+    return len(qc.get("regions", []))
+
+
 def overlay(book: str, step: str, page: int,
-            store: ProductStore | None = None) -> np.ndarray:
+            store: ProductStore | None = None, bg: str = "color", qc: bool = False) -> np.ndarray:
     """把某一步的产物画回底图。
 
     底图走 `effective_raw_path`——登记过预清理且产物已生成的页，管线（Step1
     起）实际处理的是 precleaned 那张，叠图也必须画在同一张上，不能悄悄用
     原图（2026-09-12 修复：原来这里直接读 `b.raw_path`，登记过 preclean 的
     页叠图会显示反色带还在，跟管线实际结果对不上）。
+
+    `bg`／`qc`（11-18）：底图换成二值副本或亮度图（`overlay_base`），并可叠二值体检可疑区（`draw_qc`）。
+    缺省 `bg="color", qc=False` 与改前逐像素相同。
     """
     b = load_book(book)
     st = store or ProductStore()
-    img = cv_imread(str(effective_raw_path(b, page)))
-    if img is None:
-        raise ImageMissing("原图缺失")
+    img = overlay_base(b, page, bg)
+    if qc:
+        draw_qc(img, book, page)
     H, W = img.shape[:2]
     d = st.read_raw(book, step, page_key(page))
     if d is None:
