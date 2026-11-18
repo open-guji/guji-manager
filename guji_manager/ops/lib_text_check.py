@@ -307,6 +307,9 @@ def _to_review(rows: list[dict]) -> int:
             except (KeyError, ValueError):
                 continue
         store.save()
+        if P.sheet_path(data, text_id, chapter).exists():      # 整张单跟着重导（还没出过单的章不凭空造一张）
+            from ..cli_pending import export
+            export(store, data)
     return n
 
 
