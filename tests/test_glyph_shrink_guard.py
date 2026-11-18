@@ -124,3 +124,30 @@ def test_foreign_glyph_db(tmp_path, monkeypatch):
     assert os.environ["GUJI_GLYPH_DB"] == str(tmp_path / "siku" / "glyph.db")      # 环境变量原样还回去
     with pytest.raises(SystemExit, match="unset GUJI_GLYPH_DB"):
         CG.glyph_hooks(tmp_path)
+
+
+# ---- 2026-11-18：增量推（只扫改了的文件）与清单 sha 缓存 ----
+
+def test_incremental_ok():
+    assert W.incremental_ok({"feedback/events/a.jsonl", "books/vol01.yaml", "feedback/consumed/x.jsonl"})
+    assert not W.incremental_ok({"feedback/events/a.jsonl", "output/glyph_store/glyphs.jsonl"})   # 字形库照旧全量
+
+
+def test_manifest_sha_cache(tmp_path, monkeypatch):
+    monkeypatch.delenv("GUJI_DB_NO_SHA_CACHE", raising=False)
+    data = tmp_path / "data"
+    f = data / "feedback" / "events" / "a.jsonl"
+    f.parent.mkdir(parents=True)
+    f.write_text('{"id": 1}\n', encoding="utf-8")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    m1 = W.manifest(ws, data)
+    assert (data / W.SHA_CACHE).exists()
+    assert W.manifest(ws, data) == m1
+    f.write_text('{"id": 2}\n', encoding="utf-8")                       # 同大小、改了内容：mtime 变了就重算
+    import os
+    st = f.stat()
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 1000))
+    m2 = W.manifest(ws, data)
+    assert m2["feedback/events/a.jsonl"] != m1["feedback/events/a.jsonl"]
+    assert m2["feedback/events/a.jsonl"] == W.sha256(f.read_bytes())

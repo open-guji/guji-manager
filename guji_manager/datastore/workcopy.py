@@ -75,33 +75,80 @@ def data_dir(ws_dir: Path) -> Path:
 
 
 def _walk(root: Path, patches: bool = True):
-    """root 下归中心库管的文件（不含 workspace.yaml）：(相对路径, 绝对路径)。"""
+    """root 下归中心库管的文件（不含 workspace.yaml）：(相对路径, 绝对路径)。
+
+    用 ``os.walk`` 拼字符串，不逐个 ``Path.relative_to``／``is_file``（殿本 4.2 万个文件，旧写法一遍 20 秒，2026-11-18）。"""
     root = Path(root)
+    out: list[tuple[str, Path]] = []
+    base = str(root)
     for pre in SCOPE:
-        d = root / pre.rstrip("/")
-        if not d.is_dir():
+        d = os.path.join(base, pre.rstrip("/"))
+        if not os.path.isdir(d):
             continue
-        for p in sorted(d.rglob("*")):
-            if p.is_file():
-                rel = p.relative_to(root).as_posix()
+        is_gs = pre == GS
+        for dirpath, dirnames, filenames in os.walk(d):
+            rel_dir = os.path.relpath(dirpath, base).replace(os.sep, "/")
+            if not patches and is_gs and (rel_dir + "/").startswith(GS + "patches/"):
+                dirnames[:] = []                   # 刻例图目录：不要图时整个跳过
+                continue
+            for name in filenames:
+                rel = f"{rel_dir}/{name}"
                 kind = classify(rel)
                 if kind is not None and (patches or kind != "patch"):
-                    yield rel, p
+                    out.append((rel, Path(dirpath) / name))
+    out.sort(key=lambda x: x[0])
+    yield from out
+
+
+#: manifest 的 sha 缓存（数据目录下，不归中心库管）：{相对路径: [大小, mtime_ns, sha]}。大小或修改时间变了才重读重算。
+SHA_CACHE = ".central-shacache.json"
+
+
+def _sha_of(rel: str, p: Path, cache: dict, fresh: dict) -> str:
+    st = p.stat()
+    hit = cache.get(rel)
+    if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns:
+        sha = hit[2]
+    else:
+        sha = sha256(p.read_bytes())
+    fresh[rel] = [st.st_size, st.st_mtime_ns, sha]
+    return sha
 
 
 def manifest(ws_dir: Path, data: Path) -> dict[str, str]:
-    """{相对路径: sha}：数据目录里的文件（刻例图除外，图跟着实例行走）＋工作区的 workspace.yaml。"""
-    out = {rel: sha256(p.read_bytes()) for rel, p in _walk(data, patches=False)}
+    """{相对路径: sha}：数据目录里的文件（刻例图除外，图跟着实例行走）＋工作区的 workspace.yaml。
+
+    文件大小与修改时间（ns）都没变的沿用上次算的 sha（``SHA_CACHE``），一次 sync 里要算两三遍清单，
+    殿本每遍原来约 7 秒（2026-11-18）。``GUJI_DB_NO_SHA_CACHE=1`` 关。"""
+    data = Path(data)
+    cpath = data / SHA_CACHE
+    cache: dict = {}
+    use = os.environ.get("GUJI_DB_NO_SHA_CACHE") != "1"
+    if use and cpath.exists():
+        try:
+            cache = json.loads(cpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cache = {}
+    fresh: dict = {}
+    out = {rel: _sha_of(rel, p, cache, fresh) for rel, p in _walk(data, patches=False)}
     y = Path(ws_dir) / WS_YAML
     if y.exists():
         out[WS_YAML] = sha256(y.read_bytes())
+    if use and fresh != cache and data.is_dir():
+        tmp = cpath.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(fresh, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            os.replace(tmp, cpath)
+        except OSError:
+            pass
     return out
 
 
-def scan(ws_dir: Path, data: Path):
+def scan(ws_dir: Path, data: Path, only: set[str] | None = None):
+    """``only`` 给了就只扫这些文件（增量推，见 ``push``）；workspace.yaml 总要带上（scan_files 要读工作区 id）。"""
     from .scope import scan_files
     items = [(WS_YAML, (lambda: (Path(ws_dir) / WS_YAML).read_bytes()))]
-    items += [(rel, (lambda p=p: p.read_bytes())) for rel, p in _walk(data)]
+    items += [(rel, (lambda p=p: p.read_bytes())) for rel, p in _walk(data) if only is None or rel in only]
     return scan_files(items, Path(ws_dir).name)
 
 
@@ -116,6 +163,24 @@ def write_state(data: Path, **kw) -> None:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(kw, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, p)
+
+
+#: 增量推（只扫、只比改了的文件）适用的表：主键里带 src_path，或一个文件就对应一组固定的主键（consumed 一个消费者一个文件、
+#: books 一册一个 yaml、workspaces）。字形库各表主键是实例 id 等、行会在文件间挪，照旧全量比。
+INCREMENTAL_TABLES = frozenset({"workspaces", "source_files", "books", "events", "consumed", "anchors",
+                                "verdicts", "files", *BLOB_TABLES})
+FULL_SCAN_ENV = "GUJI_DB_FULL_SCAN"
+
+
+def incremental_ok(paths) -> bool:
+    """这些改了的文件能不能只扫它们自己（纯函数）。"""
+    for rel in paths:
+        if rel.startswith(GS):
+            return False
+        tbl = classify(rel)
+        if tbl is None or tbl not in INCREMENTAL_TABLES:
+            return False
+    return True
 
 
 def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
@@ -778,11 +843,18 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     _partial_guard(st, "push")
     base = int(st["rev"])
     exported = _export_if_changed(glyph, data, st)
-    sc = scan(ws_dir, data)
+    cur_manifest = manifest(ws_dir, data)
+    changed = set(_diff(st.get("base", {}), cur_manifest))
+    if skip_prefixes:
+        changed = {c for c in changed if not c.startswith(skip_prefixes)}
+    incr = (not creating and not shared_writer and bool(changed) and incremental_ok(changed)
+            and os.environ.get(FULL_SCAN_ENV) != "1")
+    sc = scan(ws_dir, data, only=changed if incr else None)
     if sc.ws != st.get("ws"):
         raise SystemExit(f"数据目录记的工作区是 {st.get('ws')}，workspace.yaml 写的是 {sc.ws}")
-    local_paths = {r.src_path for r in sc.rows}
-    dup = dup_key_problems(sc.problems, set(_diff(st.get("base", {}), manifest(ws_dir, data))))
+    # 本地有哪些文件：增量时用清单（没扫的文件也算在），全量时同以前取扫出来的行
+    local_paths = set(cur_manifest) | {r.src_path for r in sc.rows} if incr else {r.src_path for r in sc.rows}
+    dup = dup_key_problems(sc.problems, set(_diff(st.get("base", {}), cur_manifest)))
     if dup and os.environ.get(ALLOW_DUP_KEYS_ENV) != "1":
         raise SystemExit(f"要推的文件里有同主键重复行（库里按主键存，「后者覆盖」会丢前面的行，登记的行数却是整个文件的，"
                          f"之后谁都拉不下来，史記 anchors/04.jsonl 2026-11-10）：{'；'.join(dup[:4])}。先去重再推；"
@@ -878,10 +950,13 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                for ext, g in sorted(images.items())}
         up = res["png"] if list(res) == ["png"] else res
     only = {r.src_path for r in sc.rows if not r.src_path.startswith(skip_prefixes)} if skip_prefixes else None
+    if incr:                                           # 只比这些文件的行；本地删掉的文件也在里面（库里那几行跟着删，受删除闸管）
+        only = set(changed)
     rep = import_scans(conn, [sc], label=f"push:{sc.ws}@{base}", actor=actor, dry_run=dry_run,
                        source="push", guard=guard, allow_delete=allow_delete, only_paths=only)
     out = rep.as_dict()
-    out.update(base_rev=base, images=up, glyph_exported=exported, data_dir=str(data))
+    out.update(base_rev=base, images=up, glyph_exported=exported, data_dir=str(data),
+               scan="incremental" if incr else "full", scanned_files=len(changed) if incr else None)
     if not dry_run:
         fp = glyph.fingerprint(glyph.db_path) if glyph is not None and Path(glyph.db_path).exists() else st.get("glyph_db_fp")
         new_base = manifest(ws_dir, data)
