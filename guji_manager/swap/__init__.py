@@ -112,16 +112,19 @@ def data_problem(dd: Path) -> str | None:
     return f"数据目录 {dd} 缺：{'、'.join(miss)}。先 guji db pull" if miss else None
 
 
-def precheck(ws: Path, state: dict) -> None:
+def precheck(ws: Path, state: dict, text_id: str = DIANBEN_ID) -> None:
     from ..datastore.workcopy import data_dir
     if not os.environ.get("GUJI_ACTOR"):
         raise SystemExit("先 export GUJI_ACTOR=<你的名字>")
     free = shutil.disk_usage(ws).free / 2 ** 30
     if free < MIN_FREE_GB:
         raise SystemExit(f"磁盘只剩 {free:.1f}GB（要 ≥ {MIN_FREE_GB}GB）：先清 _packs／cache／旧 exports")
+    # 待收字登记表和 corpus/daizhige 是殿本的数据；全唐文、史記的数据目录本来就没有（11-18 全唐文 swap run 被它误拦），非殿本只提示不拦
     bad = data_problem(data_dir(ws))
     if bad:
-        raise SystemExit(bad)
+        if text_id == DIANBEN_ID:
+            raise SystemExit(bad)
+        print(f"提示（非殿本，不拦）：{bad}", file=sys.stderr)
     now = ledger_counts(data_dir(ws))
     bad = ledger_problem(now, state.get("ledger_baseline"))
     if bad:
@@ -263,9 +266,9 @@ def cmd_run(a) -> int:
     ws = Path(a.workspace).resolve()
     sp = Path(a.state) if a.state else ws / "reports" / "_swap" / "state.json"
     state = load_state(sp)
-    precheck(ws, state)
-    save_state(sp, state)
     text_id = a.text_id
+    precheck(ws, state, text_id)
+    save_state(sp, state)
     if text_id == DIANBEN_ID and any(not b.startswith("vol") for b in parse_books(a.books)):
         raise SystemExit("非殿本的册（纯数字册名）要写 --text-id <书 ID>（全唐文 995ejelvk0、史記 988g3f0wsu）")
     cv = Path(a.cv)
@@ -279,10 +282,10 @@ def cmd_run(a) -> int:
         print(json.dumps({"todo": todo, "publish_only": pub_only, "state_file": str(sp)}, ensure_ascii=False))
         return 0
     for chunk in chunks(pub_only, a.batch_size):
-        precheck(ws, state)
+        precheck(ws, state, text_id)
         publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv)
     for chunk in chunks(todo, a.batch_size):
-        precheck(ws, state)                                  # 每批之间再核一次账本与磁盘
+        precheck(ws, state, text_id)                         # 每批之间再核一次账本与磁盘
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "w", encoding="utf-8") as f:
