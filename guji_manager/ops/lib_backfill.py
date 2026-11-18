@@ -47,6 +47,31 @@ INK_MIN = 0.03
 TRIES = 3          # 每个空位最多试几格（核验不过就换下一格）
 
 
+def apply_problem(ws_dir: Path | str | None = None) -> str | None:
+    """入库前核本机能不能安全推上中心库（2026-11-18，全唐文开 auto_backfill 前查的洞）。有问题返回说明。
+
+    - ``GUJI_GLYPH_DB`` 指着别的书的库（借库跑批）：回库会写进那个库；
+    - 本机是部分副本（``db pull --exclude``）：回库只留在本机，``db sync`` 推不上去；
+    - glyph.db 比数据目录的字形账本旧（``db pull --no-rebuild``）：之后导出会用旧库盖掉账本、删别人新加的刻例。
+    不是中心库工作区（没有 ``.central.json``）的不查。"""
+    from .._cv import central_marker, workspace_root
+    from ..datastore.workcopy import GLYPH_DB_STALE, data_dir, read_state
+    from .central_glyph import foreign_glyph_db
+    ws = Path(ws_dir) if ws_dir else Path(workspace_root())
+    if not central_marker(ws):
+        return None
+    bad = foreign_glyph_db(ws)
+    if bad:
+        return bad
+    st = read_state(data_dir(ws)) or {}
+    if st.get("exclude"):
+        return (f"本机是部分副本（pull 时排除了 {st['exclude']}），回库推不上中心库；到有完整副本的机器上 "
+                f"`guji db pull` 后再 `guji glyph-db backfill --books … --apply`")
+    if st.get(GLYPH_DB_STALE):
+        return "本机 glyph.db 比字形账本旧（上次 pull 带了 --no-rebuild）：先 `guji db sync` 或 `guji db pull` 让它重建再回库"
+    return None
+
+
 def config(ws_dir: Path | str | None) -> dict | None:
     """`workspace.yaml` 的 `glyph_lib.auto_backfill`：false → None（关）；没写或 true → 缺省参数（缺省开）；
     写成对象可改 `channels`、`cap`。"""
@@ -155,6 +180,10 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
                        binarize_page, export_store, glyph_db_path, glyph_store_path, load_book,
                        make_event, products_root)
     say = log or (lambda *_: None)
+    if apply:
+        bad = apply_problem()
+        if bad:
+            raise SystemExit("✗ 放行格回库没入库：" + bad)
     dbp, root, elog = glyph_db_path(), products_root(), EventLog()
     state = lib_state(dbp)
     human = {e.target.key for e in elog.iter_all() if e.actor == "user"}
