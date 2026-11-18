@@ -150,7 +150,8 @@ def parse_cycle_log(text: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for line in text.splitlines():
         p = line.split("\t")
-        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and p[1].startswith("→"):
+        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and (p[1].startswith("→") or p[1] == "fresh"):
+            # fresh：线上单已基于现在的 main 包，不用换（auto_cycle 的计划行不带「→」，只有 fresh 是终态）
             out[p[0]] = {"verdict": p[1].lstrip("→ ").strip(), "why": p[2] if len(p) > 2 else ""}
     return out
 
@@ -305,8 +306,9 @@ def cmd_run(a) -> int:
     rep = write_audit_report(ws, state)
     if rep:
         print(f"机器改字抽检表：{rep}", file=sys.stderr)
-    left = {k: v for k, v in state["books"].items() if v["status"] != "verified"}
+    left = {k: v for k, v in state["books"].items() if v["status"] not in ("verified", "fresh")}
     print(json.dumps({"verified": sorted(k for k, v in state["books"].items() if v["status"] == "verified"),
+                      "fresh": sorted(k for k, v in state["books"].items() if v["status"] == "fresh"),
                       "left": {k: v["status"] for k, v in left.items()}}, ensure_ascii=False))
     return 0 if not left else 2
 
