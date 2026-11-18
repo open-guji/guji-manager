@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：叠图底图可选彩图／二值／灰度＋二值体检可疑区（彩图书双层显示，用户 11-17 定）：`render.overlay.overlay(..., bg="color"|"bin"|"gray", qc=False)`，缺省与改前逐像素相同；`bin` 读 cv 整页二值副本，没生成退回原图；`qc` 画 cv `binarized/<书>/<页>.qc.json` 的 color_mark／bin_diff／speckle 框。`_cv`、`console_api` 登记 `binarized_or_none`、`read_qc`、`canon_box_suspect`（要 cv ≥ #1650）。文档：`参考/册配置.md` 加 `ink`，S0 开书体检加「墨层与二值」一步（新书缺省写 `ink: {}`）。
+
 ## [0.4.61] - 2026-11-17
 
 - PATCH（#653，随 dev 头带入本版）：待审格与人改字不留阙文（用户 11-18「只有真的阙字才显示阙文」）。swap book-text 换完仍是 □ 的待审格按新单 `first_choice` 写首选字、去 lacuna；`overlay_edits` 人改字叠回新包改成真字时去 lacuna／guess_c（殿本 68 格「标了 lacuna 却有字」即此来）。

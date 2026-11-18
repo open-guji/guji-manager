@@ -248,6 +248,9 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     # utils.binarized
     "binarize_page": ("utils.binarized", 'binarize_page'),
     "binarized_or_none": ("utils.binarized", 'binarized_or_none'),
+    # utils.binqc（二值体检，cv 11-18）
+    "read_qc": ("utils.binqc", 'read_qc'),
+    "canon_box_suspect": ("utils.binqc", 'canon_box_suspect'),
     # seg.profile、impl.keben.column（原 utils.column_projection）
     "column_profile": ("seg.profile", 'column_profile'),
     "column_row_profile": ("seg.profile", 'column_row_profile'),
