@@ -47,3 +47,23 @@ def test_live_attempt_finishes_as_before():
     S.finish(c, 4991, 7, "succeeded")
     assert any(q.startswith("UPDATE jobs.attempt SET finished_at") for q in c.sql)
     assert any(q.startswith("UPDATE jobs.job SET status") for q in c.sql)
+
+
+class HBConn(FakeConn):
+    def __init__(self, attempt_live, cancel=False):
+        super().__init__(False)
+        self.live, self.cancel = attempt_live, cancel
+
+    def execute(self, q, args=()):
+        self.sql.append(q)
+        if q.startswith("UPDATE jobs.attempt SET heartbeat_at"):
+            return _Cur([(42,)] if self.live else [], ["job_id"])
+        if q.startswith("UPDATE jobs.job SET stage"):
+            return _Cur([(self.cancel,)], ["cancel_requested"])
+        return _Cur([], [])
+
+
+def test_heartbeat_tells_lost_from_cancel():
+    assert S.heartbeat(HBConn(False), 7) == "lost"
+    assert S.heartbeat(HBConn(True, cancel=True), 7) == "cancel"
+    assert S.heartbeat(HBConn(True), 7) == ""

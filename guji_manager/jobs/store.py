@@ -311,18 +311,19 @@ def claim(conn, worker: str, *, session: str | None = None, affinity: str | None
     return None
 
 
-def heartbeat(conn, attempt_id: int, *, stage: str | None = None, progress: str | None = None) -> bool:
-    """续租，顺手更新阶段与进展；返回是否有人要求停下。租约已被收回（会话卡太久）也当作要停。"""
+def heartbeat(conn, attempt_id: int, *, stage: str | None = None, progress: str | None = None) -> str:
+    """续租，顺手更新阶段与进展。返回要不要停：""＝接着跑；"cancel"＝有人要求停下；
+    "lost"＝租约已被 `reap` 收回（会话卡太久或整机暂停后醒来，单已退回排队），旧会话该停但不是谁叫停的。"""
     with conn.transaction():
         r = _one(conn.execute(
             "UPDATE jobs.attempt SET heartbeat_at=now(), lease_until=now() + make_interval(mins => %s)"
             " WHERE id=%s AND finished_at IS NULL RETURNING job_id", (LEASE_MIN, attempt_id)))
         if r is None:
-            return True
+            return "lost"
         j = _one(conn.execute(
             "UPDATE jobs.job SET stage=coalesce(%s, stage), progress=coalesce(%s, progress), updated_at=now()"
             " WHERE id=%s RETURNING cancel_requested", (stage, progress, r["job_id"])))
-        return bool(j and j["cancel_requested"])
+        return "cancel" if (j and j["cancel_requested"]) else ""
 
 
 def event(conn, job_id: int, attempt_id: int | None, stage: str | None, msg: str, *, level: str = "info",
