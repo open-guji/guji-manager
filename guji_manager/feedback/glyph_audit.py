@@ -9,7 +9,7 @@
 | `ok` | 没问题，只记账——下轮体检同一张卡（同实例、同旗、同对手）不再出 |
 | `near_form` | 两个都没错，只是形近 / 异体——记账，并记进 `near_forms.jsonl`（形近字对的本书人裁证据） |
 | `evict` | 撤库：`payload.target` 那个实例（本例或本书里的对手）删出库，下次跑到那一格重新出卡 |
-| `relabel` | 本例其实是 `payload.char`：撤掉旧的、以人裁身份按新字重进库（同 id、同图块） |
+| `relabel` | 本例其实是 `payload.char`：撤掉旧的、以人裁身份按新字重进库（同 id、同图块）；`payload.provenance: "auto"` 时保持机器来路（只对机器来路的刻例有效，`ops/lib_text_check.py` 用） |
 | `fidelity` | 标一致程度（字形库 04）：`payload.fidelity` ∈ exact / nearest / unencoded / 空（撤销），`nearest`/`unencoded` 必带 `payload.ids`（刻例的实际结构），且这条 IDS 在 Unicode 里反查不到同结构字（`ids_lookup`），查到了要人确认后带 `force`；`payload.targets` 可一次标多例 |
 
 `relabel` 也可以顺带 `fidelity`/`ids`（「改成 X，但只是最近似」）。
@@ -126,11 +126,15 @@ def glyph_audit(events, db_path: str | None = None, dry_run: bool = False, **kw)
                     continue
                 png, page, col, idx, bbox = row
                 was_human = _was_human(db, iid)
+                # `payload.provenance: "auto"`（库文一致 2026-11-18）：机器重新识别后改标，不是人看过，
+                # 改完仍是机器来路；只许用在本来就是机器来路的刻例上，人裁刻例照旧只能按人裁改。
+                prov = "auto" if (p.get("provenance") == "auto" and not was_human) else "human"
                 rec["old_char"] = evict_instance(db, iid)
                 if was_human:
                     _void_or_report(res, rec, e, iid, "glyph_audit relabel")
                 rec["char"] = ch
-                db.admit_instance(iid, ch, bytes(png), provenance="human", shape=ch,
+                rec["provenance"] = prov
+                db.admit_instance(iid, ch, bytes(png), provenance=prov, shape=ch,
                                   evidence={"event": e.id, "batch": e.batch, "via": "glyph_audit",
                                             "old_char": rec["old_char"]},
                                   page=page, col=col, idx=idx,
