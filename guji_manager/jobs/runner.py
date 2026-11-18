@@ -467,7 +467,7 @@ class Job:
         if outcome == "succeeded" and getattr(self, "pushed", False) and self.ws and sp.get("book"):
             freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
             if freed:
-                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存和产物副本，释放 {freed / 2**20:.0f} MB")
+                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存、产物副本和原图，释放 {freed / 2**20:.0f} MB")
         return outcome
 
 
@@ -745,10 +745,11 @@ def _say_clean(msg: str) -> None:
 
 
 def _clean_book_artifacts(ws: str, book: str) -> int:
-    """成功存包后清这一册在工作区里的 cache/<册> 和 products/<册>，返回释放的字节数。
+    """成功存包后清这一册在工作区里的 cache/<册>、products/<册> 和 data_full/<册>，返回释放的字节数。
 
-    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，包已推完，下一张单会重新生成或 fetch。
-    只删这两个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
+    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，data_full 是 `guji source pull` 从 CDN 取的原图，
+    包已推完，下一张单会重新生成、fetch 或 pull（原图的真源在中心库）。
+    只删这三个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
     册 yaml、feedback、output 都不动。路径必须落在工作区的 cache、products 之内。
     设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
     if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
@@ -757,7 +758,7 @@ def _clean_book_artifacts(ws: str, book: str) -> int:
         return 0
     root = Path(ws)
     freed = 0
-    for rel in ("cache", "products"):
+    for rel in ("cache", "products", "data_full"):
         base = (root / rel).resolve()
         d = (base / book).resolve()
         if d.parent != base or not d.is_dir() or d.is_symlink():

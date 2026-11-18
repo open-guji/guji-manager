@@ -39,3 +39,10 @@ def test_keep_switch(tmp_path, monkeypatch):
 
 def test_missing_dirs_ok(tmp_path):
     assert R._clean_book_artifacts(str(tmp_path / "nope"), "vol79") == 0
+
+
+def test_cleans_raw_images_of_this_book_only(tmp_path):
+    ws = tmp_path / "ws"
+    raw79, raw68 = _mk(ws, "data_full", "vol79", 50), _mk(ws, "data_full", "vol68", 50)
+    freed = R._clean_book_artifacts(str(ws), "vol79")
+    assert freed == 50 and not raw79.exists() and raw68.exists()
