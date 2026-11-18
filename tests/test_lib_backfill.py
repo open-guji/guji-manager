@@ -69,3 +69,25 @@ def test_config(tmp_path):
     y.write_text("glyph_lib:\n  auto_backfill: {caps: 5}\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         LB.config(tmp_path)
+
+
+def test_apply_problem_guards(tmp_path, monkeypatch):
+    """入库前核：部分副本、glyph.db 比账本旧都拒（2026-11-18）。不是中心库工作区的不查。"""
+    import json
+    from guji_manager.datastore import workcopy as W
+    from guji_manager.ops import central_glyph as CG
+    monkeypatch.delenv("GUJI_GLYPH_DB", raising=False)
+    monkeypatch.setattr(CG, "_db_path", lambda ws: tmp_path / "glyph.db")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    assert LB.apply_problem(ws) is None                               # 没有 .central.json
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home"))
+    (ws / ".central.json").write_text(json.dumps({"ws": "t", "branch": "main"}), encoding="utf-8")
+    data = W.data_dir(ws)
+    data.mkdir(parents=True)
+    W.write_state(data, ws="t", rev=1, base={})
+    assert LB.apply_problem(ws) is None
+    W.write_state(data, ws="t", rev=1, base={}, exclude=["feedback/lists/proofing/"])
+    assert "部分副本" in LB.apply_problem(ws)
+    W.write_state(data, ws="t", rev=1, base={}, **{W.GLYPH_DB_STALE: True})
+    assert "比字形账本旧" in LB.apply_problem(ws)
