@@ -480,7 +480,7 @@ class Job:
         if outcome == "succeeded" and getattr(self, "pushed", False) and self.ws and sp.get("book"):
             freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
             if freed:
-                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存和产物副本，释放 {freed / 2**20:.0f} MB")
+                _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存、产物副本和原图，释放 {freed / 2**20:.0f} MB")
         return outcome
 
 
@@ -758,10 +758,11 @@ def _say_clean(msg: str) -> None:
 
 
 def _clean_book_artifacts(ws: str, book: str) -> int:
-    """成功存包后清这一册在工作区里的 cache/<册> 和 products/<册>，返回释放的字节数。
+    """成功存包后清这一册在工作区里的 cache/<册>、products/<册> 和 data_full/<册>，返回释放的字节数。
 
-    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，包已推完，下一张单会重新生成或 fetch。
-    只删这两个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
+    cache 是派生图（列图、字块），products 是跑单时从中心库 fetch 来的副本，data_full 是 `guji source pull` 从 CDN 取的原图，
+    包已推完，下一张单会重新生成、fetch 或 pull（原图的真源在中心库）。
+    只删这三个目录下以册号命名的子目录：``cache/_judge``、``cache/glyph-derived`` 这类非册号目录、工作区仓、
     册 yaml、feedback、output 都不动。路径必须落在工作区的 cache、products 之内。
     设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
     if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
@@ -770,7 +771,7 @@ def _clean_book_artifacts(ws: str, book: str) -> int:
         return 0
     root = Path(ws)
     freed = 0
-    for rel in ("cache", "products"):
+    for rel in ("cache", "products", "data_full"):
         base = (root / rel).resolve()
         d = (base / book).resolve()
         if d.parent != base or not d.is_dir() or d.is_symlink():
@@ -864,6 +865,50 @@ def _prune_glyph_dbs(say=print, keep_recent: int | None = None) -> int:
     return freed
 
 
+#: 领单前空间低于这么多 GB 时，扫掉各工作区里所有册的 cache／products／data_full（缺省 8；0＝不扫）
+SWEEP_FREE_GB = float(os.environ.get("GUJI_JOBS_SWEEP_GB") or 8)
+
+
+def _workspace_roots() -> list[Path]:
+    """本机各工作区根（有 `.central.json` 标记）：~/<仓> 或 ~/<仓>/<书目录>。"""
+    home = Path.home()
+    out: list[Path] = []
+    for pat in ("*/.central.json", "*/*/.central.json"):
+        out += [f.parent for f in home.glob(pat) if f.is_file()]
+    return out
+
+
+def _sweep_book_dirs(say=print) -> int:
+    """领单前把各工作区里所有册的 cache/<册>、products/<册>、data_full/<册> 清掉，返回释放的字节数。
+
+    本机同时只一个执行方，领单前没有在跑的单；这些目录都可重建（派生图、从中心库 fetch 的副本、`guji source pull` 的原图），
+    只有同册连续两单时多花一次重建。成功存包后只清了那一册；失联、失败的单和更早的册会一直残留，这里补上。
+    只删「册号」命名的子目录（册号取自数据目录里 books/<册>.yaml），`cache/_judge` 这类非册号目录不动。"""
+    freed = 0
+    data_home = Path(os.environ.get("GUJI_DATA_HOME") or (Path.home() / ".guji-data"))
+    for ws in _workspace_roots():
+        try:
+            wsid = json.loads((ws / ".central.json").read_text(encoding="utf-8")).get("ws")
+        except (OSError, ValueError):
+            continue
+        if not wsid or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(wsid)):
+            continue
+        books = {y.stem for y in data_home.glob(f"*/{wsid}/books/*.yaml")}
+        for rel in ("cache", "products", "data_full"):
+            base = (ws / rel).resolve()
+            if not base.is_dir():
+                continue
+            for d in base.iterdir():
+                if d.name not in books or d.is_symlink() or not d.is_dir() or d.resolve().parent != base:
+                    continue
+                size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file() and not f.is_symlink())
+                shutil.rmtree(d, ignore_errors=True)
+                freed += size
+                if size:
+                    say(f"清 {rel}/{d.name}（{size / 2**20:.0f} MB，可重建）")
+    return freed
+
+
 def _disk_gate(say=print) -> str | None:
     """领单前查剩余空间：先清旧的 job 目录和没人钉的旧字形库；还不够依次清 uv、guji-data 缓存；都清了还不够就返回原因（不领单）。"""
     _clean_job_dirs()
@@ -873,6 +918,12 @@ def _disk_gate(say=print) -> str | None:
             _prune_glyph_dbs(say, keep_recent=GLYPH_DB_KEEP_RECENT)
     except Exception as e:      # noqa: BLE001 —— 清缓存失败不碍领单
         say(f"清旧字形库出错（忽略）：{e}")
+    if SWEEP_FREE_GB and _free_gb() < SWEEP_FREE_GB and os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") != "1":
+        try:
+            say(f"磁盘剩余 {_free_gb():.1f} GB，低于 {SWEEP_FREE_GB:g} GB，清各册 cache／products／data_full")
+            _sweep_book_dirs(say)
+        except Exception as e:  # noqa: BLE001
+            say(f"清各册目录出错（忽略）：{e}")
     for cache in _CACHES:
         if _free_gb() >= MIN_FREE_GB:
             return None
