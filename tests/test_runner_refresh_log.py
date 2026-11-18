@@ -38,6 +38,8 @@ def test_refresh_detaches_when_clean(monkeypatch, tmp_path, capsys):
         calls.append(cmd[3])
         if cmd[3] == "merge":
             return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="fatal: Not possible to fast-forward")
+        if cmd[3] == "symbolic-ref":
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")      # detached HEAD
         if cmd[3] == "status":
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[3] == "checkout":
@@ -56,6 +58,8 @@ def test_refresh_keeps_dirty_checkout(monkeypatch, tmp_path, capsys):
     def fake_run(cmd, **kw):
         if cmd[3] == "merge":
             return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="x")
+        if cmd[3] == "symbolic-ref":
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
         if cmd[3] == "status":
             return subprocess.CompletedProcess(cmd, 0, stdout=" M foo.py\n", stderr="")
         raise AssertionError("不该走到这里")

@@ -607,10 +607,13 @@ def _refresh_runner() -> bool:
                   f"{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
             # 准备脚本会把这个检出切到单上钉的 cv（tag、rc 头、功能分支提交），HEAD 于是不在 origin/dev 的祖先线上，
             # ff 必败。检出是执行方自用的、工作区干净时（没有未提交改动）直接切到 origin/dev 的 detached HEAD，不丢任何东西。
+            # 只对 detached HEAD 这么做：在分支上有本地提交（人手改过 runner 检出）一律不动，免得丢提交
+            br = subprocess.run(["git", "-C", str(RUNNER_ROOT), "symbolic-ref", "-q", "HEAD"],
+                                capture_output=True, text=True, timeout=30)
             st = subprocess.run(["git", "-C", str(RUNNER_ROOT), "status", "--porcelain", "--untracked-files=no"],
                                 capture_output=True, text=True, timeout=60)
-            if st.returncode != 0 or st.stdout.strip():
-                print("[runner 自更新] 检出有未提交改动或状态读不了，不切换", flush=True)
+            if br.returncode == 0 or st.returncode != 0 or st.stdout.strip():
+                print("[runner 自更新] 检出在分支上、有未提交改动或状态读不了，不切换", flush=True)
                 return False
             r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "checkout", "-q", "--detach", "origin/dev"],
                                capture_output=True, text=True, timeout=REFRESH_TIMEOUT_S, env=env)
