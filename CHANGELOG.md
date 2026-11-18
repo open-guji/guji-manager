@@ -7,7 +7,38 @@
 - PATCH：执行方成功存包后，除 `cache/<册>`、`products/<册>` 外也清 `data_full/<册>`（`guji source pull` 取的原图，真源在中心库，下一张单 prep 会再 pull）。执行机磁盘总不够：书仓本身很小（殿本约 157 MB），占盘大头是跑单产生的本地数据，原图一直没人清。只改 `jobs/runner.py::_clean_book_artifacts`，`GUJI_JOBS_KEEP_ARTIFACTS=1` 仍可关。
 - PATCH：领单前磁盘低于 `GUJI_JOBS_SWEEP_GB`（缺省 8 GB，0＝关）时，扫掉本机各工作区所有册的 `cache/<册>`、`products/<册>`、`data_full/<册>`（册号取自数据目录 books/*.yaml，`cache/_judge` 等非册号目录不动），再才轮到清 uv、guji-data 缓存。成功存包只清了本册，失联、失败的单和更早的册的残留一直在（worker-27 实测：全唐文仓 data_full 3.1G、cache 2.4G，史記仓 cache 3.4G）。`GUJI_JOBS_KEEP_ARTIFACTS=1` 同样关掉它。只改 `jobs/runner.py::_disk_gate`。
 
-- MINOR：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（缺省关，`GUJI_AUTO_BACKFILL=0` 临时关）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
+## [0.4.58] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。为带上 #640（db pull／sync 增量拉，收单提速）；同带 #641（文档：收单真源）。
+
+- PATCH：`guji db pull`／`db sync` 增量拉（A31 11-18，收单提速）：库里在基准 rev 之后有改动时，按 `changes` 表只取改了的文件，不再读整个工作区的清单和全部文件；逐行大台账（字形库 instances、exemplars、events 等）本机那份还是基准版本时，只按变更主键补改了／新增的行，整文件 sha 对上才用，对不上该文件照旧整取。殿本（6665 个文件）有 4 个文件远端改动的 sync 97 s→20 s；增量 pull 结果与整拉逐字节同（实测 rev 1071330）。整批导入、变更超过 2 万条、文件超过 400 个、旧数据源、`pull --force／--exclude／--repair-gaps`、新机器都照旧整拉；`GUJI_DB_FULL_PULL=1` 强制整拉。输出多 `scan`（incremental／full）、`changed_files`、`patched`。
+## [0.4.57] - 2026-11-17
+
+- 发版说明（A31 11-17）：dev 头 a70051d，PATCH。主要为带上 #630（任务库：收尾不改已被收回的单、心跳区分租约已失与有人叫停、跑单每 5 拍顺手收回过期领单、同优先级失联单先领）；同带 #637（swap run／book-text／finish-merged 支持非殿本册名）。
+
+- PATCH：任务库 `finish` 先查这次领单是否已被 `reap` 收回；已收回（整机暂停后醒来的旧会话）只记事件、不改任务状态。以前旧会话心跳拿不到租约当成「有人要求停下」，把已退回排队／在别处重跑的单写成 cancelled（殿本 r12g24d #4991–4995，查不到取消人）。
+- PATCH：任务库心跳区分「有人要求停下」（`cancel`）与「租约已被收回」（`lost`），后者日志记「租约已失」；执行方跑单时每 5 拍（`GUJI_JOBS_REAP_EVERY`，0＝关）顺手 `reap` 一次，失联单不再等到有执行方空下来才退回排队（史記 r79 #5107 收尾晚于租约 16 分）。A30 11-17 建议。
+- PATCH：领单排序在同优先级里让失联被收回的单先领（`_CLAIM` 加 `outcome='lost'` 一项）。被退回的单 `created_at` 不变，以前排在更早交的整批单后面，史記 r72／r79 重领要等 44–50 分（SJ 11-17 核实，不是同册互斥）。
+- PATCH：`guji swap run／book-text／finish-merged` 支持非殿本：`--books` 认纯数字册名与区间（`001-045`、`01-42`），章号、线上单 rev、发布 `only=`、字形库格键前缀、对照表一律按册名推（不再 `int(册名[3:])`）；纯数字册名不给 `--text-id` 就停；book-text 提交说明不再写死「殿本」。
+## [0.4.56] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。为带上 #634（swap book-text 1.x／0.x 只差码位归一的格文本留现行字，ZM 报 vol01 26 格改反）。
+
+- PATCH：`swap book-text`（含 1.x `swap/<册>-1x`）只差码位归一的格文本留现行字，同 0.x 出单（ZM 11-18：vol01 26 格 宫→宮、歩→步 等被改反）。两处：①码位表直接读数据目录 `config/codepoints.yaml` < `book_defaults.yaml` < 册 yaml（`charnorm.codepoints_of`），不再靠 cv 找册、找不到静默退成字面比；②有人裁且人裁与现行只差码位时留现行字，不落人裁的原码位。码位表为空时在报告 notes 里提示。
+## [0.4.55] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。带 #624 放行格自动回库**对所有书缺省开**（Sheldon 11-18 在卡片上定）和 #628 db sync 增量推。回库只改本机字形库：跑批机不 `db sync` 结果就留在本机；上中心库须在有完整副本的机器上 `guji db pull`（不要 `--no-rebuild`）后 `guji db sync`，推前先 `guji db push --dry-run` 看 glyphs／glyph_instances／glyph_exemplars／glyph_admissions 各表 delete=0。关法：`workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或 `GUJI_AUTO_BACKFILL=0`。
+
+- PATCH：`db sync`／`db push` 增量推（2026-11-18，收单提速）。只改了待审单、人裁事件、册 yaml 这类主键带文件路径的文件时，只扫、只比这几个文件的行（字形库各表照旧全量）；文件清单的 sha 按大小＋修改时间缓存在数据目录 `.central-shacache.json`；`_walk` 改 `os.walk`。殿本一册有本地改动的 sync 从 64 秒降到 8 秒。`GUJI_DB_FULL_SCAN=1` 退回全量、`GUJI_DB_NO_SHA_CACHE=1` 关缓存。
+- PATCH（原记 MINOR）：放行格自动回库改为**缺省开**（Sheldon 11-17 定）。`guji pipeline` 整册跑完没有失败页就对该册回库；不要的书在 `workspace.yaml` 写 `glyph_lib.auto_backfill: false`，或设 `GUJI_AUTO_BACKFILL=0` 临时关。回库只改本机字形库，跑完要 `guji db sync`。史記、殿本各两册只报告试跑并抽样看图后定，数字见 `doc/01-粗校/开书/放行格回库.md` 第六节。
+
+## [0.4.54] - 2026-11-17
+
+- 发版说明（A31 11-18）：PATCH。主要为带上 #617 放行格回库（全唐文开 `glyph_lib.auto_backfill` 用；缺省关的新功能按规矩算 PATCH，下面条目里写的 MINOR 以此为准）和 #622 字形库推库补洞（回库前必须有）；同带 #612、#615、#618、#619、#620、#623（`guji job precheck`／`job stats`）与 #590 任务库失联不占重试额度。
+
+- PATCH：`guji job precheck` 交单前逐册核生效的 cv／code／glyph_pin／corpus 钉子；`guji job stats` 按领单记录算排队、运行与多次领单的时间账（#623）。
+- PATCH：字形库推库补两个洞（全唐文开放行格回库前查出，2026-11-18）。①`db pull --no-rebuild`（含换单 `GUJI_DB_NO_GLYPH` 的 sync）拉到新字形账本却没重建 glyph.db 时，状态记 `glyph_db_stale`；之后 glyph.db 没被动过的，下一次正常 `db sync` 先按账本重建；被动过（回库、落库写进了旧库）就拒导出，免得旧库盖掉账本、推库删掉别人新加的刻例（少于 5% 缩水闸拦不住）。`GUJI_ALLOW_STALE_GLYPH_EXPORT=1` 放行。②`GUJI_GLYPH_DB` 指着别的书的库时，`db pull/sync` 的字形库钩子与 `glyph-db backfill --apply` 一律拒跑。③放行格回库入库前另核：部分副本（`pull --exclude`）推不上中心库，拒入库。
+- PATCH（原记 MINOR）：放行格回库。机器放行（`rare_ref`、`witness3`）而库里不足 3 例的字，取管线字块、按入库后的图过字体模板核验（首位＝放行字）后以 `provenance=auto` 补进本书字形库。`guji glyph-db backfill --books … [--apply]` 手动跑；`workspace.yaml` 写 `glyph_lib.auto_backfill: true` 后 `guji pipeline` 整册跑完自动对该册回库（缺省关，`GUJI_AUTO_BACKFILL=0` 临时关）。回库事件带 `backfill` 标，`glyphdb_admit` 可重放（`db sync` 取中心库字形库后不丢）。不开开关行为不变。文档 `doc/01-粗校/开书/放行格回库.md`。
 - PATCH：seg check 钉子集合加上册配置 `row_segment.page_map_overrides` 里带 `cuts`／`slots` 的覆盖行（人核格线／格位；`drop` 不算），这些列有结构旗记「已钉·复核」、不进闸；`reference_profile` 声明 text／none（无逐列参校）的页上只有 pair 的对位串错记 `ALIGN_NOREF`，只当提示「对位串错·无逐列参校」，split／run 照算结构（全唐文 11-17 b1 闸 039:78:1：碑誌 text 页放行少凑够 pair、切分对，覆盖行已钉仍报需钉子）。
 - PATCH：R01 `ref_lacuna` 卡片提示、判定说明带上 ▣（以图代字）；文档 `01-粗校/待审原因/ref_lacuna/README.md` 写明〓／▣ 口径（语义相同、只在成因 A2 明细上分开、换含 ▣ 语料先钉认 ▣ 的 cv）。
 - PATCH：任务库 `reap` 里失联（租约过期）前 5 次不占重试额度（`GUJI_JOBS_LOST_FREE`，缺省 5，0＝旧行为）。执行机整机暂停是平台行为，长单（史記、全唐文）三次失联就判 failed 太严；超过 5 次失联仍占额度。只改 `jobs/store.py` 的 `reap`，不改表结构、不改领单与租约时长。

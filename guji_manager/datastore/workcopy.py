@@ -75,33 +75,80 @@ def data_dir(ws_dir: Path) -> Path:
 
 
 def _walk(root: Path, patches: bool = True):
-    """root 下归中心库管的文件（不含 workspace.yaml）：(相对路径, 绝对路径)。"""
+    """root 下归中心库管的文件（不含 workspace.yaml）：(相对路径, 绝对路径)。
+
+    用 ``os.walk`` 拼字符串，不逐个 ``Path.relative_to``／``is_file``（殿本 4.2 万个文件，旧写法一遍 20 秒，2026-11-18）。"""
     root = Path(root)
+    out: list[tuple[str, Path]] = []
+    base = str(root)
     for pre in SCOPE:
-        d = root / pre.rstrip("/")
-        if not d.is_dir():
+        d = os.path.join(base, pre.rstrip("/"))
+        if not os.path.isdir(d):
             continue
-        for p in sorted(d.rglob("*")):
-            if p.is_file():
-                rel = p.relative_to(root).as_posix()
+        is_gs = pre == GS
+        for dirpath, dirnames, filenames in os.walk(d):
+            rel_dir = os.path.relpath(dirpath, base).replace(os.sep, "/")
+            if not patches and is_gs and (rel_dir + "/").startswith(GS + "patches/"):
+                dirnames[:] = []                   # 刻例图目录：不要图时整个跳过
+                continue
+            for name in filenames:
+                rel = f"{rel_dir}/{name}"
                 kind = classify(rel)
                 if kind is not None and (patches or kind != "patch"):
-                    yield rel, p
+                    out.append((rel, Path(dirpath) / name))
+    out.sort(key=lambda x: x[0])
+    yield from out
+
+
+#: manifest 的 sha 缓存（数据目录下，不归中心库管）：{相对路径: [大小, mtime_ns, sha]}。大小或修改时间变了才重读重算。
+SHA_CACHE = ".central-shacache.json"
+
+
+def _sha_of(rel: str, p: Path, cache: dict, fresh: dict) -> str:
+    st = p.stat()
+    hit = cache.get(rel)
+    if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns:
+        sha = hit[2]
+    else:
+        sha = sha256(p.read_bytes())
+    fresh[rel] = [st.st_size, st.st_mtime_ns, sha]
+    return sha
 
 
 def manifest(ws_dir: Path, data: Path) -> dict[str, str]:
-    """{相对路径: sha}：数据目录里的文件（刻例图除外，图跟着实例行走）＋工作区的 workspace.yaml。"""
-    out = {rel: sha256(p.read_bytes()) for rel, p in _walk(data, patches=False)}
+    """{相对路径: sha}：数据目录里的文件（刻例图除外，图跟着实例行走）＋工作区的 workspace.yaml。
+
+    文件大小与修改时间（ns）都没变的沿用上次算的 sha（``SHA_CACHE``），一次 sync 里要算两三遍清单，
+    殿本每遍原来约 7 秒（2026-11-18）。``GUJI_DB_NO_SHA_CACHE=1`` 关。"""
+    data = Path(data)
+    cpath = data / SHA_CACHE
+    cache: dict = {}
+    use = os.environ.get("GUJI_DB_NO_SHA_CACHE") != "1"
+    if use and cpath.exists():
+        try:
+            cache = json.loads(cpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cache = {}
+    fresh: dict = {}
+    out = {rel: _sha_of(rel, p, cache, fresh) for rel, p in _walk(data, patches=False)}
     y = Path(ws_dir) / WS_YAML
     if y.exists():
         out[WS_YAML] = sha256(y.read_bytes())
+    if use and fresh != cache and data.is_dir():
+        tmp = cpath.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(fresh, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            os.replace(tmp, cpath)
+        except OSError:
+            pass
     return out
 
 
-def scan(ws_dir: Path, data: Path):
+def scan(ws_dir: Path, data: Path, only: set[str] | None = None):
+    """``only`` 给了就只扫这些文件（增量推，见 ``push``）；workspace.yaml 总要带上（scan_files 要读工作区 id）。"""
     from .scope import scan_files
     items = [(WS_YAML, (lambda: (Path(ws_dir) / WS_YAML).read_bytes()))]
-    items += [(rel, (lambda p=p: p.read_bytes())) for rel, p in _walk(data)]
+    items += [(rel, (lambda p=p: p.read_bytes())) for rel, p in _walk(data) if only is None or rel in only]
     return scan_files(items, Path(ws_dir).name)
 
 
@@ -118,6 +165,24 @@ def write_state(data: Path, **kw) -> None:
     os.replace(tmp, p)
 
 
+#: 增量推（只扫、只比改了的文件）适用的表：主键里带 src_path，或一个文件就对应一组固定的主键（consumed 一个消费者一个文件、
+#: books 一册一个 yaml、workspaces）。字形库各表主键是实例 id 等、行会在文件间挪，照旧全量比。
+INCREMENTAL_TABLES = frozenset({"workspaces", "source_files", "books", "events", "consumed", "anchors",
+                                "verdicts", "files", *BLOB_TABLES})
+FULL_SCAN_ENV = "GUJI_DB_FULL_SCAN"
+
+
+def incremental_ok(paths) -> bool:
+    """这些改了的文件能不能只扫它们自己（纯函数）。"""
+    for rel in paths:
+        if rel.startswith(GS):
+            return False
+        tbl = classify(rel)
+        if tbl is None or tbl not in INCREMENTAL_TABLES:
+            return False
+    return True
+
+
 def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
     return sorted(k for k in set(base) | set(cur) if base.get(k) != cur.get(k))
 
@@ -127,6 +192,9 @@ GLYPH_SHRINK_RATIO = 0.95                                # 导出后某个账本
 
 
 ALLOW_DUP_KEYS_ENV = "GUJI_ALLOW_DUP_KEYS"
+#: 状态里的标记：数据目录的字形账本比 glyph.db 新（``db pull --no-rebuild`` 拉到了新账本却没重建库）
+GLYPH_DB_STALE = "glyph_db_stale"
+ALLOW_STALE_GLYPH_ENV = "GUJI_ALLOW_STALE_GLYPH_EXPORT"
 
 
 def dup_key_problems(problems: list[str], changed: set[str]) -> list[str]:
@@ -173,6 +241,14 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
     fp = glyph.fingerprint(glyph.db_path)
     if state is not None and fp == state.get("glyph_db_fp"):
         return False
+    if state is not None and state.get(GLYPH_DB_STALE) and os.environ.get(ALLOW_STALE_GLYPH_ENV) != "1":
+        # 2026-11-18（全唐文开放行格回库前查出的洞）：`db pull --no-rebuild` 拉到了新的字形账本、glyph.db 却还是旧的，
+        # 状态里的指纹也还是旧库的。之后有人往这个旧库里写（回库、人裁落库），导出就会拿旧库把新账本整个盖掉，
+        # 别人新加的刻例在推库时被删——少于 5% 时缩水闸拦不住。
+        raise SystemExit(
+            f"✗ 本机 glyph.db 比数据目录的字形账本旧（上次 `guji db pull` 带了 --no-rebuild），之后又被改过：导出会用旧库"
+            f"盖掉账本、推库时删掉别人新加的刻例，已停下、没导出。先备份要留的本地改动，`guji db pull --force`"
+            f"（重建 glyph.db，会丢本地没推的改动），再重做刚才的回库／落库；确知本机库是新的设 {ALLOW_STALE_GLYPH_ENV}=1。")
     store = data / GS.rstrip("/")
     before = _jsonl_rows(store)
     backup: dict[str, bytes] = {f.name: f.read_bytes() for f in store.glob("*.jsonl")} if store.is_dir() else {}
@@ -186,6 +262,26 @@ def _export_if_changed(glyph: GlyphHooks | None, data: Path, state: dict | None)
             "先 `guji db pull --force -w <工作区>`（会重建字形库，约 2 分钟）再 sync／push；"
             f"确要缩小的人为清理设 {ALLOW_GLYPH_SHRINK_ENV}=1。")
     return True
+
+
+def _refresh_stale_db(glyph: GlyphHooks | None, ws_dir: Path, data: Path, st: dict, *, src=None, cache=None,
+                      bucket: str = "main") -> dict:
+    """账本比 glyph.db 新、而 glyph.db 自那以后没被动过（指纹仍是状态里记的）：现在按账本重建，清掉标记。
+
+    换单（``GUJI_DB_NO_GLYPH``）的 sync 只拉不重建，之后一次正常 sync 就在这里补上；库被动过就不碰，
+    交 ``_export_if_changed`` 拦下（重建会丢掉那些改动）。"""
+    if glyph is None or not st.get(GLYPH_DB_STALE) or not Path(glyph.db_path).exists():
+        return st
+    if glyph.fingerprint(glyph.db_path) != st.get("glyph_db_fp"):
+        return st
+    if borrow_entries(ws_dir) and src is None:          # 借库要连库解析，拿不到就不重建（重建成不带借库的库更糟）
+        return st
+    extras = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)[0] if borrow_entries(ws_dir) else []
+    glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
+    st = {k: v for k, v in st.items() if k not in (GLYPH_DB_STALE, "at")}
+    st["glyph_db_fp"] = glyph.fingerprint(glyph.db_path)
+    write_state(data, **st)
+    return st
 
 
 def local_changes(ws_dir: Path, glyph: GlyphHooks | None = None) -> list[str]:
@@ -317,12 +413,222 @@ def _materialize(src, ws: str, tmp: Path, cache, bucket: str, retries: int = 3,
     raise SystemExit("读的过程中工作区一直有新写入，稍后再拉")
 
 
+#: 增量拉（只取基准 rev 之后库里改了的文件，11-18）：设 1 退回整拉（每次都读整个工作区的清单和文件）
+FULL_PULL_ENV = "GUJI_DB_FULL_PULL"
+#: 变更记录超过这么多条、或要取的文件超过这么多个，就整拉（按路径分批取省不了多少）
+INCR_MAX_CHANGES = 20000
+INCR_MAX_FILES = 400
+
+
+def _change_rows(src, ws: str, rev: int, cap: int) -> list[dict]:
+    """库里工作区 ``ws`` 在 ``rev`` 之后的变更记录（tbl、op、pk），至多读 ``cap + 1`` 条。"""
+    if hasattr(src, "conn"):                         # 直连 Postgres（测试、库机器）
+        cur = src.conn.cursor()
+        cur.execute("SELECT tbl, op, pk FROM changes WHERE ws = %s AND rev > %s ORDER BY rev LIMIT %s",
+                    (ws, int(rev), cap + 1))
+        return [{"tbl": t, "op": o, "pk": k} for t, o, k in cur.fetchall()]
+    out: list[dict] = []
+    for r in src._rows("changes", ws, None, {"since_rev": int(rev)}):
+        out.append(r)
+        if len(out) > cap:
+            break
+    return out
+
+
+def _remote_delta(src, ws: str, rev: int, extra: set[str] = frozenset()):
+    """基准 rev 之后库里改了的文件路径和刻例实例 id；拿不准（整批导入、太多、旧数据源）回 None 走整拉。
+
+    文件一级的改动都记在 ``source_files``／``BLOB_TABLES`` 的变更里（主键就是路径）；刻例图换了记在
+    ``glyph_instances``（主键实例 id，指纹含 patch_sha）。行在文件里挪位置不记变更，但那个文件的 sha 变了，
+    ``source_files`` 照样有一条。"""
+    if os.environ.get(FULL_PULL_ENV) == "1":
+        return None
+    try:
+        rows = _change_rows(src, ws, rev, INCR_MAX_CHANGES)
+    except Exception:                                 # noqa: BLE001 —— 旧 Worker、简易数据源：整拉
+        return None
+    if len(rows) > INCR_MAX_CHANGES:
+        return None
+    paths: set[str] = set()
+    inst: set[str] = set()
+    keys: dict[str, list[list]] = {}
+    for r in rows:
+        pk = r["pk"]
+        if isinstance(pk, str):
+            pk = json.loads(pk)
+        if not isinstance(pk, list) or not pk:       # {"bulk_rows": n}：首次整批导入，不知道是哪些文件
+            return None
+        if r["tbl"] == "source_files" or r["tbl"] in BLOB_TABLES:
+            paths.add(str(pk[0]))
+        elif r["op"] != "delete":
+            keys.setdefault(r["tbl"], []).append(pk)
+            if r["tbl"] == "glyph_instances":
+                inst.add(str(pk[0]))
+    return paths, inst, set(extra) - paths, keys
+
+
+#: 按主键补行时，一次请求带这么多个键值（URL 长度）；一张表要补的键超过 PATCH_MAX_KEYS 就整文件取
+PATCH_KEY_BATCH = 200
+PATCH_MAX_KEYS = 4000
+
+
+def _patch_lines(src, ws: str, need: dict[str, dict], base: dict[str, str], keys: dict[str, list[list]],
+                 reuse) -> dict[str, bytes]:
+    """逐行表的文件只差几行时，不整文件向库要（殿本 instances 一份 1.5 万行、要 20 多次请求、约 30 s）：
+    本机那份还是基准版本的，就按变更记录里的主键只取改了／新增的行，盖到本机行上，按库里登记的行数截齐，
+    整文件 sha 对得上才用。行挪了位置（中间删行）不记变更，sha 会对不上，那个文件照旧整文件取。"""
+    from .materialize import LINE_COLS, NOT_LINE, _rows
+    from .scope import split_lines
+    out: dict[str, bytes] = {}
+    if reuse is None:
+        return out
+    by_tbl: dict[str, dict[str, list[str]]] = {}
+    for p, f in need.items():
+        tbl = f["tbl"]
+        if tbl in NOT_LINE or tbl not in TABLES or not base.get(p):
+            continue
+        lp = reuse(p)
+        if lp is None:
+            continue
+        try:
+            b = Path(lp).read_bytes()
+        except OSError:
+            continue
+        if sha256(b) != base[p]:
+            continue
+        by_tbl.setdefault(tbl, {})[p] = split_lines(b)[0]
+    for tbl, have in by_tbl.items():
+        kcols = TABLES[tbl].key
+        pks = keys.get(tbl, [])
+        if not kcols or len(pks) > PATCH_MAX_KEYS or any(len(k) != len(kcols) for k in pks):
+            continue
+        # 用不同值最多的那一列过滤（src_path 只在它是唯一主键列时用）
+        cand = [i for i, c in enumerate(kcols) if c != "src_path"] or [0]
+        col = max(cand, key=lambda i: len({str(k[i]) for k in pks}))
+        vals = sorted({str(k[col]) for k in pks})
+        got: dict[str, dict[int, str]] = {p: {} for p in have}
+        try:
+            for i in range(0, len(vals), PATCH_KEY_BATCH):
+                for r in _rows(src, tbl, ws, LINE_COLS, **{kcols[col]: vals[i:i + PATCH_KEY_BATCH]}):
+                    if r["src_path"] in got:
+                        got[r["src_path"]][int(r["src_line"])] = r["raw"]
+        except Exception:                             # noqa: BLE001 —— 数据源不认这个过滤：整文件取
+            continue
+        for p, lines in have.items():
+            f = need[p]
+            n = int(f["n_lines"])
+            new = (lines + [None] * n)[:n]
+            for i, raw in got[p].items():
+                if i < n:
+                    new[i] = raw
+            if any(x is None for x in new):
+                continue
+            b = ("\n".join(new) + ("\n" if f["final_newline"] else "")).encode("utf-8")
+            if sha256(b) == f["sha256"] and len(b) == int(f["bytes"]):
+                out[p] = b
+    return out
+
+
+def _materialize_delta(src, ws: str, tmp: Path, cache, bucket: str, base: dict[str, str], rev: int, *,
+                       reuse=None, extra: set[str] = frozenset(), want_patch=lambda name: True,
+                       retries: int = 3):
+    """``_materialize`` 的增量版：只把基准 ``rev`` 之后库里改了的文件（加上 ``extra``，库里现在的版本）还原到 ``tmp``，
+    库里清单由 ``base`` 加这些改动算出。返回 (rev, 库里清单, 统计)；不能增量就回 None（调用方整拉）。"""
+    from .materialize import MaterializeError, _rows, _safe, _texts
+    prefixes = (WS_YAML,) + SCOPE
+    sel = lambda p: p.startswith(prefixes)          # noqa: E731
+    for _ in range(retries):
+        r0 = src.status()
+        d = _remote_delta(src, ws, rev, extra)
+        if d is None:
+            return None
+        changed, inst, more, keys = d
+        want = sorted(changed | more)
+        if len(want) > INCR_MAX_FILES or len(inst) > INCR_MAX_CHANGES:
+            return None
+        try:
+            files = {r["src_path"]: r for r in _rows(src, "source_files", ws, None, src_path=want)} if want else {}
+            blobs: dict[str, dict[str, str]] = {}
+            for tbl in BLOB_TABLES:
+                blobs[tbl] = ({r["src_path"]: r["sha256"] for r in _rows(src, tbl, ws, ("src_path", "sha256"),
+                                                                          src_path=want)} if want else {})
+            patch = ({r["instance_id"]: r.get("patch_sha") for r in
+                      _rows(src, "glyph_instances", ws, ("instance_id", "patch_sha"), instance_id=sorted(inst))}
+                     if inst and sel(GS + "patches/") else {})
+        except Exception:                             # noqa: BLE001 —— 数据源不认按路径过滤：整拉
+            return None
+        remote = {k: v for k, v in base.items() if k not in changed}
+        remote.update({p: r["sha256"] for p, r in files.items() if p in changed})
+        for got in blobs.values():
+            remote.update({p: sha for p, sha in got.items() if p in changed})
+        need = {p: r for p, r in files.items() if sel(p) and r["tbl"] not in BLOB_TABLES}
+        patched = _patch_lines(src, ws, need, base, keys, reuse)
+        try:
+            texts, reused, fetched, _ = _texts(src, ws, {p: r for p, r in need.items() if p not in patched}, reuse)
+            texts.update(patched)
+        except MaterializeError:
+            if src.status() != r0:
+                continue
+            return None
+        images: dict[str, str] = {}
+        by_ext: dict[str, set[str]] = {}
+        for i, sha in patch.items():
+            name = f"{_safe(i)}.png"
+            if sha and want_patch(name):
+                images[f"{GS}patches/{name}"] = sha
+                by_ext.setdefault("png", set()).add(sha)
+        for tbl, got in blobs.items():
+            for p, sha in got.items():
+                if sel(p):
+                    images[p] = sha
+                    by_ext.setdefault(BLOB_TABLES[tbl], set()).add(sha)
+        absent: set[str] = set()
+        if images:
+            if cache is None:
+                from .._cv import BlobCache
+                cache = BlobCache()
+            for ext in sorted(by_ext):
+                absent.update(cache.ensure(src, by_ext[ext], bucket=bucket, ext=ext).get("missing", ()))
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        tmp.mkdir(parents=True)
+        for p, b in texts.items():
+            (tmp / p).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / p).write_bytes(b)
+        for p, sha in images.items():
+            if sha not in absent:
+                (tmp / p).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cache.path(sha), tmp / p)
+        if src.status() == r0 or not src.changes_since(ws, r0, limit=1):
+            return r0, remote, {"scan": "incremental", "changed_files": len(changed), "files": len(texts),
+                                "patched": len(patched),
+                                "reused": reused, "fetched": fetched, "images": len(images) - len(absent)}
+    return None
+
+
 def _install(tmp: Path, ws_dir: Path, data: Path) -> tuple[int, int]:
     """把 tmp 里还原的文件换进数据目录（镜像；没被引用的刻例图留着），workspace.yaml 进工作区。"""
     got = {p.relative_to(tmp).as_posix() for p in tmp.rglob("*") if p.is_file()}
     removed = 0
     for rel, p in list(_walk(data)):
         if rel not in got and classify(rel) != "patch":
+            p.unlink()
+            removed += 1
+    for rel in sorted(got):
+        dst = (Path(ws_dir) if rel == WS_YAML else data) / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(tmp / rel, dst)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return len(got), removed
+
+
+def _install_delta(tmp: Path, ws_dir: Path, data: Path, changed: set[str]) -> tuple[int, int]:
+    """增量拉的 ``_install``：tmp 里的文件换上去（刻例图也覆盖，库里换了图），库里删掉的 ``changed`` 路径本机也删。"""
+    got = {p.relative_to(tmp).as_posix() for p in tmp.rglob("*") if p.is_file()}
+    removed = 0
+    for rel in sorted(changed - got):
+        p = (Path(ws_dir) if rel == WS_YAML else data) / rel
+        if p.is_file() and classify(rel) != "patch":
             p.unlink()
             removed += 1
     for rel in sorted(got):
@@ -648,12 +954,22 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
     if seed_rev is not None:                     # 新机器：先用快照里的文件，库里只要之后变了的
         here = reuse
         reuse = lambda rel: here(rel) or ((seed / rel) if (seed / rel).is_file() else None)  # noqa: E731
-    try:
-        rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude, repair_gaps=repair_gaps)
-    finally:
-        shutil.rmtree(seed, ignore_errors=True)
-    written, removed = _install(tmp, ws_dir, data)
-    base = _db_manifest(src, ws)
+    delta = None
+    if st is not None and not force and not exclude and not st.get("exclude") and not repair_gaps and seed_rev is None:
+        # 本机和基准一致（上面查过没有未推改动）：只取库里改了的文件换上去（11-18）
+        delta = _materialize_delta(src, ws, tmp, cache, bucket, old_base, int(st["rev"]), reuse=reuse)
+    if delta is not None:
+        rev, base, stats = delta
+        written, removed = _install_delta(tmp, ws_dir, data, set(_diff(old_base, base)))
+    else:
+        try:
+            rev, stats = _materialize(src, ws, tmp, cache, bucket, reuse=reuse, exclude=exclude,
+                                      repair_gaps=repair_gaps)
+        finally:
+            shutil.rmtree(seed, ignore_errors=True)
+        written, removed = _install(tmp, ws_dir, data)
+        base = _db_manifest(src, ws)
+        stats = {"scan": "full", **stats}
     if exclude:
         base = {k: v for k, v in base.items() if not any(k.startswith(x) for x in exclude)}
     store_changed = any(old_base.get(k) != base.get(k) for k in set(old_base) | set(base) if k.startswith(GS))
@@ -664,6 +980,8 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
         out["corpus_base"] = cb
     fp = (st or {}).get("glyph_db_fp")
     bsig = (st or {}).get("borrow", [])
+    # 没重建就记下「库比账本旧」，重建了再清。新机器第一次拉（还没有状态）不记：那时本机多半还没有 glyph.db
+    stale = bool((st or {}).get(GLYPH_DB_STALE)) or (store_changed and st is not None)
     if glyph is not None:
         extras, bsig = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)
         if extras:
@@ -671,8 +989,12 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
         if store_changed or not Path(glyph.db_path).exists() or force or bsig != (st or {}).get("borrow", []):
             out["glyph_db"] = glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
             fp = glyph.fingerprint(glyph.db_path)
+            stale = False
+    if stale:
+        out[GLYPH_DB_STALE] = True
     write_state(data, ws=ws, branch=str(m.get("branch") or "main"), rev=rev, base=base, glyph_db_fp=fp,
-                borrow=bsig, **({"exclude": list(exclude)} if exclude else {}))
+                borrow=bsig, **({"exclude": list(exclude)} if exclude else {}),
+                **({GLYPH_DB_STALE: True} if stale else {}))
     if seed_rev is not None:
         out["snapshot_rev"] = seed_rev
     if exclude:
@@ -741,11 +1063,18 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     _partial_guard(st, "push")
     base = int(st["rev"])
     exported = _export_if_changed(glyph, data, st)
-    sc = scan(ws_dir, data)
+    cur_manifest = manifest(ws_dir, data)
+    changed = set(_diff(st.get("base", {}), cur_manifest))
+    if skip_prefixes:
+        changed = {c for c in changed if not c.startswith(skip_prefixes)}
+    incr = (not creating and not shared_writer and bool(changed) and incremental_ok(changed)
+            and os.environ.get(FULL_SCAN_ENV) != "1")
+    sc = scan(ws_dir, data, only=changed if incr else None)
     if sc.ws != st.get("ws"):
         raise SystemExit(f"数据目录记的工作区是 {st.get('ws')}，workspace.yaml 写的是 {sc.ws}")
-    local_paths = {r.src_path for r in sc.rows}
-    dup = dup_key_problems(sc.problems, set(_diff(st.get("base", {}), manifest(ws_dir, data))))
+    # 本地有哪些文件：增量时用清单（没扫的文件也算在），全量时同以前取扫出来的行
+    local_paths = set(cur_manifest) | {r.src_path for r in sc.rows} if incr else {r.src_path for r in sc.rows}
+    dup = dup_key_problems(sc.problems, set(_diff(st.get("base", {}), cur_manifest)))
     if dup and os.environ.get(ALLOW_DUP_KEYS_ENV) != "1":
         raise SystemExit(f"要推的文件里有同主键重复行（库里按主键存，「后者覆盖」会丢前面的行，登记的行数却是整个文件的，"
                          f"之后谁都拉不下来，史記 anchors/04.jsonl 2026-11-10）：{'；'.join(dup[:4])}。先去重再推；"
@@ -841,10 +1170,13 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                for ext, g in sorted(images.items())}
         up = res["png"] if list(res) == ["png"] else res
     only = {r.src_path for r in sc.rows if not r.src_path.startswith(skip_prefixes)} if skip_prefixes else None
+    if incr:                                           # 只比这些文件的行；本地删掉的文件也在里面（库里那几行跟着删，受删除闸管）
+        only = set(changed)
     rep = import_scans(conn, [sc], label=f"push:{sc.ws}@{base}", actor=actor, dry_run=dry_run,
                        source="push", guard=guard, allow_delete=allow_delete, only_paths=only)
     out = rep.as_dict()
-    out.update(base_rev=base, images=up, glyph_exported=exported, data_dir=str(data))
+    out.update(base_rev=base, images=up, glyph_exported=exported, data_dir=str(data),
+               scan="incremental" if incr else "full", scanned_files=len(changed) if incr else None)
     if not dry_run:
         fp = glyph.fingerprint(glyph.db_path) if glyph is not None and Path(glyph.db_path).exists() else st.get("glyph_db_fp")
         new_base = manifest(ws_dir, data)
@@ -857,7 +1189,8 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                     else:
                         new_base.pop(rel, None)
         write_state(data, ws=sc.ws, branch=st.get("branch", "main"), rev=rep.rev_to,
-                    base=new_base, glyph_db_fp=fp, borrow=st.get("borrow", []))
+                    base=new_base, glyph_db_fp=fp, borrow=st.get("borrow", []),
+                    **({GLYPH_DB_STALE: True} if st.get(GLYPH_DB_STALE) else {}))
     return out
 
 
@@ -1192,6 +1525,7 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         raise SystemExit(f"数据目录 {data} 没有 {STATE}：先 guji db pull -w {ws_dir}")
     _partial_guard(st, "sync")
     ws = str(st["ws"])
+    st = _refresh_stale_db(glyph, ws_dir, data, st, src=src, cache=cache, bucket=bucket)
     exported = _export_if_changed(glyph, data, st)
     base = st["base"]
     local = manifest(ws_dir, data)
@@ -1220,8 +1554,16 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
     tmp = data.parent / f".{data.name}.sync.tmp"
     if tmp.exists():
         shutil.rmtree(tmp)
-    rev, _ = _materialize(src, ws, tmp, cache, bucket, reuse=_local(ws_dir, data))
-    remote = _db_manifest(src, ws)
+    # 只取库里改了的文件（加本地改了的那些在库里的版本，合并要用）；拿不准就整拉（11-18：殿本 sync 读整库 81 s）
+    delta = _materialize_delta(src, ws, tmp, cache, bucket, base, int(st["rev"]), reuse=_local(ws_dir, data),
+                               extra=mine, want_patch=lambda n: not (data / GS / "patches" / n).exists())
+    if delta is not None:
+        rev, remote, pstats = delta
+    else:
+        rev, pstats = _materialize(src, ws, tmp, cache, bucket, reuse=_local(ws_dir, data))
+        remote = _db_manifest(src, ws)
+        pstats = {"scan": "full", **{k: v for k, v in pstats.items() if k in ("files", "reused", "fetched")}}
+    out["pull"] = pstats
     theirs = set(_diff(base, remote))
     both = sorted(mine & theirs)
     merged: dict[str, bytes] = {}
@@ -1302,12 +1644,14 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         store_changed = True
         out["replay_unconsumed"] = _drop_glyph_consumed(data, replay_ids)
     fp = st.get("glyph_db_fp")
+    stale = bool(st.get(GLYPH_DB_STALE)) or store_changed
     if glyph is not None and store_changed and Path(glyph.db_path).exists():
         extras, _ = borrow_stores(src, ws_dir, cache=cache, bucket=bucket)
         out["glyph_db"] = glyph.rebuild(ws_dir, data / GS.rstrip("/"), glyph.db_path, extras)
         fp = glyph.fingerprint(glyph.db_path)
+        stale = False
     write_state(data, ws=ws, branch=st.get("branch", "main"), rev=rev, base=remote, glyph_db_fp=fp,
-                borrow=st.get("borrow", []))
+                borrow=st.get("borrow", []), **({GLYPH_DB_STALE: True} if stale else {}))
     if replay_ids:
         out["replay"] = replay(replay_ids)
         _export_if_changed(glyph, data, read_state(data))  # 重新消费写的是 glyph.db，导出成字形库再比对、推

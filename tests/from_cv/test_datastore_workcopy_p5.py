@@ -55,7 +55,7 @@ def _fresh(files, d: Path, src, cache, hooks=None) -> Path:
 
 def _data_files(data: Path) -> dict[str, bytes]:
     return {p.relative_to(data).as_posix(): p.read_bytes() for p in data.rglob("*")
-            if p.is_file() and p.name != ".central-state.json"}
+            if p.is_file() and p.name not in (".central-state.json", ".central-shacache.json")}
 
 
 def test_glyph_db_changes_are_exported_before_push(repo, conn, tmp_path):  # noqa: F811
@@ -795,3 +795,60 @@ def test_init_refuses_workspace_without_books(tmp_path, monkeypatch):
     (ws / "workspace.yaml").write_text("id: e\n")
     with pytest.raises(SystemExit, match="没有册 yaml"):
         WC.init(_Empty(), ws)
+
+
+def test_incremental_pull_and_sync_match_full_pull(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """库里有改动时只取改了的文件（11-18）：增量 pull／sync 的结果与整拉逐字节同，库里删的文件本机也删。"""
+    from guji_manager.datastore.workcopy import data_dir, local_changes, pull, push, read_state, sync
+    src, files, cache, _ = _setup(repo, conn, tmp_path)
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    a = _fresh(files, tmp_path / "a", src, cache)
+    da = data_dir(a)
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-b"))
+    b = _fresh(files, tmp_path / "b", src, cache)
+    db_ = data_dir(b)
+
+    rel = "feedback/events/b.jsonl"
+    (db_ / rel).write_bytes((db_ / rel).read_bytes() + (_line(id="evt_b_7", batch="b", seq=7) + "\n").encode())
+    (db_ / "books" / "vol09.yaml").write_bytes(b"id: vol09\n")
+    gone = next(p for p in sorted(_data_files(db_)) if p.startswith("books/") and p != "books/vol09.yaml")
+    (db_ / gone).unlink()
+    push(conn, b, actor="b", allow_delete=True)
+
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    out = pull(src, a, cache=cache)
+    assert out["scan"] == "incremental" and out["changed_files"] == 3 and out["patched"] == 1   # 事件文件只补新行
+    assert not (da / gone).exists() and (da / "books" / "vol09.yaml").exists()
+    assert local_changes(a) == []
+
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-c"))
+    monkeypatch.setenv("GUJI_DB_FULL_PULL", "1")
+    c = _fresh(files, tmp_path / "c", src, cache)
+    assert _data_files(da) == _data_files(data_dir(c))
+    assert read_state(da)["base"] == read_state(data_dir(c))["base"]
+    monkeypatch.delenv("GUJI_DB_FULL_PULL")
+
+    # sync：b 再追加一行推上去，a 本地也追加一行 → 增量取库里那份合并
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-b"))
+    (db_ / rel).write_bytes((db_ / rel).read_bytes() + (_line(id="evt_b_8", batch="b", seq=8) + "\n").encode())
+    assert sync(src, conn, b, actor="b", cache=cache)["action"] == "push"
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    (da / rel).write_bytes((da / rel).read_bytes() + (_line(id="evt_b_a9", batch="b", seq=9) + "\n").encode())
+    out = sync(src, conn, a, actor="a", cache=cache)
+    assert out["pull"]["scan"] == "incremental" and out["merged"] == [rel]
+    ids = {r["id"] for r in src.rows("events", "tws")}
+    assert {"evt_b_7", "evt_b_8", "evt_b_a9"} <= ids
+    assert local_changes(a) == []
+
+
+def test_incremental_pull_falls_back_on_bulk_changes(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    from guji_manager.datastore import workcopy
+    src, files, cache, _ = _setup(repo, conn, tmp_path)
+    a = _fresh(files, tmp_path / "a", src, cache)
+    st = workcopy.read_state(workcopy.data_dir(a))
+    assert workcopy._remote_delta(src, "tws", int(st["rev"])) == (set(), set(), set(), {})
+    monkeypatch.setattr(workcopy, "_change_rows", lambda *a, **k: [{"tbl": "glyphs", "op": "insert",
+                                                                     "pk": {"bulk_rows": 5000}}])
+    assert workcopy._remote_delta(src, "tws", int(st["rev"])) is None
+    monkeypatch.setattr(workcopy, "_change_rows", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("old worker")))
+    assert workcopy._remote_delta(src, "tws", int(st["rev"])) is None

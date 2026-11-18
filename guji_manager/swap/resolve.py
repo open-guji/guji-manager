@@ -77,7 +77,9 @@ def resolve(cur: str | None, new: str | None, human: str | None = None, *,
         if new is not None and not eq(new, human) and new != BLANK and not new_pending:
             return Decision(PROTECTED_CONFLICT, REVIEW, human, False, f"新包「{new}」≠人裁「{human}」，保留人裁")
         if eq(cur, human):
-            return Decision(HUMAN_KEEP, KEEP, human, True)
+            # 只差码位归一（人裁写的是另一码位）：文本留现行的字，同 0.x 出单（proof_cycle 只差码位归一的格留旧字）。
+            # 以前落人裁的原码位，殿本 vol01 1.x 换包把 宫→宮、歩→步 等 26 格改反了（ZM 11-18）
+            return Decision(HUMAN_KEEP, KEEP, cur if not _blank(cur) else human, True)
         return Decision(HUMAN_RESTORE, ADOPT, human, True, f"现行「{cur}」→人裁「{human}」")
     if human_invalid:
         # 旧人裁不可采信：文本保持现行（缺格才取新包），旧裁字只作复审参考

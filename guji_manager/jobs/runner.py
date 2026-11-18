@@ -32,6 +32,8 @@ VENV = Path(os.environ.get("GUJI_JOBS_VENV", "/opt/guji-venv"))
 HOME = Path(os.environ.get("GUJI_JOBS_HOME", str(Path.home() / ".guji-jobs")))
 RUNNER_ROOT = _cv.cv_repo()       # 执行方自己的 cv 检出（rerun_prep.sh 取这里的，跟 dev）
 HEARTBEAT_S = 60
+#: 跑单时每这么多拍顺手收回一次别家过期的领单（`reap` 原先只在两单之间跑，长单期间失联单要等很久才退回排队）
+REAP_EVERY = int(os.environ.get("GUJI_JOBS_REAP_EVERY", "5"))
 IDLE_BOARD_S = 300           # 空闲执行方刷新看板的节流（秒）
 #: rerun_prep.sh 里失败多半是网络／库的段（失败了换个会话重试）；其余段（钉子账、建字形库、语料校验…）是配置问题
 _PREP_ENV_PARTS = {"cv", "克隆工作区", "db-pull", "取原图", "模板索引", "基线包"}
@@ -123,15 +125,26 @@ class Job:
         self.ws: str | None = None
         self.prep_override: dict = {}     # 准备脚本记进运行覆盖的改值（corpus／glyph_pin／cv_version；旧 tag 改本机册 yaml 时为空）
         self._stop = threading.Event()
+        self.lease_lost = False           # 心跳发现租约已被收回（失联后单已退回排队），不是有人叫停
 
     # ── 心跳 ──
     def _beat(self) -> None:
         db = S.DB(self.db.factory)
+        n = 0
         while not self._stop.wait(HEARTBEAT_S):
+            n += 1
             try:
                 db(S.worker_seen, S.who(), state="busy", job_id=self.id)
                 BOARD.publish(db)
-                if db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress):
+                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress)
+                if REAP_EVERY > 0 and n % REAP_EVERY == 0 and why != "lost":
+                    try:
+                        for jid, st in db(S.reap):
+                            self._w(f"[心跳] 顺手收回过期领单 #{jid} → {st}")
+                    except Exception as e:      # noqa: BLE001 —— 收回失败不影响本单
+                        self._w(f"[心跳] 收回过期领单失败：{e}")
+                if why:
+                    self.lease_lost = self.lease_lost or why == "lost"
                     self.cancel.set()
                     if self.proc and self.proc.poll() is None:
                         os.killpg(self.proc.pid, signal.SIGTERM)
@@ -443,7 +456,7 @@ class Job:
             if sp["output"].get("pack") and sp.get("book"):
                 self.step("push", self.push)
         except Cancelled:
-            outcome, err = "cancelled", "有人要求停下"
+            outcome, err = "cancelled", ("租约已失：失联后这次领单已被收回，单已退回排队" if self.lease_lost else "有人要求停下")
         except StageError as e:
             outcome, err, code = e.outcome, f"{self.stage}：{e}", e.code
             if e.env or (self.stage in ("base", "push") and e.outcome == "failed"):

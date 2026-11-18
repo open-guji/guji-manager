@@ -28,26 +28,54 @@ from pathlib import Path
 
 WEB_REPO = "open-guji/kaiyuanguji-web"
 LIVE = "https://data.openguji.com/proof/{text_id}/{n:03d}.pending.json"
+DIANBEN_ID = "96mid1ogzk"
 LEDGER_FILES = ("glyphs.jsonl", "exemplars.jsonl", "admissions.jsonl")
 MIN_FREE_GB = 3.0
 LEDGER_FLOOR = 0.9          # 账本行数低于开跑时的这个比例就拒绝往下做
 
 
 def parse_books(spec: str) -> list[str]:
-    """``vol20-vol25,vol30`` → ['vol20', ..., 'vol25', 'vol30']。"""
+    """``vol20-vol25,vol30`` → ['vol20', ..., 'vol25', 'vol30']；全唐文、史記的纯数字册名同样可写区间，位数照写的
+    （``001-045`` → '001'…'045'，``01-42`` → '01'…'42'）。别的册名原样（不展开）。"""
     out: list[str] = []
     for part in spec.split(","):
         part = part.strip()
         if not part:
             continue
         m = re.fullmatch(r"vol(\d+)-vol(\d+)", part)
+        n = re.fullmatch(r"(\d+)-(\d+)", part)
         if m:
             out += [f"vol{i:02d}" for i in range(int(m[1]), int(m[2]) + 1)]
+        elif n:
+            w = len(n[1])
+            out += [f"{i:0{w}d}" for i in range(int(n[1]), int(n[2]) + 1)]
         elif re.fullmatch(r"vol\d+", part):
             out.append(f"vol{int(part[3:]):02d}")
+        elif re.fullmatch(r"[A-Za-z0-9_]+", part):
+            out.append(part)
         else:
-            raise SystemExit(f"--books 看不懂 {part!r}（如 vol20-vol99 或 vol23,vol24）")
+            raise SystemExit(f"--books 看不懂 {part!r}（如 vol20-vol99、001-045 或 vol23,vol24）")
     return list(dict.fromkeys(out))
+
+
+def vol_no(book: str) -> int:
+    """册序：``vol07`` → 7，``007``／``07`` → 7；别的册名读册 yaml 的 ``volume:``（cv ``core.volume_id``）。"""
+    m = re.fullmatch(r"(?:vol)?(\d+)", book)
+    if m:
+        return int(m[1])
+    try:
+        from .._cv import volume_of
+        v = volume_of(book).volume
+    except Exception:  # noqa: BLE001
+        v = None
+    if v is None:
+        raise SystemExit(f"{book} 推不出册序：册 yaml 写上 volume:")
+    return int(v)
+
+
+def chapter_of(book: str) -> str:
+    """book-text 章号（三位，殿本、全唐文、史記都是一册一章、三位）。"""
+    return f"{vol_no(book):03d}"
 
 
 def chunks(items: list, n: int):
@@ -119,7 +147,7 @@ def parse_cycle_log(text: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for line in text.splitlines():
         p = line.split("\t")
-        if len(p) >= 2 and re.fullmatch(r"vol\d+", p[0]) and p[1].startswith("→"):
+        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and p[1].startswith("→"):
             out[p[0]] = {"verdict": p[1].lstrip("→ ").strip(), "why": p[2] if len(p) > 2 else ""}
     return out
 
@@ -143,7 +171,7 @@ def live_rev(text_id: str, n: int) -> str | None:
 
 def publish_batch(books: list[str], text_id: str) -> str:
     """对这批册触发 proofing-sync（only=），等跑完，返回 conclusion。"""
-    only = ",".join(f"{text_id}/{int(b[3:]):03d}" for b in books)
+    only = ",".join(f"{text_id}/{chapter_of(b)}" for b in books)
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     r = subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", WEB_REPO, "--ref", "main",
                         "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={only}"],
@@ -201,7 +229,7 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
         return
     concl = publish_batch(done, text_id)
     for b in done:
-        want, got = expected_rev(ws, b, text_id), live_rev(text_id, int(b[3:]))
+        want, got = expected_rev(ws, b, text_id), live_rev(text_id, vol_no(b))
         ok = want is not None and want == got
         state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got, publish=concl)
         if ok:
@@ -238,6 +266,8 @@ def cmd_run(a) -> int:
     precheck(ws, state)
     save_state(sp, state)
     text_id = a.text_id
+    if text_id == DIANBEN_ID and any(not b.startswith("vol") for b in parse_books(a.books)):
+        raise SystemExit("非殿本的册（纯数字册名）要写 --text-id <书 ID>（全唐文 995ejelvk0、史記 988g3f0wsu）")
     cv = Path(a.cv)
     env = {**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}
     books = parse_books(a.books)
@@ -285,7 +315,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--books", required=True, help="如 vol20-vol99 或 vol23,vol24")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True)
-    p.add_argument("--text-id", default="96mid1ogzk")
+    p.add_argument("--text-id", default=DIANBEN_ID, help="book-text 书 ID（缺省殿本；全唐文 995ejelvk0、史記 988g3f0wsu）")
     p.add_argument("--cv", default=os.environ.get("GUJI_CV", str(Path.home() / "cv")), help="open-guji-cv 检出目录")
     p.add_argument("--batch-size", type=int, default=6, help="每批几册（全站一把发会超时）")
     p.add_argument("--state", default=None)
