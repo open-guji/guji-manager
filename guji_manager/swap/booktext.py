@@ -371,7 +371,8 @@ _LACUNA_RE = re.compile(r"□→(.)")
 def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tuple[list, list]:
     """remap 挪不了的标点里，两种情形可以确定地迁到新锚，不必整册卡住（bump punct 要锚点全对得上才升版）：
     ① 旧校验字是 □、新包识出了字（原因码 ANCHOR_MISS｜校验字变了…□→X）：锚点不变（表里有新锚就用新锚），校验字改成 X；
-    ② 旧格被劈成 <旧锚>a、<旧锚>b…（原因码 ADD_DEL｜旧格无对应）：挂到最后一个新格。
+    ② 旧格被劈成 <旧锚>a、<旧锚>b…（原因码 ADD_DEL｜旧格无对应）：挂到最后一个新格；
+    ③ 旧锚是 NNb（劈开的后半）、新包把 NNa／NNb 合回了一格 NN：挂到 NN（11-17 全唐文 010 的 92:2:14b）。
     迁之前核新文本里真有这个锚点、且字对得上；核不过的仍留在 left（人工清单）。
     返回 (剩下的 left, 已迁清单[(层, 条目, 旧锚, 新锚, 新校验字, 情形)])。就地改 punct。"""
     if not punct or not left:
@@ -397,6 +398,10 @@ def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tupl
                 a = cands[-1]
                 p["anchor"], p["pre_char"] = a, slots[a]
                 done.append((layer, ent, old, a, slots[a], "旧格劈开")); continue
+        if "ADD_DEL" in why and not new and old not in slots and old[-1:] == "b" and old[:-1] in slots:
+            a = old[:-1]               # ③ 旧格是劈开的 NNa／NNb、新包又合回一个 NN：挂在 NN 上（标点在后半格之后＝合并格之后）
+            p["anchor"], p["pre_char"] = a, slots[a]
+            done.append((layer, ent, old, a, slots[a], "劈开的格合回一格")); continue
         rest.append(row)
     return rest, done
 
