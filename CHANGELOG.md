@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：`guji cellvotes draft --allow-empty`（ZM 11-18，殿本 21–99 册旧单没人投，swap run 整批被「读到 0 票」守卫拦下）：确实零票时出空草稿好照常换单。守卫不关：只认 `--from-kv` 当场从网站读全的结果，按单版、按条目两种记法这一章都要 0 条，且没有「条目找不到」被丢的票，否则照旧拒绝；票文件不认。meta.json 记 `empty_confirmed`（两种条数、读取时间）。配合 cv proof_cycle／auto_cycle 零票册自动带它。
 - PATCH：执行方成功存包后，除 `cache/<册>`、`products/<册>` 外也清 `data_full/<册>`（`guji source pull` 取的原图，真源在中心库，下一张单 prep 会再 pull）。执行机磁盘总不够：书仓本身很小（殿本约 157 MB），占盘大头是跑单产生的本地数据，原图一直没人清。只改 `jobs/runner.py::_clean_book_artifacts`，`GUJI_JOBS_KEEP_ARTIFACTS=1` 仍可关。
 - PATCH：领单前磁盘低于 `GUJI_JOBS_SWEEP_GB`（缺省 8 GB，0＝关）时，扫掉本机各工作区所有册的 `cache/<册>`、`products/<册>`、`data_full/<册>`（册号取自数据目录 books/*.yaml，`cache/_judge` 等非册号目录不动），再才轮到清 uv、guji-data 缓存。成功存包只清了本册，失联、失败的单和更早的册的残留一直在（worker-27 实测：全唐文仓 data_full 3.1G、cache 2.4G，史記仓 cache 3.4G）。`GUJI_JOBS_KEEP_ARTIFACTS=1` 同样关掉它。只改 `jobs/runner.py::_disk_gate`。
 
