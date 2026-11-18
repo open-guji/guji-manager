@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.56] - 测试中
+
+- 发版说明（A31 11-18）：PATCH。为带上 #634（swap book-text 1.x／0.x 只差码位归一的格文本留现行字，ZM 报 vol01 26 格改反）。
+
 - PATCH：`swap book-text`（含 1.x `swap/<册>-1x`）只差码位归一的格文本留现行字，同 0.x 出单（ZM 11-18：vol01 26 格 宫→宮、歩→步 等被改反）。两处：①码位表直接读数据目录 `config/codepoints.yaml` < `book_defaults.yaml` < 册 yaml（`charnorm.codepoints_of`），不再靠 cv 找册、找不到静默退成字面比；②有人裁且人裁与现行只差码位时留现行字，不落人裁的原码位。码位表为空时在报告 notes 里提示。
 ## [0.4.55] - 2026-11-17
 
