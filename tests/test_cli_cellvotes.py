@@ -112,3 +112,26 @@ def test_write_cache_check_soft_fails_without_engine(monkeypatch, capsys):
     monkeypatch.setattr(CV, "load_book", boom, raising=False)
     C._check_patch_cache("vol15", [{"id": "vol15:25:4:11a"}])
     assert "没核字块缓存" in capsys.readouterr().out + capsys.readouterr().err
+
+
+def test_draft_zero_votes_needs_explicit_allow_empty(tmp_path, monkeypatch):
+    """0 票默认退出（防读票读错）；确认旧单零票时加 --allow-empty，出空草稿（ready=0）。"""
+    import argparse
+
+    from guji_manager import cli_cellvotes as C
+    ws = tmp_path / "ws"
+    (ws / "feedback" / "events").mkdir(parents=True)
+    monkeypatch.setenv("GUJI_WORKSPACE", str(ws))
+    votes = tmp_path / "votes.jsonl"
+    votes.write_text("", encoding="utf-8")
+    out = tmp_path / "draft"
+    args = argparse.Namespace(book="vol04", site_book=BOOK, rev=REV, cord=None, no_box_check=True, tol=8.0,
+                              include_none=False, from_file=str(votes), from_kv=False, token_env="X",
+                              source="测试", out=str(out), pack=None)
+    with pytest.raises(SystemExit, match="allow-empty"):
+        C.cmd_draft(args)
+    args.allow_empty = True
+    C.cmd_draft(args)
+    meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+    assert meta["ready"] == 0 and meta["held"] == 0 and meta["n_votes"] == 0
+    assert (out / "drafts.jsonl").read_text(encoding="utf-8") == ""

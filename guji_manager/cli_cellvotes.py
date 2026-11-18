@@ -253,8 +253,9 @@ def cmd_draft(args) -> None:
     if not args.cord and not args.no_box_check and not pack_root:
         raise SystemExit("要给 --cord（出单那一版 book-text 的 <册>.cord.json）或 --pack（出单版产物包），或显式 --no-box-check")
     raw, where = _votes(args)
-    if not raw:
-        raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走")
+    if not raw and not getattr(args, "allow_empty", False):
+        raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走；"
+                         "确认这张单就是零票（没人投过）时，显式加 --allow-empty 出空草稿")
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
     human = latest_human(EventLog(feedback_root()).iter_all())
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
@@ -500,6 +501,8 @@ def add_parser(sub) -> None:
     p.add_argument("--rev", help="draft：待审单版本，如 004-r3")
     p.add_argument("--cord", default=None, help="draft：出单那一版 book-text 的 <册>.cord.json")
     p.add_argument("--no-box-check", action="store_true", help="draft：不核格位（自己担保产物没重切过）")
+    p.add_argument("--allow-empty", action="store_true",
+                   help="draft：0 票也出空草稿（确认旧单零票时用，如换包换单；缺省 0 票退出，防读票读错）")
     p.add_argument("--pack", default=None, help="draft：出单版产物包标签（republish 存的 rev-<rev>），取回当产物根，免重跑")
     p.add_argument("--tol", type=float, default=8.0, help="draft：格框容差（像素，缺省 8）")
     p.add_argument("--sheet", default=None, help="draft：投票时的待审单（读 prior：复审格上有意推翻旧人裁）；"
