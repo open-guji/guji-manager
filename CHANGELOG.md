@@ -4,8 +4,6 @@
 
 ## [未发版]
 
-- PATCH：`guji swap book-text` 格改 □ 后同步校验字按 A33 11-19 口径补全：matched_multi 的 `targets[].part` 全写且拼起来等于旧文字时按段长切回新文字（F-OV-14）；认不出的字格（unk）照新包落 □ 的也同步；提交说明分列标点 pre_char／专名 text 处数，另列「专名含□待复核」（改后 □ 占一半及以上或首尾成 □）。锚点、span、target 其余字段、无 pre_char 的标题符一律不动。merge_chars 先判 unk 再判 〓→□，报表不再把认不出的字格记成占位。
-
 - PATCH：放行格回库 `lib_backfill.select` 跳过夹注半格看图放行的格（cv `vis_ruling_half` 写的 `evidence.half`，统计项「半格看图放行」）：半格字块切偏多，没有人裁的不入库、不当可信刻例，有人裁走人裁入库（A23，Sheldon 11-19 同意；口径见 ai-team domain/CV/字形领域/格号后移评估-殿本row_segment与史記半格-2026-11-19.md）。不动产物、指纹（L0）。
 
 - 库文一致（`glyph_lib.text_check`）缺省由只报告改为自动处理（Sheldon 11-18 定，全唐文 d1 实跑验证改标进文本后）：整册跑完能确定的改库标、撤机器例，其余进待审；只想报告写 `text_check: report`。这台机器过不了改库护栏（借库跑批、部分副本、本机库比账本旧）时自动退回只报告并说明。
@@ -31,6 +29,10 @@
 - PATCH：放行格回库数「各字现有刻例」时不再把借来的刻例算进去（`ops/lib_backfill.lib_state` 排除 `borrowed` 表；OCR 研究 Project 11-18，Sheldon：新书快审能否部分自动入库）。借库的新书此前本书没有的字被当成不缺例，一格都不补（脉经本书 570 字头被数成 4,336）。不借库的书行为不变。文档 `doc/01-粗校/开书/放行格回库.md` 加第七节：借库阶段把 `match_ref` 加进回库通道顶替大部分冷启动快审，附脉经第 1 册实测（人审 1,189 格与机器放行字全部一致）。
 
 - PATCH：执行方自更新（`_refresh_runner`）失败时把 merge 的 stderr／超时写进日志，merge 超时 120→300 秒（`GUJI_JOBS_REFRESH_TIMEOUT_S`）。11-18 多台 runner 同时「dev 有更新但拉不动」自退，检出是干净的 detached HEAD、手动 ff 正常，当时看不出原因。
+## [0.4.64] - 2026-11-19
+
+- PATCH：`guji swap book-text` 格改 □ 后同步校验字按 A33 11-19 口径补全：matched_multi 的 `targets[].part` 全写且拼起来等于旧文字时按段长切回新文字（F-OV-14）；认不出的字格（unk）照新包落 □ 的也同步；提交说明分列标点 pre_char／专名 text 处数，另列「专名含□待复核」（改后 □ 占一半及以上或首尾成 □）。锚点、span、target 其余字段、无 pre_char 的标题符一律不动。merge_chars 先判 unk 再判 〓→□，报表不再把认不出的字格记成占位。
+
 ## [0.4.63] - 2026-11-18
 
 - 发版说明（A31 11-18，PATCH；main v0.4.62 ＋ 下面四个 PR 摘取，**不含** dev 上别的未发版改动）：给殿本换单（ZM）用。
