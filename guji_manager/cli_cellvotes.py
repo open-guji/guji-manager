@@ -270,6 +270,51 @@ def _confirm_empty(args, where: str) -> dict:
     return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
 
 
+def _bound_only(book: str, human: dict, votes: list[dict]) -> tuple[dict, list[tuple[str, str]]]:
+    """``latest_human`` 里有票的格，只留在现行产物根（出单版包）上绑定有效、且就绑在这一格的人裁。
+
+    ZM 11-19：vol02 75:7:11、vol18 33:4:7a／70:6:16 的旧人裁是迁移锚（``~q~r~r``），现行绑定不生效，格子照样上单待审；
+    用户又投了同字，draft 判「与已有人裁一致」跳过，票就永远落不进去。绑不上的旧人裁在这里拿掉：同字票照写新事件
+    （带新锚），推翻也不再算「推翻已有人裁」。只看有票的页（绑定按页缓存）。算不出绑定表时退回旧口径并醒目提示。
+    返回 (过滤后的 human, [(格, 原因)])。"""
+    from ._cv import bindings_usable, book_bindings
+    pre = f"{book}:"
+    voted = {v["a"] for v in votes if v.get("a")}
+    cand = {k: e for k, e in human.items() if k.startswith(pre) and k[len(pre):] in voted}
+    if not cand:
+        return human, []
+    pages = sorted({int(k[len(pre):].split(":")[0]) for k in cand})
+    try:
+        rows = book_bindings(book, pages=pages)
+    except Exception as e:  # noqa: BLE001
+        _print(f"⚠ 绑定表算不出来（{type(e).__name__}: {e}）：「与已有人裁一致」退回按格号判，迁移锚等没生效的旧人裁可能被误判一致；"
+               f"先 guji db pull、确认产物根有 {book} 的 Step3 再重跑 draft")
+        return human, []
+    try:                                  # 定字人裁再按 seed_admit 的口径核（绑定之外还有撤库标记、被推翻、换图源 rev 不符）
+        from ._cv import human_chars
+        hc = human_chars(book)
+    except Exception as e:  # noqa: BLE001
+        _print(f"⚠ human_chars 算不出来（{type(e).__name__}: {e}）：只按绑定表核")
+        hc = None
+    from .charnorm import load_norm
+    same = load_norm(book).same
+    out, gone = dict(human), []
+    for k, e in cand.items():
+        r = rows.get(e.id)
+        cell = bindings_usable(r, getattr(e, "ts", None))
+        why = None
+        if cell != k:
+            why = f"{(r or {}).get('status', '无绑定')}" + (f"→{cell}" if cell else "")
+        elif hc is not None and (e.payload or {}).get("shape") and (e.payload or {}).get("v") in ("confirm", "seg_defect"):
+            got = hc.get(k)
+            if got is None or not same(got, e.payload["shape"]):
+                why = f"seed_admit 不采信（现行人裁字 {got or '无'}）"
+        if why:
+            out.pop(k)
+            gone.append((k[len(pre):], why))
+    return out, gone
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -286,6 +331,10 @@ def cmd_draft(args) -> None:
         empty_ok = _confirm_empty(args, where)
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
     human = latest_human(EventLog(feedback_root()).iter_all())
+    human, unbound = _bound_only(args.book, human, votes) if not getattr(args, "no_bind_check", False) else (human, [])
+    if unbound:
+        _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
+               + "（" + "、".join(f"{a} {why}" for a, why in unbound[:8]) + ("…" if len(unbound) > 8 else "") + "）")
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
     sheet = _sheet(args)
     sheet_prior = {c["cell"]: (c.get("prior") or {}).get("id") for c in (sheet or {}).get("cells", [])
@@ -536,6 +585,8 @@ def add_parser(sub) -> None:
     p.add_argument("--rev", help="draft：待审单版本，如 004-r3")
     p.add_argument("--cord", default=None, help="draft：出单那一版 book-text 的 <册>.cord.json")
     p.add_argument("--no-box-check", action="store_true", help="draft：不核格位（自己担保产物没重切过）")
+    p.add_argument("--no-bind-check", action="store_true",
+                   help="draft：「与已有人裁一致」不核旧人裁在现行产物上的绑定（缺省核：绑不上的旧人裁不算已有，票照写）")
     p.add_argument("--pack", default=None, help="draft：出单版产物包标签（republish 存的 rev-<rev>），取回当产物根，免重跑")
     p.add_argument("--tol", type=float, default=8.0, help="draft：格框容差（像素，缺省 8）")
     p.add_argument("--sheet", default=None, help="draft：投票时的待审单（读 prior：复审格上有意推翻旧人裁）；"

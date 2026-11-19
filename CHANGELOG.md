@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+- PATCH：修 v0.4.66 `guji collect` 落错格（ZM vol01 演练 11-19：88:1:12a 領 应改绑到 13a、88:1:18a 武 是迁移前旧格）：要落的字一律取 cv `feedback.lookup.human_chars`（seed_admit 人裁通道同一口径：过绑定表，只认现格 valid／rebound、按改绑后的格号），不再按事件原格号取字；`--batch` 也过绑定表取改绑后的格；`human_chars` 算不出（缺缓存等）就停、不落 book-text。
+- PATCH：`cellvotes draft` 判「与已有人裁一致」只认在出单包上绑定有效、且现行 `human_chars` 就是这个字的人裁：迁移锚、改绑、作废、被撤的旧人裁不再让新票被跳过（ZM 11-19：vol02 75:7:11、vol18 33:4:7a、70:6:16），这些格的票照写新事件；`--no-bind-check` 关掉。
+
 ## [0.4.66] - 2026-11-19
 
 - PATCH：新命令 `guji collect`（`guji_manager/collect.py`，收单快路，ZM 第一册线要的「一条命令收一张单」）：没换包时，读票（`cellvotes draft --from-kv --items --pack rev-<rev>`）→ 写人裁 → 定字票逐格对 book-text dev 现文、不同就直接写人裁的字（格框对不上、以图代字格不写，等重放），标点专名校验字跟改、升 patch、`local_check --dev`、推 dev（1.x 推分支开草稿 PR）→ 条目结案 → `db sync` 一次 → 只发这一章并核线上单。不重放 seed_admit、不重出单；`--batch` 另把库里早先写下、还没进 book-text 的人裁批次也落了（过绑定表、每格取最新）；断点续跑（`reports/<册>/_collect/<rev>/state.json`）；`--dry-run` 演练；`--books auto` 读一遍网站条目票挑有新票的册；「与已有人裁一致」跳过的票也落（早先落库、book-text 没跟上的）；拉库／读票／落票／推库遇网络超时在单步内重试；多册一起发站一次（ZM 11-19 B 轮时间账四点）。`swap.booktext.do_book` 加 `merge`／`title`／`store_lineage` 参数（缺省行为不变）。

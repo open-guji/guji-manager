@@ -138,22 +138,6 @@ def consistent_cells(draft_dir: Path) -> dict[str, str]:
     return out
 
 
-def event_chars(ids: dict[str, str]) -> dict[str, tuple[str, str]]:
-    """{格: 事件 id} → {格: (字, 批次)}，只取定字人裁（confirm 带字、不是无法识别字）。"""
-    if not ids:
-        return {}
-    from ._cv import EventLog, feedback_root
-    want = set(ids.values())
-    by = {e.id: e for e in EventLog(feedback_root()).iter_all() if e.id in want}
-    out = {}
-    for a, eid in ids.items():
-        e = by.get(eid)
-        pl = (e.payload or {}) if e else {}
-        if e and pl.get("v") == "confirm" and pl.get("shape") and not pl.get("unk") and pl["shape"] not in PLACEHOLDERS:
-            out[a] = (pl["shape"], e.batch)
-    return out
-
-
 def live_open_cells(doc: dict) -> set[str]:
     """线上单里还待审的格（``review`` 不是 human）。"""
     return {bare(c["cell"]) for c in doc.get("cells") or [] if c.get("cell") and c.get("review", "pending") != "human"}
@@ -240,36 +224,36 @@ def _box_problem_fn(book: str, products_root: str | None, cord_path: Path):
     return CV._box_checker(book, cord_path, 8.0)
 
 
-def batch_chars(book: str, batches: list[str], products_root: str | None) -> tuple[dict[str, tuple[str, str]], list[str]]:
-    """``--batch`` 点名的人裁批次 → {现行格: (字, 批次)}：每格只认最新一条人裁，且要过绑定表（valid／rebound）。
-    返回 (格→字, 没认上的说明)。"""
+def current_human(book: str, products_root: str | None) -> dict[str, str]:
+    """现行人裁 {格（无册前缀）: 字}：cv ``feedback.lookup.human_chars``（seed_admit 人裁通道同一口径），绑定按
+    ``products_root``（出单版包）算。出错就抛，不退回按格号。"""
+    if products_root:
+        os.environ["GUJI_PRODUCTS_DIR"] = products_root
+    from ._cv import human_chars
+    return {bare(k): c for k, c in human_chars(book).items() if c and k.startswith(f"{book}:")}
+
+
+def batch_cells(book: str, batches: list[str], products_root: str | None) -> tuple[dict[str, str], list[str]]:
+    """``--batch`` 点名的人裁批次 → {现行格（绑定后）: 批次}；字由调用方从 ``current_human`` 取（每格最新、生效的那条）。"""
     if products_root:
         os.environ["GUJI_PRODUCTS_DIR"] = products_root
     from ._cv import EventLog, feedback_root, book_bindings, bindings_usable
-    from .feedback.web_votes import latest_human
-    evs = list(EventLog(feedback_root()).iter_all())
-    last = latest_human(evs)
-    pick = {k: e for k, e in last.items() if getattr(e, "batch", None) in batches and k.startswith(f"{book}:")
-            and (e.payload or {}).get("v") == "confirm" and (e.payload or {}).get("shape")
-            and not (e.payload or {}).get("unk")}
-    if not pick:
-        return {}, [f"批次 {','.join(batches)} 里没有 {book} 的最新定字人裁（或已被后来的人裁盖过）"]
-    pages = sorted({int(bare(k).split(":")[0]) for k in pick})
+    evs = [e for e in EventLog(feedback_root()).iter_all() if getattr(e, "batch", None) in batches
+           and e.kind == "confirm" and e.target.unit == "cell" and e.target.key.startswith(f"{book}:")]
+    if not evs:
+        return {}, [f"批次 {','.join(batches)} 里没有 {book} 的格级人裁"]
+    pages = sorted({int(bare(e.target.key).split(":")[0]) for e in evs})
     try:
         rows = book_bindings(book, pages=pages)
     except Exception as e:  # noqa: BLE001
-        return {}, [f"绑定表算不出来（{type(e).__name__}: {e}），这些批次不落；先 guji db pull 并确认产物根有本册 Step3"]
+        return {}, [f"绑定表算不出来（{type(e).__name__}: {e}），这些批次不落"]
     out, miss = {}, []
-    for k, e in pick.items():
+    for e in evs:
         cell = bindings_usable(rows.get(e.id), e.ts)
-        if not cell:
-            miss.append(f"{bare(k)}「{e.payload['shape']}」绑定 {(rows.get(e.id) or {}).get('status', '无')}，不落")
-            continue
-        newer = last.get(cell if ":" in cell and cell.startswith(book) else f"{book}:{bare(cell)}")
-        if newer is not None and newer.id != e.id and newer.ts > e.ts:
-            miss.append(f"{bare(cell)} 有更新的人裁，批次里的不落")
-            continue
-        out[bare(cell)] = (e.payload["shape"], e.batch)
+        if cell:
+            out[bare(cell)] = e.batch
+        else:
+            miss.append(f"{bare(e.target.key)} 绑定 {(rows.get(e.id) or {}).get('status', '无')}，不落")
     return out, miss
 
 
@@ -380,15 +364,30 @@ def collect_book(a, ws: Path, book: str) -> dict:
         if not cf.exists() or not cordf.exists():
             return {"status": "blocked", "why": f"book-text dev 上没有 {cf.name}／{cordf.name}", "rev": rev}
         char = json.loads(cf.read_text(encoding="utf-8"))
+        # 落什么字只认 seed_admit 同一口径的现行人裁（cv human_chars：过绑定表，valid／rebound 到现格才算，
+        # 页表 rev 不符、撤库标记、被推翻的都不算），按绑定后的格号取。11-19 v0.4.66 按事件原格号取字，
+        # ZM vol01 88:1:12a（rebound 到 13a）、18a（迁移锚，旧格网）会落错格。
         same_ids = consistent_cells(draft)
-        want = event_chars(same_ids)               # 早先已落库、与这次票一致的人裁
-        want.update(vote_chars(draft))             # 这次新写的票
+        votes_now = vote_chars(draft)
+        try:
+            hc = current_human(book, meta.get("products_root"))
+        except Exception as e:  # noqa: BLE001
+            return {"status": "blocked", "rev": rev,
+                    "why": f"现行人裁（human_chars）算不出来，不落 book-text：{type(e).__name__}: {str(e)[:300]}"}
+        cells = {k: "票" for k in votes_now} | {k: "票与已有人裁一致" for k in same_ids if k not in votes_now}
         notes = []
         if a.batch:
-            got, miss = batch_chars(book, a.batch, meta.get("products_root"))
+            got, miss = batch_cells(book, a.batch, meta.get("products_root"))
             notes += miss
             for k, v in got.items():
-                want.setdefault(k, v)              # 本次的票更新，盖过早先批次
+                cells.setdefault(k, v)
+        want = {k: (hc[k], src) for k, src in cells.items() if k in hc and hc[k] not in PLACEHOLDERS}
+        if a.dry_run:                              # 演练没写票：这次新票按票上的字算（真跑时写完再从 human_chars 取）
+            for k, (c, _) in votes_now.items():
+                want[k] = (c, "票（未写）")
+        for k in cells:
+            if k not in want:
+                notes.append(f"{k} 现行没有生效的定字人裁（绑定不是 valid／rebound 到本格、rev 不符或撤库），不落")
         from .charnorm import codepoints_of, load_norm
         try:
             extra = codepoints_of(data_dir(ws), book)
@@ -435,7 +434,7 @@ def collect_book(a, ws: Path, book: str) -> dict:
             info["landed"] = {x[0]: x[2] for x in plan["apply"]}
         landed = info["landed"]
         info["batch_cells"] = {x[0]: x[3] for x in plan["apply"] + plan["already"] if x[3] != "票"}
-        info["batch_cells"].update({a_: "票与已有人裁一致" for a_ in same_ids})
+        info["batch_cells"].update({a_: "票与已有人裁一致" for a_ in same_ids if a_ in want})   # 现行生效的才结案
         if a.dry_run:
             print(f"  --dry-run 到此为止：book-text 改动提交在 {wt}（没推），计划见 {out / '落文本.json'}")
             return {"status": "dry-run", "rev": rev, "plan": info["plan"], "worktree": str(wt)}
