@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：`cellvotes draft --items` 不再把旧单上投的条目票按条目现格写新事件（ZM 11-19 复测 v0.4.67：vol01 r9／r15／r16 单上的票拿现行包同号格的字框写，88:1:12a 写成「領」、18a 写成「武」）。条目票的投票单 `rev` 不是现行单的，拿出来列进 `old_sheet.tsv`（当年落过的人裁由绑定表跟着改绑；没落过的要用当年出单包另落），只报不写；`guji collect` 的落文本跟着不再带这些格。
+
 ## [0.4.67] - 2026-11-19
 
 - PATCH：修 v0.4.66 `guji collect` 落错格（ZM vol01 演练 11-19：88:1:12a 領 应改绑到 13a、88:1:18a 武 是迁移前旧格）：要落的字一律取 cv `feedback.lookup.human_chars`（seed_admit 人裁通道同一口径：过绑定表，只认现格 valid／rebound、按改绑后的格号），不再按事件原格号取字；`--batch` 也过绑定表取改绑后的格；`human_chars` 算不出（缺缓存等）就停、不落 book-text。

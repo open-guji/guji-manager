@@ -91,7 +91,8 @@ def _item_votes(args) -> tuple[list[dict], str]:
         if it is None:
             lost += 1
             continue
-        out.append({**v, "a": it["cell"], "rev": args.rev, "item": it["id"]})
+        out.append({**v, "a": it["cell"], "rev": args.rev, "item": it["id"],
+                    "vote_rev": v.get("rev") or args.rev, "vote_a": v.get("a") or it["cell"]})
     args._item_lost = lost
     return out, f"{where}：条目票 {len(out)} 条" + (f"（{lost} 条找不到条目，丢掉）" if lost else "")
 
@@ -270,6 +271,25 @@ def _confirm_empty(args, where: str) -> dict:
     return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
 
 
+def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict) -> tuple[list[dict], list[tuple]]:
+    """条目票里投在旧单上的（``vote_rev`` 不是现行单 ``rev``）拿出来，不按条目现格写新事件。
+
+    ZM 11-19（v0.4.67 复测）：vol01 r9／r15／r16 单上投的票，格号是当年的切分；拿现行包同号格的字框建锚写成新事件，
+    88:1:12a 写成「領」（现格图是保）、18a 写成「武」（现格是臣）。旧单票当年落过的，人裁事件在库、由绑定表跟着改绑
+    （seed_admit／human_chars 认）；没落过的要用当年那张单的出单包另落，这里只报不写。
+    返回 (现行单的票, [(现格, 投票时格, 投票时单, 票, 当年人裁事件或 None)])。"""
+    cur, old = [], []
+    for v in raw:
+        vr = v.get("vote_rev")
+        if not vr or vr == rev:
+            cur.append(v)
+            continue
+        e = human.get(f"{book}:{v.get('vote_a')}")
+        tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
+        old.append((v.get("a"), v.get("vote_a"), vr, tag, getattr(e, "id", None) if e is not None else None))
+    return cur, old
+
+
 def _bound_only(book: str, human: dict, votes: list[dict]) -> tuple[dict, list[tuple[str, str]]]:
     """``latest_human`` 里有票的格，只留在现行产物根（出单版包）上绑定有效、且就绑在这一格的人裁。
 
@@ -323,14 +343,23 @@ def cmd_draft(args) -> None:
     if not args.cord and not args.no_box_check and not pack_root:
         raise SystemExit("要给 --cord（出单那一版 book-text 的 <册>.cord.json）或 --pack（出单版产物包），或显式 --no-box-check")
     raw, where = _votes(args)
+    human_all = latest_human(EventLog(feedback_root()).iter_all())
+    raw, old = _split_old_sheet(args.book, args.rev, raw, human_all)
+    if old:
+        n_new = sum(1 for o in old if o[4] is None)
+        _print(f"旧单上投的条目票 {len(old)} 条不按现格落（格号是当年那张单的，现行包同号格可能已是别的字）："
+               f"{len(old) - n_new} 条当年已落过人裁、由绑定表跟着改绑；{n_new} 条没落过，见 old_sheet.tsv，"
+               f"要用当年那张单的出单包另落")
     empty_ok = None
-    if not raw:
+    if not raw and old:
+        empty_ok = {"only_old_sheet": len(old)}
+    elif not raw:
         if not getattr(args, "allow_empty", False):
             raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走"
                              f"（确实没人投、要照换单：加 --from-kv --allow-empty）")
         empty_ok = _confirm_empty(args, where)
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
-    human = latest_human(EventLog(feedback_root()).iter_all())
+    human = human_all
     human, unbound = _bound_only(args.book, human, votes) if not getattr(args, "no_bind_check", False) else (human, [])
     if unbound:
         _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
@@ -359,6 +388,10 @@ def cmd_draft(args) -> None:
         for d in t.held:
             f.write(f"{d.a}\t{json.dumps(d.payload, ensure_ascii=False)}\t{d.held}\t"
                     f"{'；'.join(v['choice'] + (('=' + v['char']) if v.get('char') else '') for v in d.votes)}\n")
+    with open(out / "old_sheet.tsv", "w", encoding="utf-8") as f:
+        f.write("现格\t投票时格\t投票时单\t票\t当年人裁\n")
+        for row in old:
+            f.write("\t".join(x or "" for x in row) + "\n")
     rc = recheck_rows(t)
     with open(out / "recheck.tsv", "w", encoding="utf-8") as f:
         f.write("格位\t说明\t旧人裁\t旧人裁的字\t旧人裁时间\n")
@@ -369,7 +402,7 @@ def cmd_draft(args) -> None:
             "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
-            "dropped": dropped, "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
+            "dropped": dropped, "old_sheet": len(old), "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
             **({"empty_confirmed": empty_ok} if empty_ok else {})}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# {args.book} 网页投票 → 事件草稿（{args.rev}）", "",
