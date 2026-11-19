@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 from test_guji_format import _second_page, page  # noqa: F401 — page 是 fixture
-from test_guji_page_format import BOOK, META, PAGE, _write
+from test_guji_page_format import BOOK, META, PAGE, _book_ws, _write
 
 from guji_manager.formats import guji_char_cord as cc
 from guji_manager.formats import guji_format as gf
@@ -274,8 +274,10 @@ def test_convert_script(tmp_path, legacy):
     assert main(args) == 1                                                 # 往返对不上要报
 
 
-def test_exporter_char_cord(tmp_path):
+def test_exporter_char_cord(tmp_path, monkeypatch):
     from export_guji_format import main
+    gap = {"after_page": PAGE, "what": "卷一叶三", "kind": "原书缺"}
+    _book_ws(tmp_path, monkeypatch, gaps=[gap])
 
     from open_guji_cv.products.store import ProductStore
     st = ProductStore(tmp_path / "products")
@@ -288,11 +290,14 @@ def test_exporter_char_cord(tmp_path):
     with pytest.raises(SystemExit):                                          # char-cord 不给版本号就拒（GUJI-679）
         main(base + ["--out", str(tmp_path / "nover"), "--format", "char-cord"])
     assert main(base + ["--out", str(tmp_path / "new"), "--format", "char-cord", "--text-version", "0.1.3"]) == 0
-    assert sorted(p.name for p in (tmp_path / "new").iterdir()) == ["002.char.json", "002.cord.json", "002.norm.json"]
+    assert sorted(p.name for p in (tmp_path / "new").iterdir()) == [
+        "002.char.json", "002.cord.json", "002.gaps.json", "002.norm.json"]
+    gaps = json.loads((tmp_path / "new" / "002.gaps.json").read_text(encoding="utf-8"))  # 册 yaml 的缺页旁挂出来
+    assert [(g["after_page"], g["what"]) for g in gaps["gaps"]] == [(PAGE, "卷一叶三")]
     char = json.loads((tmp_path / "new" / "002.char.json").read_text(encoding="utf-8"))
     assert char["version"] == "0.1.3"
     old = sorted(p.name for p in (tmp_path / "old").iterdir())               # 旧形态照出、不受影响
-    assert old == [f"002.{k}" for k in ("lines.md", "norm.json", "pages.json", "proof.json", "zi.json")]
+    assert old == [f"002.{k}" for k in ("gaps.json", "lines.md", "norm.json", "pages.json", "proof.json", "zi.json")]
     assert cc.char_to_lines_md(char) == (tmp_path / "old" / "002.lines.md").read_text(encoding="utf-8")
 
 
