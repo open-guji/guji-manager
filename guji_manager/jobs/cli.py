@@ -9,7 +9,7 @@
     guji job work [--once] [--idle 分钟]     # 执行方：领单跑单（只在云端执行会话里用）
     guji job init                            # 建表（幂等）
 
-连库：缺省正式库（NEON_DATABASE_URL）；GUJI_JOBS_BRANCH=ci 连测试分支。提交人名字取 GUJI_JOBS_WHO（如 A24）。
+连库：美国机任务库（JOBSDB_TOKEN＋JOBSDB_PASSWORD，guji_jobs 会自动载入）。提交人名字取 GUJI_JOBS_WHO（如 A24）。
 """
 from __future__ import annotations
 
