@@ -82,3 +82,16 @@ def test_cellvotes_write_resolves_items_by_draft_id(tmp_path, monkeypatch):
     CVT._resolve_items({"site_book": "96mid1ogzk", "rev": "004-r3"}, rows, {"ids": ["ev1"]}, "sheldon")
     st = P.ItemStore.open(tmp_path, "96mid1ogzk", "004")
     assert [x["state"] for x in st.items.values()] == ["resolved"]
+
+
+def test_consistent_cells_from_draft_meta(tmp_path):
+    meta = {"skipped": [["84:3:10", "与已有人裁 evt_H-web-vol20-020-r12-2026-11-19_000011 一致"],
+                        ["84:3:11", "只有「看不出」×1"], ["84:3:12", "char 档不写"]]}
+    (tmp_path / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    assert C.consistent_cells(tmp_path) == {"84:3:10": "evt_H-web-vol20-020-r12-2026-11-19_000011"}
+
+
+def test_books_with_votes_picks_open_items_only():
+    votes = [{"vol": "13", "item": "i1"}, {"vol": "013", "item": "i2"}, {"vol": "14", "item": "j1"}, {"vol": "20"}]
+    open_ = {"013": {"i2"}, "014": set()}
+    assert C.books_with_votes(votes, lambda ch: open_.get(ch, set())) == ["vol13"]
