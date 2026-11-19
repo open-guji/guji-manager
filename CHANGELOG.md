@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：新增形近字对归属表（`guji_manager/pair_attribution.py`，数据目录 `config/groups/pair_attribution.yaml`）：一对字按刻形（缺省）、按文意还是暂归一，写在一张书级表里（Sheldon 11-18 同意的第 5／7 步统一方案第 1 步）。新命令 `guji-manager pair-attr show <两个字>`、`pair-attr check`（与码位表、按对分类器的归文意名单与档位、第 7 步只挂文意的组、暂归一兜底对一遍，只报不改）。还没有任何步骤读这张表，产物不变。文档 `doc/参考/形近字对归属表.md`。
+
 - PATCH：新命令 `guji glyph-db backfill-audit`（`ops/lib_round_audit.py`）回库事后核（Sheldon 11-18 定「回库闸关着，做按轮事后核」）：给前后两轮产物根，逐格比 `seed_admit`／`glyph_match`，新增待审格按后一轮库首位（或新进前 5 名）归到回库字（害），新放行格按放行字或库首位归到回库字（帮），列出只害不帮的回库字；`--apply` 对这些字的全部回库刻例追加 `glyph_audit` 撤库事件、直接处理并导出账本（人裁刻例不动）。史記 r79→r80 全书实测：只害不帮 407 字 967 例，与 SJ 手工 g27 剔除单 403 字重合 396 字。文档 `doc/01-粗校/开书/回库事后核.md`；顺带补上 `放行格回库.md` 里 #679 漏填的实测占位（STEAL_VALIDATION）。
 
 - MINOR：放行格回库规矩重定（Sheldon 11-18：确定了的格都该入库，每字上限 20，不录重复字形，人审与自动区别对待）。原来只收 `rare_ref`、`witness3`、每字补到 3 例，全唐文库 64% 的字头只有 3 例或更少，占放行格 91% 的 `match_ref` 一格不回库。现在：①通道分档，乙档（`match_ref`、`rare_ref`）补到 `cap`（缺省 20），丙档（`witness3`、`ref_lib`、`match_replace`、`match_margin`、`coord_fallback`）只补不足 `thin`（3）例的字，文意通道与库自证通道不进；②`match_ref` 的格放行字领先别的候选字不到 0.003 不进；己已巳、日曰 不进；③挑有区别的例：用 5a 跨书通用底座 `glyph_sim_base_v1` 的向量，与已有例相似度 ≥0.975 算重复不进，每次挑离已有例最远的，每册每字最多 2 例，已有 ≥3 例而都不像（<0.75）的算离群不进；④证据记 `tier`；⑤一次性补历史册分两步，`--pool <目录>` 各册并行出候选、`--from-pool <目录>` 统一挑并入库（`run_pools`）。字体模板核验（首位＝放行字）照旧。`workspace.yaml` `glyph_lib.auto_backfill` 新认 `tier_c`、`thin`、`per_book`、`dup_sim`、`far_sim`、`match_ref_gap`；写死了 `cap: 3` 或 `channels` 的书不会自动换成新缺省。整册跑完的自动回库每册要多取几千格字块（缓存热时约 10 分钟）。依据（各通道入库后改标率、上限与挑例实验）见 `doc/01-粗校/开书/放行格回库.md` 第九节；粗校验收线不再把「3 例」当够了。没做：满额置换、人审入库的图像体检、5a.3 分类器同意。
