@@ -87,6 +87,14 @@ def test_select_skips_in_lib_human_and_evicted_cells():
     assert (stat["已在库"], stat["已有人裁"], stat["曾撤过库"]) == (1, 1, 1)
 
 
+def test_select_skips_half_cell_vis_ruling():
+    """夹注半格看图放行（evidence.half）默认不回库，即使通道被配置进名单。"""
+    half = {"admit": True, "char": "必", "channel": "rare_ref", "evidence": {"cov": 0.9, "half": True}}
+    cells = {"001:1:1:1a": half, "001:1:2:1": _cell("必")}
+    cand, stat = LB.select(cells, _state(), set())
+    assert cand == {"必": ["001:1:2:1"]} and stat["半格看图放行"] == 1
+
+
 def test_lib_state_counts_only_live_instances(tmp_path):
     """撤库不删 exemplars 的行：刻例数要连 instances 数，不然撤掉的字会被当成「已有例」而不补。"""
     p = tmp_path / "g.db"

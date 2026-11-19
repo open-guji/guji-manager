@@ -161,6 +161,7 @@ def select(cells: dict[str, dict], state: dict, human_keys: set[str], *,
     - 乙档通道（`channels` 里不在 `tier_c` 的）：这个字现有例数不足 `cap` 就是候选；
     - 丙档通道（`tier_c`）：这个字现有例数不足 `thin` 才是候选；
     - `match_ref` 且给了 `gm`（这一册 `glyph_match` 的格记录）：放行字领先别的候选字不到 `match_ref_gap` 的不选；
+    - 夹注半格靠看图裁定放行的格（`evidence.half`，cv `vis_ruling_half`）不选，有人裁的另走人裁入库；
     - 按文意定的字组（`CONTEXT_CHARS`）不选；该格已在库、已有人裁、曾被撤过库的不选。"""
     stat: collections.Counter = collections.Counter()
     cand: dict[str, list] = collections.defaultdict(list)
@@ -168,6 +169,9 @@ def select(cells: dict[str, dict], state: dict, human_keys: set[str], *,
         if not r.get("admit"):
             continue
         stat["放行格"] += 1
+        if (r.get("evidence") or {}).get("half") or r.get("half"):
+            stat["半格看图放行"] += 1      # A23 口径（Sheldon 11-19 同意）：半格字块切偏多，没人裁过的不入库
+            continue
         chan = r.get("channel")
         if chan not in channels:
             continue

@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：放行格回库 `lib_backfill.select` 跳过夹注半格看图放行的格（cv `vis_ruling_half` 写的 `evidence.half`，统计项「半格看图放行」）：半格字块切偏多，没有人裁的不入库、不当可信刻例，有人裁走人裁入库（A23，Sheldon 11-19 同意；口径见 ai-team domain/CV/字形领域/格号后移评估-殿本row_segment与史記半格-2026-11-19.md）。不动产物、指纹（L0）。
+
 - 库文一致（`glyph_lib.text_check`）缺省由只报告改为自动处理（Sheldon 11-18 定，全唐文 d1 实跑验证改标进文本后）：整册跑完能确定的改库标、撤机器例，其余进待审；只想报告写 `text_check: report`。这台机器过不了改库护栏（借库跑批、部分副本、本机库比账本旧）时自动退回只报告并说明。
 - PATCH：形近字对归属表加可选字段 `variant: true`（标同字异形的对，如淸清；cv #1700 第 7 步 `pair_form` 只对它自动改字，异字对只记证据进复审，Sheldon 11-18 同意）。
 
