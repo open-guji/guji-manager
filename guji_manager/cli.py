@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("progress-sync", help="后台看板自动对账：线上单／包口径／迭代轮次落后了就补；见 guji_manager.progress_sync", add_help=False)
     sub.add_parser("iterate", help="降人审迭代的轮报告、金标、抽检台账、杠杆排序、冻结日历；见 guji_manager.iterate", add_help=False)
     sub.add_parser("suggest", help="诊断信号→A 档开关建议，点头后写册 yaml；见 guji_manager.suggest", add_help=False)
+    sub.add_parser("pair-attr", help="形近字对归属表（刻形／文意／暂归一）的查看与校验；见 guji_manager.pair_attribution", add_help=False)
     sub.add_parser("final-review", help="大模型只读文意终审跨书一键流水线；见 guji_manager.final_review", add_help=False)
     a, rest = ap.parse_known_args(argv)
     if a.cmd == "review-pages":
@@ -36,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "final-review":
         from .final_review.__main__ import main as fr_main
         return fr_main(rest)
+    if a.cmd == "pair-attr":
+        from .pair_attribution import main as pa_main
+        return pa_main(rest)
     if a.cmd == "triage":
         from .review_triage.__main__ import main as triage_main
         return triage_main(rest)

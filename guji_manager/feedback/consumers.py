@@ -465,7 +465,7 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
             res.skipped += 1
             continue
         png = cv2.imencode(".png", binarize_page(img, edge_margin=0))[1].tobytes()
-        meta = {k: p.get(k) for k in ("channel", "verdict", "cov", "verify")}
+        meta = {k: p.get(k) for k in ("channel", "tier", "verdict", "cov", "verify") if k != "tier" or p.get(k)}
         ok = db.admit_instance(db_id, ch, png, provenance="auto", shape=ch,
                                evidence={"event": e.id, "batch": e.batch, "source": "auto", "backfill": True, **meta},
                                page=pg, col=int(col), idx=int(slot))

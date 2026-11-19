@@ -44,16 +44,48 @@ def cmd_glyph_db(args):
         return
     if args.action == "backfill":      # 放行格回库（自己开关库，不走下面的公共 db 句柄）
         from .ops import lib_backfill as LB
+        if args.from_pool:             # 一次性补历史册的第二步：合各册候选统一挑、入库
+            import glob as _glob
+            kw = {"cap": args.cap} if args.cap else {}
+            rep = LB.run_pools(sorted(_glob.glob(str(Path(args.from_pool) / "*.pkl"))), apply=args.apply,
+                               batch=args.batch, report=args.report, log=print, **kw)
+            print(("✓ " if rep.get("admitted") else "（只报告，没动库）" if not args.apply else "") + LB.summary(rep))
+            return
         if not args.books:
             raise SystemExit("backfill 要给 --books 册号（逗号分隔）")
         kw = {}
+        if args.pool:
+            Path(args.pool).mkdir(parents=True, exist_ok=True)
+            for b in [x.strip() for x in args.books.split(",") if x.strip()]:
+                rep = LB.run([b], pool=str(Path(args.pool) / f"{b}.pkl"), log=print,
+                             **({"channels": tuple(x.strip() for x in args.channels.split(",") if x.strip())}
+                                if args.channels else {}))
+                print(f"  {b}: 候选 {rep.get('pooled', 0)} 格存到 {args.pool}/{b}.pkl；{LB.summary(rep)}")
+            return
         if args.cap:
             kw["cap"] = args.cap
         if args.channels:
             kw["channels"] = tuple(x.strip() for x in args.channels.split(",") if x.strip())
+        if args.steal_check:
+            kw["steal_check"] = True
+        if args.steal_cells_max is not None:
+            kw["steal_cells_max"] = args.steal_cells_max
         rep = LB.run([b.strip() for b in args.books.split(",") if b.strip()], apply=args.apply,
                      batch=args.batch, report=args.report, log=print, **kw)
         print(("✓ " if rep.get("admitted") else "（只报告，没动库）" if not args.apply else "") + LB.summary(rep))
+        return
+    if args.action == "backfill-audit":   # 回库事后核：两轮产物比，只害不帮的回库字撤库
+        from .ops import lib_round_audit as RA
+        if not (args.books and args.before and args.after):
+            raise SystemExit("backfill-audit 要给 --books 册号、--before 前一轮产物根、--after 后一轮产物根")
+        rep = RA.run([b.strip() for b in args.books.split(",") if b.strip()], args.before, args.after,
+                     batches={x.strip() for x in args.batches.split(",") if x.strip()} if args.batches else None,
+                     top=args.top, apply=args.apply, batch=args.batch, report=args.report, log=print)
+        for r in rep["withdraw"][:30]:
+            print(f"  撤 {r['char']}：抢首位 {r['harm_top1']}、进前几 {r['harm_topn']}，回库例 {len(r['instances'])}，格 {' '.join(r['cells'][:3])}")
+        print(("✓ " if rep.get("applied") else "（只报告，没动库）" if not args.apply else "") + RA.summary(rep))
+        if rep.get("applied"):
+            print("  接着 guji db sync 推上中心库；钉快照的书要出新快照、下一轮改钉")
         return
     if args.action == "text-check":    # 库文一致：库里每个刻例的字对这一册文本
         from .ops import lib_text_check as LT
@@ -231,7 +263,7 @@ def add_parser(sub) -> None:
     p.add_argument("action",
                    choices=["stats", "export", "rebuild",
                             "import-font", "drop-edition", "repair", "selfcheck",
-                            "set-edition", "font-pack-push", "backfill", "text-check", *PIN_ACTIONS])
+                            "set-edition", "font-pack-push", "backfill", "backfill-audit", "text-check", *PIN_ACTIONS])
     p.add_argument("-w", "--workspace", default=None,
                    help="工作区仓根（含 books/、output/glyph.db）。同 v2 命令那个 -w：给了就覆盖"
                         "本次调用的 GUJI_WORKSPACE，不给就退回读环境变量。任务卡 #54 第13条：这个"
@@ -280,9 +312,21 @@ def add_parser(sub) -> None:
                    help="backfill／text-check 用：册号，逗号分隔。backfill 把这些册机器放行、库里缺例的字核验后补进库"
                         "（ops/lib_backfill.py；不加 --apply 只报告）")
     p.add_argument("--batch", default=None, help="backfill 用：批次名（缺省 auto-backfill-<年月日>，整批撤回按它）")
-    p.add_argument("--cap", type=int, default=None, help="backfill 用：每字补到几例（缺省 3）")
-    p.add_argument("--channels", default=None, help="backfill 用：放行通道，逗号分隔（缺省 rare_ref,witness3）")
-    p.add_argument("--report", default=None, help="backfill 用：逐格报告写到这个 json")
+    p.add_argument("--cap", type=int, default=None, help="backfill 用：每字最多几例（缺省 20）")
+    p.add_argument("--channels", default=None, help="backfill 用：收哪些放行通道，逗号分隔（缺省乙档 match_ref,rare_ref 加丙档 witness3 等，见 ops/lib_backfill.py）")
+    p.add_argument("--pool", default=None,
+                   help="backfill 用（一次性补历史册第一步）：只选格、核验，各册候选连图存到这个目录的 <册>.pkl，不挑不入库，可并行")
+    p.add_argument("--from-pool", default=None,
+                   help="backfill 用（第二步）：合这个目录里各册的候选，按册序统一挑有区别的例；加 --apply 入库")
+    p.add_argument("--report", default=None, help="backfill／backfill-audit 用：逐格报告写到这个 json")
+    p.add_argument("--before", default=None, help="backfill-audit 用：前一轮（回库前的库跑的）产物根")
+    p.add_argument("--after", default=None, help="backfill-audit 用：后一轮（回库后的库跑的）产物根")
+    p.add_argument("--batches", default=None, help="backfill-audit 用：只认这些回库批次（逗号分隔；缺省全部带 backfill 标的机器刻例）")
+    p.add_argument("--top", type=int, default=5, help="backfill-audit 用：新增待审格看后一轮前几名有没有新进回库字（缺省 5）")
+    p.add_argument("--steal-check", action="store_true",
+                   help="backfill 用：做抢首位核验（缺省不做）：候选整批模拟进库，本册放行格的库首位被抢、又没救回格的字不进")
+    p.add_argument("--steal-cells-max", type=int, default=None,
+                   help="backfill 用：抢首位核验每册最多回放几格放行格（缺省 8000，0＝全部）")
     p.add_argument("--title", default=None, help="书名")
     p.add_argument("--pin", type=int, default=None,
                    help="pin-build / pin-verify / snapshot-upload 用：字形库版本号 N（g<N>）")

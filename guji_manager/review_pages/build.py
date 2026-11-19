@@ -250,11 +250,13 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "groups": gs, "hint": hint}
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp),
                 "tiles": sum(len(r["tiles"]) for g in gs for r in g["rows"].values())}
-    elif page_type in ("pair_whitelist", "seg_cause"):
+    elif page_type in ("pair_whitelist", "seg_cause", "variant_compare"):
         pp = per_page or 6
         gs = [dict(g, tiles=[[t[0], embed(t[1]), *t[2:]] for t in g.get("tiles", [])],
                    **({"cells": [dict(c, img=embed(c.get("img"))) for c in g["cells"]]} if "cells" in g else {})) for g in items]
         data = {"book": book, "per_page": pp, "groups": gs, "options": list(pt.options), "hint": hint}
+        if page_type == "variant_compare":   # 逐格标记改成 终稿对／另本对／都可／看不清（模板据此换按钮与统计）
+            data["marks"] = [["fin", "终稿对"], ["alt", "另本对"], ["both", "都可以"], ["unclear", "看不清"]]
         stat = {"groups": len(gs), "pages": -(-len(gs) // pp)}
     elif page_type == "near_pair":
         pp = per_page or 4

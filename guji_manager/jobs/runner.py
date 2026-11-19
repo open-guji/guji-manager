@@ -134,9 +134,12 @@ class Job:
         while not self._stop.wait(HEARTBEAT_S):
             n += 1
             try:
-                db(S.worker_seen, S.who(), state="busy", job_id=self.id)
-                BOARD.publish(db)
+                # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
+                # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
                 why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress)
+                if why != "lost":
+                    db(S.worker_seen, S.who(), state="busy", job_id=self.id)
+                    BOARD.publish(db)
                 if REAP_EVERY > 0 and n % REAP_EVERY == 0 and why != "lost":
                     try:
                         for jid, st in db(S.reap):
@@ -216,9 +219,15 @@ class Job:
         t0 = time.time()
         self.ev("开始")
         try:
-            self.db(S.heartbeat, self.aid, stage=name, progress=None)
+            why = self.db(S.heartbeat, self.aid, stage=name, progress=None)
         except Exception:               # noqa: BLE001
-            pass
+            why = ""
+        if why:
+            # 租约已被收回（整机暂停后醒来，单已退回排队或在别的执行方上重跑）或有人叫停：这一步不再开跑，
+            # 尤其不能再存包（会和重跑的那份各存一个包）
+            self.lease_lost = self.lease_lost or why == "lost"
+            self.cancel.set()
+            raise Cancelled()
         fn()
         self.ev("完成", secs=round(time.time() - t0, 1))
 
@@ -588,19 +597,49 @@ def _refresh_manager() -> None:
         pass
 
 
+#: 自更新 merge 的超时（秒）。落后几百个提交时 checkout 慢，原来 120 秒偏紧
+REFRESH_TIMEOUT_S = int(os.environ.get("GUJI_JOBS_REFRESH_TIMEOUT_S") or 300)
+
+
 def _refresh_runner() -> bool:
-    """把执行方自己的检出快进到 origin/dev（并把 guji-manager 检出切到 main）。只有 HEAD 真的等于 origin/dev 才算成（否则 exec 完还会判定过期、来回折腾）。"""
+    """把执行方自己的检出快进到 origin/dev（并把 guji-manager 检出切到 main）。只有 HEAD 真的等于 origin/dev 才算成（否则 exec 完还会判定过期、来回折腾）。
+
+    失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
+    当时看不出是超时还是 merge 报错。"""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     _refresh_manager()
     try:
-        subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
-                       text=True, timeout=120, env=env, check=True)
+        r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
+                           text=True, timeout=REFRESH_TIMEOUT_S, env=env)
+        if r.returncode != 0:
+            print(f"[runner 自更新] git merge --ff-only origin/dev 失败（退出码 {r.returncode}）："
+                  f"{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+            # 准备脚本会把这个检出切到单上钉的 cv（tag、rc 头、功能分支提交），HEAD 于是不在 origin/dev 的祖先线上，
+            # ff 必败。检出是执行方自用的、工作区干净时（没有未提交改动）直接切到 origin/dev 的 detached HEAD，不丢任何东西。
+            # 只对 detached HEAD 这么做：在分支上有本地提交（人手改过 runner 检出）一律不动，免得丢提交
+            br = subprocess.run(["git", "-C", str(RUNNER_ROOT), "symbolic-ref", "-q", "HEAD"],
+                                capture_output=True, text=True, timeout=30)
+            st = subprocess.run(["git", "-C", str(RUNNER_ROOT), "status", "--porcelain", "--untracked-files=no"],
+                                capture_output=True, text=True, timeout=60)
+            if br.returncode == 0 or st.returncode != 0 or st.stdout.strip():
+                print("[runner 自更新] 检出在分支上、有未提交改动或状态读不了，不切换", flush=True)
+                return False
+            r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "checkout", "-q", "--detach", "origin/dev"],
+                               capture_output=True, text=True, timeout=REFRESH_TIMEOUT_S, env=env)
+            if r.returncode != 0:
+                print(f"[runner 自更新] git checkout --detach origin/dev 失败：{(r.stderr or r.stdout).strip()[-400:]}",
+                      flush=True)
+                return False
+            print("[runner 自更新] HEAD 不在 origin/dev 线上（多半是上一单钉的 cv），已切到 origin/dev", flush=True)
         head = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
                               timeout=30).stdout.strip()
         tip = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "origin/dev"], capture_output=True, text=True,
                              timeout=30).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[runner 自更新] {type(e).__name__}: {str(e)[:300]}", flush=True)
         return False
+    if not (head and head == tip):
+        print(f"[runner 自更新] merge 后 HEAD {head[:8]} 不等于 origin/dev {tip[:8]}", flush=True)
     return bool(head) and head == tip
 
 
@@ -867,6 +906,9 @@ def _prune_glyph_dbs(say=print, keep_recent: int | None = None) -> int:
 
 #: 领单前空间低于这么多 GB 时，扫掉各工作区里所有册的 cache／products／data_full（缺省 8；0＝不扫）
 SWEEP_FREE_GB = float(os.environ.get("GUJI_JOBS_SWEEP_GB") or 8)
+#: 扫一遍后（不论清出多少）这么多秒内不再扫；空闲执行方每个轮询周期都过 _disk_gate
+SWEEP_COOLDOWN_S = int(os.environ.get("GUJI_JOBS_SWEEP_COOLDOWN_S") or 600)
+_sweep_at = 0.0
 
 
 def _workspace_roots() -> list[Path]:
@@ -918,10 +960,19 @@ def _disk_gate(say=print) -> str | None:
             _prune_glyph_dbs(say, keep_recent=GLYPH_DB_KEEP_RECENT)
     except Exception as e:      # noqa: BLE001 —— 清缓存失败不碍领单
         say(f"清旧字形库出错（忽略）：{e}")
-    if SWEEP_FREE_GB and _free_gb() < SWEEP_FREE_GB and os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") != "1":
+    global _sweep_at
+    if (SWEEP_FREE_GB and _free_gb() < SWEEP_FREE_GB and os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") != "1"
+            and time.time() - _sweep_at >= SWEEP_COOLDOWN_S):
+        # 冷却：空闲执行方每个轮询周期都过这里，清不出空间（剩 7.9G、没有可清的册目录）时不能每次都重扫一遍、每次都打日志
+        _sweep_at = time.time()
         try:
-            say(f"磁盘剩余 {_free_gb():.1f} GB，低于 {SWEEP_FREE_GB:g} GB，清各册 cache／products／data_full")
-            _sweep_book_dirs(say)
+            before = _free_gb()
+            freed = _sweep_book_dirs(say)
+            if freed:
+                say(f"磁盘剩余 {before:.1f} GB，低于 {SWEEP_FREE_GB:g} GB，已清各册 cache／products／data_full，释放 {freed / 2**20:.0f} MB")
+            else:
+                say(f"磁盘剩余 {before:.1f} GB，低于 {SWEEP_FREE_GB:g} GB，但各册目录里没有可清的；{SWEEP_COOLDOWN_S // 60} 分钟内不再重扫"
+                    f"（高于 {MIN_FREE_GB:g} GB 照常领单）")
         except Exception as e:  # noqa: BLE001
             say(f"清各册目录出错（忽略）：{e}")
     for cache in _CACHES:

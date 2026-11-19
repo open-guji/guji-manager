@@ -4,6 +4,31 @@
 
 ## [未发版]
 
+- PATCH：放行格回库 `lib_backfill.select` 跳过夹注半格看图放行的格（cv `vis_ruling_half` 写的 `evidence.half`，统计项「半格看图放行」）：半格字块切偏多，没有人裁的不入库、不当可信刻例，有人裁走人裁入库（A23，Sheldon 11-19 同意；口径见 ai-team domain/CV/字形领域/格号后移评估-殿本row_segment与史記半格-2026-11-19.md）。不动产物、指纹（L0）。
+
+- 库文一致（`glyph_lib.text_check`）缺省由只报告改为自动处理（Sheldon 11-18 定，全唐文 d1 实跑验证改标进文本后）：整册跑完能确定的改库标、撤机器例，其余进待审；只想报告写 `text_check: report`。这台机器过不了改库护栏（借库跑批、部分副本、本机库比账本旧）时自动退回只报告并说明。
+- PATCH：形近字对归属表加可选字段 `variant: true`（标同字异形的对，如淸清；cv #1700 第 7 步 `pair_form` 只对它自动改字，异字对只记证据进复审，Sheldon 11-18 同意）。
+
+- PATCH：缺页（cv #1696 册 yaml `gaps:`，Sheldon 11-18 定只按图片页号记）：`guji collate` 的 JSON 报告加 `gaps`（落在这批页的缺页），命令行列出「第 N 页之后缺…，整理本在此断档属正常」；cv 还不认 `gaps` 时给空表。文档：`doc/参考/册配置.md` 字段表、`开书全流程.md` S7 加「查缺页」一步与经验 E7-6。
+
+- PATCH：新增形近字对归属表（`guji_manager/pair_attribution.py`，数据目录 `config/groups/pair_attribution.yaml`）：一对字按刻形（缺省）、按文意还是暂归一，写在一张书级表里（Sheldon 11-18 同意的第 5／7 步统一方案第 1 步）。新命令 `guji-manager pair-attr show <两个字>`、`pair-attr check`（与码位表、按对分类器的归文意名单与档位、第 7 步只挂文意的组、暂归一兜底对一遍，只报不改）。还没有任何步骤读这张表，产物不变。文档 `doc/参考/形近字对归属表.md`。
+
+- PATCH：新命令 `guji glyph-db backfill-audit`（`ops/lib_round_audit.py`）回库事后核（Sheldon 11-18 定「回库闸关着，做按轮事后核」）：给前后两轮产物根，逐格比 `seed_admit`／`glyph_match`，新增待审格按后一轮库首位（或新进前 5 名）归到回库字（害），新放行格按放行字或库首位归到回库字（帮），列出只害不帮的回库字；`--apply` 对这些字的全部回库刻例追加 `glyph_audit` 撤库事件、直接处理并导出账本（人裁刻例不动）。史記 r79→r80 全书实测：只害不帮 407 字 967 例，与 SJ 手工 g27 剔除单 403 字重合 396 字。文档 `doc/01-粗校/开书/回库事后核.md`；顺带补上 `放行格回库.md` 里 #679 漏填的实测占位（STEAL_VALIDATION）。
+
+- MINOR：放行格回库规矩重定（Sheldon 11-18：确定了的格都该入库，每字上限 20，不录重复字形，人审与自动区别对待）。原来只收 `rare_ref`、`witness3`、每字补到 3 例，全唐文库 64% 的字头只有 3 例或更少，占放行格 91% 的 `match_ref` 一格不回库。现在：①通道分档，乙档（`match_ref`、`rare_ref`）补到 `cap`（缺省 20），丙档（`witness3`、`ref_lib`、`match_replace`、`match_margin`、`coord_fallback`）只补不足 `thin`（3）例的字，文意通道与库自证通道不进；②`match_ref` 的格放行字领先别的候选字不到 0.003 不进；己已巳、日曰 不进；③挑有区别的例：用 5a 跨书通用底座 `glyph_sim_base_v1` 的向量，与已有例相似度 ≥0.975 算重复不进，每次挑离已有例最远的，每册每字最多 2 例，已有 ≥3 例而都不像（<0.75）的算离群不进；④证据记 `tier`；⑤一次性补历史册分两步，`--pool <目录>` 各册并行出候选、`--from-pool <目录>` 统一挑并入库（`run_pools`）。字体模板核验（首位＝放行字）照旧。`workspace.yaml` `glyph_lib.auto_backfill` 新认 `tier_c`、`thin`、`per_book`、`dup_sim`、`far_sim`、`match_ref_gap`；写死了 `cap: 3` 或 `channels` 的书不会自动换成新缺省。整册跑完的自动回库每册要多取几千格字块（缓存热时约 10 分钟）。依据（各通道入库后改标率、上限与挑例实验）见 `doc/01-粗校/开书/放行格回库.md` 第九节；粗校验收线不再把「3 例」当够了。没做：满额置换、人审入库的图像体检、5a.3 分类器同意。
+
+- PATCH：放行格回库加抢首位核验（可选，缺省关；史記 r80：g26 回库 9,678 例后多出 987 格待审，482 格是常用字格的库首位被回库进来的形近少见字／异体抢走，SJ 事后剔 403 字出 g27）。开了以后，字体模板核验过的候选按册整批模拟进库（cv #1679 `BackfillProbe.steal_check`，A22），用本册已放行格回放：库首位被新字抢走、又没有格被它救回的字整字不进，报告记 `near_common`，同一次跑后面的册不再选。开法：`workspace.yaml` `glyph_lib.auto_backfill: {steal_check: true, steal_cells_max: 8000}`（0＝全部）；手动 `--steal-check`／`--steal-cells-max`。缺省关的理由：史記第 02 册真放行格全册回放（5 万格，40 分钟）只拦下已知害字 17/68，同时拦下已知帮字 8/47；只看形状的门槛（形近常用字进前 3、分差 <0.01）A22 与 A31 各自标定也分不开。cv 没有 `BackfillProbe`（早于 #1679）或核验出错时不挡回库，摘要行带「⚠ 没做抢首位核验」；没开时带「（抢首位核验未开）」。`_cv` 登记 `BackfillProbe`（OCR 半成品漏了这条，闸会永远走「cv 太旧」）。文档 `doc/01-粗校/开书/放行格回库.md` 第三节补「抢首位核验」与实测，建议改按轮事后核（SJ g27 的做法）。
+
+- PATCH：执行方领单前的各册目录清扫（`GUJI_JOBS_SWEEP_GB`，缺省 8 GB）加冷却：扫一遍后 10 分钟内（`GUJI_JOBS_SWEEP_COOLDOWN_S`）不再重扫，清不出东西时只打一行说明。原来剩余空间在 3–8 GB 之间且没有可清的册目录时，空闲执行方每个轮询周期都重扫、重打日志（worker-34 剩 7.9G 的空转）。高于领单门槛（3 GB）一直照常领单。
+
+- 修：字形库体检撤库／改标（`glyph_audit evict`／`relabel`）作废人裁事件的范围收窄（殿本 vol01，11-18）。作废标记按格号记在 `feedback/lists/stale_verdicts.tsv`，会作废该格此刻以前的全部人裁；库例挂着旧格号、或库文一致按文本的人裁改库标时，这格现行的人裁定的是另一个字，被一并作废后下一轮掉回机器字（vol01 `ZM-vol01-libfix-20261118` 26 条里 21 格）。现在只在这格最后一条人裁定的就是被撤／被改的旧字时才作废，否则不动事件、`decisions.jsonl` 记 `kept_human_event`；查不到人裁事件的照旧作废。
+- PATCH：执行方整机暂停醒来后不再续跑已被收回的单（11-18 同一单被两台同时报在跑：#5450／5421／5458／5431）：①每个步骤（含存包）开跑前用心跳结果查租约，已被 reap 收回（lost）或有人叫停就不开跑、不存包；②心跳线程先续租查归属，再写 worker 状态和看板（原来先写看板，中心库慢时迟迟发现不了租约已失，还会先报「我在跑这单」）；租约已失就不再写 busy。
+
+- PATCH：执行方自更新（`_refresh_runner`）ff 失败时，若 runner 检出是 detached HEAD 且工作区干净（准备脚本把它切到了单上钉的 cv：tag、rc 头、功能分支提交，HEAD 不在 origin/dev 线上），改为 `checkout --detach origin/dev`，不再「拉不动」自退；有未提交改动仍不动并写日志。
+
+- PATCH：放行格回库数「各字现有刻例」时不再把借来的刻例算进去（`ops/lib_backfill.lib_state` 排除 `borrowed` 表；OCR 研究 Project 11-18，Sheldon：新书快审能否部分自动入库）。借库的新书此前本书没有的字被当成不缺例，一格都不补（脉经本书 570 字头被数成 4,336）。不借库的书行为不变。文档 `doc/01-粗校/开书/放行格回库.md` 加第七节：借库阶段把 `match_ref` 加进回库通道顶替大部分冷启动快审，附脉经第 1 册实测（人审 1,189 格与机器放行字全部一致）。
+
+- PATCH：执行方自更新（`_refresh_runner`）失败时把 merge 的 stderr／超时写进日志，merge 超时 120→300 秒（`GUJI_JOBS_REFRESH_TIMEOUT_S`）。11-18 多台 runner 同时「dev 有更新但拉不动」自退，检出是干净的 detached HEAD、手动 ff 正常，当时看不出原因。
 ## [0.4.64] - 2026-11-19
 
 - PATCH：`guji swap book-text` 格改 □ 后同步校验字按 A33 11-19 口径补全：matched_multi 的 `targets[].part` 全写且拼起来等于旧文字时按段长切回新文字（F-OV-14）；认不出的字格（unk）照新包落 □ 的也同步；提交说明分列标点 pre_char／专名 text 处数，另列「专名含□待复核」（改后 □ 占一半及以上或首尾成 □）。锚点、span、target 其余字段、无 pre_char 的标题符一律不动。merge_chars 先判 unk 再判 〓→□，报表不再把认不出的字格记成占位。

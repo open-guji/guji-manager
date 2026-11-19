@@ -321,6 +321,18 @@ def cmd_glyphlib(args) -> None:
     cli_v2._out(res)
 
 
+def cmd_pua_table(args) -> None:
+    """PUA 码表共享层 `pua-wyg`：publish 把码表 jsonl 出成新版本 v<N> 推进中心库（升级脚本身份，旧版本不覆盖）。"""
+    import os
+
+    from .cli_db import _pg_conn
+    from .ops import pua_table as pt
+    actor = os.environ.get("GUJI_ACTOR") or os.environ.get("USER") or None
+    from ._cv import WorkerSource
+    with _pg_conn() as conn:
+        cli_v2._out(pt.publish(WorkerSource(), conn, args.src, note=args.note, actor=actor, dry_run=args.dry_run))
+
+
 def cmd_rekey_cells(args) -> None:
     """换图源后按格级对照表改键（GUJI-748）：glyph-db／json／jsonl／ids-bank 改，verify 核对。见 `ops/cell_rekey.py`。"""
     import os
@@ -441,6 +453,11 @@ def add_parser(sub) -> None:
     p.add_argument("--push", action="store_true", help="出完推进中心库（升级脚本身份，要写库权限）")
     p.add_argument("--gate-waive", default=None, metavar="理由",
                    help="出版护栏（多字头实例、人裁×人裁冲突）没过也照出，理由记进结果 gate.waived")
+    p = sub.add_parser("pua-table", help="[v2] PUA 码表共享层 pua-wyg：publish 出新版本 v<N>（只读、不覆盖）")
+    p.add_argument("action", choices=["publish"])
+    p.add_argument("--from", dest="src", required=True, help="码表 jsonl（一行一码，键 code）")
+    p.add_argument("--note", default="", help="写进版本清单的备注")
+    p.add_argument("--dry-run", action="store_true", help="只演练，不写库")
     p = sub.add_parser("rekey-cells", help="[v2] 换图源后按格级对照表改键：字形库、L2 表、金标/回放集、模板库出处（GUJI-748）")
     p.add_argument("action", choices=["glyph-db", "verify", "json", "jsonl", "ids-bank"],
                    help="glyph-db 改 glyph.db 实例 id；verify 核对改键后的库；json L2 表等按格当键的 JSON；"
@@ -468,6 +485,7 @@ COMMANDS = {
     "store": (add_parser, cmd_store),
     "recheck": (add_parser, cmd_recheck),
     "glyphlib": (add_parser, cmd_glyphlib),
+    "pua-table": (add_parser, cmd_pua_table),
     "rekey-cells": (add_parser, cmd_rekey_cells),
     "promote": (add_parser, cmd_promote),
     "corpus": (add_parser, cmd_corpus),
