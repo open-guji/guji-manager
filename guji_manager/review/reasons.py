@@ -771,13 +771,30 @@ def load_glyph_pending(data_root: Path | str | None = None) -> frozenset[str]:
 PUA_TABLE_REL = ("config", "pua", "pua_table.jsonl")
 
 
-def load_pua_table(data_root: Path | str | None = None) -> dict[str, dict]:
-    """读私用码码表 → `{code: 行}`；数据目录取不到、文件不在返回空表，坏行跳过（不猜）。"""
+def load_pua_table(data_root: Path | str | None = None, pin: int | None = None) -> dict[str, dict]:
+    """读私用码码表 → `{code: 行}`；数据目录取不到、文件不在返回空表，坏行跳过（不猜）。
+
+    `pin`（缺省取数据目录 `config/book_defaults.yaml` 的 `pua_table_pin`）：钉了共享层版本就读共享层 `pua-wyg` 的
+    `v<pin>`（只读副本，`guji db pull` 拉；读不到报错、不悄悄退回空表）；没钉读本书 `config/pua/pua_table.jsonl`。"""
     try:
         if data_root is None:
             from .._cv import data_root as _data_root
             data_root = _data_root()
+        if pin is None:
+            from ..ops.pua_table import PIN_KEY, parse_pin
+            import yaml
+            try:
+                d = yaml.safe_load((Path(data_root) / "config" / "book_defaults.yaml").read_text(encoding="utf-8")) or {}
+                pin = parse_pin(d.get(PIN_KEY)) if isinstance(d, dict) else None
+            except (OSError, ValueError, yaml.YAMLError):
+                pin = None
+        if pin:
+            import os
+            from ..ops.pua_table import read_rows
+            return read_rows(int(pin), branch=os.environ.get("GUJI_DATA_BRANCH") or "main")
         text = Path(data_root).joinpath(*PUA_TABLE_REL).read_text(encoding="utf-8")
+    except SystemExit:
+        raise
     except Exception:  # noqa: BLE001
         return {}
     out: dict[str, dict] = {}

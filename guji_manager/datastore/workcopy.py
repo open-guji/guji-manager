@@ -41,7 +41,10 @@ BORROW_STATE = ".borrowed-state.json"
 #: 共享层的只读工作区（共享方案 3.2 节）：普通 push／sync 一律拒绝，只有升级脚本能写；
 #: ``glyphlib-*`` 每版一个工作区，只能写新开的版本（sheldon 10-19：升级时脚本可写）
 SHARED_PREFIX = "glyphlib-"
-SHARED_NAMES = frozenset({"corpus-base"})
+SHARED_NAMES = frozenset({"corpus-base", "pua-wyg"})
+#: 单个工作区里按版本目录出的共享层（``corpus-base`` 的 ``b<M>``、``pua-wyg`` 的 ``v<N>``）：升级脚本只能加新版本，
+#: 已有版本目录里的文件一概不许改、不许删（出新版不覆盖）。键＝工作区名，值＝版本目录所在前缀
+VERSIONED_SHARED = {"pua-wyg": "config/pua-wyg/"}
 
 
 def is_shared_ws(ws: str) -> bool:
@@ -895,6 +898,28 @@ def refresh_corpus_base(src, ws_dir: Path, *, cache=None, bucket: str = "main", 
     return rev
 
 
+def refresh_pua_table(src, ws_dir: Path, *, cache=None, bucket: str = "main", always: bool = False) -> int | None:
+    """有书（册 yaml／``book_defaults.yaml``）钉了 ``pua_table_pin``（或 ``always``）时，把共享层 ``pua-wyg`` 拉成只读副本。
+    返回 rev；用不到返回 None。库里还没有共享层时报错（钉了版本却拉不到，不能悄悄读空表）。"""
+    from ..ops.pua_table import PUA_DIR, PUA_WS, pins_in
+    from .materialize import MaterializeError
+    m = central_marker(Path(ws_dir)) or {}
+    if not m or m.get("ws") == PUA_WS:
+        return None
+    if not always:
+        try:
+            if not pins_in(data_dir(Path(ws_dir))):
+                return None
+        except SystemExit:
+            return None
+    try:
+        rev, _ = readonly_copy(src, PUA_WS, str(m.get("branch") or "main"), (PUA_DIR + "/",),
+                               cache=cache, bucket=bucket)
+    except MaterializeError as e:
+        raise SystemExit(f"中心库里还没有 PUA 码表共享层（{PUA_WS}）：先 guji pua-table publish（{e}）") from e
+    return rev
+
+
 #: 按需拉取（2026-11-02）：``GUJI_PULL_EXCLUDE``（逗号分隔的路径前缀）或 ``guji db pull --exclude`` 给的前缀不拉。
 #: 只跑 pipeline 的执行方（任务库 rerun_prep）用它跳过用不着、又大又常变的文件（殿本线上单 100 份 110 MB）。
 #: 这样拉下来的数据目录是「部分副本」：状态文件记 ``exclude``，push／sync 一律拒绝，要写库先不带 exclude 整拉一次。
@@ -978,6 +1003,9 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
     cb = refresh_corpus_base(src, ws_dir, cache=cache, bucket=bucket)
     if cb is not None:
         out["corpus_base"] = cb
+    pt = refresh_pua_table(src, ws_dir, cache=cache, bucket=bucket)
+    if pt is not None:
+        out["pua_table"] = pt
     fp = (st or {}).get("glyph_db_fp")
     bsig = (st or {}).get("borrow", [])
     # 没重建就记下「库比账本旧」，重建了再清。新机器第一次拉（还没有状态）不记：那时本机多半还没有 glyph.db
@@ -1092,6 +1120,11 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     if is_shared_ws(sc.ws) and not shared_writer:
         raise SystemExit(f"{sc.ws} 是共享层的只读工作区（共享方案 3.2 节），普通 push／sync 不能写；"
                          f"由升级脚本出新版本")
+    vpre = VERSIONED_SHARED.get(sc.ws)
+    if shared_writer and vpre:                         # 按版本目录出的共享层：旧版本只读，只许加新版本
+        frozen = sorted(c for c in changed if c.startswith(vpre) and c in st.get("base", {}))
+        if frozen:
+            raise SystemExit(f"{sc.ws} 的已发布版本不可改、不可删（{frozen[:3]}）；改表请出新版本")
 
     def guard(cur):
         if creating:
@@ -1544,6 +1577,9 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         cb = refresh_corpus_base(src, ws_dir, cache=cache, bucket=bucket)
         if cb is not None:
             out["corpus_base"] = cb
+        pt = refresh_pua_table(src, ws_dir, cache=cache, bucket=bucket)
+        if pt is not None:
+            out["pua_table"] = pt
     if not src.changes_since(ws, int(st["rev"]), limit=1):
         if not mine:
             return {**out, "action": "nothing"}
