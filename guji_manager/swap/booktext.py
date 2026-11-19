@@ -756,7 +756,10 @@ def _copy_cord(src: Path, dst: Path, cv: Path | None) -> str | None:
 
 def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: str, push: bool,
             pending: set[str] | dict[str, dict], out_dir: Path, glyph_db: Path | None = None, open_pr_: bool = True,
-            cv: Path | None = None) -> dict:
+            cv: Path | None = None, merge: bool = True, title: str | None = None, store_lineage: bool = True,
+            detail: list[str] | None = None) -> dict:
+    """``merge=False``／``store_lineage=False``／``title``：给 ``guji collect`` 用——格号没变、只把人裁定字直接写进 char：
+    不逐块图判字（导出的 char 就是要落的字），不往 lineage 存恒等对照表，提交标题另给。"""
     vdir = _bt_dir(wt, text_id) / "default"
     ch = _chapter(book)
     from ..formats.guji_char_cord import dumps
@@ -796,14 +799,17 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
             if not t.exists() or t.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, t)
     one_x = str(tv).split(".")[0] not in ("0", "")
-    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws)
+    r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws,
+                      merge=merge)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")
         return {"status": "guard-stop", "why": "；".join(r["problems"]), **r}
     records = []
-    lines = [("text", note)] + [(ln, f"{book} 换包格号变动：按格级对照表挪锚（挪 {r['remap']['moved']}，留待重标 {len(r['left'])}，复核 {len(r['review'])}）")
-                                for ln in ("punct", "entity") if (vdir / f"{ch}.{ln}.json").exists()]
+    lines = [("text", note)] + [(ln, f"{book} 换包格号变动：按格级对照表挪锚（挪 {r['remap']['moved']}，留待重标 {len(r['left'])}，复核 {len(r['review'])}）"
+                                 if merge else f"{book} 人裁改字，校验字跟改（复核 {len(r['review'])}）")
+                                for ln in ("punct", "entity") if (vdir / f"{ch}.{ln}.json").exists()
+                                and (merge or _git(wt, "status", "--porcelain", "--", str((vdir / f"{ch}.{ln}.json").relative_to(wt))).strip())]
     for ln, nt in lines:
         p = _run([sys.executable, "scripts/book-text/bump_original.py", vdir, "--line", ln, "--level", "patch",
                   "--chapter", ch, "--note", nt], wt)
@@ -824,7 +830,8 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     stored = None
     try:
         from .finish import store_table
-        stored = store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
+        if store_lineage:
+            stored = store_table(vdir, r["table"], book, _git(wt, "rev-parse", "--short", "HEAD").strip())
     except OSError as e:  # noqa: BLE001
         print(f"  对照表入库跳过：{e}", file=sys.stderr)
     lc = _run([sys.executable, "scripts/local_check.py", "--dev"], wt)
@@ -848,7 +855,9 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     if dup:
         body.append("疑似重复切（新增格与邻格同字，未改）：" + "、".join(f"{a}{c}" for a, _, c, _ in dup[:10]))
     body.append(f"人裁／手改受保护 {r.get('protected', 0)} 格，账平" + ("；" + "；".join(r["notes"]) if r.get("notes") else ""))
-    if r.get("human_pre"):
+    if not merge:                               # collect：字由调用方定好了，「字：无变化」「原先就不同」两行不适用
+        body = body[:1] + list(detail or [])
+    if r.get("human_pre") and merge:
         body.append(f"人裁／手改与旧文本原先就不同 {len(r['human_pre'])} 格（多为异体／归一，未动）：" + "、".join(f"{a}{c}≠{o}" for a, _, c, o in r["human_pre"][:8]))
     if r.get("breaks_moved"):
         body.append("标题前分段符随标题挪（中间插进新增格）：" + "、".join(f"{o}→{n}" for o, n in r["breaks_moved"][:6]))
@@ -857,7 +866,9 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     if r["left"]:
         body.append(f"留待重标 {len(r['left'])} 条（closeout 现算为 A01–A03）：" + "；".join(f"{x[1]} {x[2]}" for x in r["left"][:6]))
     body.append(gate_note)
-    msg = f"{book}：换包增删格，标点专名按对照表平移（patch）\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
+    if title:
+        body[0] = title
+    msg = (title or f"{book}：换包增删格，标点专名按对照表平移（patch）") + "\n\n" + "\n".join(body) + "\n\n" + "\n".join(records) + "\n"
     _git(wt, "add", "-A", "--", str(vdir.relative_to(wt)))
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
     if push:
