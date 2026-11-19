@@ -99,7 +99,8 @@ def test_lib_rows_reads_one_book(tmp_path):
     assert rows["001:1:1:2a"]["via"] == "rare_ref"
 
 
-@pytest.mark.parametrize("text,want", [("", "report"), ("glyph_lib:\n  text_check: apply\n", "apply"),
+@pytest.mark.parametrize("text,want", [("", "apply"), ("glyph_lib:\n  text_check: apply\n", "apply"),
+                                       ("glyph_lib:\n  text_check: true\n", "apply"),
                                        ("glyph_lib:\n  text_check: false\n", None),
                                        ("glyph_lib:\n  text_check: report\n", "report")])
 def test_config(tmp_path, text, want):
