@@ -1,6 +1,6 @@
-"""任务库的读写（Neon 中心库 `jobs` schema）。连库走 `datastore.connect`（443 桥），不经 Worker。
+"""任务库的读写（美国机任务库，经 jobsdb 隧道；要 JOBSDB_TOKEN＋JOBSDB_PASSWORD）。
 
-连哪个库：缺省正式库 main（`NEON_DATABASE_URL`）；`GUJI_JOBS_BRANCH=ci` 之类改连 Neon 的别的分支（试表用）。
+任务库 11-03 从 Neon 切到美国机；Neon 项目 2026-11-19 已删，没有退路。`GUJI_JOBS_BRANCH` 只影响产物包的改动名。
 领单：`FOR UPDATE SKIP LOCKED` 挑一条 queued，同册有在跑的就跳过（另有唯一索引兜底）；
 领到就开一条 attempt，租约 `LEASE` 分钟，执行方每分钟心跳续租。会话死了租约过期，下一个执行方 `reap` 收回重排，
 领满 `max_attempts` 次还没成就记 failed。
@@ -32,24 +32,20 @@ TRANSIENT_DELAY_S = (120, 600)          # 随机隔 2–10 分钟
 def connect():
     """开一条 autocommit 连接（写操作各自包在 `conn.transaction()` 里，读不留悬着的事务）。
 
-    设了 JOBSDB_TOKEN 就连新任务库（美国机，经 jobsdb 隧道）；没设仍连 Neon（过渡期，见 jobsdb.py）。
+    只连美国机任务库（jobsdb 隧道）。原来测试分支／``GUJI_REQUIRE_JOBSDB=0`` 退回 Neon 的路随 Neon 删除（11-19）去掉了。
     """
     from . import jobsdb
     if jobsdb.enabled():
         c = jobsdb.connect()
         c.autocommit = True
         return c
-    # 11-03 已切到新机：Neon 任务库只留给测试分支（GUJI_JOBS_BRANCH）或显式 GUJI_REQUIRE_JOBSDB=0
-    br = os.environ.get("GUJI_JOBS_BRANCH")
-    if (br and br != "main") or os.environ.get("GUJI_REQUIRE_JOBSDB", "").strip().lower() in ("0", "false", "no"):
-        return connect_neon()
-    raise SystemExit("任务库已切到新机，但本 shell 没有 JOBSDB_TOKEN；不退回 Neon。"
+    raise SystemExit("任务库在美国机，本 shell 没有 JOBSDB_TOKEN（Neon 已删，没有退路）。"
                      "请用 guji_jobs（会自动载入 secret），或先 . /etc/guji_secrets.sh。")
 
 
 def connect_neon():
-    """连中心库（名字沿用；2026-11-18 起是 D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
-    ``GUJI_JOBS_BRANCH`` 只给测试连别的分支。"""
+    """连中心库（名字沿用；2026-11-18 起是 Cloudflare D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
+    ``GUJI_JOBS_BRANCH`` 只给测试连中心库别的分支。"""
     from ..datastore.connect import connect as _connect
     br = os.environ.get("GUJI_JOBS_BRANCH")
     if br and br != "main":
@@ -62,7 +58,7 @@ def connect_neon():
 
 
 class DB:
-    """断线自动重连的连接：`db(fn, *a)` 调 `fn(conn, *a)`，连接断了（443 桥、Neon 休眠）重连再试。
+    """断线自动重连的连接：`db(fn, *a)` 调 `fn(conn, *a)`，连接断了（隧道、Worker 一时不通）重连再试。
 
     执行方一跑几个小时，主线程那条连接中间可能长时间不用、被掐掉；进展、结果、收尾都经这里写，不因断线丢。
     """

@@ -2,7 +2,7 @@
 
     python -m guji_manager.eval.group_progress <guji groups status 出的 json> [--book 96mid1ogzk] [--prev 上一份 json] [--write]
 
-缺省只打印要写的行；`--write` 才写 Neon 正式库（`datastore.connect`，要 `NEON_DATABASE_URL`）。
+缺省只打印要写的行；`--write` 才写中心库正式库（`datastore.connect`，2026-11-18 起是 D1，要 GUJI_DATA_TOKEN 类令牌）。
 只是看板数据，不影响产物与文本。写法见 kaiyuanguji-web `docs/text-progress.md` 第二节。
 
 sheldon 10-25 定：异体（同义）与形近（不同义）字组是混合处理的，并成一栏 `xingjin`（原 `yiti` 栏写库时删掉）；

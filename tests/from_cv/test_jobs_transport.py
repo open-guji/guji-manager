@@ -1,4 +1,4 @@
-"""任务库连接选路：有 JOBSDB_TOKEN 走新机隧道，没有仍走 Neon；看板的中心库写仍走 Neon。"""
+"""任务库连接选路：只走美国机隧道；没有 JOBSDB_TOKEN 一律报错（Neon 11-19 已删，没有退路）。"""
 import pytest
 
 from guji_manager.jobs import jobsdb, store
@@ -14,14 +14,13 @@ def test_enabled_with_token(monkeypatch):
     assert jobsdb.enabled() is True
 
 
-def test_connect_falls_back_to_neon_only_when_asked(monkeypatch):
+def test_no_neon_fallback_even_when_asked(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.delenv("GUJI_JOBS_BRANCH", raising=False)
     monkeypatch.setenv("GUJI_REQUIRE_JOBSDB", "0")
-    called = []
-    monkeypatch.setattr(store, "connect_neon", lambda: called.append("neon") or "NEON")
-    assert store.connect() == "NEON"
-    assert called == ["neon"]
+    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该走 Neon"))
+    with pytest.raises(SystemExit):
+        store.connect()
 
 
 def test_connect_uses_jobsdb_when_token(monkeypatch):
@@ -62,9 +61,10 @@ def test_default_refuses_neon_without_token(monkeypatch):
         store.connect()
 
 
-def test_ci_branch_still_uses_neon(monkeypatch):
+def test_ci_branch_has_no_neon_fallback(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.delenv("GUJI_REQUIRE_JOBSDB", raising=False)
     monkeypatch.setenv("GUJI_JOBS_BRANCH", "ci")
-    monkeypatch.setattr(store, "connect_neon", lambda: "NEON")
-    assert store.connect() == "NEON"
+    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该走 Neon"))
+    with pytest.raises(SystemExit):
+        store.connect()
