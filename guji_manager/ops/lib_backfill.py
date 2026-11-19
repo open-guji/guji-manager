@@ -162,6 +162,7 @@ def select(cells: dict[str, dict], state: dict, human_keys: set[str], *,
     - 丙档通道（`tier_c`）：这个字现有例数不足 `thin` 才是候选；
     - `match_ref` 且给了 `gm`（这一册 `glyph_match` 的格记录）：放行字领先别的候选字不到 `match_ref_gap` 的不选；
     - 夹注半格靠看图裁定放行的格（`evidence.half`，cv `vis_ruling_half`）不选，有人裁的另走人裁入库；
+    - 字形对照判「异」的格（`evidence.verdict == "diff"`）不选；
     - 按文意定的字组（`CONTEXT_CHARS`）不选；该格已在库、已有人裁、曾被撤过库的不选。"""
     stat: collections.Counter = collections.Counter()
     cand: dict[str, list] = collections.defaultdict(list)
@@ -171,6 +172,9 @@ def select(cells: dict[str, dict], state: dict, human_keys: set[str], *,
         stat["放行格"] += 1
         if (r.get("evidence") or {}).get("half") or r.get("half"):
             stat["半格看图放行"] += 1      # A23 口径（Sheldon 11-19 同意）：半格字块切偏多，没人裁过的不入库
+            continue
+        if (r.get("evidence") or {}).get("verdict") == "diff":
+            stat["对照判异"] += 1          # 定字时字形对照判「异」：多是切坏、带框线或邻字的格（史记 11-19 抽查 11/11 是坏格）
             continue
         chan = r.get("channel")
         if chan not in channels:
@@ -568,6 +572,9 @@ def run_pools(paths: list[str], *, apply: bool = False, batch: str | None = None
             iid = f"v2:{it['key']}"
             if iid in state["in_lib"] or it["key"] in human or iid in state["evicted"]:
                 stat["已在库或已有人裁"] += 1
+                continue
+            if (it.get("meta") or {}).get("verdict") == "diff":
+                stat["对照判异"] += 1             # 旧版攒的池子里可能有，取池时也挡
                 continue
             by_char[it["char"]].append(it)
         stat["候选"] += sum(len(v) for v in by_char.values())
