@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.65] - 2026-11-19
+
+- 发版说明（A31 11-19，PATCH）：#704（QTW variant_compare）11-19 从 dev 分支直接合进 main，把下列 dev 上未发版的改动一并带进了 main；本版在此基础上加 #705，下列条目都随 v0.4.65 发出。
+- PATCH：`tools/开书/出v01.py` 调 republish from-pack 透传 `--chapter`／`--text-id`（SJ 11-19：工作区目录名不是 `<书id>-…` 时，史記 `sjws`，plan.json 落成 text_id=sjws、chapter=01，push 写到 proofing/sjws/01.pending.json、雪碧图按 sjws 命名；book-text 章文件成 01.char.json）。text_id 只从 workspace.yaml `id` 取（缺就停）；章号先认新参数 `--chapter`，再按 cv 册配置 volume 推，再退到册号数字，统一三位；收尾提示的 push 命令也带上这两个参数。
+
 - PATCH：放行格回库 `lib_backfill.select` 跳过夹注半格看图放行的格（cv `vis_ruling_half` 写的 `evidence.half`，统计项「半格看图放行」）：半格字块切偏多，没有人裁的不入库、不当可信刻例，有人裁走人裁入库（A23，Sheldon 11-19 同意；口径见 ai-team domain/CV/字形领域/格号后移评估-殿本row_segment与史記半格-2026-11-19.md）。不动产物、指纹（L0）。
 
 - 库文一致（`glyph_lib.text_check`）缺省由只报告改为自动处理（Sheldon 11-18 定，全唐文 d1 实跑验证改标进文本后）：整册跑完能确定的改库标、撤机器例，其余进待审；只想报告写 `text_check: report`。这台机器过不了改库护栏（借库跑批、部分副本、本机库比账本旧）时自动退回只报告并说明。
