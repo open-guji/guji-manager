@@ -1,6 +1,13 @@
 # Changelog
 
-版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
+版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [0.4.63] - 2026-11-18
+
+- 发版说明（A31 11-18，PATCH；main v0.4.62 ＋ 下面四个 PR 摘取，**不含** dev 上别的未发版改动）：给殿本换单（ZM）用。
+- PATCH：`guji swap book-text` 处理以图代字格（#692，ZM 11-19 殿本 vol20）：带 `fig` 的 □ 格照新包、不留旧 〓／人裁字（V2 HARD）；旧文本占位 〓、新包落 □ 的照新包；挪锚前把这些格在标点 `pre_char`、专名 `text` 里的那一位改成新字（bump punct 不再拦）；拷 fig.json 后 index 补 `fig_file`（F-OV-13）。
+- PATCH：新命令 `guji swap doctor`（#687）：换单开跑前自检令牌、`-w` 路径、cv 版本、book-text 稀疏检出、CNN 权重、磁盘；`--fix` 补模型与稀疏检出，`--env` 打印 export 行。`swap` 的 `--books` 对 doctor 可不给。
+- 文档：`doc/01-粗校/换线上人审单.md` 加「殿本批量换单（auto_cycle）」一节、页表只换 rev 不算换源（#688、#690）。
+
+## [未发版]` 下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
 
