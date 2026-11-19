@@ -270,3 +270,41 @@ def test_fill_pending_blanks_writes_first_choice_not_lacuna():
     assert cells[0] == {"a": "1:1:1", "c": "日"}
     assert cells[1]["c"] == "□" and cells[2]["c"] == "□" and cells[3]["c"] == "□"
     assert bt.fill_pending_blanks(_char({1: "□"}), {"1:1:1"}) == []       # 只给格号集合：取不到首选字，不动
+
+
+def test_merge_fig_cell_and_placeholder_take_new_blank():
+    """以图代字格（带 fig）照新包 □，人裁字也不回填；旧文本是占位 〓、新包落 □ 的照新包（ZM 11-19 vol20）。"""
+    old_c, new_c = _char({1: "甲〓乙〓丙"}), _char({1: "甲□乙□丙"})
+    new_c["pages"][0]["columns"][0]["cells"][1]["fig"] = {"alt": "篆字"}
+    rows = bt.cell_table(old_c, _cord({1: "甲〓乙〓丙"}), new_c, _cord({1: "甲□乙□丙"}))
+    rep = bt.merge_chars(old_c, new_c, rows, protected={"1:1:2": "𦱪"})
+    assert "".join(x["c"] for x in new_c["pages"][0]["columns"][0]["cells"]) == "甲□乙□丙"
+    assert [r[0] for r in rep["fig_blank"]] == ["1:1:2"] and [r[0] for r in rep["placeholder_to_blank"]] == ["1:1:4"]
+    assert bt.blanked_cells(rep) == {"1:1:2", "1:1:4"}
+    # 旧字是真字、新包 □（不是图片格）：照旧留现字（RETURN_TO_BLANK）
+    old2, new2 = _char({1: "甲乙"}), _char({1: "甲□"})
+    bt.merge_chars(old2, new2, bt.cell_table(old2, _cord({1: "甲乙"}), new2, _cord({1: "甲□"})))
+    assert new2["pages"][0]["columns"][0]["cells"][1]["c"] == "乙"
+
+
+def test_sync_check_chars_punct_and_entity():
+    old_c, new_c = _char({1: "甲〓乙丙"}), _char({1: "甲□乙丙"})
+    rows = bt.cell_table(old_c, _cord({1: "甲〓乙丙"}), new_c, _cord({1: "甲□乙丙"}))
+    slots = [(x["a"], x["c"]) for x in old_c["pages"][0]["columns"][0]["cells"]]
+    punct = {"punctuations": [{"anchor": "1:1:2", "pre_char": "〓", "mark": "，"},
+                              {"anchor": "1:1:3", "pre_char": "乙", "mark": "。"}]}
+    entity = {"entities": [{"id": "e1", "anchor": {"start": "1:1:1", "end": "1:1:3"}, "text": "甲〓乙"},
+                           {"id": "e2", "anchor": {"start": "1:1:3", "end": "1:1:4"}, "text": "乙丙"}]}
+    n = bt.sync_check_chars(slots, new_c, rows, {"1:1:2"}, punct, entity)
+    assert n == 2
+    assert punct["punctuations"][0]["pre_char"] == "□" and punct["punctuations"][1]["pre_char"] == "乙"
+    assert entity["entities"][0]["text"] == "甲□乙" and entity["entities"][1]["text"] == "乙丙"
+
+
+def test_declare_fig_file(tmp_path):
+    (tmp_path / "index.json").write_text('{"chapters": [{"n": 20, "file": "020.md", "norm_file": "020.norm.json"}]}', encoding="utf-8")
+    assert not bt.declare_fig_file(tmp_path, "020")                  # 没有 fig.json 不动
+    (tmp_path / "020.fig.json").write_text("{}", encoding="utf-8")
+    assert bt.declare_fig_file(tmp_path, "020")
+    assert '"fig_file": "020.fig.json"' in (tmp_path / "index.json").read_text(encoding="utf-8")
+    assert not bt.declare_fig_file(tmp_path, "020")                  # 已有不重复加

@@ -315,9 +315,10 @@ def cmd_run(a) -> int:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("swap", help="换单 driver：出新单→同步→分批发布→核线上→清盘（断点续跑）")
-    p.add_argument("action", choices=["run", "audit", "book-text", "finish-merged"],
-                   help="run 换单；audit 机器改字抽检；book-text 把已导出的新包落 book-text（格号变了按格级对照表走，见 swap/booktext.py）")
-    p.add_argument("--books", required=True, help="如 vol20-vol99 或 vol23,vol24")
+    p.add_argument("action", choices=["run", "audit", "book-text", "finish-merged", "doctor"],
+                   help="run 换单；audit 机器改字抽检；book-text 把已导出的新包落 book-text（格号变了按格级对照表走，见 swap/booktext.py）；"
+                        "doctor 开跑前自检（令牌、-w、cv、book-text 稀疏检出、CNN 权重、磁盘；--fix 补模型与稀疏检出，--env 打印 export 行）")
+    p.add_argument("--books", default=None, help="如 vol20-vol99 或 vol23,vol24（doctor 可不给：给了才核各册引擎的模型）")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True)
     p.add_argument("--text-id", default=DIANBEN_ID, help="book-text 书 ID（缺省殿本；全唐文 995ejelvk0、史記 988g3f0wsu）")
@@ -336,6 +337,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
     p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")
     p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
+    p.add_argument("--fix", action="store_true", help="doctor：取缺的模型（cv 与各册引擎 worktree）、book-text 稀疏检出补本书目录")
+    p.add_argument("--env", action="store_true", help="doctor：打印可 eval 的 export 行（PATH、PYTHONPATH、GUJI_CV、GUJI_WORKSPACE）")
 
 
 def cmd_audit(a) -> int:
@@ -355,6 +358,11 @@ def cmd_audit(a) -> int:
 
 
 def cmd_swap(args) -> int:
+    if args.action == "doctor":
+        from .doctor import cmd_doctor
+        return cmd_doctor(args, parse_books(args.books) if args.books else [])
+    if not args.books:
+        raise SystemExit(f"swap {args.action} 要给 --books")
     if args.action == "finish-merged":
         from .booktext import cmd_finish_merged
         return cmd_finish_merged(args, parse_books(args.books))
