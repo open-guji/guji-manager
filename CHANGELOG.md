@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：缺页（cv #1696 册 yaml `gaps:`，Sheldon 11-18 定只按图片页号记）：`guji collate` 的 JSON 报告加 `gaps`（落在这批页的缺页），命令行列出「第 N 页之后缺…，整理本在此断档属正常」；cv 还不认 `gaps` 时给空表。文档：`doc/参考/册配置.md` 字段表、`开书全流程.md` S7 加「查缺页」一步与经验 E7-6。
+
 - PATCH：新增形近字对归属表（`guji_manager/pair_attribution.py`，数据目录 `config/groups/pair_attribution.yaml`）：一对字按刻形（缺省）、按文意还是暂归一，写在一张书级表里（Sheldon 11-18 同意的第 5／7 步统一方案第 1 步）。新命令 `guji-manager pair-attr show <两个字>`、`pair-attr check`（与码位表、按对分类器的归文意名单与档位、第 7 步只挂文意的组、暂归一兜底对一遍，只报不改）。还没有任何步骤读这张表，产物不变。文档 `doc/参考/形近字对归属表.md`。
 
 - PATCH：新命令 `guji glyph-db backfill-audit`（`ops/lib_round_audit.py`）回库事后核（Sheldon 11-18 定「回库闸关着，做按轮事后核」）：给前后两轮产物根，逐格比 `seed_admit`／`glyph_match`，新增待审格按后一轮库首位（或新进前 5 名）归到回库字（害），新放行格按放行字或库首位归到回库字（帮），列出只害不帮的回库字；`--apply` 对这些字的全部回库刻例追加 `glyph_audit` 撤库事件、直接处理并导出账本（人裁刻例不动）。史記 r79→r80 全书实测：只害不帮 407 字 967 例，与 SJ 手工 g27 剔除单 403 字重合 396 字。文档 `doc/01-粗校/开书/回库事后核.md`；顺带补上 `放行格回库.md` 里 #679 漏填的实测占位（STEAL_VALIDATION）。
