@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：放行格回库 `lib_backfill.select` 跳过夹注半格看图放行的格（cv `vis_ruling_half` 写的 `evidence.half`，统计项「半格看图放行」）：半格字块切偏多，没有人裁的不入库、不当可信刻例，有人裁走人裁入库（A23，Sheldon 11-19 同意；口径见 ai-team domain/CV/字形领域/格号后移评估-殿本row_segment与史記半格-2026-11-19.md）。不动产物、指纹（L0）。
+
 - PATCH：形近字对归属表加可选字段 `variant: true`（标同字异形的对，如淸清；cv #1700 第 7 步 `pair_form` 只对它自动改字，异字对只记证据进复审，Sheldon 11-18 同意）。
 
 - PATCH：缺页（cv #1696 册 yaml `gaps:`，Sheldon 11-18 定只按图片页号记）：`guji collate` 的 JSON 报告加 `gaps`（落在这批页的缺页），命令行列出「第 N 页之后缺…，整理本在此断档属正常」；cv 还不认 `gaps` 时给空表。文档：`doc/参考/册配置.md` 字段表、`开书全流程.md` S7 加「查缺页」一步与经验 E7-6。
