@@ -10,8 +10,9 @@
     pairs:
       日曰: {attr: context, by: Sheldon, date: 2026-11-18, note: 刻本混用}
       簡𥳑: {attr: merge, to: 𥳑}
-      淸清: {attr: shape}
+      淸清: {attr: shape, variant: true}
 
+- `variant: true`：这一对是同字异形（淸清），不是两个字；cv 第 7 步 `pair_form` 只对它自动改字，异字对只记证据进复审（Sheldon 11-18）。
 - `shape` 刻形：刻本上分得开，照刻的形录。**没列的对缺省就是刻形**（Sheldon 11-18：除文意不区分的一律按刻形）。
 - `context` 文意：刻本混用或字形分不开，按文意定。
 - `merge` 暂归一：目前分不开，统一记 `to` 那个字，留待将来再分。
@@ -52,7 +53,7 @@ def parse(doc: dict) -> dict[str, dict]:
             raise ValueError(f"{k!r}: 这一对写了两遍")
         if not isinstance(v, dict) or v.get("attr") not in ATTRS:
             raise ValueError(f"{k!r}: attr 只能是 {'/'.join(ATTRS)}")
-        extra = set(v) - {"attr", "to", "by", "date", "note"}
+        extra = set(v) - {"attr", "to", "by", "date", "note", "variant"}
         if extra:
             raise ValueError(f"{k!r}: 不认的字段 {sorted(extra)}")
         if v["attr"] == "merge":

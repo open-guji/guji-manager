@@ -74,3 +74,9 @@ def test_check_step7_groups():
 
 def test_check_nothing_given_checks_nothing():
     assert PA.check(_t(**{"日曰": {"attr": "context"}})) == []
+
+
+def test_variant_field_accepted():
+    from guji_manager import pair_attribution as pa
+    tb = pa.parse({"schema": pa.SCHEMA, "pairs": {"淸清": {"attr": "shape", "variant": True}}})
+    assert tb["淸清"]["variant"] is True
