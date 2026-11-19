@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：新命令 `guji collect`（`guji_manager/collect.py`，收单快路，ZM 第一册线要的「一条命令收一张单」）：没换包时，读票（`cellvotes draft --from-kv --items --pack rev-<rev>`）→ 写人裁 → 定字票逐格对 book-text dev 现文、不同就直接写人裁的字（格框对不上、以图代字格不写，等重放），标点专名校验字跟改、升 patch、`local_check --dev`、推 dev（1.x 推分支开草稿 PR）→ 条目结案 → `db sync` 一次 → 只发这一章并核线上单。不重放 seed_admit、不重出单；`--batch` 另把库里早先写下、还没进 book-text 的人裁批次也落了（过绑定表、每格取最新）；断点续跑（`reports/<册>/_collect/<rev>/state.json`）；`--dry-run` 演练。`swap.booktext.do_book` 加 `merge`／`title`／`store_lineage` 参数（缺省行为不变）。
+- PATCH：修 `cellvotes write`（`--items` 草稿）落票后从没把条目标已裁：草稿行只有 `id`（`vol04:15:8:20`）没有 `a`，按 `a` 找条目一条都找不到（ZM 收单一直手工 `pending resolve`）。
 - PATCH：放行格回库 `lib_backfill.select` 与 `--from-pool` 跳过定字时字形对照判「异」的格（`evidence.verdict == "diff"`，统计项「对照判异」）：史记 11-19 全书 42 册回库报告里这类 11 格看图全是切坏、带框线或邻字的格。不动产物、指纹（L0）。
 
 ## [0.4.65] - 2026-11-19
