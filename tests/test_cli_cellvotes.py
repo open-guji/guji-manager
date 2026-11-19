@@ -150,3 +150,24 @@ def test_draft_allow_empty_refuses_file_or_lost_item_votes(tmp_path, monkeypatch
     monkeypatch.setattr(C, "_fetch_kv_items", lambda *a, **k: [{"vol": "004", "item": "nope", "choice": "char"}])
     with pytest.raises(SystemExit, match="不是零票"):
         C.cmd_draft(_empty_args(tmp_path, monkeypatch, allow_empty=True))
+
+
+def test_bound_only_drops_rulings_not_effective_now(monkeypatch):
+    """ZM 11-19：迁移锚／rebound 到别格／seed_admit 不采信的旧人裁不算「已有人裁」，同字票照写。"""
+    import types
+    import guji_manager._cv as cvmod
+    from guji_manager import cli_cellvotes as CVT
+    ev = lambda i, k, sh: types.SimpleNamespace(id=i, ts="2026-11-01T00:00:00Z", target=types.SimpleNamespace(key=k),  # noqa: E731
+                                                payload={"v": "confirm", "shape": sh})
+    human = {"vol18:33:4:7a": ev("e1", "vol18:33:4:7a", "兩"), "vol18:70:6:16": ev("e2", "vol18:70:6:16", "名"),
+             "vol18:88:1:12a": ev("e3", "vol18:88:1:12a", "領"), "vol18:5:1:1": ev("e4", "vol18:5:1:1", "之"),
+             "vol18:9:9:9": ev("e5", "vol18:9:9:9", "也")}
+    rows = {"e1": {"status": "unanchored", "bound": None}, "e2": {"status": "valid", "bound": "vol18:70:6:16"},
+            "e3": {"status": "rebound", "bound": "vol18:88:1:13a"}, "e4": {"status": "valid", "bound": "vol18:5:1:1"}}
+    monkeypatch.setattr(cvmod, "book_bindings", lambda book, pages=None: rows, raising=False)
+    monkeypatch.setattr(cvmod, "bindings_usable", lambda r, ts=None: (r or {}).get("bound") if (r or {}).get("status") in ("valid", "rebound") else None, raising=False)
+    monkeypatch.setattr(cvmod, "human_chars", lambda book: {"vol18:70:6:16": "各", "vol18:5:1:1": "之"}, raising=False)
+    votes = [{"a": a} for a in ("33:4:7a", "70:6:16", "88:1:12a", "5:1:1")]       # 9:9:9 没票：不动
+    out, gone = CVT._bound_only("vol18", human, votes)
+    assert set(out) == {"vol18:5:1:1", "vol18:9:9:9"}
+    assert {a for a, _ in gone} == {"33:4:7a", "70:6:16", "88:1:12a"}
