@@ -31,6 +31,10 @@ _FRAMEWORK = ("open_guji_cv.core", "open_guji_cv.products", "guji_manager.format
 
 #: 不影响产物、不进指纹的 import：(Step 模块, 被 import 模块) → 理由
 NOT_IN_FP: dict[tuple[str, str], str] = {
+    ("open_guji_cv.gates.row_segment_gate", "open_guji_cv.impl.keben.row_boundaries"):
+        "只取 row_split_extra 读 cells 列旗 jiazhu_row_split+N（cv 45d548e5，GUJI-774 书级钩子 jiazhu_step.row_split，缺省 None 不出旗）；"
+        "旗由 row_segment 写进 cells，row_boundaries 已在 row_segment 指纹里，逻辑一变 cells 跟变、本闸按输入过期。"
+        "补进本闸 code_deps 会让各册 row_segment_gate 整体过期（A31 11-19）",
     ("open_guji_cv.steps.seal_detect", "open_guji_cv.utils.image_io"): "只读图",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.utils.image_io"): "只读图",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.clustering.keben_counts"):
