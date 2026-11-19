@@ -41,6 +41,9 @@ from pathlib import Path
 
 from .resolve import BLANK, detect_flaws, resolve
 
+#: 文本里的占位符（不是字、也不是阙文）：新包落了 □（定阙或图片格）就照新包，不当「现行有字」留着（ZM 11-19 vol20）
+PLACEHOLDER = "〓"
+
 IOU_MIN = 0.5
 
 
@@ -157,6 +160,15 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
                 rep["dup_new"].append((a, None, x.get("c"), x.get("c")))
             continue
         cur, new = cur_seq[i], new_seq[i]
+        if x.get("fig") is not None and x.get("c") == BLANK:
+            # 以图代字格（char 带 fig）：c 必须是 □（校验器 V2 HARD），旧文本的 〓／字（含人裁字）不回填；字的说明在 fig 里
+            if cur != BLANK:
+                rep["fig_blank"].append((a, cur, new, BLANK))
+            continue
+        if new == BLANK and cur == PLACEHOLDER and a not in (protected or {}):
+            # 新包落 □（定阙／待审），旧文本只是占位 〓：照新包，不走 RETURN_TO_BLANK 留 〓
+            rep["placeholder_to_blank"].append((a, cur, new, BLANK))
+            continue
         if x.get("unk") is not None:
             # 无法识别字（char v0.5）：新包里是人裁出来的终态（新人裁最高），不过 resolve；现行文本里的字不回填
             rep["unk_keep"].append((a, cur, new, x.get("c")))
@@ -325,6 +337,62 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
     return bad
 
 
+def blanked_cells(rep: dict) -> set[str]:
+    """merge_chars 报告里「改成 □」的新格号（以图代字格、占位 〓→□）：标点 pre_char、专名 text 要跟着改。"""
+    return {a for k in ("fig_blank", "placeholder_to_blank") for a, *_ in rep.get(k) or ()}
+
+
+def sync_check_chars(old_slots: list[tuple[str, str]], new_char: dict, rows: list[dict], cells: set[str],
+                     punct: dict | None, entity: dict | None) -> int:
+    """格的字被换成 □（``blanked_cells``）后，**挪锚之前**把标点 ``pre_char``、专名 ``text`` 里对应那一个字改成新字，
+    挪锚时校验字就对得上（否则 bump_original 拦「校验字应为 〓，文本现为 □」，ZM 11-19 vol20 16 处）。
+    只改「原来正是旧格旧字」的那一位，别的不动。就地改，返回改了几处。"""
+    if not cells:
+        return 0
+    o2n = {r["old"]: r["new"] for r in rows if r["old"] and r["new"]}
+    nch = {a: x.get("c") for a, x in _chars(new_char)}
+    och = dict(old_slots)
+    hit = {o: nch[n] for o, n in o2n.items() if n in cells and n in nch}
+    n_fix = 0
+    for p in (punct or {}).get("punctuations") or []:
+        a = p.get("anchor")
+        if a in hit and "pre_char" in p and p["pre_char"] == och.get(a) and p["pre_char"] != hit[a]:
+            p["pre_char"] = hit[a]
+            n_fix += 1
+    pos = {a: i for i, (a, _c) in enumerate(old_slots)}
+    for e in (entity or {}).get("entities") or []:
+        anc = e.get("anchor") or {}
+        s_, t_ = anc.get("start"), anc.get("end")
+        if s_ not in pos or t_ not in pos or "text" not in e:
+            continue
+        seg = old_slots[pos[s_]:pos[t_] + 1]
+        txt = e["text"]
+        if len(seg) != len(txt) or not any(a in hit for a, _ in seg):
+            continue
+        nt = "".join(hit[a] if a in hit and w == c else w for (a, c), w in zip(seg, txt))
+        if nt != txt:
+            e["text"] = nt
+            n_fix += 1
+    return n_fix
+
+
+def declare_fig_file(vdir: Path, ch: str) -> bool:
+    """本章有 NNN.fig.json 就在 index.json 本章条目补 ``fig_file``（校验器 F-OV-13；与 cv republish.copy_figs 同法）。
+    返回是否改了 index。找不到本章条目不改（local_check 会报）。"""
+    if not (Path(vdir) / f"{ch}.fig.json").exists():
+        return False
+    idx = Path(vdir) / "index.json"
+    t = idx.read_text(encoding="utf-8")
+    decl = f'"fig_file": "{ch}.fig.json"'
+    if decl in t:
+        return False
+    for anc in (f'"norm_file": "{ch}.norm.json"', f'"cord_file": "{ch}.cord.json"'):
+        if t.count(anc) == 1:
+            idx.write_text(t.replace(anc, f"{anc}, {decl}"), encoding="utf-8", newline="\n")
+            return True
+    return False
+
+
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
                   book: str | None = None, require_human: bool = False, ws: Path | None = None) -> dict:
@@ -374,7 +442,11 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
         filled = fill_pending_blanks(new_char, pending, prot_new)
         if filled:
             chars["pending_first_choice"] = filled
-    ledger_probs += ledger_check(new_char, prot_new, same)
+    figs = {a for a, x in _chars(new_char) if x.get("fig") is not None}
+    fig_over = {a: c for a, c in prot_new.items() if a in figs}
+    if fig_over:      # 人裁过字、新包定为以图代字格（图形票）：格里只能是 □，字的说明在 fig；只报不停
+        notes.append(f"以图代字格上原有人裁／手改字 {len(fig_over)} 格改为 □：" + "、".join(f"{a}「{c}」" for a, c in list(fig_over.items())[:8]))
+    ledger_probs += ledger_check(new_char, {a: c for a, c in prot_new.items() if a not in figs}, same)
     conflicts = (chars.get("protected_conflict") or []) if merge else []
     ledger_probs += [f"{a} 新包「{n}」≠人裁／手改「{c}」（保留人裁，要人看）" for a, _, n, c in conflicts]
     cf.write_text(dumps(new_char), encoding="utf-8", newline="\n")
@@ -386,6 +458,16 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     ra = remap_lib.load_ra(repo)
     pf, ef = vdir / f"{chapter}.punct.json", vdir / f"{chapter}.entity.json"
     punct, entity = _load(pf), _load(ef)
+    blanked = blanked_cells(chars) if merge else set()
+    if blanked:
+        try:
+            import original_version as OV  # noqa: E402  load_ra 已把 book-text scripts 放进 sys.path；读序与挪锚同一口径
+            old_slots = OV.char_slots(old["char"])
+        except (ImportError, AttributeError):
+            old_slots = [(a, x.get("c")) for a, x in _chars(old["char"])]
+        n_sync = sync_check_chars(old_slots, new_char, rows, blanked, punct, entity)
+        if n_sync:
+            notes.append(f"格改为 □（以图代字／占位 〓）：标点校验字、专名文字跟改 {n_sync} 处")
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
     problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
@@ -681,6 +763,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         p = export / f"{ch}.{t}.json"
         if p.exists():
             shutil.copyfile(p, vdir / f"{ch}.{t}.json")
+    declare_fig_file(vdir, ch)                  # F-OV-13：char 有图须声明 fig_file
     fd = export / "fig" / ch
     if fd.is_dir():
         (vdir / "fig" / ch).mkdir(parents=True, exist_ok=True)
