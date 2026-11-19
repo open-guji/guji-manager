@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from test_guji_page_format import BOOK, META, PAGE, W, H, _write
+from test_guji_page_format import BOOK, META, PAGE, W, H, _book_ws, _write
 
 from guji_manager.feedback.consumers import crop_exclude
 from open_guji_cv.feedback.events import EventLog, EventTarget, make_event
@@ -232,6 +232,7 @@ def test_no_figures_byte_identical(tmp_path):
 
 def test_exporter_script_writes_fig(tmp_path, monkeypatch):
     from export_guji_format import main
+    _book_ws(tmp_path, monkeypatch)
     _store_with_figure(tmp_path)
     lst = tmp_path / "crop_exclusions.jsonl"
     crop_exclude([(_confirm(FIG_ID, {"v": "figure", "alt": "一个圈"}), None)], list_path=str(lst))

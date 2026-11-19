@@ -103,6 +103,20 @@ def _write(store: ProductStore):
                  encoding="utf-8")
 
 
+def _book_ws(tmp_path, monkeypatch, **extra):
+    """测试册 `BOOK` 的最小工作区：`books/<BOOK>.yaml` ＋ `GUJI_WORKSPACE` 指过去。
+
+    导出脚本（cv `export_guji_format.py`）11-19 起要读册 yaml 的 `gaps:`（cv 7e1685a），
+    没工作区就报「没设 GUJI_WORKSPACE」。测试自己带一份，不靠 CI 环境变量。`extra` 写进 yaml（如 `gaps=[…]`）。"""
+    import yaml
+    ws = tmp_path / "ws"
+    (ws / "books").mkdir(parents=True, exist_ok=True)
+    doc = {"id": BOOK, "title": "测试册", "raw_dir": str(tmp_path / "raw"), **extra}
+    (ws / "books" / f"{BOOK}.yaml").write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+    monkeypatch.setenv("GUJI_WORKSPACE", str(ws))
+    return ws
+
+
 @pytest.fixture
 def store(tmp_path):
     st = ProductStore(tmp_path / "products")
