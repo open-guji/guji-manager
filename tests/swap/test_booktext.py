@@ -296,9 +296,32 @@ def test_sync_check_chars_punct_and_entity():
     entity = {"entities": [{"id": "e1", "anchor": {"start": "1:1:1", "end": "1:1:3"}, "text": "甲〓乙"},
                            {"id": "e2", "anchor": {"start": "1:1:3", "end": "1:1:4"}, "text": "乙丙"}]}
     n = bt.sync_check_chars(slots, new_c, rows, {"1:1:2"}, punct, entity)
-    assert n == 2
+    assert (n["punct"], n["entity"]) == (1, 1) and n["review"] == []
     assert punct["punctuations"][0]["pre_char"] == "□" and punct["punctuations"][1]["pre_char"] == "乙"
     assert entity["entities"][0]["text"] == "甲□乙" and entity["entities"][1]["text"] == "乙丙"
+
+
+def test_sync_check_chars_heading_multi_and_review():
+    old_c, new_c = _char({1: "甲〓乙丙"}), _char({1: "甲□乙丙"})
+    rows = bt.cell_table(old_c, _cord({1: "甲〓乙丙"}), new_c, _cord({1: "甲□乙丙"}))
+    slots = [(x["a"], x["c"]) for x in old_c["pages"][0]["columns"][0]["cells"]]
+    punct = {"punctuations": [{"anchor": "1:1:2", "mark": "###"}]}            # 标题符没有 pre_char，不补
+    tgt = {"status": "matched_multi", "targets": [{"entity_id": "x", "canonical_name": "X", "part": "甲"},
+                                                  {"entity_id": "y", "canonical_name": "Y", "part": "〓"}]}
+    entity = {"entities": [{"id": "e1", "anchor": {"start": "1:1:1", "end": "1:1:2"}, "text": "甲〓", "target": tgt}]}
+    n = bt.sync_check_chars(slots, new_c, rows, {"1:1:2"}, punct, entity)
+    assert punct["punctuations"][0] == {"anchor": "1:1:2", "mark": "###"}
+    e = entity["entities"][0]
+    assert e["text"] == "甲□" and [x["part"] for x in e["target"]["targets"]] == ["甲", "□"]
+    assert e["target"]["status"] == "matched_multi" and e["anchor"] == {"start": "1:1:1", "end": "1:1:2"}
+    assert n["review"] == [("e1", "甲□")]                                   # 尾字成 □、□ 占一半：待复核
+
+
+def test_unk_blank_cell_counts_as_blanked():
+    old_c, new_c = _char({1: "甲〓"}), _char({1: "甲□"})
+    new_c["pages"][0]["columns"][0]["cells"][1]["unk"] = "木"
+    rep = bt.merge_chars(old_c, new_c, bt.cell_table(old_c, _cord({1: "甲〓"}), new_c, _cord({1: "甲□"})))
+    assert "placeholder_to_blank" not in rep and bt.blanked_cells(rep) == {"1:1:2"}
 
 
 def test_declare_fig_file(tmp_path):
