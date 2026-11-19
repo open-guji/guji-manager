@@ -27,6 +27,9 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
     PageType("pair_whitelist", "字对白名单抽样", "group_decide.tpl.html", "1.2.0",
              "N01、V01、越过参校本；按字组各抽 30 格带前后文，逐格点同字/不同字/看不清，每组页尾显示同字率，再定组结论（pair.py）",
              options=("同字", "不同字", "不确定"), doc_prefix="review_pair"),
+    PageType("variant_compare", "异体/差异对比（终稿 vs 另一版本，按字对聚类）", "group_decide.tpl.html", "1.0.0",
+             "拿另一版本（如维基文库 Page: 版）逐字对比终稿后的差异；按（终稿字，另本字）聚类，每格看图点 终稿对／另本对／都可以（异体不分）／看不清，也可整组一键标记（全唐文 11-19）",
+             options=("终稿对", "另本对", "异体都可", "要逐格看"), doc_prefix="review_vc"),
     PageType("codepoint", "码位定夺", "codepoint.tpl.html", "2.2.0",
              "V02（原 Z06）、V01、M 类；按组看图定夺：每字一行原书字块＋已认/整理本数，定统一作某字／分开·互认（follow_ref 双向）"
              "／分开·不同字／合并到别的字（全唐文码位页 11-01–11-04 并入，见 codepoint.py）；2.2 起字体缺字的候选可带字形图 glyphs",

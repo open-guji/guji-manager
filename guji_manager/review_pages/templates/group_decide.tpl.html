@@ -9,7 +9,8 @@
 .ctxl{font:13px/1.35 var(--font-glyph);text-align:center;word-break:break-all;min-height:2.7em}.ctxl b{background:var(--accent);color:var(--accent-fg);border-radius:3px;padding:0 2px}
 .mk{display:flex;gap:3px;width:100%}.mk button{flex:1;padding:3px 0;font-size:12px;min-height:30px}
 .mk button.on.same{background:var(--ok);border-color:var(--ok);color:#fff}.mk button.on.diff{background:var(--bad);border-color:var(--bad);color:#fff}.mk button.on.unclear{background:var(--muted);border-color:var(--muted);color:#fff}
-.tile.m-same{border-color:var(--ok)}.tile.m-diff{border-color:var(--bad)}
+.mk button.on.fin{background:var(--ok);border-color:var(--ok);color:#fff}.mk button.on.alt{background:var(--bad);border-color:var(--bad);color:#fff}.mk button.on.both{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.tile.m-fin{border-color:var(--ok)}.tile.m-alt{border-color:var(--bad)}.tile.m-both{border-color:var(--accent)}.bulk{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}.tile.m-same{border-color:var(--ok)}.tile.m-diff{border-color:var(--bad)}
 .rate{margin-top:8px;padding:6px 10px;border-radius:6px;background:var(--bg);font-size:13px;font-variant-numeric:tabular-nums}.rate b{font-size:16px}
 </style>
 /*SHELL*/
@@ -20,16 +21,19 @@ makePager({key:"group-"+D.page_type,prefix:"g",all:D.groups.map(g=>Object.assign
   hintText:D.hint||"每组看图（有前后文的格逐格点同字／不同字／看不清，页尾显示同字率）后选一个组结论；预选的带「预选」标，不同意就改。每点一下就存；不点的组要翻页点「本页其余都对」才算确认。",
   legacy:[["group-"+D.page_type+"-"+D.book+"-1.0.0",o=>({v:Object.fromEntries(Object.keys(Object.assign({},o.pick,o.note)).map(id=>[id,{raw:{pick:o.pick&&o.pick[id],note:o.note&&o.note[id]},how:"click",t:Date.now()}])),seen:o.seen||0,page:o.page||0})]],
   stats:(done,V)=>`改判 ${done.filter(g=>(V(g.id).pick??g.pre)!==g.pre).length}`,
-  draw(g,box,v,save){
+  draw(g,box,v,save,refresh){
     const cur=()=>v.pick??g.pre;
     const hd=document.createElement("div");hd.className="gk";hd.textContent=g.label||g.key;
     const meta=document.createElement("div");meta.className="stat";meta.textContent=(g.hint||"")+(g.n?`　共 ${g.n} 格，抽 ${g.tiles.length} 格`:"");
-    const hasCtx=g.tiles.some(t=>t[3]);
+    const hasCtx=!!D.marks||g.tiles.some(t=>t[3]);
     const tl=document.createElement("div");tl.className="tiles"+(hasCtx?" ctx":"");
     v.marks=v.marks||{};
     const rate=document.createElement("div");rate.className="rate";
-    const MK=[["same","同字"],["diff","不同字"],["unclear","看不清"]];
+    const MK=D.marks||[["same","同字"],["diff","不同字"],["unclear","看不清"]];
     function drawRate(){
+      if(D.marks){const c={};for(const [k] of MK)c[k]=0;for(const [id] of g.tiles){const m=v.marks[id];if(m&&m in c)c[m]++}
+        const left=g.tiles.length-Object.values(c).reduce((a,b)=>a+b,0);
+        rate.textContent=MK.map(([k,l])=>l+" "+c[k]).join("，")+`，未判 ${left}，共 ${g.tiles.length} 格`;return}
       const c={same:0,diff:0,unclear:0};for(const [id] of g.tiles){const m=v.marks[id];if(m)c[m]++}
       const j=c.same+c.diff,left=g.tiles.length-j-c.unclear;
       rate.textContent="";const b=document.createElement("b");b.textContent=j?Math.round(c.same/j*100)+"%":"—";
@@ -47,6 +51,11 @@ makePager({key:"group-"+D.page_type,prefix:"g",all:D.groups.map(g=>Object.assign
         paint();t.appendChild(mk)}
       tl.appendChild(t)}
     drawRate();
+    if(D.marks){const bk=document.createElement("div");bk.className="bulk";bk.append("整组一键：");
+      for(const [k,lab] of MK){const bt=document.createElement("button");bt.type="button";bt.textContent="全部 "+lab;
+        bt.onclick=()=>{for(const [id] of g.tiles)v.marks[id]=k;save();refresh&&refresh()};bk.appendChild(bt)}
+      const cl=document.createElement("button");cl.type="button";cl.textContent="清除本组";cl.onclick=()=>{v.marks={};save();refresh&&refresh()};bk.appendChild(cl);
+      box.appendChild(bk)}
     const op=document.createElement("div");op.className="opts";
     for(const o of D.options){
       const lb=document.createElement("label");const r=document.createElement("input");r.type="radio";r.name="g_"+g.key;r.checked=cur()===o;
