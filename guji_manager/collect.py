@@ -456,7 +456,7 @@ def collect_book(a, ws: Path, book: str) -> dict:
     else:
         t = time.time()
         if _run([*GUJI, "db", "sync", "-w", ws], env, tries=4):
-            return {"status": "blocked", "why": "guji db sync 三次都失败，原命令再跑会从推库接着做", "rev": rev}
+            return {"status": "blocked", "why": "guji db sync 四次都失败，原命令再跑会从推库接着做", "rev": rev}
         R.mark("sync", None, t)
 
     # 7. 只发这一章，核线上单（多册时由 cmd_collect 最后一起发一次，见 publish_and_verify）
