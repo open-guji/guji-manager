@@ -443,12 +443,18 @@ def _resolve_items(meta: dict, rows: list[dict], res: dict, by: str) -> None:
     from .review import pending_items as P
     data = feedback_root().parent
     store = P.ItemStore.open(data, meta["site_book"], meta["rev"].split("-r")[0])
-    ids = dict(zip([r.get("a") for r in rows], res.get("ids") or [None] * len(rows)))
+    def cell(r: dict) -> str:
+        # 草稿行（``Draft.row``）只有 ``id``（``vol04:15:8:20``），没有 ``a``：11-19 前这里只认 ``a``，条目一条都没结（ZM 收单要手工 pending resolve）
+        return r.get("a") or P.norm_cell(r.get("id") or "")
+
+    ids = dict(zip([cell(r) for r in rows], res.get("ids") or [None] * len(rows)))
     n = 0
     for r in rows:
-        hit = [x for x in store.find(r.get("a") or "") if x["state"] in ("open", "withdrawn")]
+        if not cell(r):
+            continue
+        hit = [x for x in store.find(cell(r)) if x["state"] in ("open", "withdrawn")]
         if hit:
-            store.resolve(hit[0]["id"], by=by or "cellvotes", event=ids.get(r.get("a")) or "", why=f"落票 {meta['rev']}")
+            store.resolve(hit[0]["id"], by=by or "cellvotes", event=ids.get(cell(r)) or "", why=f"落票 {meta['rev']}")
             n += 1
     if n:
         store.save()

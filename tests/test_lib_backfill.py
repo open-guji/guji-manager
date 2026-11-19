@@ -95,6 +95,14 @@ def test_select_skips_half_cell_vis_ruling():
     assert cand == {"必": ["001:1:2:1"]} and stat["半格看图放行"] == 1
 
 
+def test_select_skips_verdict_diff():
+    """定字时字形对照判「异」的格多是切坏的，不回库。"""
+    bad = {"admit": True, "char": "八", "channel": "match_ref", "evidence": {"cov": 0.83, "verdict": "diff"}}
+    cells = {"001:1:1:1": bad, "001:1:2:1": _cell("八", channel="match_ref")}
+    cand, stat = LB.select(cells, _state(), set())
+    assert cand == {"八": ["001:1:2:1"]} and stat["对照判异"] == 1
+
+
 def test_lib_state_counts_only_live_instances(tmp_path):
     """撤库不删 exemplars 的行：刻例数要连 instances 数，不然撤掉的字会被当成「已有例」而不补。"""
     p = tmp_path / "g.db"

@@ -4,6 +4,12 @@
 
 ## [未发版]
 
+## [0.4.66] - 2026-11-19
+
+- PATCH：新命令 `guji collect`（`guji_manager/collect.py`，收单快路，ZM 第一册线要的「一条命令收一张单」）：没换包时，读票（`cellvotes draft --from-kv --items --pack rev-<rev>`）→ 写人裁 → 定字票逐格对 book-text dev 现文、不同就直接写人裁的字（格框对不上、以图代字格不写，等重放），标点专名校验字跟改、升 patch、`local_check --dev`、推 dev（1.x 推分支开草稿 PR）→ 条目结案 → `db sync` 一次 → 只发这一章并核线上单。不重放 seed_admit、不重出单；`--batch` 另把库里早先写下、还没进 book-text 的人裁批次也落了（过绑定表、每格取最新）；断点续跑（`reports/<册>/_collect/<rev>/state.json`）；`--dry-run` 演练；`--books auto` 读一遍网站条目票挑有新票的册；「与已有人裁一致」跳过的票也落（早先落库、book-text 没跟上的）；拉库／读票／落票／推库遇网络超时在单步内重试；多册一起发站一次（ZM 11-19 B 轮时间账四点）。`swap.booktext.do_book` 加 `merge`／`title`／`store_lineage` 参数（缺省行为不变）。
+- PATCH：修 `cellvotes write`（`--items` 草稿）落票后从没把条目标已裁：草稿行只有 `id`（`vol04:15:8:20`）没有 `a`，按 `a` 找条目一条都找不到（ZM 收单一直手工 `pending resolve`）。
+- PATCH：放行格回库 `lib_backfill.select` 与 `--from-pool` 跳过定字时字形对照判「异」的格（`evidence.verdict == "diff"`，统计项「对照判异」）：史记 11-19 全书 42 册回库报告里这类 11 格看图全是切坏、带框线或邻字的格。不动产物、指纹（L0）。
+
 ## [0.4.65] - 2026-11-19
 
 - 发版说明（A31 11-19，PATCH）：#704（QTW variant_compare）11-19 从 dev 分支直接合进 main，把下列 dev 上未发版的改动一并带进了 main；本版在此基础上加 #705，下列条目都随 v0.4.65 发出。
