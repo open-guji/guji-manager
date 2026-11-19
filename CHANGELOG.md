@@ -5,6 +5,8 @@
 ## [未发版]
 
 - 库文一致（`glyph_lib.text_check`）缺省由只报告改为自动处理（Sheldon 11-18 定，全唐文 d1 实跑验证改标进文本后）：整册跑完能确定的改库标、撤机器例，其余进待审；只想报告写 `text_check: report`。这台机器过不了改库护栏（借库跑批、部分副本、本机库比账本旧）时自动退回只报告并说明。
+- PATCH：形近字对归属表加可选字段 `variant: true`（标同字异形的对，如淸清；cv #1700 第 7 步 `pair_form` 只对它自动改字，异字对只记证据进复审，Sheldon 11-18 同意）。
+
 - PATCH：缺页（cv #1696 册 yaml `gaps:`，Sheldon 11-18 定只按图片页号记）：`guji collate` 的 JSON 报告加 `gaps`（落在这批页的缺页），命令行列出「第 N 页之后缺…，整理本在此断档属正常」；cv 还不认 `gaps` 时给空表。文档：`doc/参考/册配置.md` 字段表、`开书全流程.md` S7 加「查缺页」一步与经验 E7-6。
 
 - PATCH：新增形近字对归属表（`guji_manager/pair_attribution.py`，数据目录 `config/groups/pair_attribution.yaml`）：一对字按刻形（缺省）、按文意还是暂归一，写在一张书级表里（Sheldon 11-18 同意的第 5／7 步统一方案第 1 步）。新命令 `guji-manager pair-attr show <两个字>`、`pair-attr check`（与码位表、按对分类器的归文意名单与档位、第 7 步只挂文意的组、暂归一兜底对一遍，只报不改）。还没有任何步骤读这张表，产物不变。文档 `doc/参考/形近字对归属表.md`。
@@ -25,6 +27,12 @@
 - PATCH：放行格回库数「各字现有刻例」时不再把借来的刻例算进去（`ops/lib_backfill.lib_state` 排除 `borrowed` 表；OCR 研究 Project 11-18，Sheldon：新书快审能否部分自动入库）。借库的新书此前本书没有的字被当成不缺例，一格都不补（脉经本书 570 字头被数成 4,336）。不借库的书行为不变。文档 `doc/01-粗校/开书/放行格回库.md` 加第七节：借库阶段把 `match_ref` 加进回库通道顶替大部分冷启动快审，附脉经第 1 册实测（人审 1,189 格与机器放行字全部一致）。
 
 - PATCH：执行方自更新（`_refresh_runner`）失败时把 merge 的 stderr／超时写进日志，merge 超时 120→300 秒（`GUJI_JOBS_REFRESH_TIMEOUT_S`）。11-18 多台 runner 同时「dev 有更新但拉不动」自退，检出是干净的 detached HEAD、手动 ff 正常，当时看不出原因。
+## [0.4.63] - 2026-11-18
+
+- 发版说明（A31 11-18，PATCH；main v0.4.62 ＋ 下面四个 PR 摘取，**不含** dev 上别的未发版改动）：给殿本换单（ZM）用。
+- PATCH：`guji swap book-text` 处理以图代字格（#692，ZM 11-19 殿本 vol20）：带 `fig` 的 □ 格照新包、不留旧 〓／人裁字（V2 HARD）；旧文本占位 〓、新包落 □ 的照新包；挪锚前把这些格在标点 `pre_char`、专名 `text` 里的那一位改成新字（bump punct 不再拦）；拷 fig.json 后 index 补 `fig_file`（F-OV-13）。
+- PATCH：新命令 `guji swap doctor`（#687）：换单开跑前自检令牌、`-w` 路径、cv 版本、book-text 稀疏检出、CNN 权重、磁盘；`--fix` 补模型与稀疏检出，`--env` 打印 export 行。`swap` 的 `--books` 对 doctor 可不给。
+- 文档：`doc/01-粗校/换线上人审单.md` 加「殿本批量换单（auto_cycle）」一节、页表只换 rev 不算换源（#688、#690）。
 
 ## [0.4.62] - 2026-11-18
 
