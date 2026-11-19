@@ -171,3 +171,19 @@ def test_bound_only_drops_rulings_not_effective_now(monkeypatch):
     out, gone = CVT._bound_only("vol18", human, votes)
     assert set(out) == {"vol18:5:1:1", "vol18:9:9:9"}
     assert {a for a, _ in gone} == {"33:4:7a", "70:6:16", "88:1:12a"}
+
+
+def test_split_old_sheet_keeps_current_sheet_votes_only():
+    """ZM 11-19：r9/r15/r16 旧单票按当年格号，不按现行包同号格写新事件。"""
+    from guji_manager import cli_cellvotes as CVT
+
+    class E:
+        id = "evt_old"
+    raw = [{"a": "88:1:12a", "vote_a": "88:1:12a", "vote_rev": "001-r16", "choice": "char", "char": "領"},
+           {"a": "88:4:18", "vote_a": "88:4:18", "vote_rev": "001-r17", "choice": "char", "char": "閣"},
+           {"a": "103:5:13", "vote_a": "103:5:12", "vote_rev": "001-r9", "choice": "char", "char": "太"},
+           {"a": "1:1:1", "choice": "confirm"}]
+    cur, old = CVT._split_old_sheet("vol01", "001-r17", raw, {"vol01:88:1:12a": E()})
+    assert [v["a"] for v in cur] == ["88:4:18", "1:1:1"]
+    assert old == [("88:1:12a", "88:1:12a", "001-r16", "char=領", "evt_old"),
+                   ("103:5:13", "103:5:12", "001-r9", "char=太", None)]
