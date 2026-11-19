@@ -111,8 +111,6 @@ EXISTING_GAPS: dict[str, set[str]] = {
         "open_guji_cv.clustering.glyph_db",
         "open_guji_cv.clustering.glyph_fp",
         "open_guji_cv.clustering.normalize",
-        "open_guji_cv.feedback.bindings",
-        "open_guji_cv.feedback.lookup",
         "open_guji_cv.feedback.mojibake",
         "open_guji_cv.hanzi.symbols",
         "open_guji_cv.shadow.gate",

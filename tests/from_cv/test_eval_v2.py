@@ -26,6 +26,8 @@ from guji_manager.eval.runner import _gate_verdict
 # 跑不了需要**每次手选**外部产物路径的脚本。控制台没有「调用时再问一个参数」
 # 的机制，硬塞一份写死的 --answers 会把注册表锁死在一次性快照上，比不注册更误导。
 NOT_REGISTRY_SHAPED = {
+    "stroke_evidence",  # cv #1687：--samples 之外还要 --patches 手指某本书数据目录里的原灰度字块
+                        # （字形库 glyph_store/patches），不是数据集仓里的分片
     "oracle_llm",  # --answers 是 required 的外部答案表路径（run_llm_context_eval.py
                    # 的产物，同一次可传多份对比 provider），不是数据集分片
     "beixing_real_proto",  # 靶子是某本书私有工作区的 GUJI_WORKSPACE + 该书专属

@@ -88,6 +88,7 @@ def test_every_template_builds(t, tmp_path):
         "char_card": [dict(id=f"1:{i}:1:1", pre="以", pre_conf="low", img=str(img)) for i in range(6)],
         "char_grid": [dict(id="1:1:1:1", pre="以", cov=0.9, img=str(img))],
         "pair_whitelist": [dict(key="王/玉", pre="不同字", tiles=[["1:1:1:1", str(img), "王"]])],
+        "variant_compare": [dict(key="冊_册", tiles=[["1:1:1:1", str(img), "终稿「冊」/ 另本「册」", dict(left="封", right="平", ref_char="冊")]])],
         "codepoint": [dict(key="g1", chars=["為", "爲"], pre="unify:爲",
                            rows={"為": {"adm": 3, "kr": 9, "tiles": [["1:1:1:1", str(img)]]}, "爲": {"adm": 1}})],
         "seg_cause": [dict(key="v:1", vol="v", page="1", cause="col_gate", cause_name="列", pre="切分错", cells=[{"id":"v:1:1:1","reason":"S02","img":str(img)}])],

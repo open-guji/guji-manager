@@ -58,7 +58,37 @@ def _void_human_event(instance_id: str, reason: str) -> str | None:
     return key
 
 
-def _void_or_report(res, rec: dict, e, instance_id: str, why: str) -> None:
+def _latest_human_shapes(instance_ids) -> dict[str, str]:
+    """这些格各自**最后一条**人裁定字（confirm 事件的 `shape`）：`{字位 id: 字}`。读不了事件日志返回空。"""
+    want = {i[3:] if i.startswith("v2:") else i for i in instance_ids if i}
+    if not want:
+        return {}
+    try:
+        from .._cv import EventLog, feedback_root, replay_key
+        best: dict[str, tuple] = {}
+        for ev in EventLog(feedback_root()).iter_all_cached():
+            k = ev.target.key
+            if ev.kind != "confirm" or k not in want:
+                continue
+            shape = (ev.payload or {}).get("shape")
+            if shape and (k not in best or replay_key(ev) > best[k][0]):
+                best[k] = (replay_key(ev), shape)
+    except Exception:          # noqa: BLE001 —— 读不了就照旧（一律作废），不挡撤库
+        return {}
+    return {k: v[1] for k, v in best.items()}
+
+
+def _void_or_report(res, rec: dict, e, instance_id: str, why: str, latest: dict | None = None) -> None:
+    """作废这一格的人裁事件——只在「这格最后一条人裁定的就是被撤／被改的那个旧字」时作废。
+
+    作废标记按格号记、作废此刻以前的全部人裁（2026-11-18，殿本 vol01）：库例挂着旧格号、或文本的人裁本来就对
+    （库文一致按文本的人裁改库标、撤错位库例）时，这格现行的人裁定的是**另一个字**，判错的只是库里这份刻例，
+    一并作废会让对的人裁失效、下一轮掉回机器字（vol01 26 条里 21 格）。那种不作废，记 `kept_human_event`。"""
+    key = instance_id[3:] if instance_id.startswith("v2:") else instance_id
+    cur = (latest or {}).get(key)
+    if cur and rec.get("old_char") and cur != rec["old_char"]:
+        rec["kept_human_event"] = cur
+        return
     key = _void_human_event(instance_id, f"{why} {e.id}")
     if key:
         rec["voided_human_event"] = key
@@ -79,6 +109,9 @@ def glyph_audit(events, db_path: str | None = None, dry_run: bool = False, **kw)
     out = dbp.parent / "glyph_selfcheck"
     out.mkdir(parents=True, exist_ok=True)
     db = GlyphDB(str(dbp))
+    latest = _latest_human_shapes(
+        [(e.payload or {}).get("target") or (e.payload or {}).get("instance_id") or e.target.key
+         for e, _d in events if (e.payload or {}).get("v") in ("evict", "relabel")])
     try:
         for e, _d in events:
             p = e.payload
@@ -110,7 +143,7 @@ def glyph_audit(events, db_path: str | None = None, dry_run: bool = False, **kw)
                 was_human = _was_human(db, target)
                 rec["old_char"] = evict_instance(db, target)
                 if was_human:
-                    _void_or_report(res, rec, e, target, "glyph_audit evict")
+                    _void_or_report(res, rec, e, target, "glyph_audit evict", latest)
             elif v == "relabel":
                 ch = p.get("char") or ""
                 if len(ch) != 1 or ord(ch) < 0x2E80:
@@ -131,7 +164,7 @@ def glyph_audit(events, db_path: str | None = None, dry_run: bool = False, **kw)
                 prov = "auto" if (p.get("provenance") == "auto" and not was_human) else "human"
                 rec["old_char"] = evict_instance(db, iid)
                 if was_human:
-                    _void_or_report(res, rec, e, iid, "glyph_audit relabel")
+                    _void_or_report(res, rec, e, iid, "glyph_audit relabel", latest)
                 rec["char"] = ch
                 rec["provenance"] = prov
                 db.admit_instance(iid, ch, bytes(png), provenance=prov, shape=ch,

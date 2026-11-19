@@ -244,6 +244,9 @@ def cmd_collate(args) -> None:
         print(f"  {label}：一致 {s['n_equal']:,} · "
               + " · ".join(f"{k} {v}" for k, v in sorted(c.items(), key=lambda kv: -kv[1]))
               + (f" · 列 {s['cols']}" if s["cols"] else ""))
+    for g in doc.get("gaps") or []:
+        print(f"  缺页：第 {g['after_page']} 页之后 {g.get('kind', '原书缺')} {g['what']}"
+              + (f"（约 {g['est_chars']} 字）" if g.get("est_chars") else "") + "，整理本在此断档属正常")
     un = {k: len(v) for k, v in doc["unanchored"].items()}
     print(f"  未锚定页：{un}" + (f" · 数据版本不同步 {len(doc['stale'])} 处" if doc["stale"] else "")
           + (f" · 崩溃页 {len(doc['page_errors'])} 处：{[e['page'] for e in doc['page_errors']]}"
