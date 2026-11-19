@@ -106,6 +106,7 @@ def collate_book(book: str, pages: list[int], witnesses: list[Witness],
                        "line_is_column": w.line_is_column,
                        "n_chars": len(w.text)} for w in witnesses],
         "unanchored": unanchored,
+        "gaps": book_gaps(book, pages),
         "stale": sorted(set(stale)),
         "page_errors": page_errors,
         "summary": {**summarize(all_diffs, all_cols, pages_out, witnesses, grades),
@@ -118,6 +119,18 @@ def collate_book(book: str, pages: list[int], witnesses: list[Witness],
         "diffs": [asdict(d) for d in all_diffs],
         "cols": [c for c in all_cols if c["kind"] != "col.ok"],
     }
+
+
+def book_gaps(book: str, pages: list[int]) -> list[dict]:
+    """册 yaml `gaps:` 里落在这批页的缺页（cv `doc/formats/缺页.md`）。缺页处整理本会整段断档，
+    报告里带上，看「未锚定／整段缺」时一眼知道是原书缺叶，不是对位错。cv 还不认 `gaps` 时给空表。"""
+    try:
+        bk = load_book(book)
+    except Exception:          # noqa: BLE001 — 报告附带信息，读不到不挡对勘
+        return []
+    ps = set(pages)
+    return [dict(g) for g in getattr(bk, "gaps", None) or []
+            if g["after_page"] in ps or (g["after_page"] == 0 and 1 in ps)]
 
 
 def _grade_by_witness(all_diffs: list[Diff], pages_out: list[dict],
