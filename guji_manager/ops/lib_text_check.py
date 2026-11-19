@@ -48,16 +48,17 @@ MARGIN_MIN = 0.03     # 字体模板首位领先次位不到这么多，不凭�
 
 
 def config(ws_dir: Path | str | None) -> str | None:
-    """`workspace.yaml` 的 `glyph_lib.text_check`：`false` → None（关）；没写或 `report`/`true` → "report"；`apply` → "apply"。"""
+    """`workspace.yaml` 的 `glyph_lib.text_check`：`false` → None（关）；`report` → "report"（只报告）；
+    没写或 `apply`/`true` → "apply"（缺省，Sheldon 2026-11-18 定：能确定的自动处理，其余进待审）。"""
     import yaml
     y = Path(ws_dir or ".") / "workspace.yaml"
     cfg = (yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}
-    v = (cfg.get("glyph_lib") or {}).get("text_check", "report")
+    v = (cfg.get("glyph_lib") or {}).get("text_check", "apply")
     if v is False:
         return None
-    if v in (None, True, "report"):
+    if v == "report":
         return "report"
-    if v == "apply":
+    if v in (None, True, "apply"):
         return "apply"
     raise SystemExit(f"glyph_lib.text_check 只认 false／report／apply，不认 {v!r}")
 
@@ -365,7 +366,8 @@ def summary(rep: dict) -> str:
 
 
 def auto_check(args, eng, steps: list[str]) -> None:
-    """`hooks.finished`：整册跑完，对这一册比一遍。缺省只报告；`glyph_lib.text_check: apply` 才处理。"""
+    """`hooks.finished`：整册跑完，对这一册比一遍。缺省自动处理（`glyph_lib.text_check: report` 只报告）；
+    这台机器不该改库时（借库跑批、部分副本、本机库比账本旧，同放行格回库的护栏）退回只报告。"""
     import os
     if os.environ.get("GUJI_LIB_TEXT_CHECK", "1") == "0":
         return
@@ -377,6 +379,12 @@ def auto_check(args, eng, steps: list[str]) -> None:
         mode = config(workspace_root())
         if mode is None:
             return
+        if mode == "apply":
+            from .lib_backfill import apply_problem
+            why = apply_problem()
+            if why:
+                print(f"  ⚠ 库文一致 {book}：这台机器不处理、只报告（{why}）")
+                mode = "report"
         rep = run([book], apply=(mode == "apply"))
         bad = sum(v for k, v in rep["stat"].items() if k not in ("ok", "pending"))
         if bad:
