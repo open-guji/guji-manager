@@ -100,6 +100,28 @@ def handoff(out: Path, book: str, label: str, rows: list, man: dict) -> None:
     (out / "交接单.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
+def chapter_for(book: str, ws: Path, given: str | None = None) -> str:
+    """册号 → book-text 章号（三位）。先认 --chapter，再按 cv 册配置（``core.volume_id.chapter_of``，与 republish 同法），
+    再退到册号里的数字补三位（史記册号 01 → 001；SJ 11-19：原来直接用册号当章号，落成 01.char.json）。"""
+    import re
+    if given:
+        if not re.fullmatch(r"\d+", given):
+            sys.exit(f"✗ --chapter 要是数字：{given}")
+        return f"{int(given):03d}"
+    try:
+        os.environ.setdefault("GUJI_WORKSPACE", str(ws))
+        from open_guji_cv.core.volume_id import chapter_of
+        ch = chapter_of(book)
+        if ch:
+            return f"{int(ch):03d}" if str(ch).isdigit() else str(ch)
+    except Exception:  # noqa: BLE001  cv 太旧或册配置读不到，退到册号数字
+        pass
+    m = re.fullmatch(r"\D*(\d+)", book)
+    if not m:
+        sys.exit(f"✗ {book} 推不出章号：给 --chapter NNN")
+    return f"{int(m[1]):03d}"
+
+
 def bt_dir(bt: Path, text_id: str) -> Path:
     return bt / "Book" / text_id[-3] / text_id[-2] / text_id[-1] / text_id
 
@@ -196,6 +218,7 @@ def main() -> int:
     ap.add_argument("--gate-only", action="store_true", help="只判停、出收口清单")
     ap.add_argument("--force", action="store_true", help="有算法再处理也往下走（只在人定放行时用）")
     ap.add_argument("--promote", metavar="WHY", help="顺手把包标 main（写令牌），WHY 是 dev cv 包进 main 的理由")
+    ap.add_argument("--chapter", help="book-text 章号（三位，如 001）；不给按册配置 volume 推，推不出时取册号数字补成三位")
     ap.add_argument("--no-fetch", action="store_true", help="沙箱里已有该包，不重取")
     a = ap.parse_args()
     ws, book = Path(a.workspace).resolve(), a.book
@@ -203,7 +226,9 @@ def main() -> int:
         sys.exit("✗ 先设沙箱 GUJI_PRODUCTS_DIR（取包会整册覆盖 <产物根>/<册>）")
     products = Path(os.environ["GUJI_PRODUCTS_DIR"])
     import yaml
-    text_id = str(yaml.safe_load((ws / "workspace.yaml").read_text(encoding="utf-8")).get("id"))
+    text_id = str(yaml.safe_load((ws / "workspace.yaml").read_text(encoding="utf-8")).get("id") or "")
+    if not text_id or text_id == "None":
+        sys.exit(f"✗ {ws}/workspace.yaml 没有 id（book-text 条目 id），出不了 v0.1")
     py, cv = sys.executable, cv_root()
     env = {**os.environ, "GUJI_WORKSPACE": str(ws), "PYTHONIOENCODING": "utf-8"}
     if not a.no_fetch:
@@ -239,7 +264,7 @@ def main() -> int:
                         "--why", a.promote], check=True, env={**env, "GUJI_AUTO_ONLINE_LISTS": "0"})
     handoff(out, book, a.label, g["rows"], man)
     bt = Path(a.book_text).resolve()
-    chapter = book
+    chapter = chapter_for(book, ws, a.chapter)
     online = bt_dir(bt, text_id) / "default" / f"{chapter}.char.json"
     tv = json.loads(online.read_text(encoding="utf-8")).get("version") if online.exists() else "0.1.0"
     # 字块图要原图：没有就取；prep 按 data_full/*/<册> 找图，图在 data_full/<册> 的书（全唐文）补一层链接（E14-5）
@@ -249,7 +274,8 @@ def main() -> int:
         (ws / "data_full" / "_vol").mkdir(exist_ok=True)
         (ws / "data_full" / "_vol" / book).symlink_to(Path("..") / book)
     rc = subprocess.run([py, str(cv / "scripts/zhengli/republish.py"), "from-pack", "--book", book, "-w", str(ws),
-                         "--label", a.label, "--text-version", tv, "--no-alt", "--no-pull"], env=env, cwd=cv).returncode
+                         "--label", a.label, "--text-version", tv, "--no-alt", "--no-pull",
+                         "--chapter", chapter, "--text-id", text_id], env=env, cwd=cv).returncode
     if rc:
         return rc
     export = ws / "reports" / book / "_publish" / f"export-{a.label}"
@@ -264,7 +290,8 @@ def main() -> int:
     print(f"  1. 看差异单 {ws}/reports/{book}/_publish/{rev}/差异单.md")
     print(f"  2. book-text：git add Book/…/{text_id} && git commit && git pull --rebase origin dev && git push origin HEAD:dev")
     print(f"  3. guji source pull {book} -w {ws}（出字块图要原图；图在 data_full/{book} 时建 data_full/_vol/{book} 链接）")
-    print(f"  4. python {cv}/scripts/zhengli/republish.py push --book {book} -w {ws} --rev {rev} --yes --no-publish-web")
+    print(f"  4. python {cv}/scripts/zhengli/republish.py push --book {book} -w {ws} --chapter {chapter} --text-id {text_id} "
+          f"--rev {rev} --yes --no-publish-web")
     print(f"  5. guji db pull → guji db push --dry-run（看 0 成批 delete、glyph_exported false）→ guji db push")
     print(f"  6. 网站：pages-books.json 加 {book}（3 位册号）、触发 iiif（vols={book}）与 proofing-sync（only={text_id}）")
     return 0
