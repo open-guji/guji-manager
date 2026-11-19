@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.65] - 2026-11-19
+
+- PATCH：`tools/开书/出v01.py` 调 republish from-pack 透传 `--chapter`／`--text-id`（SJ 11-19：工作区目录名不是 `<书id>-…` 时，史記 `sjws`，plan.json 落成 text_id=sjws、chapter=01，push 写到 proofing/sjws/01.pending.json、雪碧图按 sjws 命名；book-text 章文件成 01.char.json）。text_id 只从 workspace.yaml `id` 取（缺就停）；章号先认新参数 `--chapter`，再按 cv 册配置 volume 推，再退到册号数字，统一三位；收尾提示的 push 命令也带上这两个参数。
+
 ## [0.4.64] - 2026-11-19
 
 - PATCH：`guji swap book-text` 格改 □ 后同步校验字按 A33 11-19 口径补全：matched_multi 的 `targets[].part` 全写且拼起来等于旧文字时按段长切回新文字（F-OV-14）；认不出的字格（unk）照新包落 □ 的也同步；提交说明分列标点 pre_char／专名 text 处数，另列「专名含□待复核」（改后 □ 占一半及以上或首尾成 □）。锚点、span、target 其余字段、无 pre_char 的标题符一律不动。merge_chars 先判 unk 再判 〓→□，报表不再把认不出的字格记成占位。
