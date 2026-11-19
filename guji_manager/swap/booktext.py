@@ -165,13 +165,13 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
             if cur != BLANK:
                 rep["fig_blank"].append((a, cur, new, BLANK))
             continue
-        if new == BLANK and cur == PLACEHOLDER and a not in (protected or {}):
-            # 新包落 □（定阙／待审），旧文本只是占位 〓：照新包，不走 RETURN_TO_BLANK 留 〓
-            rep["placeholder_to_blank"].append((a, cur, new, BLANK))
-            continue
         if x.get("unk") is not None:
             # 无法识别字（char v0.5）：新包里是人裁出来的终态（新人裁最高），不过 resolve；现行文本里的字不回填
             rep["unk_keep"].append((a, cur, new, x.get("c")))
+            continue
+        if new == BLANK and cur == PLACEHOLDER and a not in (protected or {}):
+            # 新包落 □（定阙／待审），旧文本只是占位 〓：照新包，不走 RETURN_TO_BLANK 留 〓
+            rep["placeholder_to_blank"].append((a, cur, new, BLANK))
             continue
         d = resolve(cur, new, (protected or {}).get(a), flaw=i in flaws, new_pending=a in pending,
                     new_lacuna=bool(x.get("lacuna")), same=same)
@@ -339,26 +339,38 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
 
 def blanked_cells(rep: dict) -> set[str]:
     """merge_chars 报告里「改成 □」的新格号（以图代字格、占位 〓→□）：标点 pre_char、专名 text 要跟着改。"""
-    return {a for k in ("fig_blank", "placeholder_to_blank") for a, *_ in rep.get(k) or ()}
+    cells = {a for k in ("fig_blank", "placeholder_to_blank") for a, *_ in rep.get(k) or ()}
+    # 认不出的字格（unk）照新包落 □，旧文本是字／〓的，校验字同样要跟
+    return cells | {a for a, cur, _n, c in rep.get("unk_keep") or () if c == BLANK and cur != BLANK}
+
+
+def _blank_review(txt: str) -> bool:
+    """专名文字里 □ 占一半及以上、或首尾字是 □：列进「专名含□待复核」（A33 11-19 约定）。"""
+    nb = txt.count(BLANK)
+    return bool(txt) and (nb * 2 >= len(txt) or txt[0] == BLANK or txt[-1] == BLANK)
 
 
 def sync_check_chars(old_slots: list[tuple[str, str]], new_char: dict, rows: list[dict], cells: set[str],
-                     punct: dict | None, entity: dict | None) -> int:
+                     punct: dict | None, entity: dict | None) -> dict:
     """格的字被换成 □（``blanked_cells``）后，**挪锚之前**把标点 ``pre_char``、专名 ``text`` 里对应那一个字改成新字，
     挪锚时校验字就对得上（否则 bump_original 拦「校验字应为 〓，文本现为 □」，ZM 11-19 vol20 16 处）。
-    只改「原来正是旧格旧字」的那一位，别的不动。就地改，返回改了几处。"""
+    口径（A33 11-19）：只改「原来正是旧格旧字」的那一位，别的不动；锚点、span、target 的 entity_id／status／
+    canonical_name 一律不动，不因 □ 降级或删实体；标题符等没有 ``pre_char`` 的不补；matched_multi 的
+    ``targets[].part`` 全写且按序拼起来等于旧文字时，按各段长度从新文字切回去，保持拼起来等于 span 文字（F-OV-14）。
+    就地改，返回 ``{"punct": 标点处数, "entity": 专名处数, "review": [(id, 新文字)]}``；
+    review 是改后 □ 占一半及以上、或首尾成 □ 的专名（改前已是这样的不列）。"""
+    out = {"punct": 0, "entity": 0, "review": []}
     if not cells:
-        return 0
+        return out
     o2n = {r["old"]: r["new"] for r in rows if r["old"] and r["new"]}
     nch = {a: x.get("c") for a, x in _chars(new_char)}
     och = dict(old_slots)
     hit = {o: nch[n] for o, n in o2n.items() if n in cells and n in nch}
-    n_fix = 0
     for p in (punct or {}).get("punctuations") or []:
         a = p.get("anchor")
         if a in hit and "pre_char" in p and p["pre_char"] == och.get(a) and p["pre_char"] != hit[a]:
             p["pre_char"] = hit[a]
-            n_fix += 1
+            out["punct"] += 1
     pos = {a: i for i, (a, _c) in enumerate(old_slots)}
     for e in (entity or {}).get("entities") or []:
         anc = e.get("anchor") or {}
@@ -370,10 +382,19 @@ def sync_check_chars(old_slots: list[tuple[str, str]], new_char: dict, rows: lis
         if len(seg) != len(txt) or not any(a in hit for a, _ in seg):
             continue
         nt = "".join(hit[a] if a in hit and w == c else w for (a, c), w in zip(seg, txt))
-        if nt != txt:
-            e["text"] = nt
-            n_fix += 1
-    return n_fix
+        if nt == txt:
+            continue
+        e["text"] = nt
+        out["entity"] += 1
+        ts = (e.get("target") or {}).get("targets")
+        if isinstance(ts, list) and ts and all(isinstance(x, dict) and isinstance(x.get("part"), str) for x in ts) \
+                and "".join(x["part"] for x in ts) == txt:
+            k = 0
+            for x in ts:
+                x["part"], k = nt[k:k + len(x["part"])], k + len(x["part"])
+        if _blank_review(nt) and not _blank_review(txt):
+            out["review"].append((e.get("id") or f"{s_}–{t_}", nt))
+    return out
 
 
 def declare_fig_file(vdir: Path, ch: str) -> bool:
@@ -465,9 +486,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             old_slots = OV.char_slots(old["char"])
         except (ImportError, AttributeError):
             old_slots = [(a, x.get("c")) for a, x in _chars(old["char"])]
-        n_sync = sync_check_chars(old_slots, new_char, rows, blanked, punct, entity)
-        if n_sync:
-            notes.append(f"格改为 □（以图代字／占位 〓）：标点校验字、专名文字跟改 {n_sync} 处")
+        sync = sync_check_chars(old_slots, new_char, rows, blanked, punct, entity)
+        if sync["punct"] or sync["entity"]:
+            notes.append(f"格改为 □（以图代字／占位 〓／认不出的字）：标点 pre_char 跟改 {sync['punct']} 处，"
+                         f"专名 text 跟改 {sync['entity']} 处")
+        if sync["review"]:
+            notes.append(f"专名含□待复核 {len(sync['review'])} 条：" + "；".join(f"{i} {t}" for i, t in sync["review"]))
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
     problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
