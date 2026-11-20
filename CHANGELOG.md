@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+## [0.4.69] - 2026-11-20
+
 - PATCH：任务库新单型 `roundcheck`（收轮检查，只读，QTW 11-20 要）＋命令 `guji round-check`：执行机上取 main 与候选包各 `seg check`（缺省 `--no-defect`）→ `seg gate`（切分根因台账交单时从 ai-team main 取最新、只留本书行随单带上，执行机不连 ai-team）→ `products diff` 翻转数 → `seg premain` → 待审格分四层（QTW cls36 口径，判序与阈值 workspace.yaml `round_check:` 书级可配）＋按 `pending_reason` 计数；结果写回任务结果，`guji round-check --collect <号段>` 收成一份汇总 tsv。交单 `guji job submit --kind roundcheck --rc-pack … --rc-ledger-book …`。文档 doc/01-粗校/收轮检查单.md。老单型的指纹不变。
 - PATCH：Neon 项目 11-19 已删：任务库不再在测试分支或 `GUJI_REQUIRE_JOBSDB=0` 时退回 Neon（没有 JOBSDB_TOKEN 一律报错）；几处连库说明改成 D1 口径。
 
