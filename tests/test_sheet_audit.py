@@ -9,7 +9,9 @@ def _codes(doc, norm=None):
 def test_machine_blank_is_not_overturn():
     doc = {"cells": [{"cell": "1:1:1", "recheck": True, "pending_reason": "machine_changed",
                       "note": "机器改判「撰」→「□」，推翻人裁，请核"}]}
-    assert _codes(doc) == [("overturn_empty", "1:1:1")]
+    fs = SA.audit_sheet(doc)
+    assert [(f.code, f.cell) for f in fs] == [("overturn_empty", "1:1:1")]
+    assert not any(f.block for f in fs)          # Sheldon 11-19：以新包为准，只提示、不拦
 
 
 def test_untrusted_prior_is_not_overturned():
