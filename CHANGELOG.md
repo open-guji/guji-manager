@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：修 roundcheck 单（及只给 `--book-id` 的单）在新执行机上备不了工作区（QTW 11-20 首批 #5944–#5965 全挂 prep「更新工作区」）：`WS_REPOS` 补全唐文 `995ejelvk0 → guji-workspace/995ejelvk0-quan-tang-wen`，`guji job submit` 加 `--ws-repo`。ws_repo 不进指纹，失败的单直接重交即可。
 - 文档（不动代码）：`doc/01-粗校/无法识别字.md` 补「route 归谁」——每书固定一条线（全唐文＝字形线），别的线只报不补，route 前先升 manager ≥ v0.4.45。
 
 - 文档（不动代码）：`doc/01-粗校/无法识别字.md` 加「落库以后必须过消费（谁落谁 route）」——手写事件批次落库后由落库的人当场 `guji events route`，附自查三样与全唐文 007:77:9:15 实例。
