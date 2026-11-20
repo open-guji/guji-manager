@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -74,6 +75,7 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--priority", type=int, default=100, help="越小越先，缺省 100；插队给 10")
     s.add_argument("--after", type=int, action="append", default=[], help="等这条任务成功后再跑（可多次）")
     s.add_argument("--again", action="store_true", help="同配置已跑过也再跑一次")
+    s.add_argument("--no-base-check", action="store_true", help="不核 base 包在不在（缺省交单前查 R2，查到没有就拒）")
     s.add_argument("--dry-run", action="store_true", help="只打印规整后的定义和指纹，不交")
 
     s = js.add_parser("ls", help="列任务")
@@ -236,6 +238,21 @@ def _reason(j: dict) -> str | None:
     return err if len(err) <= _REASON_MAX else err[:_REASON_MAX - 1] + "…"
 
 
+_KEY = re.compile(r"✗|⚠|^[\w.]*(Error|Exception|Drift)[:：]|退出码|\b404\b|not found")
+
+
+def _log_key_lines(tail: str, n: int = 8) -> list[str]:
+    """失败单日志尾巴里的要点行（✗、⚠、报错、Drift…），去重保序取最后 n 行。
+    殿本 #5834–5836 只显示「glyph_match 返回码 1」，真原因（语料 variants.tsv 漂移）埋在 --log 里（11-20 痛点 D14）。"""
+    seen, out = set(), []
+    for ln in tail.splitlines():
+        t = ln.strip()
+        if t and _KEY.search(t) and t not in seen:
+            seen.add(t)
+            out.append(t[:300])
+    return out[-n:]
+
+
 def _line(j: dict) -> str:
     sp = j["spec"]
     st = j["status"] + (f"→#{j['duplicate_of']}" if j.get("duplicate_of") else "")
@@ -248,6 +265,24 @@ def _line(j: dict) -> str:
             f"{SP.summary(sp)}{pri}{stage}{where}  {j['submitted_by']} {_fmt_time(j['created_at'])}")
     why = _reason(j)
     return head if why is None else f"{head}\n      ↳ {_TAG[j['status']]}：{why}"
+
+
+def _base_missing(spec: dict) -> str | None:
+    """base 写了具体包标签的，交单前查 R2 有没有这个包；没有就拒（殿本 #5278 base 写成 c35、实为 c36，
+    到执行机才 404 一直冷却重试，11-20 痛点 D13）。main／没给 base、查不了（本机没工作区、连不上）都放过，只提示。"""
+    base, book = spec.get("base"), spec.get("book")
+    if not base or base == "main" or not book:
+        return None
+    try:
+        from ..datastore.packs import list_packs
+        names = {r["name"].rsplit("/", 1)[-1] for r in list_packs(book)}
+    except BaseException as e:  # noqa: BLE001 —— 没配工作区（SystemExit）也接住
+        print(f"提示：没核 base 包 {book}/{base} 在不在（{str(e)[:120]}）", file=sys.stderr)
+        return None
+    if names and base not in names:
+        near = sorted(n for n in names if n[:1] == base[:1])[-5:]
+        return f"base 包 {book}/{base} 在 R2 里没有；这册最近的同类包：{' '.join(near) or '无'}"
+    return None
 
 
 def _central_rev() -> int | None:
@@ -274,6 +309,10 @@ def cmd_job(a) -> None:
             spec = SP.normalize(raw)
         except SP.SpecError as e:
             sys.exit(f"✗ {e}")
+        if not getattr(a, "no_base_check", False):
+            bad = _base_missing(spec)
+            if bad:
+                sys.exit(f"✗ {bad}（确定要交加 --no-base-check）")
         h = SP.spec_hash(spec)
         if a.dry_run:
             print(json.dumps(spec, ensure_ascii=False, indent=1))
@@ -336,6 +375,9 @@ def cmd_job(a) -> None:
             print("错误：", j["error"])
         if j["status"] in _FAILED and j["attempts_rows"]:
             last = j["attempts_rows"][-1]
+            keys = _log_key_lines(last.get("log_tail") or "")
+            if keys:
+                print("日志要点：\n  " + "\n  ".join(keys))
             print(f"看日志：guji_jobs show {j['id']} --log（第 {last['n']} 次领单的尾巴，执行方 {last['worker']}；"
                   f"完整日志只在执行方机器上）")
         print("定义：", json.dumps(j["spec"], ensure_ascii=False))
