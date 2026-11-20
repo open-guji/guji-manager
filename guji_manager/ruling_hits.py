@@ -57,9 +57,54 @@ def check(products: Path, book: str, store) -> list[dict]:
 VIS_VERS = ("vis-o1", "src-1", "ctx-m1")      # seed_admit 终审／看图裁定通道认的版本（group=O）
 
 
-def check_vis(products: Path, book: str, store) -> list[dict]:
+VIS_SUBS = frozenset({"Z", "N"})               # seed_admit _VIS_RULING_SPECS 里 ctx-m1 缺省收的子类
+
+
+def _vis_window(doc: dict, amap: dict[str, str]) -> dict[str, tuple]:
+    """一页 seed_admit 产物 → {格: (记录, 左窗, 右窗)}，取法同 seed_admit `_vis_ruling_pass`（读序、跳 excluded、
+    邻格已放行用放行字否则用整理本对位字）。产物是整遍跑完的状态，后面几遍放行的邻格会让窗口与当时略有不同。"""
+    from ._cv import CTX_WIDTH, PageAdmit, seed_admit_clf_ctx, sort_by_reading
+    page = PageAdmit.model_validate(doc.get("seed_admit", doc))
+    seq = [r for c in sorted(page.columns, key=lambda c: c.col) for r in sort_by_reading(c.chars)
+           if not (r.doubts and "excluded" in r.doubts)]
+    am = {k: (v, None) for k, v in amap.items()}
+    return {r.id: (r, seed_admit_clf_ctx(seq, am, i, -1, CTX_WIDTH), seed_admit_clf_ctx(seq, am, i, 1, CTX_WIDTH))
+            for i, r in enumerate(seq)}
+
+
+def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset) -> tuple[str, bool]:
+    """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。"""
+    from ._cv import ruling_ctx_hash
+    if rec is None:
+        if (v.get("ref") or "") != (ref_now or ""):
+            return f"整理本对位字变了（裁定时 {v.get('ref') or '空'}，现 {ref_now or '空'}）", False
+        return "算不出产物窗口（读不了这页 seed_admit）", False
+    ds = {d for d in (rec.doubts or []) if isinstance(d, str)}
+    if rec.provenance == "human" or rec.channel == "human":
+        return "这格已有人裁（人裁优先）", False
+    if ds & {"occluded", "excluded", "glyph_timeout"} or (rec.evidence or {}).get("occluded"):
+        return "格带遮挡／超时疑点，终审不放", False
+    if v.get("prompt_ver") == "ctx-m1" and v.get("subclass") not in subs:
+        return f"子类 {v.get('subclass') or '空'} 不收（书级 vis_ruling_ctx_subclasses 没含）", False
+    if (rec.id or "")[-1:] in ("a", "b"):
+        half = "夹注半格（书级 group_flow_llm_skip_half 开着、vis_ruling_half 没开就不放）"
+    else:
+        half = ""
+    if (v.get("ref") or "") != (ref_now or ""):
+        return f"整理本对位字变了（裁定时 {v.get('ref') or '空'}，现 {ref_now or '空'}）", False
+    if (v.get("ctx") or {}).get("hash") and v["ctx"]["hash"] != ruling_ctx_hash(left, right):
+        return "窗口变了（邻格放行字或对位字变了）" + (f"；另{half}" if half else ""), not half
+    if half:
+        return half, False
+    if ref_now and v.get("char") != ref_now:
+        return f"越过整理本（{ref_now}→{v.get('char')}），要在书级 ruling_override_groups 白名单的同一字组", False
+    return "窗口同、条件都满足：多半是产物早于裁定（重放 seed_admit 即可）", False
+
+
+def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS) -> list[dict]:
     """终审／看图裁定（group=O，`vis_ruling` 通道）：写了可放行的裁定（high、admit_ok、有字）、产物里这格却仍待审。
-    窗口在 seed_admit 跑到那一遍时现算、不进产物，没法事后补键，只列出来并给可能原因（整理本对位字变了／窗口或闸）。"""
+    逐格按 seed_admit 的取法现算窗口，给出具体原因（人裁／疑点／子类／对位字／窗口／半格／越过整理本／产物旧）；
+    只是窗口变了的可以 `--rekey` 按产物窗口补一条（字、子类、对位字照抄）。"""
     by_cell: dict[str, dict] = {}
     for c, p in _rulings_by_cell_all(store).items():
         if p.get("group") == "O" and p.get("prompt_ver") in VIS_VERS and p.get("conf") == "high" and p.get("admit_ok") \
@@ -68,31 +113,63 @@ def check_vis(products: Path, book: str, store) -> list[dict]:
     if not by_cell:
         return []
     root = Path(products) / book
-    ref: dict[str, str] = {}
-    for f in sorted((root / "align_ref").glob("p*.json")):
-        try:
-            for c in json.loads(f.read_text(encoding="utf-8")).get("align_ref", {}).get("chars") or []:
-                if c.get("id") in by_cell:
-                    ref[c["id"]] = c.get("align_char") or ""
-        except (OSError, ValueError):
-            continue
     rows = []
     for f in sorted((root / "seed_admit").glob("p*.json")):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        for col in (doc.get("seed_admit", doc).get("columns") or []):
-            for c in col.get("chars") or []:
-                v = by_cell.get(c.get("id"))
-                if not v or c.get("admit"):
-                    continue
-                now = ref.get(c["id"], "")
-                why = (f"整理本对位字变了（裁定时 {v.get('ref') or '空'}，现 {now or '空'}）" if (v.get("ref") or "") != now
-                       else "窗口不同或闸拦（半格／越过整理本白名单／子类）")
-                rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}", "裁定字": v["char"], "把握": "high",
-                             "原因": why, "裁定窗口": "", "产物窗口": "", "_q": None, "_r": v})
+        cols = doc.get("seed_admit", doc).get("columns") or []
+        hit = [c for col in cols for c in col.get("chars") or [] if c.get("id") in by_cell and not c.get("admit")]
+        if not hit:
+            continue
+        amap: dict[str, str] = {}
+        af = root / "align_ref" / f.name
+        try:
+            for c in json.loads(af.read_text(encoding="utf-8")).get("align_ref", {}).get("chars") or []:
+                if c.get("id"):
+                    amap[c["id"]] = c.get("align_char") or ""
+        except (OSError, ValueError):
+            pass
+        try:
+            win = _vis_window(doc, amap)
+        except Exception:  # noqa: BLE001
+            win = {}
+        for c in hit:
+            v = by_cell[c["id"]]
+            w = win.get(c["id"])
+            rec, l, r = w if w is not None else (None, "", "")
+            why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs)
+            rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
+                         "把握": "high", "原因": why,
+                         "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
+                         "产物窗口": f"{l[-20:]}｜{r[:20]}" if w else "", "_q": None, "_r": v,
+                         "_vis": {"l": l, "r": r} if ok else None})
     return rows
+
+
+def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
+    """只是窗口变了的终审裁定：照抄 payload、换成产物窗口另写一条（why 前缀 rekey）。"""
+    from ._cv import RULING_KIND, RulingLog, ruling_ctx_hash
+    from open_guji_cv.feedback.events import EventTarget, make_event
+    todo = [x for x in rows if x.get("_vis")]
+    if not todo:
+        return 0
+    log = RulingLog(root) if root else RulingLog()
+    seq = max((e.seq for e in log.read(batch, raw=True)), default=0)
+    evs = []
+    for x in todo:
+        v, w = dict(x["_r"]), x["_vis"]
+        l, r = w["l"][-20:], w["r"][:20]
+        v["ctx"] = {"left": l, "right": r, "hash": ruling_ctx_hash(l, r)}
+        v["why"] = ("rekey:" + (v.get("why") or ""))[:60]
+        seq += 1
+        cell = v["cell"]
+        evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=cell,
+                                                                    book=cell.split(":")[0] if cell.count(":") == 3 else None),
+                              v, actor="model"))
+    log.append(evs)
+    return len(evs)
 
 
 def _rulings_by_cell_all(store) -> dict[str, dict]:
@@ -133,7 +210,7 @@ def cmd(a) -> None:
     allrows = []
     for b in books:
         rows = check(Path(a.products), b, store)
-        vis = check_vis(Path(a.products), b, store)
+        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()})
         allrows += rows + vis
         print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
     cols = ["cell", "组", "裁定字", "把握", "原因", "裁定窗口", "产物窗口"]
@@ -148,7 +225,8 @@ def cmd(a) -> None:
         if not a.batch:
             sys.exit("--rekey 要给 --batch <批次名>（如 llm-rekey-QTW-20261120）")
         n = rekey(allrows, store)
-        print(f"按产物窗口补写裁定 {n} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
+        nv = rekey_vis(allrows, a.batch, store.log.root if hasattr(store.log, "root") else None)
+        print(f"按产物窗口补写文意裁定 {n} 条、终审裁定 {nv} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -159,6 +237,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--out", default=None, help="清单 tsv（缺省打到标准输出）")
     p.add_argument("--rekey", action="store_true", help="按产物里的窗口另写一条裁定（同提示词版本的才写）")
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
+    p.add_argument("--vis-subclasses", default=None,
+                   help="书级 seed_admit.vis_ruling_ctx_subclasses（如殿本 P,D）：判「子类不收」时一并算收（缺省只算 Z,N）")
 
 
 def _cmd(a) -> None:
