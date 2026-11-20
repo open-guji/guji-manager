@@ -101,3 +101,52 @@ def test_vis_reasons_and_rekey(tmp_path):
     assert RH.rekey_vis(list(rows.values()), "vis-rekey", tmp_path / "fb") == 1
     again = {r["cell"]: r for r in RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"))}
     assert not again["001:1:1:2"]["原因"].startswith("窗口变了")
+
+
+def _one_page(tmp_path, anchored=None):
+    ch = lambda i, c, adm: {"id": f"001:1:1:{i}", "slot": i, "char": c, "admit": adm}  # noqa: E731
+    d = tmp_path / "p" / "001"
+    (d / "seed_admit").mkdir(parents=True)
+    (d / "seed_admit" / "p0001.json").write_text(json.dumps({"seed_admit": {"page": 1, "columns": [
+        {"col": 1, "chars": [ch(1, "甲", True), ch(2, "日", False), ch(3, "丙", True)]}]}}, ensure_ascii=False), encoding="utf-8")
+    (d / "align_ref").mkdir()
+    ar = {"chars": [{"id": "001:1:1:2", "align_char": "曰"}]}
+    if anchored is not None:
+        ar["anchored"] = anchored
+    (d / "align_ref" / "p0001.json").write_text(json.dumps({"align_ref": ar}, ensure_ascii=False), encoding="utf-8")
+
+
+def test_vis_fallback_reasons(tmp_path):
+    """QTW 11-20：窗口同、条件都满足的兜底不再断言「产物早于裁定」；裁定库按键取到的不是这条、页没锚定都单列。"""
+    from guji_manager._cv import RulingLog
+    log = RulingLog(tmp_path / "fb")
+    _vis_event(log, 1, "001:1:1:2", "曰", "曰", "N", "甲", "丙")
+    _one_page(tmp_path)
+    row = RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"))[0]
+    assert "多半是产物早于" not in row["原因"] and "codepoint_semantic" in row["原因"] and "裁定写于" in row["原因"]
+    _vis_event(log, 2, "001:9:9:9", "日", "曰", "N", "甲", "丙")    # 同窗口、别的格、更晚 → 盖过
+    row = RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"))[0]
+    assert "更晚的一条裁定盖过" in row["原因"]
+
+
+def test_vis_unanchored_and_no_hash(tmp_path):
+    from guji_manager._cv import RulingLog
+    from open_guji_cv.feedback.events import EventTarget, make_event
+    log = RulingLog(tmp_path / "fb")
+    _vis_event(log, 1, "001:1:1:2", "曰", "曰", "N", "甲", "丙")
+    _one_page(tmp_path, anchored=False)
+    row = RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"))[0]
+    assert "没锚定" in row["原因"]
+    log2 = RulingLog(tmp_path / "fb2")
+    pay = {"source": "llm", "group": "O", "prompt_ver": "ctx-m1", "char": "曰", "conf": "high", "admit_ok": True,
+           "cell": "001:1:1:2", "ref": "曰", "subclass": "N", "ctx": {"left": "甲", "right": "丙"}}
+    log2.append([make_event("vis-c", 1, "ctx_ruling", EventTarget(step="seed_admit", unit="cell", key="001:1:1:2", book="001"),
+                            pay, actor="model")])
+    q = tmp_path / "q"
+    q.mkdir()
+    import shutil
+    shutil.copytree(tmp_path / "p", q / "p")
+    (q / "p" / "001" / "align_ref" / "p0001.json").write_text(json.dumps({"align_ref": {"anchored": True, "chars": [
+        {"id": "001:1:1:2", "align_char": "曰"}]}}, ensure_ascii=False), encoding="utf-8")
+    row = RH.check_vis(q / "p", "001", RulingStore(tmp_path / "fb2"))[0]
+    assert "没写 ctx.hash" in row["原因"] and row["_vis"]

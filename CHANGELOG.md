@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.80] - 2026-11-20
+
+- PATCH：`rulings-hits` 终审裁定未放行的兜底原因不再断言「产物早于裁定」（QTW 11-20：裁定 11-19、包 11-20 仍报这条），改写裁定时间并列两种可能（产物早于推库／5c 时邻格字被码位归一、pair_form 改过 manager 看不出），产物有 `evidence.vis_ctx` 时另说；新增可核原因：裁定库按窗口键取到的是同窗口更晚的另一条、裁定没写 `ctx.hash`（可补键）、这页 align_ref 没锚定（同 cv 不认整理本字，窗口也按此算）（#765）。
+
 ## [0.4.79] - 2026-11-20
 
 - PATCH：裁定键窗口按 seed_admit 5c（`_vis_ruling_pass`）当时的状态算：5c 之后才放行（consensus_lib、near_knn gap、symbol_ref_blank、textlayer_ref、vis_ruling）的邻格退成未放，之后才降审（stroke_veto、evict_review、symbol_review、human_unbound、jiazhu_uneven、src_code_conflict）的邻格退成放行字；产物带 cv 记的 `evidence.vis_ctx` 时直接用它。影响终审 `final-review` 写键、`vis_review export`、`rulings-hits` 判因与 `--rekey`（全唐文 001–030 26 格裁定 6 格因此不命中，例 027:59:4:7）。`rulings-hits` 清单加「差在」列，写出窗口差在哪几个字（#761）。
