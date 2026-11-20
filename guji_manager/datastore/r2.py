@@ -172,6 +172,8 @@ def upload_via_worker(repo, objs: dict[str, Obj], bucket: str = "exp", workers: 
             return "key_mismatch"
         if read is not None:
             data = read(o)
+            if data is None:
+                return "missing_local"
         else:
             if not hasattr(local, "reader"):
                 local.reader = gitsource.BlobReader(repo)
@@ -226,9 +228,16 @@ def upload_via_worker(repo, objs: dict[str, Obj], bucket: str = "exp", workers: 
 def upload_files(images: dict, bucket: str = "main", workers: int = 8, ext: str = "png") -> dict:
     """``{sha: 本地路径}`` 经 Worker 传进 R2（已有跳过）。``db push`` 用；``ext`` 见 ``upload_via_worker``。"""
     from pathlib import Path
-    objs = {sha: Obj(sha, Path(p).stat().st_size, str(p)) for sha, p in images.items()}
-    return upload_via_worker(None, objs, bucket=bucket, workers=workers,
-                             read=lambda o: Path(o.oid).read_bytes(), ext=ext)
+    # 本机没有的图（如出单时从条目带过来的旧单字块图，11-20 ZM vol28 028-r13）不先 stat：R2 已有就记 exists 跳过，
+    # 真要传才读，读不到记 missing_local（调用方据此报错），不在这里抛 FileNotFoundError
+    objs = {sha: Obj(sha, Path(p).stat().st_size if Path(p).exists() else 0, str(p)) for sha, p in images.items()}
+
+    def read(o):
+        try:
+            return Path(o.oid).read_bytes()
+        except FileNotFoundError:
+            return None
+    return upload_via_worker(None, objs, bucket=bucket, workers=workers, read=read, ext=ext)
 
 
 def upload(repo, objs: dict[str, Obj], workers: int = 8) -> dict:

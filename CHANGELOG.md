@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.77] - 2026-11-20
+
+- PATCH：`rulings-hits` 改走 `_cv` 门面（修 #746 起 dev 测试红）（#750）。
+- PATCH：`datastore.r2.upload_files` 本机缺的图不先 stat，R2 已有就跳过，真要传才记 missing_local（ZM vol28 出单读旧单字块图 FileNotFoundError）（#751）。
+
 ## [0.4.76] - 2026-11-20
 
 - PATCH：`guji rulings-hits` 越过整理本按 `--override-groups`（书级白名单）真核，不再误报；放行后又被后面一遍降审的格单列原因（#748）。
