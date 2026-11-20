@@ -4,6 +4,12 @@
 
 ## [未发版]
 
+## [0.4.73] - 2026-11-20
+
+- PATCH：`guji swap run` 状态按「册＋主包」记：现在的 ★main 与上次记下的不同，上次的 verified／done 作废、重做（全唐文 11-20 d2 29 册假 verified）；新增 `--land-votes` 透传 auto_cycle（缺省关）（#735）。配套 cv #1754（auto_cycle 自己的状态文件同改，只改 scripts/zhengli）。
+- PATCH：`guji job show` 失败单直接列「日志要点」（✗、⚠、XxxError／Drift 行）；`guji job submit` 核 base 包在 R2 在不在，没有就拒（`--no-base-check` 跳过）（#736）。
+- PATCH：`guji db sync` 结尾报近 7 天还没被消费者处理的人裁事件（漏 route、本机缺包没消费），按批次×消费者列条数并给补跑命令（`GUJI_SYNC_UNCONSUMED_DAYS`）（#737）。
+
 ## [0.4.72] - 2026-11-20
 
 - PATCH：roundcheck 单可按单覆盖分层配置：`guji job submit --rc-set seg_defect=true`（可多次；键 order／cov_min／lib_min／seg_defect），进 spec `roundcheck.config`（进指纹；不给不出键，老指纹不变）；`guji round-check` 加 `--set`；summary.json 记 `layer_overrides`。起因史記 #5968：执行机 `db pull` 用中心库的 workspace.yaml 盖掉书仓检出的那份，书仓里开的 seg_defect 没生效。
