@@ -38,7 +38,7 @@ def test_resolve_fills_pages(monkeypatch):
     monkeypatch.setattr(AP, "changed_pages", lambda b, since: {3, 4, 9})
     raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
     AP.resolve(raw)
-    assert raw["pages"] == "3-4,9"
+    assert "pages" not in raw            # 缺省已关（11-20：按 ts 会漏页）
     raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "seed_admit"}}
     AP.resolve(raw)                       # 换代码：整册
     assert "pages" not in raw
@@ -51,7 +51,7 @@ def test_resolve_no_changes_refuses(monkeypatch):
     monkeypatch.setattr(AP, "base_manifest", lambda b, base: {"label": "rev-9", "created": "x", "versions": {"cv": "0.7.80"}})
     monkeypatch.setattr(AP, "changed_pages", lambda b, since: set())
     with pytest.raises(SystemExit):
-        AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}})
+        AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}, "pages": "auto"})
 
 
 def test_resolve_falls_back_when_no_pack(monkeypatch):
