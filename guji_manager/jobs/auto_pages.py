@@ -104,7 +104,9 @@ def changed_pages(book: str, since: str, events=None, rulings=None) -> set[int]:
 def resolve(raw: dict) -> None:
     """就地改 ``raw["pages"]``：auto 或缺省可按页时填页集，否则留原样。打印说明。"""
     explicit = raw.get("pages") == "auto"
-    if not explicit and why_not_default(raw) is not None:
+    if not explicit:
+        # 2026-11-20 先关掉缺省：事件 ts 是判定时间不是入库时间，比铺底包 created 会漏页（全唐文 閒 14 条裁定
+        # ts 早于 d4 包、推库在后，auto 算成 0 页）。改按入库 rev 之前不自动按页；显式 --pages auto 仍可用但同样有此限制
         return
     book = raw.get("book")
     try:
@@ -133,6 +135,7 @@ def resolve(raw: dict) -> None:
     if not pages:
         sys.exit(f"✗ 铺底包 {man.get('label')}（{man.get('created')}）之后 {book} 没有新的人裁／AI 裁定，不用重放；"
                  "确要整册写 --pages all（先 guji db pull 拉到最新）")
+    print("⚠ --pages auto 按事件判定时间（ts）比铺底包生成时间：判定早于铺底包、推库晚于它的裁定会漏页，核对页集再交", file=sys.stderr)
     raw["pages"] = compress(pages)
     print(f"按受影响的页跑：{book} {len(pages)} 页（{raw['pages']}），铺底包 {man.get('label')} 之后有新人裁／AI 裁定；"
           "要整册写 --pages all", file=sys.stderr)
