@@ -72,7 +72,8 @@ def _vis_window(doc: dict, amap: dict[str, str]) -> dict[str, tuple]:
             for i, r in enumerate(seq)}
 
 
-def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset) -> tuple[str, bool]:
+def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset,
+               override: tuple | None = None) -> tuple[str, bool]:
     """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。"""
     from ._cv import ruling_ctx_hash
     if rec is None:
@@ -96,12 +97,18 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
         return "窗口变了（邻格放行字或对位字变了）" + (f"；另{half}" if half else ""), not half
     if half:
         return half, False
-    if ref_now and v.get("char") != ref_now:
-        return f"越过整理本（{ref_now}→{v.get('char')}），要在书级 ruling_override_groups 白名单的同一字组", False
-    return "窗口同、条件都满足：多半是产物早于裁定（重放 seed_admit 即可）", False
+    if ref_now and v.get("char") != ref_now and v.get("prompt_ver") == "ctx-m1" and override is not None:
+        from ._cv import seed_admit_override_ok
+        if not seed_admit_override_ok(override, v["char"], ref_now):
+            return (f"越过整理本（{ref_now}→{v.get('char')}）：两字不同属白名单 {','.join(override) or '（空）'} 里任一字组", False)
+    ev = rec.evidence or {}
+    if ev.get("vis_ruling"):
+        return f"放行后被后面一遍降回待审（现疑点 {','.join(map(str, rec.doubts or [])) or '无'}）", False
+    note = "" if override is not None or not ref_now or v.get("char") == ref_now else "（越过整理本，没给 --override-groups 未核白名单）"
+    return "窗口同、条件都满足：多半是产物早于裁定，重放 seed_admit 即可" + note, False
 
 
-def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS) -> list[dict]:
+def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None) -> list[dict]:
     """终审／看图裁定（group=O，`vis_ruling` 通道）：写了可放行的裁定（high、admit_ok、有字）、产物里这格却仍待审。
     逐格按 seed_admit 的取法现算窗口，给出具体原因（人裁／疑点／子类／对位字／窗口／半格／越过整理本／产物旧）；
     只是窗口变了的可以 `--rekey` 按产物窗口补一条（字、子类、对位字照抄）。"""
@@ -139,7 +146,7 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS) -> l
             v = by_cell[c["id"]]
             w = win.get(c["id"])
             rec, l, r = w if w is not None else (None, "", "")
-            why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs)
+            why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs, override)
             rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
                          "把握": "high", "原因": why,
                          "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
@@ -210,7 +217,8 @@ def cmd(a) -> None:
     allrows = []
     for b in books:
         rows = check(Path(a.products), b, store)
-        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()})
+        ovr = tuple(x.strip() for x in a.override_groups.split(",") if x.strip()) if a.override_groups is not None else None
+        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr)
         allrows += rows + vis
         print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
     cols = ["cell", "组", "裁定字", "把握", "原因", "裁定窗口", "产物窗口"]
@@ -239,6 +247,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
     p.add_argument("--vis-subclasses", default=None,
                    help="书级 seed_admit.vis_ruling_ctx_subclasses（如殿本 P,D）：判「子类不收」时一并算收（缺省只算 Z,N）")
+    p.add_argument("--override-groups", default=None,
+                   help="书级 seed_admit.ruling_override_groups，逗号分隔（殿本 ly,dt,wm,ts,mb,fc,rr,ry,guan,wxs,jys）；给了才核越过整理本")
 
 
 def _cmd(a) -> None:
