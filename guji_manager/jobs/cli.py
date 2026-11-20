@@ -2,6 +2,8 @@
 
     guji job submit <spec.json|->            # 交一条任务（JSON，字段见 jobs/spec.py 模块头）
     guji job submit --book vol10 --cv v0.5.16 --from seed_admit --corpus 16 --change seed-c16 --why "…"
+    guji job submit --kind roundcheck --book 046 --book-id 995ejelvk0 --cv v0.7.80 --rc-pack <候选包> --rc-ledger-book 全唐文
+                                             # 收轮检查（只读）；结果收成一份：guji round-check --collect <号段> --out 目录
     guji job ls [--book vol10] [--status queued,running] [--all]   # 谁在跑什么、排了什么
     guji job show <号> [--json] [--log]      # 定义、每次领单、进展流水、结果（包在哪）
     guji job wait <号>                       # 等到它结束（成功退出码 0）
@@ -9,7 +11,7 @@
     guji job work [--once] [--idle 分钟]     # 执行方：领单跑单（只在云端执行会话里用）
     guji job init                            # 建表（幂等）
 
-连库：缺省正式库（NEON_DATABASE_URL）；GUJI_JOBS_BRANCH=ci 连测试分支。提交人名字取 GUJI_JOBS_WHO（如 A24）。
+连库：美国机任务库（JOBSDB_TOKEN＋JOBSDB_PASSWORD，guji_jobs 会自动载入）。提交人名字取 GUJI_JOBS_WHO（如 A24）。
 """
 from __future__ import annotations
 
@@ -60,6 +62,12 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--no-pack", action="store_true", help="跑完不存包")
     s.add_argument("--run", action="append", default=[], help="command／eval：一条 guji 命令（引号括起，可多次）")
     s.add_argument("--why", default=None, help="为什么跑（谁要、要回答什么问题）")
+    s.add_argument("--rc-pack", default=None, help="收轮检查（--kind roundcheck）：候选包标签")
+    s.add_argument("--rc-main", default=None, help="收轮检查：对照包，main（缺省）或包标签")
+    s.add_argument("--rc-ledger-book", default=None, help="收轮检查：根因台账里的书名（殿本／史記／全唐文）；给了就带台账")
+    s.add_argument("--rc-ledger", default=None,
+                   help="收轮检查：台账来源，缺省 auto＝交单时从 ai-team main 取最新（本机要有 ai-team 克隆或 gh）；也可给本地 TSV；none 不带")
+    s.add_argument("--rc-allow", default=None, help="收轮检查：seg premain 放行清单 TSV（本地文件，随单带上）")
     s.add_argument("--priority", type=int, default=100, help="越小越先，缺省 100；插队给 10")
     s.add_argument("--after", type=int, action="append", default=[], help="等这条任务成功后再跑（可多次）")
     s.add_argument("--again", action="store_true", help="同配置已跑过也再跑一次")
@@ -166,7 +174,37 @@ def _spec_from_args(a) -> dict:
         import shlex
         raw["run"] = [shlex.split(r) for r in a.run]
         raw.setdefault("kind", "command")
+    rc_args = (a.rc_pack, a.rc_main, a.rc_ledger_book, a.rc_ledger, a.rc_allow)
+    if any(v is not None for v in rc_args) or raw.get("kind") == "roundcheck":
+        raw.setdefault("kind", "roundcheck")
+        raw["roundcheck"] = _roundcheck_from_args(a, dict(raw.get("roundcheck") or {}))
     return raw
+
+
+def _roundcheck_from_args(a, rc: dict) -> dict:
+    """收轮检查单：台账、放行清单在交单这台机器上读好，全文随单带给执行方（执行机不连 ai-team）。"""
+    from ..round_check import fetch_ledger, filter_ledger
+    for k, v in (("pack", a.rc_pack), ("main", a.rc_main), ("ledger_book", a.rc_ledger_book)):
+        if v is not None:
+            rc[k] = v
+    src = a.rc_ledger or ("auto" if rc.get("ledger_book") and not rc.get("ledger") else None)
+    if src == "none":
+        rc.pop("ledger", None)
+        rc.pop("ledger_src", None)
+    elif src:
+        if not rc.get("ledger_book"):
+            raise SP.SpecError("带台账要给 --rc-ledger-book（台账里的书名）")
+        if src == "auto":
+            try:
+                text, rc["ledger_src"] = fetch_ledger()
+            except RuntimeError as e:
+                raise SP.SpecError(str(e)) from None
+        else:
+            text, rc["ledger_src"] = Path(src).read_text(encoding="utf-8"), f"file:{Path(src).name}"
+        rc["ledger"] = filter_ledger(text, rc["ledger_book"])
+    if a.rc_allow:
+        rc["allow"] = Path(a.rc_allow).read_text(encoding="utf-8")
+    return rc
 
 
 def _fmt_time(t) -> str:

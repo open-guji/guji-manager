@@ -8,7 +8,7 @@ detail＝这一轮的记录（字段见 open-guji-site docs/text-progress.md「�
   # 回填历史 / 改目标（json 形如 ai-team domain/CV/质检/迭代降人审框架/历史轮次.json）
   guji-manager iterate push-rounds --json 历史轮次.json [--book 96mid1ogzk] [--write]
 
-缺省只打印，--write 才写库（连 NEON_DATABASE_URL，同 pending-stats）。
+缺省只打印，--write 才写库（中心库 D1，要 GUJI_DATA_TOKEN 类令牌，同 pending-stats）。
 """
 from __future__ import annotations
 
