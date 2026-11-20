@@ -4,6 +4,22 @@
 
 ## [未发版]
 
+## [0.4.76] - 2026-11-20
+
+- PATCH：`guji rulings-hits` 越过整理本按 `--override-groups`（书级白名单）真核，不再误报；放行后又被后面一遍降审的格单列原因（#748）。
+
+## [0.4.75] - 2026-11-20
+
+- PATCH：`guji rulings-hits` 终审看图裁定未放行逐格给具体原因（已人裁／疑点／子类不收／对位字变／窗口变／半格／越过整理本／产物旧），`--vis-subclasses` 按书级子类算；`--rekey` 也给只是窗口变了的终审裁定补键（#746）。
+
+## [0.4.74] - 2026-11-20
+
+- PATCH：`guji round-check` 收轮检查加两项：人裁掉格（新包比 main 多出的人裁解绑，有就不过）、放行字变（旧字是人裁或等于参校本的标可疑）（#739）。
+- PATCH：新命令 `guji rulings-hits`：AI 文意裁定按格有、按窗口没命中的格（窗口变了／提示词版本）列出来，`--rekey --batch` 按产物窗口补写；终审看图裁定可放行却仍待审的也列出（#740、#741）。
+- PATCH：新命令 `guji seg pins-stale`：钉子记下钉时的列窗依据，换切分包后判过期／可能／未知，有过期退出码 3（#742）。
+- PATCH：`guji collect` 缺省把 AI 裁定一起直接落 book-text（文意按窗口命中且 high、字在组内；终审看图 high＋admit_ok、对位字没变、非半格）；人裁优先，AI 落的格不在单上结案；`--no-ai` 关（#743）。
+- PATCH：`guji job submit` 新增 `--pages auto`，纯重放（从 context_decide／seed_admit 起、cv 同铺底包、没改配置）缺省只跑铺底包之后有新人裁／AI 裁定的页；没新反馈拒交；`--pages all` 整册（#744）。
+
 ## [0.4.73] - 2026-11-20
 
 - PATCH：`guji swap run` 状态按「册＋主包」记：现在的 ★main 与上次记下的不同，上次的 verified／done 作废、重做（全唐文 11-20 d2 29 册假 verified）；新增 `--land-votes` 透传 auto_cycle（缺省关）（#735）。配套 cv #1754（auto_cycle 自己的状态文件同改，只改 scripts/zhengli）。

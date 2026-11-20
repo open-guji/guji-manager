@@ -55,6 +55,11 @@ def add_parser(sub) -> None:
     rl.add_argument("-w", "--workspace", default=None)
     rl.add_argument("--out", default="seg-ruler.tsv")
 
+    ps = ss.add_parser("pins-stale", help="钉子（manual-cells）的上游列图变了没有：stale＝列窗口变了、坐标必须重核（退出 3）；maybe＝只是 column_warp 指纹变了")
+    ps.add_argument("books", nargs="*", help="只查这些册（缺省全部 active 钉子）")
+    ps.add_argument("-w", "--workspace", default=None)
+    ps.add_argument("--products", default="", help="产物根（缺省工作区 products；候选包 pack fetch --to 的目录）")
+
     pm = ss.add_parser("premain", help="标 main 前的硬检查（绝对、不比旧 main）：格高≥1.6倍、格数少于整理本字数、判空却有墨；命中退出 3，不许标 main")
     pm.add_argument("books", nargs="+", help="册 id")
     pm.add_argument("--products", default="", help="产物根（缺省取 GUJI 的 products 根；候选包先 guji products pack fetch --to <根>）")
@@ -84,6 +89,30 @@ def cmd_seg(args) -> None:
         _cmd_gate(args)
     elif args.seg_cmd == "premain":
         _cmd_premain(args)
+    elif args.seg_cmd == "pins-stale":
+        _cmd_pins_stale(args)
+
+
+def _cmd_pins_stale(args) -> None:
+    from . import seg_pin as sp
+    _use_ws(args)
+    store = None
+    if args.products:
+        from ._cv import ProductStore
+        store = ProductStore(Path(args.products))
+    items = [r for r in sp.read_items(sp.items_path()) if r.get("status") == "active"
+             and (not args.books or (r.get("anchor") or {}).get("book") in args.books)]
+    n = {"ok": 0, "stale": 0, "maybe": 0, "unknown": 0}
+    print("钉子\t状态\t说明")
+    for r in items:
+        st, why = sp.basis_status(r, store)
+        n[st] += 1
+        if st != "ok":
+            print(f"{r.get('id')}\t{st}\t{why}")
+    print(f"共 {len(items)} 条：" + "、".join(f"{k} {v}" for k, v in n.items() if v), file=sys.stderr)
+    if n["stale"]:
+        print("stale 的钉子坐标对不上现在的列图：guji seg pin <册:页:列> 重起稿看叠框图、重写（--write 会记新底）", file=sys.stderr)
+        raise SystemExit(3)
 
 
 def _cmd_premain(args) -> None:

@@ -410,6 +410,14 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "RULING_KIND": ("feedback.rulings", "KIND"),
     "RULING_SOURCE": ("feedback.rulings", "SOURCE"),
     "RULING_OTHER": ("feedback.rulings", "OTHER"),
+    "RulingStore": ("feedback.rulings", "RulingStore"),
+    "llm_questions_of_page": ("feedback.llm_queue", "questions_of_page"),
+    "FLOW_GROUPS": ("groups.registry", "FLOW_GROUPS"),
+    "PageAdmit": ("products.kinds.recog", "PageAdmit"),
+    "sort_by_reading": ("utils.jiazhu_order", "sort_by_reading"),
+    "seed_admit_clf_ctx": ("steps.seed_admit", "_clf_ctx"),
+    "seed_admit_override_ok": ("steps.seed_admit", "_override_ok"),
+    "CTX_WIDTH": ("groups.context", "WIDTH"),
 }
 
 

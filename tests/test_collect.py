@@ -95,3 +95,38 @@ def test_books_with_votes_picks_open_items_only():
     votes = [{"vol": "13", "item": "i1"}, {"vol": "013", "item": "i2"}, {"vol": "14", "item": "j1"}, {"vol": "20"}]
     open_ = {"013": {"i2"}, "014": set()}
     assert C.books_with_votes(votes, lambda ch: open_.get(ch, set())) == ["vol13"]
+
+
+def test_ai_ruling_chars_window_hit_and_vis(tmp_path):
+    """AI 裁定直接落（11-20）：文意按窗口命中且 high、字在组内；看图 O 要 admit_ok、对位字没变、非半格；已放行格不落。"""
+    from guji_manager._cv import RulingLog, RulingStore
+    from open_guji_cv.feedback.events import EventTarget, make_event
+    from open_guji_cv.feedback.llm_queue import PENDING
+    store = RulingStore(tmp_path / "fb")
+    store._batch = "llm-x"
+    store.put("ry", "v1", "甲乙", "丙丁", char="曰", conf="high", why="", model="m", cell="001:1:1:1")
+    store.put("ry", "v1", "子丑", "寅卯", char="日", conf="mid", why="", model="m", cell="001:1:1:2")
+    store.put("ry", "v1", "辰", "巳", char="月", conf="high", why="", model="m", cell="001:1:1:3")     # 不在组内
+    store.put("ry", "v1", "午", "未", char="曰", conf="high", why="", model="m", cell="001:1:1:8")     # 已放行
+    log = RulingLog(tmp_path / "fb")
+    for i, (cell, ref) in enumerate([("001:1:1:4", "日"), ("001:1:1:5", "日"), ("001:1:1:6a", "日")]):
+        pay = {"source": "llm", "group": "O", "prompt_ver": "vis-o1", "char": "曰", "conf": "high", "admit_ok": True,
+               "cell": cell, "ref": ref, "ctx": {"left": "", "right": "", "hash": f"h{i}"}}
+        log.append([make_event("vis-b", i + 1, "ctx_ruling", EventTarget(step="seed_admit", unit="cell", key=cell, book="001"),
+                               pay, actor="model")])
+    ask = lambda l, r: {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v1", "l": l, "r": r}}]}}}  # noqa: E731
+    root = tmp_path / "p"
+    (root / "001" / "seed_admit").mkdir(parents=True)
+    cells = [{"id": "001:1:1:1", "char": "日", **ask("甲乙", "丙丁")}, {"id": "001:1:1:2", "char": "日", **ask("子丑", "寅卯")},
+             {"id": "001:1:1:3", "char": "日", **ask("辰", "巳")}, {"id": "001:1:1:4", "char": "日"},
+             {"id": "001:1:1:5", "char": "日"}, {"id": "001:1:1:6a", "char": "日"},
+             {"id": "001:1:1:8", "char": "曰", "admit": True, **ask("午", "未")}]
+    (root / "001" / "seed_admit" / "p0001.json").write_text(json.dumps({"seed_admit": {"columns": [{"chars": cells}]}}), encoding="utf-8")
+    (root / "001" / "align_ref").mkdir(parents=True)
+    (root / "001" / "align_ref" / "p0001.json").write_text(json.dumps({"align_ref": {"chars": [
+        {"id": "001:1:1:4", "align_char": "日"}, {"id": "001:1:1:5", "align_char": "曰"}, {"id": "001:1:1:6a", "align_char": "日"}]}}),
+        encoding="utf-8")
+    got, notes = C.ai_ruling_chars(root, "001", RulingStore(tmp_path / "fb"), members={"ry": {"日", "曰"}})
+    assert got == {"1:1:1": ("曰", "AI文意/ry"), "1:1:4": ("曰", "AI看图/vis-o1")}
+    joined = "\n".join(notes)
+    assert "把握 mid" in joined and "不在组" in joined and "对位字" in joined and "半格" in joined
