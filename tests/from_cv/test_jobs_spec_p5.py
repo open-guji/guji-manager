@@ -125,8 +125,9 @@ def test_book_id_and_default_ws_repo():
     d = SP.normalize(base)
     assert SP.book_id(d) == "96mid1ogzk"
     assert d["ws_repo"] == "guji-workspace/96mid1ogzk-si-ku-zong-mu"
-    q = SP.normalize({**base, "ws_glob": "995ejelvk0-*"})
-    assert SP.book_id(q) == "995ejelvk0" and q["ws_repo"] is None
+    q = SP.normalize({**base, "ws_glob": "998a1ukohs-*"})          # 表里没有的书：不填，走 open-guji/guji-workspace
+    assert SP.book_id(q) == "998a1ukohs" and q["ws_repo"] is None
+    assert SP.normalize({**base, "ws_glob": "995ejelvk0-*"})["ws_repo"] == "guji-workspace/995ejelvk0-quan-tang-wen"   # 全唐文 11-20 补
     assert SP.spec_hash(d) != SP.spec_hash(q)
     assert SP.spec_hash(d) == SP.spec_hash({**d, "ws_repo": None})
     assert SP.book_id({"ws_glob": "x*"}) is None
