@@ -275,7 +275,6 @@ def main() -> int:
         (ws / "data_full" / "_vol" / book).symlink_to(Path("..") / book)
     rc = subprocess.run([py, str(cv / "scripts/zhengli/republish.py"), "from-pack", "--book", book, "-w", str(ws),
                          "--label", a.label, "--text-version", tv, "--no-pull",   # 不带 --no-alt：史记首发漏了它，线上 1,350 格没有候选字（11-20）
-                         
                          "--chapter", chapter, "--text-id", text_id], env=env, cwd=cv).returncode
     if rc:
         return rc
