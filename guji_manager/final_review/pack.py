@@ -114,8 +114,65 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
     return out
 
 
+# seed_admit 5c `_vis_ruling_pass` 之后才放行／降审的遍。产物是整遍跑完的状态，算裁定键要退回 5c 当时：
+# 这些遍放行的邻格当时还没放（取整理本字或 □），这些遍降审的邻格当时还是放行字（A33 11-20，全唐文 027:59:4:7）。
+# 次序见 cv `steps/seed_admit.py` 5c 之后各遍；cv 加了遍要同步这里（产物有 `evidence.vis_ctx` 时直接用那个，不靠这张表）。
+LATE_ADMIT = frozenset({"vis_ruling", "symbol_ref_blank", "textlayer_ref", "consensus_lib"})
+LATE_DEMOTE = frozenset({"src_code_conflict", "symbol_review", "symbol_ref_blank", "stroke_veto", "human_unbound",
+                         "evict_review", "jiazhu_uneven"})
+
+
+def _g(c, k):
+    return c.get(k) if isinstance(c, dict) else getattr(c, k, None)
+
+
+def _late_admit(channel, ev: dict) -> bool:
+    return channel in LATE_ADMIT or (channel == "near_knn" and (ev.get("near_knn") or {}).get("via") == "near_gap")
+
+
+def vis_time_char(c, amap: dict) -> str:
+    """邻格在 5c 时的窗口字：那时已放行用放行字，否则用整理本对位字，再没有记 □（同 cv `_clf_ctx`）。"""
+    ev = _g(c, "evidence") or {}
+    if _g(c, "admit"):
+        adm = not _late_admit(_g(c, "channel"), ev)
+    else:
+        d = ev.get("demoted_from") or {}
+        adm = d.get("by") in LATE_DEMOTE and not _late_admit(d.get("channel"), ev)
+    return (_g(c, "char") if adm else None) or amap.get(_g(c, "id")) or "□"
+
+
+def vis_windows(seq: list, amap: dict, width: int, want=None) -> dict:
+    """读序格列（已去 excluded）→ {id: (left, right, ref)}，按 5c 时的状态。
+    格自己的产物带 `evidence.vis_ctx`（cv 在 5c 当场记下的窗口）时直接用它。"""
+    txt = None
+    out = {}
+    for i, c in enumerate(seq):
+        cid = _g(c, "id")
+        if want is not None and cid not in want:
+            continue
+        vc = (_g(c, "evidence") or {}).get("vis_ctx")
+        if isinstance(vc, dict) and "left" in vc and "right" in vc:
+            out[cid] = (vc["left"], vc["right"], vc.get("ref") if vc.get("ref") is not None else (amap.get(cid) or ""))
+            continue
+        if txt is None:
+            txt = [vis_time_char(x, amap) for x in seq]
+        out[cid] = ("".join(txt[max(0, i - width):i]), "".join(txt[i + 1:i + 1 + width]), amap.get(cid) or "")
+    return out
+
+
+def window_diff(a: str, b: str, side: str) -> str:
+    """两个窗口串差在哪几个字（左窗从格往左数、右窗往右数）→ 如「左1 撫→播」。"""
+    if side == "左":
+        a, b = a[::-1], b[::-1]
+    n = max(len(a), len(b))
+    d = [f"{side}{k + 1} {a[k] if k < len(a) else '∅'}→{b[k] if k < len(b) else '∅'}"
+         for k in range(n) if (a[k:k + 1] or None) != (b[k:k + 1] or None)]
+    return "、".join(d[:4]) + ("…" if len(d) > 4 else "")
+
+
 def key_windows(pkg, cell_ids, sort_fn, width):
-    """按管线 `_clf_ctx` 的口径算裁定键窗口（当页、邻格已放行字/参校本字/□；排除 excluded），重切后仍命中。→ {id: (left, right, ref)}"""
+    """按管线 5c `_vis_ruling_pass` 当时的口径算裁定键窗口（当页、邻格当时已放行字/参校本字/□；排除 excluded），
+    重切后仍命中。产物带 `evidence.vis_ctx` 的格直接用它。→ {id: (left, right, ref)}"""
     byvol: dict[str, set[int]] = {}
     for i in cell_ids:
         v, p = i.split(":")[:2]
@@ -129,10 +186,5 @@ def key_windows(pkg, cell_ids, sort_fn, width):
                 continue
             amap = anchored.get(pg) or {}
             seq = [c for c in _reading(seed[pg], sort_fn) if "excluded" not in (c.get("doubts") or [])]
-
-            def t(c):
-                return (c["char"] if c.get("admit") and c.get("char") else None) or amap.get(c["id"]) or "□"
-            for i, c in enumerate(seq):
-                if c["id"] in want:
-                    win[c["id"]] = ("".join(t(x) for x in seq[max(0, i - width):i]), "".join(t(x) for x in seq[i + 1:i + 1 + width]), amap.get(c["id"]) or "")
+            win.update(vis_windows(seq, amap, width, want))
     return win

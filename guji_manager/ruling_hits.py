@@ -49,7 +49,7 @@ def check(products: Path, book: str, store) -> list[dict]:
             rows.append({"cell": q["cell"], "组": q["group"], "裁定字": r.get("char") or ("其他" if r.get("other") else ""),
                          "把握": r.get("conf"), "原因": "窗口变了" if same_ver else f"提示词版本 {r.get('prompt_ver')}→{q['ver']}",
                          "裁定窗口": f"{(r.get('ctx') or {}).get('left', '')}｜{(r.get('ctx') or {}).get('right', '')}",
-                         "产物窗口": f"{q['l'][-20:]}｜{q['r'][:20]}", "_q": q, "_r": r,
+                         "产物窗口": f"{q['l'][-20:]}｜{q['r'][:20]}", "差在": _diff(r.get("ctx"), q["l"], q["r"]), "_q": q, "_r": r,
                          "_hash": ruling_ctx_hash(q["l"], q["r"])})
     return rows
 
@@ -61,15 +61,24 @@ VIS_SUBS = frozenset({"Z", "N"})               # seed_admit _VIS_RULING_SPECS �
 
 
 def _vis_window(doc: dict, amap: dict[str, str]) -> dict[str, tuple]:
-    """一页 seed_admit 产物 → {格: (记录, 左窗, 右窗)}，取法同 seed_admit `_vis_ruling_pass`（读序、跳 excluded、
-    邻格已放行用放行字否则用整理本对位字）。产物是整遍跑完的状态，后面几遍放行的邻格会让窗口与当时略有不同。"""
-    from ._cv import CTX_WIDTH, PageAdmit, seed_admit_clf_ctx, sort_by_reading
+    """一页 seed_admit 产物 → {格: (记录, 左窗, 右窗)}，取法同 seed_admit 5c `_vis_ruling_pass`（读序、跳 excluded、
+    邻格 5c 时已放行用放行字否则用整理本对位字）。产物是整遍跑完的状态：5c 之后才放行／降审的邻格按当时状态退回
+    （`final_review.pack.vis_windows`）；格带 `evidence.vis_ctx`（cv 当场记的窗口）时直接用它。"""
+    from ._cv import CTX_WIDTH, PageAdmit, sort_by_reading
+    from .final_review.pack import vis_windows
     page = PageAdmit.model_validate(doc.get("seed_admit", doc))
     seq = [r for c in sorted(page.columns, key=lambda c: c.col) for r in sort_by_reading(c.chars)
            if not (r.doubts and "excluded" in r.doubts)]
-    am = {k: (v, None) for k, v in amap.items()}
-    return {r.id: (r, seed_admit_clf_ctx(seq, am, i, -1, CTX_WIDTH), seed_admit_clf_ctx(seq, am, i, 1, CTX_WIDTH))
-            for i, r in enumerate(seq)}
+    w = vis_windows(seq, amap, CTX_WIDTH)
+    return {r.id: (r, *w[r.id][:2]) for r in seq}
+
+
+def _diff(ctx: dict | None, left: str, right: str) -> str:
+    """裁定窗口与产物窗口差在哪几个字（「左1 撫→播」＝格左边第 1 字裁定时是 撫、现在是 播）。"""
+    from .final_review.pack import window_diff
+    ctx = ctx or {}
+    return "；".join(x for x in (window_diff(ctx.get("left") or "", (left or "")[-20:], "左"),
+                                 window_diff(ctx.get("right") or "", (right or "")[:20], "右")) if x)
 
 
 def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset,
@@ -150,7 +159,8 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
             rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
                          "把握": "high", "原因": why,
                          "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
-                         "产物窗口": f"{l[-20:]}｜{r[:20]}" if w else "", "_q": None, "_r": v,
+                         "产物窗口": f"{l[-20:]}｜{r[:20]}" if w else "",
+                         "差在": _diff(v.get("ctx"), l, r) if w and why.startswith("窗口变了") else "", "_q": None, "_r": v,
                          "_vis": {"l": l, "r": r} if ok else None})
     return rows
 
@@ -221,7 +231,7 @@ def cmd(a) -> None:
         vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr)
         allrows += rows + vis
         print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
-    cols = ["cell", "组", "裁定字", "把握", "原因", "裁定窗口", "产物窗口"]
+    cols = ["cell", "组", "裁定字", "把握", "原因", "差在", "裁定窗口", "产物窗口"]
     out = Path(a.out) if a.out else None
     text = "\t".join(cols) + "\n" + "".join("\t".join(str(r.get(c) or "") for c in cols) + "\n" for r in allrows)
     if out:
