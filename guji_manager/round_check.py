@@ -54,8 +54,11 @@ class LayerConfig:
     seg_defect: bool = False
 
     @classmethod
-    def from_ws(cls, ws: str | Path | None) -> "LayerConfig":
-        c = cls()
+    def from_ws(cls, ws: str | Path | None, overrides: dict | None = None) -> "LayerConfig":
+        """工作区 workspace.yaml 的 `round_check:` 段，再叠 ``overrides``（单子带的 ``roundcheck.config``、命令行 ``--set``）。
+
+        注意：执行机准备时 `guji db pull` 会用**中心库**的 workspace.yaml 覆盖书仓检出里的那份，
+        所以执行机上读到的是中心库版本；只改书仓不推库不生效（史記 #5968，11-20）。"""
         try:
             import yaml
             d = (yaml.safe_load((Path(ws) / "workspace.yaml").read_text(encoding="utf-8")) or {}).get("round_check") or {}
@@ -63,17 +66,83 @@ class LayerConfig:
             d = {}
         if not isinstance(d, dict):
             d = {}
-        if isinstance(d.get("order"), list) and set(d["order"]) <= {"seg", "group", "lib"}:
-            c.order = [str(x) for x in d["order"]]
-        for k, t in (("cov_min", float), ("lib_min", int)):
-            if d.get(k) is not None:
-                setattr(c, k, t(d[k]))
-        if d.get("seg_defect") is not None:
-            c.seg_defect = bool(d["seg_defect"])
+        try:
+            d = parse_config(d)
+        except ValueError:
+            d = {k: v for k, v in d.items() if _try_parse(k, v)}
+        return cls.from_dict({**d, **parse_config(overrides or {})})
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "LayerConfig":
+        c = cls()
+        for k, v in parse_config(d).items():
+            setattr(c, k, v)
         return c
 
     def as_dict(self) -> dict:
         return {"order": self.order, "cov_min": self.cov_min, "lib_min": self.lib_min, "seg_defect": self.seg_defect}
+
+
+CONFIG_KEYS = ("order", "cov_min", "lib_min", "seg_defect")
+
+
+def parse_config(d: dict) -> dict:
+    """校验、规整分层配置（workspace.yaml `round_check:`、单子 `roundcheck.config`、`--set` 共用）；不认识的键、坏值报 ValueError。"""
+    if not isinstance(d, dict):
+        raise ValueError("round_check 配置要是对象")
+    bad = set(d) - set(CONFIG_KEYS)
+    if bad:
+        raise ValueError(f"round_check 配置只认 {', '.join(CONFIG_KEYS)}（不认 {', '.join(sorted(bad))}）")
+    out: dict = {}
+    for k, v in d.items():
+        if v is None:
+            continue
+        if k == "order":
+            if isinstance(v, str):
+                v = [x.strip() for x in v.split(",") if x.strip()]
+            if not (isinstance(v, list) and v and set(map(str, v)) <= {"seg", "group", "lib"} and len(set(v)) == len(v)):
+                raise ValueError(f"order 是 seg／group／lib 的排列：{v!r}")
+            out[k] = [str(x) for x in v]
+        elif k == "cov_min":
+            try:
+                out[k] = float(v)
+            except (TypeError, ValueError):
+                raise ValueError(f"cov_min 要是数：{v!r}") from None
+            if not 0 <= out[k] <= 1:
+                raise ValueError(f"cov_min 在 0–1：{v!r}")
+        elif k == "lib_min":
+            if isinstance(v, bool) or not str(v).strip().isdigit():
+                raise ValueError(f"lib_min 要是非负整数：{v!r}")
+            out[k] = int(v)
+        elif k == "seg_defect":
+            if isinstance(v, bool):
+                out[k] = v
+            elif str(v).strip().lower() in ("1", "true", "yes", "on"):
+                out[k] = True
+            elif str(v).strip().lower() in ("0", "false", "no", "off"):
+                out[k] = False
+            else:
+                raise ValueError(f"seg_defect 要是 true／false：{v!r}")
+    return out
+
+
+def _try_parse(k, v) -> bool:
+    try:
+        parse_config({k: v})
+        return True
+    except ValueError:
+        return False
+
+
+def parse_sets(items: list[str] | None) -> dict:
+    """命令行 ``--set KEY=VAL``（可多次）→ 规整后的配置。"""
+    d = {}
+    for it in items or []:
+        k, eq, v = it.partition("=")
+        if not eq:
+            raise ValueError(f"--set 要写成 KEY=VAL：{it!r}")
+        d[k.strip()] = v.strip()
+    return parse_config(d)
 
 
 _NAME = {"seg": "1 切分", "group": "3 形近字组", "lib": "2 库缺样本"}
@@ -304,16 +373,17 @@ def _central_rev() -> int | None:
 
 def run(book: str, *, ws: str, out: Path, pack: str, main: str = "main", ledger: Path | None = None,
         ledger_book: str = "", ledger_src: str = "", allow: Path | None = None, pages: str | None = None,
-        cfg: LayerConfig | None = None, keep_packs: bool = False) -> dict:
+        cfg: LayerConfig | None = None, keep_packs: bool = False, overrides: dict | None = None) -> dict:
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     ws = str(Path(ws).resolve())
     os.environ["GUJI_WORKSPACE"] = ws
-    cfg = cfg or LayerConfig.from_ws(ws)
+    cfg = cfg or LayerConfig.from_ws(ws, overrides)
     t0 = time.time()
     s: dict = {"book": book, "pack": pack, "main_req": main, "ledger_book": ledger_book or None,
                "ledger_src": ledger_src or (str(ledger) if ledger else None), "pages": pages or "all",
-               "layer_config": cfg.as_dict(), "central_rev": _central_rev()}
+               "layer_config": cfg.as_dict(), "layer_overrides": parse_config(overrides or {}) or None,
+               "central_rev": _central_rev()}
     pm_dir, pc_dir = out / "_m", out / "_c"
     for d in (pm_dir, pc_dir):
         shutil.rmtree(d, ignore_errors=True)
@@ -467,6 +537,8 @@ def add_parser(sub) -> None:
     p.add_argument("--allow", default="", help="seg premain 的放行清单 TSV")
     p.add_argument("--pages", default="", help="只查这些页（各步同范围）")
     p.add_argument("--out", default="", help="输出目录（缺省 ./round-check/<册>）")
+    p.add_argument("--set", action="append", default=[], metavar="KEY=VAL",
+                   help="覆盖 workspace.yaml round_check 段（可多次）：seg_defect=true、order=seg,group,lib、cov_min=0.9、lib_min=5")
     p.add_argument("--keep-packs", action="store_true", help="留下取到 <out>/_m、_c 的两份包（缺省做完删）")
     p.add_argument("--job", action="store_true", help="任务单用：结论只看 summary.json，挡了也退出 0")
     p.add_argument("--collect", default="", help="不跑检查，把任务库里这些 roundcheck 单的结果收成一份：12,13,20-40")
@@ -491,6 +563,10 @@ def cmd(args) -> None:
     ws = args.workspace or os.environ.get("GUJI_WORKSPACE")
     if not ws:
         raise SystemExit("❌ 要给 -w 工作区")
+    try:
+        overrides = parse_sets(args.set)
+    except ValueError as e:
+        raise SystemExit(f"❌ {e}") from None
     ledger, src = None, ""
     out = Path(args.out or f"round-check/{book}")
     if args.ledger:
@@ -505,7 +581,7 @@ def cmd(args) -> None:
             ledger = Path(args.ledger)
     s = run(book, ws=ws, out=out, pack=args.pack, main=args.main, ledger=ledger, ledger_book=args.ledger_book,
             ledger_src=src, allow=Path(args.allow) if args.allow else None, pages=args.pages or None,
-            keep_packs=args.keep_packs)
+            keep_packs=args.keep_packs, overrides=overrides)
     print(verdict_line(s))
     raise SystemExit(0 if (args.job or s["pass"]) else 3)
 
