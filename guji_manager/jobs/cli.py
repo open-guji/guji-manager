@@ -47,7 +47,9 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--pipeline", default=None)
     s.add_argument("--from", dest="from_step", default=None)
     s.add_argument("--to", dest="to_step", default=None)
-    s.add_argument("--pages", default=None)
+    s.add_argument("--pages", default=None,
+                   help="页集（3-6,9／all／auto）。不写时：从 context_decide／seed_admit 起的纯重放、cv 同铺底包、没改配置，"
+                        "就自动只跑铺底包之后有新人裁／AI 裁定的页（auto）；其余整册")
     s.add_argument("--no-force", action="store_true", help="不加 --force（按指纹能跳就跳）")
     s.add_argument("--corpus", type=int, default=None)
     s.add_argument("--glyph-pin", type=int, default=None)
@@ -302,6 +304,8 @@ def cmd_job(a) -> None:
     if act == "submit":
         try:
             raw = _spec_from_args(a)
+            from .auto_pages import resolve as _auto_pages
+            _auto_pages(raw)            # 缺省只重放受影响的页（用户 11-20 定）；--pages all 整册
             if raw.get("db_rev") is None:
                 rev = _central_rev()
                 if rev is not None:
