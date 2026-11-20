@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.72] - 2026-11-20
+
+- PATCH：roundcheck 单可按单覆盖分层配置：`guji job submit --rc-set seg_defect=true`（可多次；键 order／cov_min／lib_min／seg_defect），进 spec `roundcheck.config`（进指纹；不给不出键，老指纹不变）；`guji round-check` 加 `--set`；summary.json 记 `layer_overrides`。起因史記 #5968：执行机 `db pull` 用中心库的 workspace.yaml 盖掉书仓检出的那份，书仓里开的 seg_defect 没生效。
+
 ## [0.4.71] - 2026-11-20
 
 - PATCH：修 roundcheck 单（及只给 `--book-id` 的单）在新执行机上备不了工作区（QTW 11-20 首批 #5944–#5965 全挂 prep「更新工作区」）：`WS_REPOS` 补全唐文 `995ejelvk0 → guji-workspace/995ejelvk0-quan-tang-wen`，`guji job submit` 加 `--ws-repo`。ws_repo 不进指纹，失败的单直接重交即可。

@@ -68,6 +68,8 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--rc-ledger-book", default=None, help="收轮检查：根因台账里的书名（殿本／史記／全唐文）；给了就带台账")
     s.add_argument("--rc-ledger", default=None,
                    help="收轮检查：台账来源，缺省 auto＝交单时从 ai-team main 取最新（本机要有 ai-team 克隆或 gh）；也可给本地 TSV；none 不带")
+    s.add_argument("--rc-set", action="append", default=None, metavar="KEY=VAL",
+                   help="收轮检查：盖过执行机 workspace.yaml 的 round_check 段（可多次）：seg_defect=true、order=seg,group,lib、cov_min=0.9、lib_min=5")
     s.add_argument("--rc-allow", default=None, help="收轮检查：seg premain 放行清单 TSV（本地文件，随单带上）")
     s.add_argument("--priority", type=int, default=100, help="越小越先，缺省 100；插队给 10")
     s.add_argument("--after", type=int, action="append", default=[], help="等这条任务成功后再跑（可多次）")
@@ -176,7 +178,7 @@ def _spec_from_args(a) -> dict:
         import shlex
         raw["run"] = [shlex.split(r) for r in a.run]
         raw.setdefault("kind", "command")
-    rc_args = (a.rc_pack, a.rc_main, a.rc_ledger_book, a.rc_ledger, a.rc_allow)
+    rc_args = (a.rc_pack, a.rc_main, a.rc_ledger_book, a.rc_ledger, a.rc_allow, a.rc_set)
     if any(v is not None for v in rc_args) or raw.get("kind") == "roundcheck":
         raw.setdefault("kind", "roundcheck")
         raw["roundcheck"] = _roundcheck_from_args(a, dict(raw.get("roundcheck") or {}))
@@ -206,6 +208,12 @@ def _roundcheck_from_args(a, rc: dict) -> dict:
         rc["ledger"] = filter_ledger(text, rc["ledger_book"])
     if a.rc_allow:
         rc["allow"] = Path(a.rc_allow).read_text(encoding="utf-8")
+    if a.rc_set:
+        from ..round_check import parse_sets
+        try:
+            rc["config"] = {**(rc.get("config") or {}), **parse_sets(a.rc_set)}
+        except ValueError as e:
+            raise SP.SpecError(str(e)) from None
     return rc
 
 

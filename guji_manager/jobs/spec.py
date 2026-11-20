@@ -27,7 +27,9 @@
                     缺省 steps.from=glyph_match、force=false（定字层增量跟进，A32 精校前移 A4，2026-10-30）
 
     roundcheck      kind=roundcheck 用：{"pack": 候选包标签（必给）, "main": "main"｜包标签, "ledger_book": 台账书名,
-                    "ledger": 台账 TSV 全文（交单时从 ai-team main 取、只留本书行）, "ledger_src": 来源, "allow": premain 放行清单 TSV 全文}。
+                    "ledger": 台账 TSV 全文（交单时从 ai-team main 取、只留本书行）, "ledger_src": 来源, "allow": premain 放行清单 TSV 全文,
+                    "config": 分层配置覆盖 {order, cov_min, lib_min, seg_defect}（盖过执行机 workspace.yaml 的 round_check 段；
+                    执行机的 workspace.yaml 是 db pull 落的中心库版本，不是书仓检出的）}。
                     执行方：取 main 包 seg check → 取候选包 seg check → seg gate → seg premain → 待审按 pending_reason 计数归四层，
                     结果写回任务结果（check: seg_gate／seg_premain；output: pending_by_reason／roundcheck）。不存包、不推库
 
@@ -247,7 +249,7 @@ def normalize(raw: dict, *, resolve=None) -> dict:
     return s
 
 
-_RC_KEYS = {"pack", "main", "ledger_book", "ledger", "ledger_src", "allow"}
+_RC_KEYS = {"pack", "main", "ledger_book", "ledger", "ledger_src", "allow", "config"}
 
 
 def _check_roundcheck(rc, kind: str) -> dict | None:
@@ -268,8 +270,15 @@ def _check_roundcheck(rc, kind: str) -> dict | None:
             raise SpecError(f"roundcheck.{k} 要是字符串")
     if rc.get("ledger") and not rc.get("ledger_book"):
         raise SpecError("roundcheck 带了 ledger 就要给 ledger_book（台账里的书名：殿本／史記／全唐文）")
-    return {"pack": pack, "main": main, "ledger_book": rc.get("ledger_book") or None, "ledger": rc.get("ledger") or None,
-            "ledger_src": rc.get("ledger_src") or None, "allow": rc.get("allow") or None}
+    out = {"pack": pack, "main": main, "ledger_book": rc.get("ledger_book") or None, "ledger": rc.get("ledger") or None,
+           "ledger_src": rc.get("ledger_src") or None, "allow": rc.get("allow") or None}
+    if rc.get("config"):                # 分层配置覆盖（盖过执行机工作区 workspace.yaml 的 round_check 段）；不给不出键，老指纹不变
+        from ..round_check import parse_config
+        try:
+            out["config"] = parse_config(rc["config"])
+        except ValueError as e:
+            raise SpecError(f"roundcheck.config：{e}") from None
+    return out
 
 
 def _check_argv(a) -> list[str]:
@@ -331,7 +340,8 @@ def summary(spec: dict) -> str:
         body = " ; ".join(" ".join(a) for a in spec["run"] or [])
     elif spec["kind"] == "roundcheck":
         rc = spec["roundcheck"]
-        body = f"收轮检查 {rc['pack']} 对 {rc['main']}" + (f" 台账 {rc['ledger_book']}" if rc.get("ledger") else " 无台账")
+        body = f"收轮检查 {rc['pack']} 对 {rc['main']}" + (f" 台账 {rc['ledger_book']}" if rc.get("ledger") else " 无台账") \
+            + "".join(f" {k}={v}" for k, v in (rc.get("config") or {}).items())
     else:
         st = spec["steps"]
         body = f"{spec['pipeline']} {st['from'] or '头'}→{st['to'] or '尾'} {spec['pages']}"
