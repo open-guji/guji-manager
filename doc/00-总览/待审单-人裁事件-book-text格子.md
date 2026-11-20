@@ -139,7 +139,7 @@
 | 换包／重跑后，book-text 这一格改不改、改成什么？ | 第三节的表 = manager `swap/resolve.resolve`；`proof_cycle.split_changes` 是同一张表的「按格号」实现，格号有变时不用它（走格级对照表，见 [换包落book-text-增删格](../02-精校/换包落book-text-增删格.md)） | 两处各有一份实现是已知的重复，待合并（改任何一处都要同步另一处与本表） |
 | 哪些格进判字单（`cells[]`）？ | 产物未放行（`admit=false`，排除名单上人已定的除外）＋复审清单（`recheck`）＋同字对照自检旗，经 `pending_route` 扣掉已裁的格 | 锚点格在 `anchor_cells[]`，不在这里 |
 | 复审格什么时候成立？ | 只有「**被采信的**人裁**被机器推翻**」：旧字是最新人裁，机器认出了**另一个字**（非空、码位归一后不同） | 机器无字（遮挡）→ 留人裁字不复审；人裁已失效 → 不是复审，是普通待审格或直接放行 |
-| 上线前最后一道关 | `guji pending audit`（manager `review/sheet_audit.py`），`republish.py push` 内置 `sheet_gate` | 拦：`overturn_empty`、`overturn_untrusted`、`overturn_same`、`anchor_only_in_cells`、`dup_cell`；提示：`no_reason`、`recheck_no_note`。确要照上线加 `--ack-sheet-audit "<原因>"` |
+| 上线前最后一道关 | `guji pending audit`（manager `review/sheet_audit.py`），`republish.py push` 内置 `sheet_gate` | 拦：`overturn_untrusted`、`overturn_same`、`anchor_only_in_cells`、`dup_cell`；提示：`overturn_empty`（Sheldon 11-19：以新包为准，照常上单）、`no_reason`、`recheck_no_note`。确要照上线加 `--ack-sheet-audit "<原因>"` |
 
 **体检门不看出单从哪条路来**：以后再有新的出单路径（或改了老路径）生出新一类误报，先加一条体检规则拦住，再回去修路径；不要只修路径。
 

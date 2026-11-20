@@ -22,13 +22,14 @@ UNTRUSTED = {"unanchored", "review", "void"}
 BLANKS = {"", "□", "〓", "▣"}
 
 BLOCK = {
-    "overturn_empty": "「机器改判为 □／无字」不是推翻人裁（机器没认出字，如印章遮挡）：该留人裁字、不进复审",
     "overturn_untrusted": "旧人裁已不被采信（换图源或切分变了），不存在「被机器推翻」：它是普通待审格，不是复审格",
     "overturn_same": "机器改判前后是同一个字（码位归一后相同）：没有分歧，不该复审",
     "anchor_only_in_cells": "只因标点专名要重挂的格混在判字单 cells[] 里：该放 anchor_cells[]（字没问题，不让人判字）",
     "dup_cell": "同一格在单上出现两次",
 }
 WARN = {
+    # Sheldon 11-19：一切以新包、新结果为准，不用命令放行——新包把人裁格判空照常上单让人看，只提示（原先拦整册，殿本 vol02、vol16）
+    "overturn_empty": "新包把人裁格判成 □／无字（可能是印章遮挡或切坏）：照常上单复审，以新包为准",
     "no_reason": "没有待审原因码（pending_reason），网站显示「原因不明」",
     "recheck_no_note": "复审格没有说明，用户不知道为什么要再看",
 }
