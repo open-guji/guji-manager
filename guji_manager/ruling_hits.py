@@ -54,11 +54,65 @@ def check(products: Path, book: str, store) -> list[dict]:
     return rows
 
 
+VIS_VERS = ("vis-o1", "src-1", "ctx-m1")      # seed_admit 终审／看图裁定通道认的版本（group=O）
+
+
+def check_vis(products: Path, book: str, store) -> list[dict]:
+    """终审／看图裁定（group=O，`vis_ruling` 通道）：写了可放行的裁定（high、admit_ok、有字）、产物里这格却仍待审。
+    窗口在 seed_admit 跑到那一遍时现算、不进产物，没法事后补键，只列出来并给可能原因（整理本对位字变了／窗口或闸）。"""
+    by_cell: dict[str, dict] = {}
+    for c, p in _rulings_by_cell_all(store).items():
+        if p.get("group") == "O" and p.get("prompt_ver") in VIS_VERS and p.get("conf") == "high" and p.get("admit_ok") \
+                and p.get("char") and not p.get("other"):
+            by_cell[c] = p
+    if not by_cell:
+        return []
+    root = Path(products) / book
+    ref: dict[str, str] = {}
+    for f in sorted((root / "align_ref").glob("p*.json")):
+        try:
+            for c in json.loads(f.read_text(encoding="utf-8")).get("align_ref", {}).get("chars") or []:
+                if c.get("id") in by_cell:
+                    ref[c["id"]] = c.get("align_char") or ""
+        except (OSError, ValueError):
+            continue
+    rows = []
+    for f in sorted((root / "seed_admit").glob("p*.json")):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for col in (doc.get("seed_admit", doc).get("columns") or []):
+            for c in col.get("chars") or []:
+                v = by_cell.get(c.get("id"))
+                if not v or c.get("admit"):
+                    continue
+                now = ref.get(c["id"], "")
+                why = (f"整理本对位字变了（裁定时 {v.get('ref') or '空'}，现 {now or '空'}）" if (v.get("ref") or "") != now
+                       else "窗口不同或闸拦（半格／越过整理本白名单／子类）")
+                rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}", "裁定字": v["char"], "把握": "high",
+                             "原因": why, "裁定窗口": "", "产物窗口": "", "_q": None, "_r": v})
+    return rows
+
+
+def _rulings_by_cell_all(store) -> dict[str, dict]:
+    from ._cv import RULING_KIND
+    from ._cv import replay_key
+    out: dict[str, dict] = {}
+    if not store.log.events_dir.exists():
+        return out
+    for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
+        p = e.payload or {}
+        if p.get("cell"):
+            out[p["cell"]] = p
+    return out
+
+
 def rekey(rows: list[dict], store) -> int:
     n = 0
     for x in rows:
         r, q = x["_r"], x["_q"]
-        if r.get("prompt_ver") != q["ver"]:
+        if q is None or r.get("prompt_ver") != q["ver"]:
             continue
         char = "其他" if r.get("other") else r.get("char")
         if not char:
@@ -79,8 +133,9 @@ def cmd(a) -> None:
     allrows = []
     for b in books:
         rows = check(Path(a.products), b, store)
-        allrows += rows
-        print(f"{b}：仍在问且有裁定却没命中 {len(rows)} 格", file=sys.stderr)
+        vis = check_vis(Path(a.products), b, store)
+        allrows += rows + vis
+        print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
     cols = ["cell", "组", "裁定字", "把握", "原因", "裁定窗口", "产物窗口"]
     out = Path(a.out) if a.out else None
     text = "\t".join(cols) + "\n" + "".join("\t".join(str(r.get(c) or "") for c in cols) + "\n" for r in allrows)
