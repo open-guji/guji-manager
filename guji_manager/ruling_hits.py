@@ -82,8 +82,9 @@ def _diff(ctx: dict | None, left: str, right: str) -> str:
 
 
 def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset,
-               override: tuple | None = None) -> tuple[str, bool]:
-    """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。"""
+               override: tuple | None = None, store=None, anchored: bool = True, ts: str | None = None) -> tuple[str, bool]:
+    """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。
+    `store` 给了就核裁定库按这个窗口键实际取到的是不是这一条；`anchored`＝这页 align_ref 锚定了（没锚定管线不认整理本字）。"""
     from ._cv import ruling_ctx_hash
     if rec is None:
         if (v.get("ref") or "") != (ref_now or ""):
@@ -96,13 +97,17 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
         return "格带遮挡／超时疑点，终审不放", False
     if v.get("prompt_ver") == "ctx-m1" and v.get("subclass") not in subs:
         return f"子类 {v.get('subclass') or '空'} 不收（书级 vis_ruling_ctx_subclasses 没含）", False
-    if (rec.id or "")[-1:] in ("a", "b"):
+    if half_cell(rec):
         half = "夹注半格（书级 group_flow_llm_skip_half 开着、vis_ruling_half 没开就不放）"
     else:
         half = ""
+    if not anchored and v.get("ref"):
+        return f"这页 align_ref 没锚定：管线不认整理本字（当空），与裁定时的 {v['ref']} 不同", False
     if (v.get("ref") or "") != (ref_now or ""):
         return f"整理本对位字变了（裁定时 {v.get('ref') or '空'}，现 {ref_now or '空'}）", False
-    if (v.get("ctx") or {}).get("hash") and v["ctx"]["hash"] != ruling_ctx_hash(left, right):
+    if not (v.get("ctx") or {}).get("hash"):
+        return "裁定没写 ctx.hash：裁定库按窗口键永远取不到它，要按产物窗口补键", not half_cell(rec)
+    if v["ctx"]["hash"] != ruling_ctx_hash(left, right):
         return "窗口变了（邻格放行字或对位字变了）" + (f"；另{half}" if half else ""), not half
     if half:
         return half, False
@@ -110,11 +115,30 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
         from ._cv import seed_admit_override_ok
         if not seed_admit_override_ok(override, v["char"], ref_now):
             return (f"越过整理本（{ref_now}→{v.get('char')}）：两字不同属白名单 {','.join(override) or '（空）'} 里任一字组", False)
+    if store is not None:
+        cur = store.get(v.get("group") or "O", v.get("prompt_ver"), left, right)
+        if cur is None:
+            return "裁定库按这个窗口键取不到（本机裁定库没有这条？先 guji db pull）", False
+        if cur is not v and (cur.get("cell"), cur.get("char"), cur.get("admit_ok"), cur.get("conf")) != \
+                (v.get("cell"), v.get("char"), v.get("admit_ok"), v.get("conf")):
+            return (f"同一窗口键有更晚的一条裁定盖过了它（格 {cur.get('cell')}、字 {cur.get('char')}、"
+                    f"admit_ok={cur.get('admit_ok')}、{cur.get('conf')}）"), False
     ev = rec.evidence or {}
     if ev.get("vis_ruling"):
         return f"放行后被后面一遍降回待审（现疑点 {','.join(map(str, rec.doubts or [])) or '无'}）", False
     note = "" if override is not None or not ref_now or v.get("char") == ref_now else "（越过整理本，没给 --override-groups 未核白名单）"
-    return "窗口同、条件都满足：多半是产物早于裁定，重放 seed_admit 即可" + note, False
+    when = f"裁定写于 {ts}，" if ts else ""
+    vc = ev.get("vis_ctx")
+    if isinstance(vc, dict):
+        return ("按 cv 当场记的 5c 窗口也对得上、manager 能核的条件都满足，仍没放：" + when
+                + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 A31") + note, False
+    return ("manager 能核的条件都满足，仍没放。两种可能：①产物早于裁定推库（" + when + "核包 manifest 的 db_rev ≥ 裁定 rev）；"
+            "②5c 时邻格字与产物不同而 manager 看不出（码位归一 codepoint_semantic、pair_form 后来改了邻格放行字）。"
+            "产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后，rulings-hits／--rekey 直接按 5c 窗口") + note, False
+
+
+def half_cell(rec) -> bool:
+    return (getattr(rec, "id", None) or "")[-1:] in ("a", "b")
 
 
 def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None) -> list[dict]:
@@ -122,7 +146,8 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
     逐格按 seed_admit 的取法现算窗口，给出具体原因（人裁／疑点／子类／对位字／窗口／半格／越过整理本／产物旧）；
     只是窗口变了的可以 `--rekey` 按产物窗口补一条（字、子类、对位字照抄）。"""
     by_cell: dict[str, dict] = {}
-    for c, p in _rulings_by_cell_all(store).items():
+    ts: dict[str, str] = {}
+    for c, p in _rulings_by_cell_all(store, ts).items():
         if p.get("group") == "O" and p.get("prompt_ver") in VIS_VERS and p.get("conf") == "high" and p.get("admit_ok") \
                 and p.get("char") and not p.get("other"):
             by_cell[c] = p
@@ -140,10 +165,13 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
         if not hit:
             continue
         amap: dict[str, str] = {}
+        anchored = True
         af = root / "align_ref" / f.name
         try:
-            for c in json.loads(af.read_text(encoding="utf-8")).get("align_ref", {}).get("chars") or []:
-                if c.get("id"):
+            ar = json.loads(af.read_text(encoding="utf-8")).get("align_ref", {})
+            anchored = ar.get("anchored", True) is not False      # 同 cv `_align`：没锚定整页不认整理本字
+            for c in ar.get("chars") or []:
+                if c.get("id") and anchored:
                     amap[c["id"]] = c.get("align_char") or ""
         except (OSError, ValueError):
             pass
@@ -155,7 +183,8 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
             v = by_cell[c["id"]]
             w = win.get(c["id"])
             rec, l, r = w if w is not None else (None, "", "")
-            why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs, override)
+            why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs, override, store=store, anchored=anchored,
+                                 ts=ts.get(c["id"]))
             rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
                          "把握": "high", "原因": why,
                          "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
@@ -189,7 +218,7 @@ def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
     return len(evs)
 
 
-def _rulings_by_cell_all(store) -> dict[str, dict]:
+def _rulings_by_cell_all(store, ts: dict | None = None) -> dict[str, dict]:
     from ._cv import RULING_KIND
     from ._cv import replay_key
     out: dict[str, dict] = {}
@@ -199,6 +228,8 @@ def _rulings_by_cell_all(store) -> dict[str, dict]:
         p = e.payload or {}
         if p.get("cell"):
             out[p["cell"]] = p
+            if ts is not None:
+                ts[p["cell"]] = getattr(e, "ts", None)
     return out
 
 
