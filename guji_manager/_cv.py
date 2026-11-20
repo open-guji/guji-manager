@@ -412,6 +412,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "RULING_OTHER": ("feedback.rulings", "OTHER"),
     "RulingStore": ("feedback.rulings", "RulingStore"),
     "llm_questions_of_page": ("feedback.llm_queue", "questions_of_page"),
+    "FLOW_GROUPS": ("groups.registry", "FLOW_GROUPS"),
 }
 
 
