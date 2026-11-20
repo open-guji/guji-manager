@@ -158,7 +158,7 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
 def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
     """只是窗口变了的终审裁定：照抄 payload、换成产物窗口另写一条（why 前缀 rekey）。"""
     from ._cv import RULING_KIND, RulingLog, ruling_ctx_hash
-    from open_guji_cv.feedback.events import EventTarget, make_event
+    from ._cv import EventTarget, make_event
     todo = [x for x in rows if x.get("_vis")]
     if not todo:
         return 0
