@@ -395,6 +395,48 @@ class Job:
             self.db(S.add_result, self.id, self.aid, "output", f"run{i + 1}: {' '.join(a)[:200]}",
                          data={"tail": redact(out)[-6000:]})
 
+    def run_roundcheck(self) -> None:
+        """收轮检查（`guji round-check`，见 guji_manager/round_check.py）：只读，结果写回任务结果，不存包。
+        台账、放行清单随单带来（交单时从 ai-team 取），这里落成文件再交给命令。"""
+        sp, rc = self.spec, self.spec["roundcheck"]
+        out = self.dir / "roundcheck"
+        args = ["round-check", sp["book"], "-w", self.ws or "", "--pack", rc["pack"], "--main", rc["main"],
+                "--out", str(out), "--job"]
+        if rc.get("ledger"):
+            p = self.dir / "ledger.tsv"
+            p.write_text(rc["ledger"], encoding="utf-8")
+            args += ["--ledger", str(p), "--ledger-book", rc["ledger_book"]]
+        if rc.get("allow"):
+            p = self.dir / "allow.tsv"
+            p.write_text(rc["allow"], encoding="utf-8")
+            args += ["--allow", str(p)]
+        if sp.get("pages") and sp["pages"] != "all":
+            args += ["--pages", sp["pages"]]
+        self.guji(*args)
+        if self.dry:
+            return
+        s = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+        s["ledger_src"] = rc.get("ledger_src") or s.get("ledger_src")
+
+        def text(p: Path, cap: int = 200_000) -> str | None:
+            return p.read_text(encoding="utf-8")[:cap] if p.is_file() else None
+        from ..round_check import verdict_line
+        self.db(S.add_result, self.id, self.aid, "check", "seg_gate",
+                data={**s["gate"], "text": text(out / "seg-gate" / "gate.md")})
+        self.db(S.add_result, self.id, self.aid, "check", "seg_gate_undecided",
+                data={"text": text(out / "seg-gate" / "切分未定.tsv")})
+        self.db(S.add_result, self.id, self.aid, "check", "seg_premain",
+                data={**s["premain"], "text": text(out / "premain.tsv")})
+        self.db(S.add_result, self.id, self.aid, "diff", f"vs {s.get('main')}", location=None,
+                data={"report_head": text(out / "diff" / "report.md", 6000)})
+        self.db(S.add_result, self.id, self.aid, "output", "pending_by_reason",
+                data={"by_layer": s["pending"]["by_layer"], "total": s["pending"]["total"],
+                      "text": text(out / "pending_by_reason.tsv")})
+        self.db(S.add_result, self.id, self.aid, "output", "pending_layers", data={"text": text(out / "layers.tsv", 400_000)})
+        line = verdict_line(s)
+        self.db(S.add_result, self.id, self.aid, "output", "roundcheck", data={"summary": s, "line": line})
+        self.ev(line)
+
     def _compare_label(self) -> str:
         c = self.spec["compare_to"]
         if isinstance(c, dict):
@@ -456,6 +498,8 @@ class Job:
                 if sp.get("glyph_diff") is not None:
                     self.step("recheck", self.glyph_recheck)
                 self.step("run", self.run_pipeline)
+            elif sp["kind"] == "roundcheck":
+                self.step("run", self.run_roundcheck)
             else:
                 if sp.get("checks"):
                     self.step("check", self.checks)

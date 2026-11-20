@@ -108,6 +108,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "core_font_files": ("core.font_files", None),
     "groups_registry": ("groups.registry", None),
     "GROUPS": ("groups", "GROUPS"),
+    "NEAR_FORM_CHARS": ("clustering.seeding", "NEAR_FORM_CHARS"),   # 收轮检查四层分层（round_check，2026-11-20）
     "GroupSpec": ("groups", "GroupSpec"),
     "GroupVerdict": ("groups", "GroupVerdict"),
     "JudgeInput": ("groups", "JudgeInput"),
