@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import cli_closeout, cli_code, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, round_check, swap
+from . import cli_closeout, cli_code, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
@@ -47,6 +47,7 @@ COMMANDS: dict = {
     **cli_pending.COMMANDS,    # pending（待审条目，一格一条，A31 11-10）
     **cli_seg.COMMANDS,        # seg pin（整列写定 manual-cells，A22 11-12）
     **collect.COMMANDS,        # collect（收单快路：人裁直接落 book-text，不重放，A31 11-19）
+    **ruling_hits.COMMANDS,    # rulings-hits（AI 文意裁定命中核对，A31 11-20）
     **round_check.COMMANDS,    # round-check（收轮检查：seg check×2→gate→premain→待审归层，A31 11-20）
 }
 

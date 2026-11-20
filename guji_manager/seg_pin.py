@@ -185,8 +185,53 @@ def make_item(d: Draft, why: str, prev: dict | None = None) -> dict:
                  "expected": {**((prev or {}).get("expected") or {}), "cells": d.cells},
                  "status": "active", "label_origin": "human", "history": hist})
     item.setdefault("input", {})
+    try:
+        basis = column_basis(d.book, d.page, d.col)
+    except Exception:  # noqa: BLE001 —— 记底是附带的，取不到不挡写钉子
+        basis = None
+    if basis:
+        item["input"] = {**item["input"], "column_basis": basis}
     item.setdefault("source_events", [])
     return item
+
+
+# ── 钉子的上游底（11-20 痛点 K3：脉经 4 条钉子在书口去除改了列图后照套，静默切错） ──
+
+def column_basis(book: str, page: int, col: int, store=None) -> dict | None:
+    """这一列钉子坐标所依的上游：column_warp 这列窗口记录的 sha（框、文字带、剥边，变了坐标一定不对）＋
+    column_warp 这页的指纹（代码、参数、上游任一变了就变，可能只是无关改动）。没有产物 → None。"""
+    import hashlib
+    from ._cv import ProductStore, page_key
+    from ._cv import steps as _s  # noqa: F401
+    st = store or ProductStore()
+    try:
+        pw = st.read(book, "column_warp", page_key(page), "column_windows")
+    except Exception:  # noqa: BLE001
+        pw = None
+    rec = None if pw is None else pw.column(col)
+    if rec is None:
+        return None
+    ent = st.manifest(book, "column_warp").get(page_key(page))
+    js = json.dumps(rec.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+    return {"col_sha": hashlib.sha256(js.encode("utf-8")).hexdigest()[:16],
+            "cw_fp": getattr(ent, "fingerprint", None)}
+
+
+def basis_status(item: dict, store=None) -> tuple[str, str]:
+    """→ (状态, 说明)。状态：ok／stale（列窗口变了，坐标必须重核）／maybe（只是 column_warp 指纹变了）／
+    unknown（钉子没记底，或本机没有 column_warp 产物）。"""
+    old = (item.get("input") or {}).get("column_basis")
+    a = item.get("anchor") or {}
+    if not old:
+        return "unknown", "钉子没记上游底（v0.4.74 前写的）"
+    now = column_basis(a.get("book"), int(a.get("page")), int(a.get("col")), store)
+    if now is None:
+        return "unknown", "本机没有 column_warp 产物（先 products pack fetch）"
+    if now["col_sha"] != old.get("col_sha"):
+        return "stale", "列窗口（框／文字带／剥边）变了，坐标对不上新列图"
+    if old.get("cw_fp") and now["cw_fp"] != old["cw_fp"]:
+        return "maybe", "column_warp 指纹变了（代码或参数），列窗口没变；看叠框图核一下"
+    return "ok", ""
 
 
 # ── 读写本机数据 ──────────────────────────────────────────────────────────

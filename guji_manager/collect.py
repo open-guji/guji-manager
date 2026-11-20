@@ -16,6 +16,9 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
    - 以图代字格（带 ``fig``）：不写（格里只能是 □）；
    - 其余：写人裁的字（去掉 lacuna／guess_c），校验字（标点 pre_char、专名 text）跟改，升 patch，``local_check --dev``，推 dev
      （1.x 册推 ``swap/<册>-1x`` 开草稿 PR，同 ``guji swap book-text``）。char-edits 手改与人裁冲突就停（守卫）。
+   **AI 裁定也一起落**（用户 2026-11-20 定，``--no-ai`` 关）：出单版包里仍待审的格，文意裁定按窗口命中（同重放的键）且
+   ``conf=high``、字在组内；终审看图裁定（group=O）``high``＋``admit_ok``、整理本对位字没变、不是夹注半格。人裁（票、现行人裁、
+   ``--batch``）优先，AI 只补没人裁的格；单上的条目不结案（用户再投票仍以票为准）。见 ``ai_ruling_chars``。
 5. ``--batch`` 落的格：线上单上还开着的条目标已裁。
 6. ``db sync`` 一次（推事件、单子；人裁照常落字形库）。
 7. 只发这一章（proofing-sync ``only=``），核线上单：本次定了字的格不再是待审。
@@ -136,6 +139,95 @@ def consistent_cells(draft_dir: Path) -> dict[str, str]:
         if m:
             out[bare(a)] = m[1]
     return out
+
+
+AI_VIS_VERS = ("vis-o1", "src-1", "ctx-m1")
+
+
+def ai_ruling_chars(products_root, book: str, store=None, members=None) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    """AI 裁定可直接落文本的格 {格（无册前缀）: (字, 来源)}（用户 2026-11-20 定：AI 裁定像人裁一样直接写 book-text，不等重放）。
+
+    只认出单版包里**仍待审**的格，且裁定确定对得上这一格：
+    - 文意（L3 组）：这格的 ask 窗口在裁定库里**按窗口命中**（与重放 seed_admit 同一把键），``conf=high``、字在组内、不是「其他」；
+    - 终审／看图（group=O，``vis-o1``/``src-1``/``ctx-m1``）：按格号取最新一条，``conf=high``、``admit_ok``、有字，
+      且裁定时的整理本对位字与包里现在的一样；夹注半格（格号带 a／b）不落（seed_admit 缺省也不放）。
+    人裁优先由调用方处理（有现行人裁的格不用这里的字）。"""
+    import re
+    from ._cv import llm_questions_of_page
+    if store is None:
+        from ._cv import RulingStore
+        store = RulingStore()
+    if members is None:
+        try:
+            from ._cv import FLOW_GROUPS
+            members = {k: set(v.members) for k, v in FLOW_GROUPS.items()}
+        except Exception:  # noqa: BLE001
+            members = {}
+    root = Path(products_root) / book
+    out: dict[str, tuple[str, str]] = {}
+    notes: list[str] = []
+    pending: set[str] = set()
+    asks: list[dict] = []
+
+    def mine(cid: str) -> bool:
+        parts = str(cid).split(":")
+        return len(parts) != 4 or parts[0] == book
+
+    for f in sorted((root / "seed_admit").glob("p*.json")):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for col in (doc.get("seed_admit", doc).get("columns") or []):
+            for c in col.get("chars") or []:
+                if c.get("id") and not c.get("admit") and mine(c["id"]):
+                    pending.add(c["id"])
+        asks += [q for q in llm_questions_of_page(doc) if q.get("cell") and mine(q["cell"])]
+    for q in asks:
+        if q["cell"] not in pending:
+            continue
+        v = store.get(q["group"], q["ver"], q["l"], q["r"])
+        if not v or v.get("other") or not v.get("char") or v.get("char") in PLACEHOLDERS:
+            continue
+        if v.get("conf") != "high":
+            notes.append(f"{bare(q['cell'])} 文意裁定「{v.get('char')}」把握 {v.get('conf')}，不直接落")
+            continue
+        if members.get(q["group"]) and v["char"] not in members[q["group"]]:
+            notes.append(f"{bare(q['cell'])} 文意裁定「{v['char']}」不在组 {q['group']} 内，不落")
+            continue
+        out.setdefault(bare(q["cell"]), (v["char"], f"AI文意/{q['group']}"))
+    if not store.log.events_dir.exists():
+        return out, notes
+    from ._cv import RULING_KIND, replay_key
+    vis: dict[str, dict] = {}
+    for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
+        p = e.payload or {}
+        if p.get("cell") and p.get("group") == "O" and p.get("prompt_ver") in AI_VIS_VERS:
+            vis[p["cell"]] = p
+    vis = {k: v for k, v in vis.items() if k in pending and bare(k) not in out}
+    if not vis:
+        return out, notes
+    ref: dict[str, str] = {}
+    for f in sorted((root / "align_ref").glob("p*.json")):
+        try:
+            for c in json.loads(f.read_text(encoding="utf-8")).get("align_ref", {}).get("chars") or []:
+                if c.get("id") in vis:
+                    ref[c["id"]] = c.get("align_char") or ""
+        except (OSError, ValueError):
+            continue
+    for k, v in sorted(vis.items()):
+        if not (v.get("conf") == "high" and v.get("admit_ok") and v.get("char") and not v.get("other")):
+            continue
+        if v["char"] in PLACEHOLDERS:
+            continue
+        if re.search(r"[ab]$", k):
+            notes.append(f"{bare(k)} 看图裁定「{v['char']}」是夹注半格，不直接落")
+            continue
+        if (v.get("ref") or "") != ref.get(k, ""):
+            notes.append(f"{bare(k)} 看图裁定「{v['char']}」时整理本对位字 {v.get('ref') or '空'}，现 {ref.get(k) or '空'}，不落")
+            continue
+        out[bare(k)] = (v["char"], f"AI看图/{v.get('prompt_ver')}")
+    return out, notes
 
 
 def live_open_cells(doc: dict) -> set[str]:
@@ -330,8 +422,8 @@ def collect_book(a, ws: Path, book: str) -> dict:
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
                "--from-kv", "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
-        if a.batch:
-            cmd += ["--allow-empty"]          # 只落早先批次时单上可能 0 票
+        if a.batch or not getattr(a, "no_ai", False):
+            cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
         if _run(cmd, env, tries=3):
             return {"status": "blocked", "why": "cellvotes draft 失败（见上；0 票又没给 --batch 时也会停）", "rev": rev}
         R.mark("draft", {"pack": pack, "batch": batch}, t)
@@ -388,6 +480,24 @@ def collect_book(a, ws: Path, book: str) -> dict:
         for k in cells:
             if k not in want:
                 notes.append(f"{k} 现行没有生效的定字人裁（绑定不是 valid／rebound 到本格、rev 不符或撤库），不落")
+        # AI 裁定（文意、终审看图）直接落，不等重放（用户 11-20 定）；真人票／现行人裁优先，AI 只补没人裁的格
+        n_ai = 0
+        if not getattr(a, "no_ai", False):
+            pr = meta.get("products_root") or os.environ.get("GUJI_PRODUCTS_DIR")
+            if not pr:
+                notes.append("没有出单版产物根，AI 裁定这次不落")
+            else:
+                try:
+                    ai, ai_notes = ai_ruling_chars(pr, book)
+                except Exception as e:  # noqa: BLE001
+                    ai, ai_notes = {}, [f"AI 裁定读不出来（{type(e).__name__}: {str(e)[:200]}），这次不落"]
+                notes += ai_notes
+                for k, v in ai.items():
+                    if k in hc or k in want or k in cells:
+                        continue
+                    want[k] = v
+                    n_ai += 1
+            print(f"  AI 裁定可直接落 {n_ai} 格（人裁优先；--no-ai 关）")
         from .charnorm import codepoints_of, load_norm
         try:
             extra = codepoints_of(data_dir(ws), book)
@@ -417,10 +527,13 @@ def collect_book(a, ws: Path, book: str) -> dict:
             new_char["version"] = char.get("version", new_char.get("version"))
             (exp / f"{ch}.char.json").write_text(dumps(new_char), encoding="utf-8", newline="\n")
             (exp / f"{ch}.cord.json").write_bytes(cordf.read_bytes())
-            srcs = sorted({x[3] for x in plan["apply"]})
-            note = (f"{book} 收单 {rev}：人裁定字直接落 {len(plan['apply'])} 格（{'、'.join(srcs)}），不重放"
+            srcs = sorted({x[3].split("/")[0] for x in plan["apply"]})
+            n_ai_apply = sum(1 for x in plan["apply"] if x[3].startswith("AI"))
+            note = (f"{book} 收单 {rev}：人裁定字直接落 {len(plan['apply'])} 格（{'、'.join(srcs)}"
+                    + (f"，其中 AI 裁定 {n_ai_apply} 格" if n_ai_apply else "") + "），不重放"
                     + (f"；批次 {batch}" if meta.get("ready") else ""))
-            title = f"{book}：收单 {rev} 人裁定字 {len(plan['apply'])} 格直接落文本（patch）"
+            title = (f"{book}：收单 {rev} 人裁定字 {len(plan['apply']) - n_ai_apply} 格"
+                     + (f"＋AI 裁定 {n_ai_apply} 格" if n_ai_apply else "") + "直接落文本（patch）")
             r = do_book(wt, ws, book, text_id, exp, note=note, push=not (a.no_push or a.dry_run), pending={}, out_dir=out / "book-text",
                         merge=False, title=title, store_lineage=False,
                         detail=[f"人裁定字 {len(plan['apply'])} 格：" + "、".join(f"{x[0]} {x[1] or '□'}→{x[2]}" for x in plan["apply"][:40])
@@ -432,8 +545,10 @@ def collect_book(a, ws: Path, book: str) -> dict:
                 return {"status": "book-text-" + r["status"], "why": r.get("why"), "rev": rev}
             info.update(status=r["status"], commit=r.get("commit"), pr=r.get("pr"), branch=r.get("branch"))
             info["landed"] = {x[0]: x[2] for x in plan["apply"]}
+            info["ai_landed"] = {x[0]: x[3] for x in plan["apply"] if x[3].startswith("AI")}
         landed = info["landed"]
-        info["batch_cells"] = {x[0]: x[3] for x in plan["apply"] + plan["already"] if x[3] != "票"}
+        # AI 落的格不在单上结案：用户之后投票仍以票为准（下一轮重放后这格自然不再待审）
+        info["batch_cells"] = {x[0]: x[3] for x in plan["apply"] + plan["already"] if x[3] != "票" and not x[3].startswith("AI")}
         info["batch_cells"].update({a_: "票与已有人裁一致" for a_ in same_ids if a_ in want})   # 现行生效的才结案
         if a.dry_run:
             print(f"  --dry-run 到此为止：book-text 改动提交在 {wt}（没推），计划见 {out / '落文本.json'}")
@@ -591,6 +706,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--no-push", action="store_true", help="book-text 只提交在 worktree，不推")
     p.add_argument("--no-publish", action="store_true", help="推库后不触发网站发布、不核线上")
     p.add_argument("--fresh", action="store_true", help="不认上次的进度，从头做")
+    p.add_argument("--no-ai", action="store_true",
+                   help="不落 AI 裁定（缺省会把出单版包里仍待审、裁定库按窗口命中的高把握文意裁定和可放行的终审看图裁定一起直接写 book-text；人裁优先）")
     p.add_argument("--dry-run", action="store_true", help="只拉库、读票出草稿、算要落哪些格并在 worktree 里提交 book-text（不推）；不写人裁、不推库、不发站")
 
 
