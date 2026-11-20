@@ -132,6 +132,22 @@ def precheck(ws: Path, state: dict, text_id: str = DIANBEN_ID) -> None:
     state.setdefault("ledger_baseline", now)
 
 
+def current_main(ws: Path, book: str) -> str | None:
+    """这册现在的 ★main 标签；读不到（没网、没标过）→ None，不挡换单。"""
+    from ..datastore.packs import main_label
+    old = os.environ.get("GUJI_WORKSPACE")
+    os.environ["GUJI_WORKSPACE"] = str(ws)
+    try:
+        return main_label(book)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        if old is None:
+            os.environ.pop("GUJI_WORKSPACE", None)
+        else:
+            os.environ["GUJI_WORKSPACE"] = old
+
+
 def load_state(path: Path) -> dict:
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -275,6 +291,12 @@ def cmd_run(a) -> int:
     cv = Path(a.cv)
     env = {**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}
     books = parse_books(a.books)
+    mains = {b: current_main(ws, b) for b in books}
+    for b in books:                                      # 状态按「册＋主包」记：标了新 main 的册，旧结论作废（全唐文 11-20 d2 29 册假 verified）
+        st = state["books"].get(b)
+        if st and st.get("main") and mains[b] and mains[b] != st["main"]:
+            print(f"{b}：主包 {st['main']} → {mains[b]}，上次的「{st.get('status')}」作废，重做", file=sys.stderr)
+            state["books"][b] = {"status": "stale-main", "why": f"上次结论基于 {st['main']}"}
     # 上次换好单但没发布成/没核过的册：只补「发布＋核对」，不能再跑 auto_cycle（会再出一张新单）
     pub_only = [b for b in books if state["books"].get(b, {}).get("status") in ("done", "publish-mismatch")]
     todo = [b for b in books if state["books"].get(b, {}).get("status") not in ("verified", "done", "publish-mismatch")]
@@ -292,12 +314,13 @@ def cmd_run(a) -> int:
         with open(log, "w", encoding="utf-8") as f:
             subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", ",".join(chunk),
                             "-w", str(ws), "--book-text", a.book_text, "--no-publish",
-                            *(["--ack-unlanded-votes", a.ack_unlanded_votes] if getattr(a, "ack_unlanded_votes", None) else [])],
+                            *(["--ack-unlanded-votes", a.ack_unlanded_votes] if getattr(a, "ack_unlanded_votes", None) else []),
+                            *(["--land-votes"] if getattr(a, "land_votes", False) else [])],
                            cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
         res = parse_cycle_log(log.read_text(encoding="utf-8"))
         for b in chunk:
             r = res.get(b, {"verdict": "no-result", "why": "auto_cycle 没给结论（进程中断？）"})
-            state["books"][b] = {"status": r["verdict"], "why": r["why"][:300]}
+            state["books"][b] = {"status": r["verdict"], "why": r["why"][:300], "main": mains.get(b)}
         save_state(sp, state)
         done = [b for b in chunk if state["books"][b]["status"] == "done"]
         if not done:
@@ -333,6 +356,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--glyph-db", help="book-text：字形库 sqlite（R1 前置闸：库里刻例的格键须都在新包里，否则停 r1-stop；不给则只标「R1 未核」）")
     p.add_argument("--ack-unlanded-votes", metavar="原因", default=None,
                    help="run：旧单上的票没落完（如 ~r 迁移后已是人裁）也照换；写明原因，透传 auto_cycle → proof_cycle apply → republish issue")
+    p.add_argument("--land-votes", action="store_true",
+                   help="run：线上单有票但没投完也不等，先把票落成人裁再换单（透传 auto_cycle；落不了的票由票账门列出）")
     p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
     p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
     p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")
