@@ -219,6 +219,46 @@ def pending_facts(products: Path, book: str) -> tuple[int, dict[str, dict]]:
     return n, out
 
 
+def _cells(root: Path) -> dict[str, dict]:
+    """seed_admit 每格 {char, admit, channel, unbound(绑丢的人裁状态)}。"""
+    out = {}
+    for sa in _layer(root, "seed_admit"):
+        for col in sa.get("columns") or []:
+            for c in col.get("chars") or []:
+                hu = (c.get("evidence") or {}).get("human_unbound") or {}
+                out[c["id"]] = {"char": c.get("char") or "", "admit": bool(c.get("admit")), "channel": c.get("channel") or "",
+                                "unbound": hu.get("status") if (hu or "human_unbound" in map(str, c.get("doubts") or [])) else None,
+                                "hchar": hu.get("char") or ""}
+    return out
+
+
+def _refs(root: Path, ids: set[str]) -> dict[str, str]:
+    out = {}
+    for d in _layer(root, "align_ref"):
+        for c in d.get("chars") or []:
+            if c.get("id") in ids:
+                out[c["id"]] = c.get("align_char") or ""
+    return out
+
+
+def human_and_admit_changes(pm: Path, pc: Path, book: str) -> tuple[list[dict], list[dict]]:
+    """两张表（11-20 痛点 K5／K6，殿本 PUA 线）：
+    - 人裁掉格：候选包里 human_unbound（人裁绑不上：unanchored／被撤下标记作废…）而 main 里没有的格；
+    - 放行字变：main、候选都放行、字不同；旧字有人裁（main 走 human 通道）或＝参校本的标「可疑」——新代码把对的字改错的多在这类。"""
+    m, c = _cells(Path(pm) / book), _cells(Path(pc) / book)
+    lost = [{"cell": i, "人裁字": v["hchar"], "状态": v["unbound"] or "?", "现字": v["char"], "放行": int(v["admit"])}
+            for i, v in sorted(c.items()) if v["unbound"] and not (m.get(i) or {}).get("unbound")]
+    ch = [i for i, v in c.items() if v["admit"] and (m.get(i) or {}).get("admit") and m[i]["char"] != v["char"]]
+    ref = _refs(Path(pc) / book, set(ch))
+    rows = []
+    for i in sorted(ch):
+        old, new = m[i], c[i]
+        why = "旧字是人裁" if old["channel"].startswith("human") else ("旧字＝参校本" if ref.get(i) and ref[i] == old["char"] else "")
+        rows.append({"cell": i, "旧字": old["char"], "新字": new["char"], "旧通道": old["channel"], "新通道": new["channel"],
+                     "参校本": ref.get(i, ""), "可疑": why})
+    return lost, rows
+
+
 def lib_counter(path: Path | None) -> tuple[Counter, dict]:
     """本书字形库每字刻例数（glyph_store/exemplars.jsonl）＋指纹（行数、sha256 前 12 位，可复现用）。"""
     lib: Counter = Counter()
@@ -412,6 +452,17 @@ def run(book: str, *, ws: str, out: Path, pack: str, main: str = "main", ledger:
     except (OSError, ValueError):
         s["diff"] = None
 
+    try:
+        lost, changed = human_and_admit_changes(pm_dir, pc_dir, book)
+        _write_tsv(out / "人裁掉格.tsv", ["cell", "人裁字", "状态", "现字", "放行"], lost)
+        _write_tsv(out / "放行字变.tsv", ["cell", "旧字", "新字", "旧通道", "新通道", "参校本", "可疑"], changed)
+        s["human_lost"] = len(lost)
+        s["admit_changed"] = {"n": len(changed), "suspect": sum(1 for r in changed if r["可疑"])}
+    except Exception as e:  # noqa: BLE001 —— 附带检查，算不出不挡别的
+        s["human_lost"] = None
+        s["admit_changed"] = None
+        s["human_check_error"] = f"{type(e).__name__}: {e}"[:300]
+
     pm = [*_guji(), "seg", "premain", book, "--products", str(pc_dir), "--out", str(out / "premain.tsv")]
     if allow:
         pm += ["--allow", str(allow)]
@@ -439,7 +490,7 @@ def run(book: str, *, ws: str, out: Path, pack: str, main: str = "main", ledger:
         s["pending_reason_error"] = f"{type(e).__name__}: {e}"[:300]
     s["pending"] = {"cells": n_cells, "total": len(rows), "by_layer": {k: by_layer.get(k, 0) for k in LAYERS},
                     "by_reason": by_reason}
-    s["pass"] = not s["gate"]["blocked"] and s["premain"]["pass"]
+    s["pass"] = not s["gate"]["blocked"] and s["premain"]["pass"] and not s.get("human_lost")   # 人裁掉格不许标 main（K6）
     s["secs"] = round(time.time() - t0, 1)
     if not keep_packs:
         for d in (pm_dir, pc_dir):
@@ -458,13 +509,15 @@ def verdict_line(s: dict) -> str:
             f"｜premain {'命中 ' + str(p['hits']) + ' 条（' + str(p['cols']) + ' 列）' if p['hits'] else '过'}"
             f"｜待审 {ps['total']}/{ps['cells']}（{lay or '无'}）"
             + (f"｜放行字变 {fl.get('放行字变', 0)}、admit→review {fl.get('admit→review', 0)}、review→admit {fl.get('review→admit', 0)}"
-               if df else ""))
+               if df else "")
+            + (f"｜人裁掉格 {s['human_lost']}" if s.get("human_lost") else "")
+            + (f"｜改字可疑 {s['admit_changed']['suspect']}" if (s.get("admit_changed") or {}).get("suspect") else ""))
 
 
 # ── 收一批：把任务库里多条 roundcheck 单的结果合成一份 ──
 SUMMARY_COLS = ["册", "任务", "状态", "候选包", "main", "结论", "gate", "回退列", "新页级错", "已知未清", "未挂台账",
                 "premain命中", "premain列", "全册格", "待审", *LAYERS, "main待审", "放行字变", "admit→review", "review→admit",
-                "人裁翻转", "中心库rev", "字形库指纹"]
+                "人裁翻转", "人裁掉格", "改字可疑", "中心库rev", "字形库指纹"]
 
 
 def summary_row(job: dict, s: dict | None) -> dict:
@@ -480,6 +533,7 @@ def summary_row(job: dict, s: dict | None) -> dict:
                 "全册格": ps.get("cells"), "待审": ps["total"], **{k: ps["by_layer"].get(k, 0) for k in LAYERS},
                 "main待审": df.get("review_main"), "放行字变": fl.get("放行字变", 0), "admit→review": fl.get("admit→review", 0),
                 "review→admit": fl.get("review→admit", 0), "人裁翻转": fl.get("admit→human", 0) + fl.get("review→human", 0),
+                "人裁掉格": s.get("human_lost"), "改字可疑": (s.get("admit_changed") or {}).get("suspect"),
                 "中心库rev": s.get("central_rev"), "字形库指纹": (s.get("glyph_lib") or {}).get("sha")})
     return row
 

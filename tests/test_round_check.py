@@ -290,3 +290,27 @@ def test_layer_config_overrides_ws(tmp_path):
     assert RC.LayerConfig.from_ws(tmp_path).as_dict()["seg_defect"] is True     # 坏键跳过，好键照用
     with pytest.raises(ValueError):
         RC.parse_sets(["seg_defect"])
+
+
+def test_human_lost_and_admit_changed(tmp_path):
+    """K5／K6（11-20，殿本 PUA 线）：候选包新掉的人裁、放行字变（旧字是人裁或＝参校本的标可疑）。"""
+    m, c = tmp_path / "m" / "vol01", tmp_path / "c" / "vol01"
+    _page(m, "seed_admit", {"columns": [{"chars": [
+        {"id": "1:1:1", "char": "士", "admit": True, "channel": "match_solo"},
+        {"id": "1:1:2", "char": "官", "admit": True, "channel": "human"},
+        {"id": "1:1:3", "char": "二", "admit": True, "channel": "match_solo"},
+        {"id": "1:1:4", "char": "栖", "admit": True, "channel": "human",
+         "evidence": {"human_unbound": {"char": "栖", "status": "unanchored"}}}]}]})
+    _page(c, "seed_admit", {"columns": [{"chars": [
+        {"id": "1:1:1", "char": "十", "admit": True, "channel": "ref_lib"},
+        {"id": "1:1:2", "char": "宫", "admit": True, "channel": "witness3"},
+        {"id": "1:1:3", "char": "一", "admit": True, "channel": "match_solo"},
+        {"id": "1:1:4", "char": "栖", "admit": False, "channel": "",
+         "evidence": {"human_unbound": {"char": "栖", "status": "unanchored"}}},
+        {"id": "1:1:5", "char": "有", "admit": False, "channel": "", "doubts": ["human_unbound"],
+         "evidence": {"human_unbound": {"char": "有", "status": "unanchored"}}}]}]})
+    _page(c, "align_ref", {"chars": [{"id": "1:1:1", "align_char": "士"}, {"id": "1:1:3", "align_char": "三"}]})
+    lost, changed = RC.human_and_admit_changes(tmp_path / "m", tmp_path / "c", "vol01")
+    assert [r["cell"] for r in lost] == ["1:1:5"]             # 1:1:4 main 里本来就掉了，不算新掉
+    why = {r["cell"]: r["可疑"] for r in changed}
+    assert why == {"1:1:1": "旧字＝参校本", "1:1:2": "旧字是人裁", "1:1:3": ""}
