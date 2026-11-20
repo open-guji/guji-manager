@@ -233,3 +233,18 @@ def test_runner_roundcheck_writes_files_and_results(tmp_path):
     assert names[("check", "seg_gate")]["text"] == "# g\n" and names[("check", "seg_gate")]["blocked"] is False
     assert names[("output", "roundcheck")]["summary"]["ledger_src"] == "ai-team@abc"
     assert "通过" in j.evs[-1]
+
+
+def test_roundcheck_book_id_fills_ws_repo():
+    """QTW 11-20 首批 22 单：只给 --book-id、spec 里 ws_repo=null，新执行机没克隆就备不了工作区。"""
+    from guji_manager.jobs.cli import _spec_from_args, fill
+    p = argparse.ArgumentParser()
+    fill(p)
+    for bid, repo in (("995ejelvk0", "guji-workspace/995ejelvk0-quan-tang-wen"),
+                      ("988g3f0wsu", "guji-workspace/988g3f0wsu-shi-ji-wen-yuan-ge"),
+                      ("96mid1ogzk", "guji-workspace/96mid1ogzk-si-ku-zong-mu")):
+        a = p.parse_args(["submit", "--book", "046", "--book-id", bid, "--cv", "v", "--rc-pack", "x", "--rc-ledger", "none"])
+        assert SP.normalize(_spec_from_args(a), resolve=lambda r: C1)["ws_repo"] == repo
+    a = p.parse_args(["submit", "--book", "046", "--book-id", "995ejelvk0", "--ws-repo", "o/r", "--cv", "v", "--rc-pack", "x",
+                      "--rc-ledger", "none"])
+    assert SP.normalize(_spec_from_args(a), resolve=lambda r: C1)["ws_repo"] == "o/r"

@@ -42,6 +42,7 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--book", default=None, help="册号（vol10），不同书的册号会重名，配 --book-id")
     s.add_argument("--book-id", default=None, help="书 ID（book-index 的 10 位 Book ID）；缺省 96mid1ogzk（殿本四库总目）")
     s.add_argument("--cv", default=None, help="tag／分支／提交（必填）")
+    s.add_argument("--ws-repo", default=None, help="书仓 owner/repo（仓根即工作区）；缺省按 --book-id 查 jobs/spec.py 的 WS_REPOS")
     s.add_argument("--pipeline", default=None)
     s.add_argument("--from", dest="from_step", default=None)
     s.add_argument("--to", dest="to_step", default=None)
@@ -139,6 +140,7 @@ def _spec_from_args(a) -> dict:
     if getattr(a, "book_id", None):
         put("ws_glob", f"{a.book_id}-*")
     put("cv", a.cv)
+    put("ws_repo", getattr(a, "ws_repo", None))
     put("pipeline", a.pipeline)
     put("pages", a.pages)
     put("base", a.base)
