@@ -485,14 +485,14 @@ def cmd(args) -> None:
     if args.collect:
         from .jobs import store as S
         raise SystemExit(collect(S.DB(), _ids(args.collect), Path(args.out or "round-check")))
-    args.book = args.vol
-    if not args.book or not args.pack:
+    book = args.vol
+    if not book or not args.pack:
         raise SystemExit("❌ 要给册和 --pack（候选包标签）")
     ws = args.workspace or os.environ.get("GUJI_WORKSPACE")
     if not ws:
         raise SystemExit("❌ 要给 -w 工作区")
     ledger, src = None, ""
-    out = Path(args.out or f"round-check/{args.book}")
+    out = Path(args.out or f"round-check/{book}")
     if args.ledger:
         if not args.ledger_book:
             raise SystemExit("❌ 给了 --ledger 就要给 --ledger-book（台账里的书名）")
@@ -503,7 +503,7 @@ def cmd(args) -> None:
             ledger.write_text(filter_ledger(text, args.ledger_book), encoding="utf-8")
         else:
             ledger = Path(args.ledger)
-    s = run(args.book, ws=ws, out=out, pack=args.pack, main=args.main, ledger=ledger, ledger_book=args.ledger_book,
+    s = run(book, ws=ws, out=out, pack=args.pack, main=args.main, ledger=ledger, ledger_book=args.ledger_book,
             ledger_src=src, allow=Path(args.allow) if args.allow else None, pages=args.pages or None,
             keep_packs=args.keep_packs)
     print(verdict_line(s))
