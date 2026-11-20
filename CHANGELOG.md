@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.70] - 2026-11-19
+
+- 发版说明（A31 11-19）：dev 头，PATCH。为带上 #722（单子体检 overturn_empty 只提示、照常上单，Sheldon 11-19 定）。
+
+- PATCH：单子体检 `overturn_empty`（新包把人裁格判成 □／无字）从「拦」改成「提示」，缺省照常上单复审，不用再 `--ack-sheet-audit`（Sheldon 11-19：「一切以新包、新结果为准。不要用命令，直接默认」；殿本 vol02、vol16 换单曾被整册拦下）。
 ## [0.4.69] - 2026-11-20
 
 - PATCH：任务库新单型 `roundcheck`（收轮检查，只读，QTW 11-20 要）＋命令 `guji round-check`：执行机上取 main 与候选包各 `seg check`（缺省 `--no-defect`）→ `seg gate`（切分根因台账交单时从 ai-team main 取最新、只留本书行随单带上，执行机不连 ai-team）→ `products diff` 翻转数 → `seg premain` → 待审格分四层（QTW cls36 口径，判序与阈值 workspace.yaml `round_check:` 书级可配）＋按 `pending_reason` 计数；结果写回任务结果，`guji round-check --collect <号段>` 收成一份汇总 tsv。交单 `guji job submit --kind roundcheck --rc-pack … --rc-ledger-book …`。文档 doc/01-粗校/收轮检查单.md。老单型的指纹不变。
