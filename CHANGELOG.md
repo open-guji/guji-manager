@@ -4,7 +4,9 @@
 
 ## [未发版]
 
-- PATCH：裁定键窗口按 seed_admit 5c（`_vis_ruling_pass`）当时的状态算：5c 之后才放行（consensus_lib、near_knn gap、symbol_ref_blank、textlayer_ref、vis_ruling）的邻格退成未放，之后才降审（stroke_veto、evict_review、symbol_review、human_unbound、jiazhu_uneven、src_code_conflict）的邻格退成放行字；产物带 cv 记的 `evidence.vis_ctx` 时直接用它。影响终审 `final-review` 写键、`vis_review export`、`rulings-hits` 判因与 `--rekey`（全唐文 001–030 26 格裁定 6 格因此不命中，例 027:59:4:7）。`rulings-hits` 清单加「差在」列，写出窗口差在哪几个字。
+## [0.4.79] - 2026-11-20
+
+- PATCH：裁定键窗口按 seed_admit 5c（`_vis_ruling_pass`）当时的状态算：5c 之后才放行（consensus_lib、near_knn gap、symbol_ref_blank、textlayer_ref、vis_ruling）的邻格退成未放，之后才降审（stroke_veto、evict_review、symbol_review、human_unbound、jiazhu_uneven、src_code_conflict）的邻格退成放行字；产物带 cv 记的 `evidence.vis_ctx` 时直接用它。影响终审 `final-review` 写键、`vis_review export`、`rulings-hits` 判因与 `--rekey`（全唐文 001–030 26 格裁定 6 格因此不命中，例 027:59:4:7）。`rulings-hits` 清单加「差在」列，写出窗口差在哪几个字（#761）。
 
 ## [0.4.78] - 2026-11-20
 
