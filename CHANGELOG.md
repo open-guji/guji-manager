@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：修 roundcheck 单（及只给 `--book-id` 的单）在新执行机上备不了工作区（QTW 11-20 首批 #5944–#5965 全挂 prep「更新工作区」）：`WS_REPOS` 补全唐文 `995ejelvk0 → guji-workspace/995ejelvk0-quan-tang-wen`，`guji job submit` 加 `--ws-repo`。ws_repo 不进指纹，失败的单直接重交即可。
 - PATCH：单子体检 `overturn_empty`（新包把人裁格判成 □／无字）从「拦」改成「提示」，缺省照常上单复审，不用再 `--ack-sheet-audit`（Sheldon 11-19：「一切以新包、新结果为准。不要用命令，直接默认」；殿本 vol02、vol16 换单曾被整册拦下）。
 ## [0.4.69] - 2026-11-20
 
