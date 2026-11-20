@@ -4,6 +4,7 @@
 再算 `spec_hash`：同一指纹 = 同一次计算，只跑一次（重复提交记成 duplicate，指向已有那条）。
 
     kind            rerun（重跑一册，可接对比）| ab（同 rerun，必须给 compare_to）| eval | command（一串 guji 命令）
+                    | roundcheck（收轮检查，只读：见下 roundcheck 与 guji_manager/round_check.py）
     book            册，如 vol10（eval 可空）
     cv              tag／分支／提交；提交时解析成 40 位提交（cv_ref 留原文）
     pipeline        缺省 keben_body_v2
@@ -25,6 +26,11 @@
                     铺底包后先 `guji recheck <册> --glyph-diff N` 点名，再从 glyph_match 起增量跑；
                     缺省 steps.from=glyph_match、force=false（定字层增量跟进，A32 精校前移 A4，2026-10-30）
 
+    roundcheck      kind=roundcheck 用：{"pack": 候选包标签（必给）, "main": "main"｜包标签, "ledger_book": 台账书名,
+                    "ledger": 台账 TSV 全文（交单时从 ai-team main 取、只留本书行）, "ledger_src": 来源, "allow": premain 放行清单 TSV 全文}。
+                    执行方：取 main 包 seg check → 取候选包 seg check → seg gate → seg premain → 待审按 pending_reason 计数归四层，
+                    结果写回任务结果（check: seg_gate／seg_premain；output: pending_by_reason／roundcheck）。不存包、不推库
+
     db_rev          提交时中心库的 rev（整数）；`guji job submit` 自动填（连不上库就不填）。进指纹：册 yaml 等改了、spec 没变的单
                     不再被判成重复（11-05 史記 #831/#833）。不给就不出这个键：老任务的指纹不变
 
@@ -38,7 +44,7 @@ import json
 import re
 import subprocess
 
-KINDS = ("rerun", "ab", "eval", "command")
+KINDS = ("rerun", "ab", "eval", "command", "roundcheck")
 STATUSES = ("queued", "running", "succeeded", "failed", "blocked", "cancelled", "duplicate")
 ACTIVE = ("queued", "running")
 CV_REPO = "https://github.com/open-guji/open-guji-cv"
@@ -81,7 +87,7 @@ def _override_keys() -> set[str]:
     return {f.name for f in dataclasses.fields(BookSpec)} - FORBIDDEN_IN_OVERRIDE
 _KEYS = {"kind", "book", "cv", "cv_ref", "pipeline", "steps", "pages", "force", "no_reuse", "book_overrides",
          "pin_args", "base", "checks", "env", "params", "compare_to", "output", "run", "ws_glob", "ws_repo", "why",
-         "glyph_diff", "db_rev"}
+         "glyph_diff", "db_rev", "roundcheck"}
 _NOT_HASHED = ("why", "output", "cv_ref", "ws_repo")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
 
 
@@ -102,7 +108,7 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         raise SpecError(f"kind 只能是 {'/'.join(KINDS)}，不是 {kind!r}")
     s["kind"] = kind
     book = s.get("book")
-    if kind in ("rerun", "ab") and not book:
+    if kind in ("rerun", "ab", "roundcheck") and not book:
         raise SpecError(f"{kind} 要给 book（册，如 vol10）")
     if book is not None and not (isinstance(book, str) and _BOOK.match(book)):
         raise SpecError(f"book 不合规：{book!r}")
@@ -223,6 +229,11 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         raise SpecError("run 只给 command／eval 用；rerun 用 steps／pages／params")
     else:
         s["run"] = None
+    s["roundcheck"] = _check_roundcheck(s.get("roundcheck"), kind)
+    if s["roundcheck"] is None:
+        s.pop("roundcheck")             # 不给就不出这个键：老任务的指纹不变
+    elif s["base"] or s["compare_to"] or s["output"]["pack"]:
+        raise SpecError("roundcheck 自己取包、只读：不收 base、compare_to，不存包")
     s["ws_glob"] = s.get("ws_glob") or DEFAULT_WS_GLOB
     if not re.match(r"^[A-Za-z0-9_*.-]+$", s["ws_glob"]):
         raise SpecError(f"ws_glob 不合规：{s['ws_glob']!r}")
@@ -233,6 +244,31 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         s["ws_repo"] = WS_REPOS.get(book_id(s) or "")
     s["why"] = s.get("why") or None
     return s
+
+
+_RC_KEYS = {"pack", "main", "ledger_book", "ledger", "ledger_src", "allow"}
+
+
+def _check_roundcheck(rc, kind: str) -> dict | None:
+    if kind != "roundcheck":
+        if rc is not None:
+            raise SpecError("roundcheck 只给 kind=roundcheck 用")
+        return None
+    if not isinstance(rc, dict) or set(rc) - _RC_KEYS:
+        raise SpecError(f"roundcheck 要是对象，只收 {', '.join(sorted(_RC_KEYS))}")
+    pack, main = rc.get("pack"), rc.get("main") or "main"
+    for k, v in (("pack", pack), ("main", main)):
+        if not (isinstance(v, str) and _LABEL.match(v)):
+            raise SpecError(f"roundcheck.{k} 是包标签（main 可写 main）：{v!r}")
+    if pack == "main":
+        raise SpecError("roundcheck.pack 是候选包标签，不能是 main")
+    for k in ("ledger_book", "ledger", "ledger_src", "allow"):
+        if rc.get(k) is not None and not isinstance(rc[k], str):
+            raise SpecError(f"roundcheck.{k} 要是字符串")
+    if rc.get("ledger") and not rc.get("ledger_book"):
+        raise SpecError("roundcheck 带了 ledger 就要给 ledger_book（台账里的书名：殿本／史記／全唐文）")
+    return {"pack": pack, "main": main, "ledger_book": rc.get("ledger_book") or None, "ledger": rc.get("ledger") or None,
+            "ledger_src": rc.get("ledger_src") or None, "allow": rc.get("allow") or None}
 
 
 def _check_argv(a) -> list[str]:
@@ -292,6 +328,9 @@ def summary(spec: dict) -> str:
     """一行概要，给 ls 用。"""
     if spec["kind"] in ("command", "eval"):
         body = " ; ".join(" ".join(a) for a in spec["run"] or [])
+    elif spec["kind"] == "roundcheck":
+        rc = spec["roundcheck"]
+        body = f"收轮检查 {rc['pack']} 对 {rc['main']}" + (f" 台账 {rc['ledger_book']}" if rc.get("ledger") else " 无台账")
     else:
         st = spec["steps"]
         body = f"{spec['pipeline']} {st['from'] or '头'}→{st['to'] or '尾'} {spec['pages']}"
