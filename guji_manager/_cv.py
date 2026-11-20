@@ -410,6 +410,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "RULING_KIND": ("feedback.rulings", "KIND"),
     "RULING_SOURCE": ("feedback.rulings", "SOURCE"),
     "RULING_OTHER": ("feedback.rulings", "OTHER"),
+    "RulingStore": ("feedback.rulings", "RulingStore"),
+    "llm_questions_of_page": ("feedback.llm_queue", "questions_of_page"),
 }
 
 
