@@ -64,6 +64,7 @@ def test_resume_skips_issued_books(tmp_path, monkeypatch):
     swap.save_state(sp, {"books": {"vol20": {"status": "done"}, "vol21": {"status": "publish-mismatch"},
                                    "vol22": {"status": "verified"}, "vol23": {"status": "need-A33"}}})
     monkeypatch.setattr(swap, "precheck", lambda ws, state, *a: None)
+    monkeypatch.setattr(swap, "current_main", lambda ws, b: None)
     a = argparse.Namespace(workspace=str(ws), state=str(sp), text_id="x", cv=str(ws), book_text=str(ws),
                            books="vol20-vol24", batch_size=6, dry_run=True)
     import io, contextlib
@@ -121,3 +122,21 @@ def test_parse_cycle_log_waiting_recorded():
     from guji_manager.swap import parse_cycle_log
     r = parse_cycle_log("001\twaiting\t线上单 28 格已投 8，还没投完\n")
     assert r["001"] == {"verdict": "waiting", "why": "线上单 28 格已投 8，还没投完"}
+
+
+def test_new_main_voids_old_verdict(tmp_path, monkeypatch):
+    """状态按册＋主包记：上次 verified 是基于旧 main 的，标了新 main 就重做（全唐文 11-20 d2）。"""
+    import argparse, io, contextlib
+    sp = tmp_path / "state.json"
+    swap.save_state(sp, {"books": {"vol20": {"status": "verified", "main": "c1"},
+                                   "vol21": {"status": "verified", "main": "d2"},
+                                   "vol22": {"status": "verified"}}})
+    monkeypatch.setattr(swap, "precheck", lambda ws, state, *a: None)
+    monkeypatch.setattr(swap, "current_main", lambda ws, b: "d2")
+    a = argparse.Namespace(workspace=str(tmp_path), state=str(sp), text_id="x", cv=str(tmp_path),
+                           book_text=str(tmp_path), books="vol20-vol22", batch_size=6, dry_run=True)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        swap.cmd_run(a)
+    out = json.loads(buf.getvalue().strip().splitlines()[-1])
+    assert out["todo"] == ["vol20"]          # 旧 main 的 verified 作废；同 main、没记 main 的照旧跳过
