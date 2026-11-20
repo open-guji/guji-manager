@@ -412,6 +412,9 @@ class Job:
             args += ["--allow", str(p)]
         if sp.get("pages") and sp["pages"] != "all":
             args += ["--pages", sp["pages"]]
+        for k, v in (rc.get("config") or {}).items():
+            v = ",".join(v) if isinstance(v, list) else (str(v).lower() if isinstance(v, bool) else v)
+            args += ["--set", f"{k}={v}"]
         self.guji(*args)
         if self.dry:
             return

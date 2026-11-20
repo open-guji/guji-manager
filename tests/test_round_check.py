@@ -248,3 +248,45 @@ def test_roundcheck_book_id_fills_ws_repo():
     a = p.parse_args(["submit", "--book", "046", "--book-id", "995ejelvk0", "--ws-repo", "o/r", "--cv", "v", "--rc-pack", "x",
                       "--rc-ledger", "none"])
     assert SP.normalize(_spec_from_args(a), resolve=lambda r: C1)["ws_repo"] == "o/r"
+
+
+def test_config_override_spec_submit_and_runner(tmp_path):
+    """史記 #5968（11-20）：书仓 workspace.yaml 开了 seg_defect，执行机 db pull 用中心库那份盖掉了，单子照缺省关。
+    交单可带 --rc-set 覆盖，进指纹，执行方传 --set 给命令。"""
+    from guji_manager.jobs.cli import _spec_from_args, fill
+    p = argparse.ArgumentParser()
+    fill(p)
+    a = p.parse_args(["submit", "--book", "42", "--cv", "v", "--rc-pack", "x", "--rc-ledger", "none",
+                      "--rc-set", "seg_defect=true", "--rc-set", "order=seg,group,lib"])
+    raw = _spec_from_args(a)
+    s = SP.normalize(raw, resolve=lambda r: C1)
+    assert s["roundcheck"]["config"] == {"seg_defect": True, "order": ["seg", "group", "lib"]}
+    assert "seg_defect=True" in SP.summary(s)
+    plain = norm(kind="roundcheck", book="42", cv="v", roundcheck={"pack": "x"})
+    assert "config" not in plain["roundcheck"]                            # 不给不出键，老指纹不变
+    assert SP.spec_hash(s) != SP.spec_hash(plain)
+    for bad in ({"nope": 1}, {"seg_defect": "maybe"}, {"order": ["seg", "x"]}, {"cov_min": 2}):
+        with pytest.raises(SP.SpecError, match="config"):
+            norm(kind="roundcheck", book="42", cv="v", roundcheck={"pack": "x", "config": bad})
+    with pytest.raises(SP.SpecError):
+        _spec_from_args(p.parse_args(["submit", "--book", "42", "--cv", "v", "--rc-pack", "x", "--rc-set", "seg_defect"]))
+
+    from guji_manager.jobs import runner as R
+    j = object.__new__(R.Job)
+    j.spec = {"book": "42", "pages": "all", "roundcheck": {"pack": "x", "main": "main", "config": s["roundcheck"]["config"]}}
+    j.dry, j.id, j.aid, j.ws, j.dir = True, 9, 1, "/ws", tmp_path
+    j.calls = []
+    j.guji = lambda *args, **kw: j.calls.append(args)
+    j.run_roundcheck()
+    a = list(j.calls[0])
+    assert [a[i + 1] for i, x in enumerate(a) if x == "--set"] == ["seg_defect=true", "order=seg,group,lib"]
+
+
+def test_layer_config_overrides_ws(tmp_path):
+    (tmp_path / "workspace.yaml").write_text("id: x\nround_check:\n  lib_min: 3\n  seg_defect: false\n", encoding="utf-8")
+    c = RC.LayerConfig.from_ws(tmp_path, RC.parse_sets(["seg_defect=on", "cov_min=0.85"]))
+    assert c.as_dict() == {"order": ["seg", "group", "lib"], "cov_min": 0.85, "lib_min": 3, "seg_defect": True}
+    (tmp_path / "workspace.yaml").write_text("round_check:\n  lib_min: x\n  seg_defect: true\n", encoding="utf-8")
+    assert RC.LayerConfig.from_ws(tmp_path).as_dict()["seg_defect"] is True     # 坏键跳过，好键照用
+    with pytest.raises(ValueError):
+        RC.parse_sets(["seg_defect"])

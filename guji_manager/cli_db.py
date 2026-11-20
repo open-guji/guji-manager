@@ -173,6 +173,48 @@ def sync_workspace(ws_dir: Path, *, dry_run: bool = False, src=None, admit: bool
     return res
 
 
+def unconsumed_report(ws_dir: Path, days: float | None = None) -> dict[tuple[str, str], int]:
+    """近 ``days`` 天（缺省 ``GUJI_SYNC_UNCONSUMED_DAYS`` 或 7）的人裁事件里，路由表要它去、却还没记账的
+    （批次, 消费者）→ 条数。只读：不跑消费者。
+
+    11-20 痛点 K2／K7：手写批次漏 route（H-unrec-1113a 七天没进排除名单）、撤库事件因本机缺包没消费，
+    sync 都返回成功、什么也不说。读不了就返回空，不挡 sync。"""
+    from datetime import datetime, timedelta, timezone
+    from ._cv import CONSUMERS, EventLog, RouteTable, feedback_root
+    days = float(os.environ.get("GUJI_SYNC_UNCONSUMED_DAYS") or 7) if days is None else days
+    os.environ["GUJI_WORKSPACE"] = str(ws_dir)
+    try:
+        log = EventLog(feedback_root())
+        table = RouteTable.load(log.root / "routes.yaml")
+        cut = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        evs = [e for e in log.iter_all() if (e.ts or "") >= cut]
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[tuple[str, str], int] = {}
+    dests = {e.id: table.destinations(e) for e in evs}
+    for consumer in CONSUMERS:
+        mine = [e for e in evs if any(d.consumer == consumer for d in dests[e.id])]
+        if not mine:
+            continue
+        done = log.consumed_ids(consumer)
+        for e in mine:
+            if e.id not in done:
+                out[(e.batch, consumer)] = out.get((e.batch, consumer), 0) + 1
+    return out
+
+
+def unconsumed_warning(ws_dir: Path) -> str | None:
+    rep = unconsumed_report(ws_dir)
+    if not rep:
+        return None
+    rows = sorted(rep.items(), key=lambda kv: -kv[1])
+    lines = [f"  {b}  {c}  {n} 条" for (b, c), n in rows[:12]]
+    more = f"\n  …另有 {len(rows) - 12} 组" if len(rows) > 12 else ""
+    batches = " ".join(sorted({b for (b, _), _ in rows}))[:300]
+    return ("⚠️  近期有人裁事件还没被消费者处理（漏 route，或本机缺产物包没消费成）：\n" + "\n".join(lines) + more +
+            f"\n  补跑：guji events route <批次>（缺包的先 guji products pack fetch <册>）；批次：{batches}")
+
+
 def _admit_pending(ws_dir: Path, dry_run: bool) -> dict:
     """本工作区待落库的人裁跑一遍字形库两个消费者（消费者按 ``GUJI_WORKSPACE`` 找 glyph.db、产物与字块缓存）。"""
     from ._cv import feedback_root
@@ -290,6 +332,9 @@ def cmd_db(args) -> None:
         if left:
             print(f"⚠️  还有人裁没落进字形库（多为本机没有那一页的产物和字块缓存）：{json.dumps(left, ensure_ascii=False)}"
                   "——到有产物的机器上 guji db sync，或交 A23 扫尾", file=sys.stderr)
+        warn = unconsumed_warning(ws_dir)
+        if warn:
+            print(warn, file=sys.stderr)
         return
 
     src = WorkerSource(branch=args.branch)
