@@ -93,7 +93,11 @@ def test_vis_reasons_and_rekey(tmp_path):
     assert "子类 P 不收" in rows["001:1:1:3"]["原因"]
     rows2 = {r["cell"]: r for r in RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"), RH.VIS_SUBS | {"P"})}
     assert "子类" not in rows2["001:1:1:3"]["原因"]
-    assert "越过整理本" in rows["001:1:1:4"]["原因"]
+    assert "越过整理本" in rows["001:1:1:4"]["原因"] and "没给 --override-groups" in rows["001:1:1:4"]["原因"]
+    o = {r["cell"]: r for r in RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"), override=("mb",))}
+    assert "不同属白名单" in o["001:1:1:4"]["原因"]          # 大／丁 不在 mb
+    from guji_manager._cv import FLOW_GROUPS
+    assert {"本", "木"} <= set(FLOW_GROUPS["mb"].members)     # 殿本 vol31:65:9:8 木→本：mb 有两字，白名单不挡
     assert RH.rekey_vis(list(rows.values()), "vis-rekey", tmp_path / "fb") == 1
     again = {r["cell"]: r for r in RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"))}
     assert not again["001:1:1:2"]["原因"].startswith("窗口变了")
