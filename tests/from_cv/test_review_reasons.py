@@ -690,3 +690,13 @@ def test_noref_notes_include_unreadable(tmp_path):
     for name, note, want in (("p1.json", "整理本读不到", True), ("p2.json", "8-gram 锚定失败", False)):
         (d / name).write_text(json.dumps({"align_ref": {"note": note}}), encoding="utf-8")
         assert _ref_by_design(tmp_path, name) is want
+
+
+def test_variant_pair_not_variant_pairs():
+    """兩/雨、玉/王 这类字典里有异体边、实为形近的对（ZM 11-21）：不算 V01，落回后面的规则。"""
+    var = lambda a, b: {a, b} in ({"兩", "雨"}, {"衞", "衛"})
+    cells = [Cell(id="v:1:1:1", char="雨", ref="兩", cands=[["雨", .9]]),
+             Cell(id="v:1:1:2", char="衞", ref="衛", cands=[["衞", .9]])]
+    ctx = build_context(cells, lib_n=lambda ch: 50, are_variants=var)
+    got = [classify(c, ctx) for c in cells]
+    assert got[0] is not R.VARIANT_PAIR and got[1] is R.VARIANT_PAIR

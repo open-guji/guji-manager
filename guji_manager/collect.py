@@ -189,16 +189,19 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
                     pending.add(c["id"])
         asks += [q for q in llm_questions_of_page(doc) if q.get("cell") and mine(q["cell"])]
     by_cell: dict[str, dict] = {}
-    if rekey is not None and asks:
+    if store.log.events_dir.exists():
         from .ruling_hits import _rulings_by_cell
         from ._cv import ruling_ctx_hash
-        by_cell = {k: v for k, v in _rulings_by_cell(store).items() if v.get("group") != "O"}
+        by_cell = {k: v for k, v in _rulings_by_cell(store).items() if v.get("group") != "O" and mine(k)}
+    asked: set[str] = set()
     for q in asks:
         if q["cell"] not in pending:
             continue
         v = store.get(q["group"], q["ver"], q["l"], q["r"])
         cross = False
-        if v is None and q["cell"] in by_cell:
+        if v is not None:
+            asked.add(q["cell"])
+        if v is None and rekey is not None and q["cell"] in by_cell:
             r0 = by_cell[q["cell"]]
             c0 = r0.get("ctx") or {}
             if ruling_ctx_hash(c0.get("left", ""), c0.get("right", "")) == ruling_ctx_hash(q["l"], q["r"]):
@@ -215,11 +218,23 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
             if bare(q["cell"]) in out:
                 continue
             rekey.append((q, v))
+            asked.add(q["cell"])
             out[bare(q["cell"])] = (v["char"], f"AI文意/{q['group']}/改版重键")
         else:
             out.setdefault(bare(q["cell"]), (v["char"], f"AI文意/{q['group']}"))
     if not store.log.events_dir.exists():
         return out, notes
+    # 按格写的文意裁定（ZM write_ctx_ruling_by_cell：「格号＋字」、自算窗口）：这格 seed_admit 没记 ask
+    # （字组没进：分差内有组外字，如 兩雨 格候选里的 而／南），或 ask 窗口与裁定窗口不完全一样 → 上面按窗口键取不到，
+    # 以前静默跳过（ZM 11-21 vol28/36/98 兩雨、vol55 閔 landed 0）。现在按格号取最新一条，核对窗口大体一致再落。
+    # 有 ask 但组／提示词版本不同的格归上面的改版重键路（rekey），这里不管
+    ask_of: dict[str, dict] = {}
+    for q in asks:
+        ask_of.setdefault(q["cell"], {})[(q["group"], q["ver"])] = q
+    rest = {k: v for k, v in by_cell.items() if k in pending and k not in asked and bare(k) not in out
+            and (k not in ask_of or (v.get("group"), v.get("prompt_ver")) in ask_of[k])}
+    if rest:
+        _cell_rulings(root, rest, asks, members, out, notes)
     from ._cv import RULING_KIND, replay_key
     vis: dict[str, dict] = {}
     for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
@@ -238,9 +253,10 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
         except (OSError, ValueError):
             continue
     for k, v in sorted(vis.items()):
-        if not (v.get("conf") == "high" and v.get("admit_ok") and v.get("char") and not v.get("other")):
+        if not (v.get("char") and not v.get("other")) or v["char"] in PLACEHOLDERS:
             continue
-        if v["char"] in PLACEHOLDERS:
+        if v.get("conf") != "high" or not v.get("admit_ok"):
+            notes.append(f"{bare(k)} 终审裁定「{v['char']}」{v.get('prompt_ver')} 把握 {v.get('conf')}、admit_ok={v.get('admit_ok')}，不直接落")
             continue
         if re.search(r"[ab]$", k):
             notes.append(f"{bare(k)} 看图裁定「{v['char']}」是夹注半格，不直接落")
@@ -250,6 +266,97 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
             continue
         out[bare(k)] = (v["char"], f"AI看图/{v.get('prompt_ver')}")
     return out, notes
+
+
+#: 按格写的文意裁定：裁定窗口与包里这格现在的窗口，格两边各这么多字必须一样，整体相似度不低于下面的比例
+CELL_RULING_NEAR = 2
+CELL_RULING_RATIO = 0.8
+
+
+def _window_ok(rl: str, rr: str, pl: str, pr: str) -> tuple[bool, str]:
+    """裁定窗口 (rl, rr) 与产物窗口 (pl, pr) 大体一致：紧邻格的字一样、整体相似度够（邻格放行字小变不算换了地方）。"""
+    import difflib
+    rl, rr, pl, pr = (rl or "")[-20:], (rr or "")[:20], (pl or "")[-20:], (pr or "")[:20]
+    n = CELL_RULING_NEAR
+    if rl[-n:] != pl[-n:] or rr[:n] != pr[:n]:
+        return False, f"紧邻字不同（裁定 {rl[-n:]}｜{rr[:n]}，现 {pl[-n:]}｜{pr[:n]}）"
+    ratio = difflib.SequenceMatcher(None, rl + "|" + rr, pl + "|" + pr, autojunk=False).ratio()
+    if ratio < CELL_RULING_RATIO:
+        return False, f"窗口相似度 {ratio:.2f} < {CELL_RULING_RATIO}"
+    return True, ""
+
+
+def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, notes: list) -> None:
+    """``ai_ruling_chars`` 的第三路：按格号取的文意裁定（非 group=O）。条件：``conf=high``、有字、不是「其他」；
+    裁定字是这格整理本字、库候选或裁定组的组员之一；裁定窗口与包里这格的窗口大体一致（`_window_ok`；有 ask 用 ask 窗口，
+    没有按 5c 口径现算）。落了也不会让下一次重放命中（seed_admit 不按格取裁定），所以照样记 AI 来源、单上条目不结案。"""
+    from .ruling_hits import _vis_window
+    by_page: dict[str, list[str]] = {}
+    for k in rest:
+        parts = k.split(":")
+        if len(parts) == 4:
+            by_page.setdefault(f"p{int(parts[1]):04d}.json", []).append(k)
+    win = {q["cell"]: (q["l"], q["r"]) for q in asks
+           if q["cell"] in rest and (q["group"], q["ver"]) == (rest[q["cell"]].get("group"), rest[q["cell"]].get("prompt_ver"))}
+    refs: dict[str, str] = {}
+    cands: dict[str, set] = {}
+    for fn, ks in by_page.items():
+        amap: dict[str, str] = {}
+        try:
+            ar = json.loads((root / "align_ref" / fn).read_text(encoding="utf-8")).get("align_ref", {})
+            anchored = ar.get("anchored", True) is not False
+            for c in ar.get("chars") or []:
+                if c.get("id"):
+                    if anchored:
+                        amap[c["id"]] = c.get("align_char") or ""
+                    if c["id"] in rest:
+                        refs[c["id"]] = c.get("align_char") or ""
+        except (OSError, ValueError):
+            pass
+        try:
+            gm = json.loads((root / "glyph_match" / fn).read_text(encoding="utf-8"))
+            stack = [gm]
+            while stack:
+                o = stack.pop()
+                if isinstance(o, dict):
+                    if o.get("id") in rest and isinstance(o.get("candidates"), list):
+                        cands[o["id"]] = {c[0] for c in o["candidates"][:5] if c}
+                    stack += [x for x in o.values() if isinstance(x, (dict, list))]
+                elif isinstance(o, list):
+                    stack += [x for x in o if isinstance(x, (dict, list))]
+        except (OSError, ValueError):
+            pass
+        need = [k for k in ks if k not in win]
+        if need:
+            try:
+                doc = json.loads((root / "seed_admit" / fn).read_text(encoding="utf-8"))
+                w = _vis_window(doc, amap)
+                for k in need:
+                    if k in w:
+                        win[k] = (w[k][1], w[k][2])
+            except Exception:  # noqa: BLE001
+                pass
+    for k, v in sorted(rest.items()):
+        ch, g = v.get("char"), v.get("group")
+        if not ch or v.get("other") or ch in PLACEHOLDERS:
+            continue
+        tag = f"{bare(k)} 按格文意裁定「{ch}」（{g}/{v.get('prompt_ver')}）"
+        if v.get("conf") != "high":
+            notes.append(f"{tag}把握 {v.get('conf')}，不直接落")
+            continue
+        ok_chars = {refs.get(k) or ""} | cands.get(k, set()) | set(members.get(g) or ())
+        if ch not in ok_chars:
+            notes.append(f"{tag}不是整理本字、库前五或组员，不落")
+            continue
+        if k not in win:
+            notes.append(f"{tag}：算不出包里这格的窗口，不落")
+            continue
+        c0 = v.get("ctx") or {}
+        ok, why = _window_ok(c0.get("left", ""), c0.get("right", ""), *win[k])
+        if not ok:
+            notes.append(f"{tag}与包里窗口对不上（{why}），不落")
+            continue
+        out[bare(k)] = (ch, f"AI文意/{g}/按格")
 
 
 def write_rekeys(book: str, rk: list, batch: str | None = None) -> int:
