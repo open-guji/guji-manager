@@ -4,6 +4,11 @@
 
 ## [未发版]
 
+## [0.4.81] - 2026-11-20
+
+- PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#769）。
+- PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目；墓碑（`value.deleted: true`，网站删了 KV 键）读到跳过、对账算一致；`web_inbox.by_prefix` 按键前缀不按书读（thread 等无 book 的）。
+
 ## [0.4.80] - 2026-11-20
 
 - PATCH：`rulings-hits` 终审裁定未放行的兜底原因不再断言「产物早于裁定」（QTW 11-20：裁定 11-19、包 11-20 仍报这条），改写裁定时间并列两种可能（产物早于推库／5c 时邻格字被码位归一、pair_form 改过 manager 看不出），产物有 `evidence.vis_ctx` 时另说；新增可核原因：裁定库按窗口键取到的是同窗口更晚的另一条、裁定没写 `ctx.hash`（可补键）、这页 align_ref 没锚定（同 cv 不认整理本字，窗口也按此算）（#765）。

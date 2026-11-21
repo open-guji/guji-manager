@@ -144,14 +144,19 @@ def consistent_cells(draft_dir: Path) -> dict[str, str]:
 AI_VIS_VERS = ("vis-o1", "src-1", "ctx-m1")
 
 
-def ai_ruling_chars(products_root, book: str, store=None, members=None) -> tuple[dict[str, tuple[str, str]], list[str]]:
+def ai_ruling_chars(products_root, book: str, store=None, members=None,
+                    rekey: list | None = None) -> tuple[dict[str, tuple[str, str]], list[str]]:
     """AI 裁定可直接落文本的格 {格（无册前缀）: (字, 来源)}（用户 2026-11-20 定：AI 裁定像人裁一样直接写 book-text，不等重放）。
 
     只认出单版包里**仍待审**的格，且裁定确定对得上这一格：
     - 文意（L3 组）：这格的 ask 窗口在裁定库里**按窗口命中**（与重放 seed_admit 同一把键），``conf=high``、字在组内、不是「其他」；
     - 终审／看图（group=O，``vis-o1``/``src-1``/``ctx-m1``）：按格号取最新一条，``conf=high``、``admit_ok``、有字，
       且裁定时的整理本对位字与包里现在的一样；夹注半格（格号带 a／b）不落（seed_admit 缺省也不放）。
-    人裁优先由调用方处理（有现行人裁的格不用这里的字）。"""
+    人裁优先由调用方处理（有现行人裁的格不用这里的字）。
+
+    ``rekey`` 给了列表：文意裁定按窗口键没命中、但这格最新一条裁定**窗口与 ask 相同**、只是提示词版本（含模型后缀）或字组名变了
+    （ZM 11-21 殿本未命中 395 格里约 210 格是这种），也照上面的条件落，并把 ``(ask, 原裁定)`` 记进列表，由调用方按现行
+    组／版本补写一条（下次重放即命中）。窗口不同的仍不认。"""
     import re
     from ._cv import llm_questions_of_page
     if store is None:
@@ -183,10 +188,21 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None) -> tuple
                 if c.get("id") and not c.get("admit") and mine(c["id"]):
                     pending.add(c["id"])
         asks += [q for q in llm_questions_of_page(doc) if q.get("cell") and mine(q["cell"])]
+    by_cell: dict[str, dict] = {}
+    if rekey is not None and asks:
+        from .ruling_hits import _rulings_by_cell
+        from ._cv import ruling_ctx_hash
+        by_cell = {k: v for k, v in _rulings_by_cell(store).items() if v.get("group") != "O"}
     for q in asks:
         if q["cell"] not in pending:
             continue
         v = store.get(q["group"], q["ver"], q["l"], q["r"])
+        cross = False
+        if v is None and q["cell"] in by_cell:
+            r0 = by_cell[q["cell"]]
+            c0 = r0.get("ctx") or {}
+            if ruling_ctx_hash(c0.get("left", ""), c0.get("right", "")) == ruling_ctx_hash(q["l"], q["r"]):
+                v, cross = r0, True
         if not v or v.get("other") or not v.get("char") or v.get("char") in PLACEHOLDERS:
             continue
         if v.get("conf") != "high":
@@ -195,7 +211,13 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None) -> tuple
         if members.get(q["group"]) and v["char"] not in members[q["group"]]:
             notes.append(f"{bare(q['cell'])} 文意裁定「{v['char']}」不在组 {q['group']} 内，不落")
             continue
-        out.setdefault(bare(q["cell"]), (v["char"], f"AI文意/{q['group']}"))
+        if cross:
+            if bare(q["cell"]) in out:
+                continue
+            rekey.append((q, v))
+            out[bare(q["cell"])] = (v["char"], f"AI文意/{q['group']}/改版重键")
+        else:
+            out.setdefault(bare(q["cell"]), (v["char"], f"AI文意/{q['group']}"))
     if not store.log.events_dir.exists():
         return out, notes
     from ._cv import RULING_KIND, replay_key
@@ -228,6 +250,19 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None) -> tuple
             continue
         out[bare(k)] = (v["char"], f"AI看图/{v.get('prompt_ver')}")
     return out, notes
+
+
+def write_rekeys(book: str, rk: list, batch: str | None = None) -> int:
+    """``ai_ruling_chars(rekey=…)`` 收的 (ask, 原裁定)：按 ask 的现行组、提示词版本、窗口另写一条（字、把握、模型照抄，
+    why 前缀 rekey）。只追加裁定事件，随本册 ``db sync`` 推库。"""
+    from ._cv import RulingStore
+    store = RulingStore()
+    store._batch = batch or f"llm-rekey-collect-{book}-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d-%H%M')}"
+    for q, v in rk:
+        store.put(q["group"], q["ver"], q["l"], q["r"], char=v["char"], conf=v.get("conf"),
+                  why=("rekey:" + (v.get("why") or ""))[:60], model=v.get("model") or "session", cell=q["cell"],
+                  pending_reason=v.get("pending_reason"))
+    return len(rk)
 
 
 def live_open_cells(doc: dict) -> set[str]:
@@ -270,18 +305,39 @@ class Run:
         print(f"  · {step}：上次已做，跳过")
 
 
+#: 上一条 ``_run`` 输出的末几行（失败时并进 why，原因落到册内哪格；ZM 11-21 vol78 BadRequest、vol21 旧格号票只见「失败」）
+_TAIL: list[str] = []
+
+
 def _run(cmd: list, env: dict, tries: int = 1) -> int:
     """跑一条 guji 命令。``tries``>1 只给幂等的步（拉库、读票、落票带幂等键、推库）：网络读超时（R2／中心库 SSL timeout、
-    StaleBase、断连）在这一步里重试，不让整册重来（ZM 11-19 B 轮 vol14／18）。"""
+    StaleBase、断连）在这一步里重试，不让整册重来（ZM 11-19 B 轮 vol14／18）。输出照常打出，另留末 40 行在 ``_TAIL``。"""
+    import collections
     rc = 1
     for i in range(tries):
         print("  $ " + " ".join(str(c) for c in cmd) + (f"   （第 {i + 1} 次）" if i else ""), flush=True)
-        rc = subprocess.run([str(c) for c in cmd], env=env).returncode
+        tail: collections.deque = collections.deque(maxlen=40)
+        p = subprocess.Popen([str(c) for c in cmd], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, encoding="utf-8", errors="replace")
+        for line in p.stdout:
+            sys.stdout.write(line)
+            tail.append(line.rstrip("\n"))
+        rc = p.wait()
+        _TAIL[:] = list(tail)
+        sys.stdout.flush()
         if rc == 0:
             return 0
         if i < tries - 1:
             time.sleep(10 * (i + 1))
     return rc
+
+
+def _why(msg: str) -> str:
+    """失败原因带上命令输出里最后几行要紧的（报错行、带格号的行），没有就最后 3 行。"""
+    keys = ("Error", "错误", "失败", "Exception", "BadRequest", "rev", "格", ":")
+    hit = [ln.strip() for ln in _TAIL if ln.strip() and any(k in ln for k in keys)][-4:]
+    hit = hit or [ln.strip() for ln in _TAIL if ln.strip()][-3:]
+    return msg + ("｜" + "｜".join(x[:240] for x in hit) if hit else "")
 
 
 # ───────────────────────── 各步 ─────────────────────────
@@ -377,6 +433,25 @@ def live_sheet(text_id: str, chapter: str) -> dict | None:
 
 
 def collect_book(a, ws: Path, book: str) -> dict:
+    """收一册；收完（不论要不要发站）把这册的出单版包解出来的目录删掉腾盘（``--keep-pack`` 留着），
+    省得每册前手工 ``rm -rf _packs/*``（ZM 11-21）。"""
+    try:
+        res = _collect_book(a, ws, book)
+    except Exception as e:  # noqa: BLE001 —— 并行时一册出错不拖垮别的册；原因落进结果
+        import traceback
+        traceback.print_exc()
+        res = {"status": "blocked", "why": f"{type(e).__name__}: {str(e)[:400]}"}
+    root = (getattr(a, "_pack_roots", None) or {}).get(book)
+    if root and not getattr(a, "keep_pack", False) and res.get("status") in ("done", "synced", "to-publish", "to-sync"):
+        d = Path(root) / book
+        if "_packs" in Path(root).parts and d.is_dir():
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+            print(f"  已删本册出单版包解出的目录 {d}（--keep-pack 留）")
+    return res
+
+
+def _collect_book(a, ws: Path, book: str) -> dict:
     from .datastore.workcopy import data_dir
     from .online_lists import book_text_dir
     text_id, ch = a.text_id, chapter_of(book)
@@ -395,7 +470,7 @@ def collect_book(a, ws: Path, book: str) -> dict:
     if not a.no_pull and not (pre_state and not a.fresh and "pull" in _load_state(pre_state).get("done", {})
                                and "sync" not in _load_state(pre_state)["done"]):
         if _run([*GUJI, "db", "pull", "-w", ws], env, tries=3):
-            return {"status": "blocked", "why": "guji db pull 失败"}
+            return {"status": "blocked", "why": _why("guji db pull 失败")}
     if not sheet_p.exists():
         return {"status": "blocked", "why": f"数据目录没有线上单 {sheet_p}"}
     rev = json.loads(sheet_p.read_text(encoding="utf-8")).get("rev")
@@ -420,14 +495,17 @@ def collect_book(a, ws: Path, book: str) -> dict:
         t = time.time()
         pack = a.pack or _pack_for(book, rev)
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
-               "--from-kv", "--items"]
+               votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
         if a.batch or not getattr(a, "no_ai", False):
             cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
         if _run(cmd, env, tries=3):
-            return {"status": "blocked", "why": "cellvotes draft 失败（见上；0 票又没给 --batch 时也会停）", "rev": rev}
+            return {"status": "blocked", "why": _why("cellvotes draft 失败（见上；0 票又没给 --batch 时也会停）"), "rev": rev}
         R.mark("draft", {"pack": pack, "batch": batch}, t)
     meta = json.loads((draft / "meta.json").read_text(encoding="utf-8")) if (draft / "meta.json").exists() else {}
+    if not hasattr(a, "_pack_roots"):
+        a._pack_roots = {}
+    a._pack_roots[book] = meta.get("products_root")
     if a.dry_run:
         print(f"  --dry-run：不写人裁（可写 {meta.get('ready', 0)}、挂起 {meta.get('held', 0)}，见 {draft / 'report.md'}）")
     elif R.done("write"):
@@ -436,13 +514,14 @@ def collect_book(a, ws: Path, book: str) -> dict:
         t = time.time()
         if meta.get("ready"):
             if _run([*GUJI, "cellvotes", "write", book, draft, "--batch", batch, "--reviewer", a.reviewer, "-w", ws], env, tries=3):
-                return {"status": "blocked", "why": "cellvotes write 失败", "rev": rev}
+                return {"status": "blocked", "why": _why("cellvotes write 失败"), "rev": rev}
         R.mark("write", {"ready": meta.get("ready", 0), "held": meta.get("held", 0)}, t)
 
     # 4. 定字直接写 book-text
     from .swap.booktext import _bt_dir, _worktree, do_book
     src = Path(a.book_text).resolve()
     wt = Path(a.worktree or (str(src) + "-collect")).resolve()
+    child = bool(getattr(a, "child", False))       # 多册并行的子进程：父进程已取过 dev，各册各用一个 worktree／分支
     landed: dict[str, str] = {}
     if R.done("book-text") and not a.dry_run:
         R.skip("book-text")
@@ -450,7 +529,7 @@ def collect_book(a, ws: Path, book: str) -> dict:
     else:
         t = time.time()
         sp = (Path(book_text_dir(".", text_id)).as_posix().lstrip("./"),)
-        _worktree(src, wt, branch="collect-booktext", sparse=sp)
+        _worktree(src, wt, branch="collect-booktext" + (f"-{book}" if child else ""), sparse=sp, fetch=not child)
         vdir = _bt_dir(wt, text_id) / "default"
         cf, cordf = vdir / f"{ch}.char.json", vdir / f"{ch}.cord.json"
         if not cf.exists() or not cordf.exists():
@@ -482,13 +561,14 @@ def collect_book(a, ws: Path, book: str) -> dict:
                 notes.append(f"{k} 现行没有生效的定字人裁（绑定不是 valid／rebound 到本格、rev 不符或撤库），不落")
         # AI 裁定（文意、终审看图）直接落，不等重放（用户 11-20 定）；真人票／现行人裁优先，AI 只补没人裁的格
         n_ai = 0
+        rk: list = []
         if not getattr(a, "no_ai", False):
             pr = meta.get("products_root") or os.environ.get("GUJI_PRODUCTS_DIR")
             if not pr:
                 notes.append("没有出单版产物根，AI 裁定这次不落")
             else:
                 try:
-                    ai, ai_notes = ai_ruling_chars(pr, book)
+                    ai, ai_notes = ai_ruling_chars(pr, book, rekey=rk)
                 except Exception as e:  # noqa: BLE001
                     ai, ai_notes = {}, [f"AI 裁定读不出来（{type(e).__name__}: {str(e)[:200]}），这次不落"]
                 notes += ai_notes
@@ -547,6 +627,14 @@ def collect_book(a, ws: Path, book: str) -> dict:
             info["landed"] = {x[0]: x[2] for x in plan["apply"]}
             info["ai_landed"] = {x[0]: x[3] for x in plan["apply"] if x[3].startswith("AI")}
         landed = info["landed"]
+        # 提示词改版／字组改名、窗口没变的文意裁定：按现行组／版本补写一条（下次重放即命中，不用另跑 rulings-hits --rekey）
+        hit = {x[0] for x in plan["apply"] + plan["already"]}
+        rk = [(q, v) for q, v in rk if bare(q["cell"]) in hit]
+        if rk and not a.dry_run:
+            info["rekeyed"] = write_rekeys(book, rk)
+            print(f"  提示词改版、窗口没变的文意裁定按现行版本补键 {info['rekeyed']} 条")
+        elif rk:
+            print(f"  --dry-run：提示词改版、窗口没变的文意裁定 {len(rk)} 条，真跑时补键")
         # AI 落的格不在单上结案：用户之后投票仍以票为准（下一轮重放后这格自然不再待审）
         info["batch_cells"] = {x[0]: x[3] for x in plan["apply"] + plan["already"] if x[3] != "票" and not x[3].startswith("AI")}
         info["batch_cells"].update({a_: "票与已有人裁一致" for a_ in same_ids if a_ in want})   # 现行生效的才结案
@@ -564,13 +652,15 @@ def collect_book(a, ws: Path, book: str) -> dict:
         n = resolve_items(ws, text_id, ch, {a_: "" for a_ in bc}, by=a.reviewer, why=f"收单 {rev}：早先人裁已落文本") if bc else 0
         R.mark("resolve", {"n": n}, t)
 
-    # 6. 推库（只一次）
+    # 6. 推库（只一次）；并行子进程不推，父进程等各册都到这一步统一推一次
+    if child and not R.done("sync"):
+        return {"status": "to-sync", "rev": rev, "landed": len(landed)}
     if R.done("sync"):
         R.skip("sync")
     else:
         t = time.time()
         if _run([*GUJI, "db", "sync", "-w", ws], env, tries=4):
-            return {"status": "blocked", "why": "guji db sync 四次都失败，原命令再跑会从推库接着做", "rev": rev}
+            return {"status": "blocked", "why": _why("guji db sync 四次都失败，原命令再跑会从推库接着做"), "rev": rev}
         R.mark("sync", None, t)
 
     # 7. 只发这一章，核线上单（多册时由 cmd_collect 最后一起发一次，见 publish_and_verify）
@@ -650,16 +740,29 @@ def books_with_votes(votes: list[dict], open_of) -> list[str]:
     return out
 
 
+def votes_from_flag() -> str:
+    """收单读网站票的来源：缺省网站 KV（``--from-kv``）；``GUJI_VOTES_FROM=inbox`` 改读中心库 web_inbox
+    （A20 11-21 网站票直写 D1；双写对账通过前缺省不变）。"""
+    v = (os.environ.get("GUJI_VOTES_FROM") or "kv").strip().lower()
+    if v not in ("kv", "inbox"):
+        raise SystemExit(f"GUJI_VOTES_FROM 只能是 kv 或 inbox：{v}")
+    return "--from-inbox" if v == "inbox" else "--from-kv"
+
+
 def auto_books(ws: Path, text_id: str) -> list[str]:
     """``--books auto``：读一遍网站条目票（KV），挑出有票落在还开着的条目上的册（ZM 11-19：不知道哪些册有新票，
     只能全拉自己比）。要 CELLREVIEW_TOKEN；先拉库，条目以库为准。"""
     from .cli_cellvotes import _fetch_kv_items
     from .datastore.workcopy import data_dir
     from .review import pending_items as P
-    tok = os.environ.get("CELLREVIEW_TOKEN")
-    if not tok:
-        raise SystemExit("--books auto 要读网站票：设 CELLREVIEW_TOKEN")
-    votes = _fetch_kv_items(text_id, tok)
+    if votes_from_flag() == "--from-inbox":
+        from .feedback import web_inbox as WI
+        votes = WI.item_votes(WI.fetch("cellreview", text_id)[0], text_id)
+    else:
+        tok = os.environ.get("CELLREVIEW_TOKEN")
+        if not tok:
+            raise SystemExit("--books auto 要读网站票：设 CELLREVIEW_TOKEN")
+        votes = _fetch_kv_items(text_id, tok)
     data = data_dir(ws)
 
     def open_of(ch: str) -> set[str]:
@@ -682,13 +785,101 @@ def cmd_collect(a) -> int:
     else:
         books = parse_books(a.books)
     a._defer_publish = len(books) > 1 and not a.dry_run
-    res = {b: collect_book(a, ws, b) for b in books}
+    run_log = ws / "reports" / "_collect" / "runs" / f"{time.strftime('%Y%m%dT%H%M%S')}.json"
+    if getattr(a, "child", False):
+        res = {b: collect_book(a, ws, b) for b in books}
+        rp = os.environ.get("GUJI_COLLECT_RESULT")
+        if rp:
+            Path(rp).write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
+        print(json.dumps(res, ensure_ascii=False, indent=1))
+        return 0
+    if (a.jobs or 1) > 1 and len(books) > 1 and not a.dry_run:
+        res = run_parallel(a, ws, books, run_log)
+    else:
+        res = {}
+        for b in books:
+            res[b] = collect_book(a, ws, b)
+            _save_run(run_log, res)
     ready = [b for b, v in res.items() if v["status"] == "to-publish"]
     if ready:
         print(f"\n== 发站：{'、'.join(ready)} 一起发一次，再逐册核线上单")
         res.update(publish_and_verify(a, ws, ready))
+    _save_run(run_log, res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
-    return 0 if all(v["status"] in ("done", "synced", "dry-run") for v in res.values()) else 2
+    bad = {b: v for b, v in res.items() if v["status"] not in ("done", "synced", "dry-run")}
+    if bad:
+        print(f"\n没收完 {len(bad)} 册（原命令再跑，做过的步跳过）：")
+        for b, v in bad.items():
+            print(f"  {b} {v['status']}：{str(v.get('why') or '')[:300]}")
+    print(f"本趟结果：{run_log}")
+    return 0 if not bad else 2
+
+
+def _save_run(p: Path, res: dict) -> None:
+    """每收完一册就记一笔本趟结果（后台跑被重启杀掉时看得到收到哪册；各册进度另在各自 state.json）。"""
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
+    """多册并行（``--jobs N``，ZM 11-21：串行 1.5 分钟/册，大头是取包解包）：拉库、取 book-text dev 各在父进程做一次；
+    每册一个子进程（``guji collect --child``），各用 ``<book-text>-collect-<册>`` worktree，做到落 book-text、结案为止；
+    全部回来后父进程统一 ``db sync`` 一次、给各册记上推库，再由调用方一起发站核线上。各册日志在
+    ``reports/_collect/runs/<本趟>/<册>.log``。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .swap.booktext import DEV_REFSPEC, _git
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env.setdefault("GUJI_ACTOR", "collect")
+    if not a.no_pull and _run([*GUJI, "db", "pull", "-w", ws], env, tries=3):
+        raise SystemExit(_why("guji db pull 失败"))
+    src = Path(a.book_text).resolve()
+    _git(src, "fetch", "-q", "origin", DEV_REFSPEC)
+    logs = run_log.with_suffix("")
+    logs.mkdir(parents=True, exist_ok=True)
+
+    def one(b: str) -> tuple[str, dict]:
+        cmd = [*GUJI, "collect", "--books", b, "-w", ws, "--book-text", src, "--worktree", f"{src}-collect-{b}",
+               "--text-id", a.text_id, "--reviewer", a.reviewer, "--no-pull", "--child"]
+        for x in a.batch or []:
+            cmd += ["--batch", x]
+        cmd += [f for f, on in (("--no-push", a.no_push), ("--no-ai", getattr(a, "no_ai", False)), ("--fresh", a.fresh),
+                                ("--keep-pack", getattr(a, "keep_pack", False))) if on]
+        rp = logs / f"{b}.result.json"
+        rp.unlink(missing_ok=True)
+        with open(logs / f"{b}.log", "w", encoding="utf-8") as lf:
+            rc = subprocess.run([str(c) for c in cmd], env={**env, "GUJI_COLLECT_RESULT": str(rp)},
+                                stdout=lf, stderr=subprocess.STDOUT).returncode
+        try:
+            return b, json.loads(rp.read_text(encoding="utf-8"))[b]
+        except (OSError, ValueError, KeyError):
+            tail = (logs / f"{b}.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
+            return b, {"status": "blocked", "why": f"子进程退出 {rc}，没给结果：{'｜'.join(tail)[:400]}（日志 {logs / (b + '.log')}）"}
+
+    res: dict[str, dict] = {}
+    t0 = time.time()
+    print(f"\n== 并行收 {len(books)} 册（{a.jobs} 路），日志 {logs}/")
+    with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+        for f in as_completed([ex.submit(one, b) for b in books]):
+            b, r = f.result()
+            res[b] = r
+            _save_run(run_log, res)
+            print(f"  {b}：{r['status']} {str(r.get('why') or '')[:200]}（{len(res)}/{len(books)}，{time.time() - t0:.0f} s）", flush=True)
+    todo = [b for b in books if res[b]["status"] == "to-sync"]
+    if todo:
+        t = time.time()
+        if _run([*GUJI, "db", "sync", "-w", ws], env, tries=4):
+            for b in todo:
+                res[b] = {**res[b], "status": "blocked", "why": _why("guji db sync 四次都失败，原命令再跑会从推库接着做")}
+            return res
+        for b in todo:
+            st = _state_of(ws, a.text_id, b)
+            if st:
+                st[1].mark("sync", {"shared": len(todo)}, t)
+            res[b] = {**res[b], "status": "synced" if a.no_publish else "to-publish"}
+    return res
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -708,6 +899,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--fresh", action="store_true", help="不认上次的进度，从头做")
     p.add_argument("--no-ai", action="store_true",
                    help="不落 AI 裁定（缺省会把出单版包里仍待审、裁定库按窗口命中的高把握文意裁定和可放行的终审看图裁定一起直接写 book-text；人裁优先）")
+    p.add_argument("-j", "--jobs", type=int, default=1,
+                   help="多册并行路数（4–8；各册各用 <book-text>-collect-<册> worktree，拉库／推库／发站各一次）；缺省 1＝逐册")
+    p.add_argument("--keep-pack", action="store_true", help="收完不删本册出单版包解出的目录（缺省删，腾盘）")
+    p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--dry-run", action="store_true", help="只拉库、读票出草稿、算要落哪些格并在 worktree 里提交 book-text（不推）；不写人裁、不推库、不发站")
 
 

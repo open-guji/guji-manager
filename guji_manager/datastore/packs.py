@@ -306,8 +306,8 @@ def fetch_products(book: str, dest_root: Path, label: str | None = None, force: 
     if dest.exists() and any(dest.iterdir()) and not force:
         raise FileExistsError(f"{dest} 已有产物；要覆盖加 --force，或用 --to 解到别处（如对比用的空目录）")
     buf = io.BytesIO()
-    for p in man["parts"]:
-        chunk = _call(src, "GET", f"{name}/{p['name']}", raw=True)
+    # 段并发预取（11-21 ZM collect：每册取包逐段串行，单连接约 11 MB/s，是收单的大头）
+    for p, chunk in zip(man["parts"], _parts_in_order(src, name, man["parts"])):
         if hashlib.sha256(chunk).hexdigest() != p["sha256"]:
             raise ValueError(f"{name}/{p['name']} sha256 对不上，包坏了，不解")
         buf.write(chunk)
