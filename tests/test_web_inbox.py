@@ -150,3 +150,17 @@ def test_by_prefix_reads_without_book(monkeypatch):
     monkeypatch.setattr(WI, "fetch", fake_fetch)
     assert [v["n"] for v in WI.by_prefix("thread", "th:x:")] == [1, 2]
     assert got["args"] == ("thread", "")
+
+
+def test_kv_retry_rereads_and_keeps_longer(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    seq = iter([RuntimeError("500"), [1], [1, 2], [1, 2]])
+
+    def fn():
+        x = next(seq)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    assert C._kv_retry(fn) == [1, 2]
+    with pytest.raises(SystemExit, match="KV 管理读失败"):
+        C._kv_retry(lambda: (_ for _ in ()).throw(RuntimeError("x")), tries=2)
