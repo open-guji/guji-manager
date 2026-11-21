@@ -130,3 +130,82 @@ def test_ai_ruling_chars_window_hit_and_vis(tmp_path):
     assert got == {"1:1:1": ("曰", "AI文意/ry"), "1:1:4": ("曰", "AI看图/vis-o1")}
     joined = "\n".join(notes)
     assert "把握 mid" in joined and "不在组" in joined and "对位字" in joined and "半格" in joined
+
+
+def test_ai_ruling_chars_cross_version_same_window(tmp_path):
+    """提示词版本／字组改名、窗口没变的文意裁定（ZM 11-21 约 210 格）：rekey 列表给了才落，并记下待补键；窗口变了的不认。"""
+    from guji_manager._cv import RulingStore
+    from open_guji_cv.feedback.llm_queue import PENDING
+    store = RulingStore(tmp_path / "fb")
+    store._batch = "llm-x"
+    store.put("ry", "v1#m:high", "甲乙", "丙丁", char="曰", conf="high", why="w", model="m", cell="001:1:1:1")
+    store.put("ry_old", "v1", "子丑", "寅卯", char="日", conf="high", why="", model="m", cell="001:1:1:2")   # 组改名
+    store.put("ry", "v1", "辰", "巳", char="曰", conf="high", why="", model="m", cell="001:1:1:3")          # 窗口变了
+    ask = lambda l, r: {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": l, "r": r}}]}}}  # noqa: E731
+    root = tmp_path / "p"
+    (root / "001" / "seed_admit").mkdir(parents=True)
+    cells = [{"id": "001:1:1:1", "char": "日", **ask("甲乙", "丙丁")}, {"id": "001:1:1:2", "char": "曰", **ask("子丑", "寅卯")},
+             {"id": "001:1:1:3", "char": "日", **ask("辰辰", "巳")}]
+    (root / "001" / "seed_admit" / "p0001.json").write_text(json.dumps({"seed_admit": {"columns": [{"chars": cells}]}}), encoding="utf-8")
+    got, _ = C.ai_ruling_chars(root, "001", RulingStore(tmp_path / "fb"), members={"ry": {"日", "曰"}})
+    assert got == {}                                   # 不给 rekey：照旧只认窗口键
+    rk: list = []
+    got, _ = C.ai_ruling_chars(root, "001", RulingStore(tmp_path / "fb"), members={"ry": {"日", "曰"}}, rekey=rk)
+    assert got == {"1:1:1": ("曰", "AI文意/ry/改版重键"), "1:1:2": ("日", "AI文意/ry/改版重键")}
+    assert sorted(q["cell"] for q, _ in rk) == ["001:1:1:1", "001:1:1:2"]
+    import os
+    os.environ["GUJI_FEEDBACK_DIR"] = str(tmp_path / "fb")
+    try:
+        from unittest import mock
+        with mock.patch("guji_manager._cv.RulingStore", lambda: RulingStore(tmp_path / "fb")):
+            assert C.write_rekeys("001", rk, batch="llm-rekey-t") == 2
+    finally:
+        os.environ.pop("GUJI_FEEDBACK_DIR", None)
+    s2 = RulingStore(tmp_path / "fb")
+    assert s2.get("ry", "v2", "甲乙", "丙丁")["char"] == "曰"
+    assert s2.get("ry", "v2", "子丑", "寅卯")["why"].startswith("rekey:")
+
+
+def test_why_tail_picks_error_lines():
+    C._TAIL[:] = ["读票 12 条", "Traceback (most recent call last):", "BadRequest: 事件锚点 vol78:3:2:5 页表 rev r004≠r005", ""]
+    w = C._why("cellvotes write 失败")
+    assert w.startswith("cellvotes write 失败｜") and "vol78:3:2:5" in w
+
+
+def test_run_keeps_tail(tmp_path):
+    import sys
+    rc = C._run([sys.executable, "-c", "print('a'); print('格 1:2:3 坏了'); raise SystemExit(3)"], {**__import__('os').environ})
+    assert rc == 3 and C._TAIL[-1] == "格 1:2:3 坏了"
+
+
+def test_run_parallel_one_sync(tmp_path, monkeypatch):
+    """--jobs：每册一个子进程（--child，各自 worktree），回来后父进程只推库一次、给各册记推库。"""
+    import argparse
+    import subprocess as sp
+    from pathlib import Path
+    from guji_manager.swap import booktext as BT
+    calls, marked = [], []
+    monkeypatch.setattr(BT, "_git", lambda *a, **k: "")
+    monkeypatch.setattr(C, "_run", lambda cmd, env, tries=1: calls.append([str(c) for c in cmd]) or 0)
+
+    def fake_child(cmd, env=None, stdout=None, stderr=None):
+        b = cmd[cmd.index("--books") + 1]
+        assert "--child" in cmd and cmd[cmd.index("--worktree") + 1].endswith(f"-collect-{b}")
+        st = "blocked" if b == "vol03" else "to-sync"
+        Path(env["GUJI_COLLECT_RESULT"]).write_text(json.dumps({b: {"status": st, "why": "x" if st == "blocked" else None}}))
+        return sp.CompletedProcess(cmd, 0)
+    monkeypatch.setattr(C.subprocess, "run", fake_child)
+
+    class R:
+        def __init__(self, b):
+            self.b = b
+
+        def mark(self, step, info=None, t=None):
+            marked.append((self.b, step))
+    monkeypatch.setattr(C, "_state_of", lambda ws, tid, b: (None, R(b), None))
+    a = argparse.Namespace(no_pull=False, book_text=str(tmp_path / "bt"), text_id="t", reviewer="r", batch=None, no_push=False,
+                           no_ai=False, fresh=False, keep_pack=False, jobs=3, no_publish=False)
+    res = C.run_parallel(a, tmp_path, ["vol01", "vol02", "vol03"], tmp_path / "runs" / "x.json")
+    assert {b: v["status"] for b, v in res.items()} == {"vol01": "to-publish", "vol02": "to-publish", "vol03": "blocked"}
+    assert sum(1 for c in calls if "sync" in c) == 1 and sum(1 for c in calls if "pull" in c) == 1
+    assert sorted(marked) == [("vol01", "sync"), ("vol02", "sync")]

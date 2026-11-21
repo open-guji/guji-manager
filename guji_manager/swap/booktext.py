@@ -32,11 +32,13 @@ import collections
 import copy
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from .resolve import BLANK, detect_flaws, resolve
@@ -712,19 +714,25 @@ def _run(cmd: list, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run([str(c) for c in cmd], cwd=cwd, capture_output=True, text=True)
 
 
-def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[str, ...] = ()) -> Path:
-    """独立 worktree（swap run 会在共享 book-text 目录里 checkout -- .，手工活不能放那里）。每次重置到最新 origin/dev。"""
-    _git(src, "fetch", "-q", "origin", "dev")
+#: 显式更新 origin/dev 远端引用：单分支检出、改过 refspec 的仓 ``git fetch origin dev`` 只写 FETCH_HEAD，
+#: origin/dev 停在旧处，``local_check.py --dev`` 按它找改动条目，会把别人的提交算进来整册不过（ZM 11-21）
+DEV_REFSPEC = "+refs/heads/dev:refs/remotes/origin/dev"
+
+
+def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[str, ...] = (), fetch: bool = True) -> Path:
+    """独立 worktree（swap run 会在共享 book-text 目录里 checkout -- .，手工活不能放那里）。每次重置到最新 origin/dev。
+    ``fetch=False``：调用方刚取过（collect 并行时父进程取一次，子进程不再同时 fetch 抢引用锁）。"""
+    if fetch:
+        _git(src, "fetch", "-q", "origin", DEV_REFSPEC)
     if not (wt / ".git").exists():
         # 稀疏检出：全仓几个 G，只要 scripts 和本书目录（text_id 未知时退回整仓）
-        _git(src, "worktree", "add", "-f", "--no-checkout", "-B", branch, str(wt), "FETCH_HEAD")
+        _git(src, "worktree", "add", "-f", "--no-checkout", "-B", branch, str(wt), "refs/remotes/origin/dev")
         if sparse:
             _git(wt, "sparse-checkout", "set", "--cone", "scripts", *sparse)
         _git(wt, "checkout", "-q", branch)
     else:
-        _git(wt, "fetch", "-q", "origin", "dev")
-        _git(wt, "checkout", "-q", "-f", "-B", branch, "FETCH_HEAD")
-        _git(wt, "reset", "-q", "--hard", "FETCH_HEAD")          # 上一册失败留下的改动不能带进来
+        _git(wt, "checkout", "-q", "-f", "-B", branch, "refs/remotes/origin/dev")
+        _git(wt, "reset", "-q", "--hard", "refs/remotes/origin/dev")          # 上一册失败留下的改动不能带进来
         _git(wt, "clean", "-fdq", "--", "Book")
     return wt
 
@@ -873,7 +881,9 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", "-"], input=msg, text=True, check=True)
     if push:
         dest = f"swap/{book}-1x" if one_x else "dev"
-        for i in range(3):
+        for i in range(6):                     # collect 多册并行时几册同时推 dev：被抢先就 rebase 再推
+            if i:
+                time.sleep(2 + 3 * i * random.random())
             if dest == "dev":
                 _git(wt, "pull", "-q", "--rebase", "origin", "dev", check=False)
             p = _run(["git", "push", "-q", "origin", f"HEAD:{'refs/heads/' + dest}"], wt)
