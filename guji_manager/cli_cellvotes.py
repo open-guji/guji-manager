@@ -10,6 +10,8 @@
     guji cellvotes rebase vol05 --book-id 96mid1ogzk --source-rev 4 --out <目录> -w <工作区>
                                                   # 换图源（页号格号不变，只换像素）后的人裁事件换算：只读，锚里的框按页表 from_rev.H
                                                   # 换到新页、source_rev 改成新页表 rev，出 events.jsonl（id 加 ~r）／pending.tsv／report.md
+    guji cellvotes reconcile vol04 --site-book 96mid1ogzk [--rev 004-r13]
+                                                  # 双写对账：网站 KV 管理读 vs 中心库 web_inbox 逐票比（只读，差异退出码 1）
     guji cellvotes write vol04 <目录> --batch H-web-vol04-2026-10-20 --reviewer Sheldon -w <工作区>
                                                   # 写进数据目录（锚按现行产物算）并消费；推库另跑 guji db sync
 
@@ -17,6 +19,8 @@
 票的来源缺省是数据目录 `feedback/lists/web/<site-book>/<rev>.jsonl`（每日 proofing-sync 写进中心库的快照）；
 刚投的票还没同步，用 `--from-kv` 直接管理读网站（令牌取 `--token-env`，缺省 CELLREVIEW_TOKEN，不打印），
 或 `--from <文件>`（jsonl，或管理读接口原样存下的 JSON）。
+`--from-inbox`（A20 11-21）：读中心库网站收件箱 web_inbox（`GET /v1/web/inbox`，网站 KV 与 D1 双写期），取到的是同一份 KV 值，
+产出与 `--from-kv` 相同；令牌用中心库读令牌（GUJI_DATA_TOKEN 等），不用网站令牌。双写对账通过前缺省仍是 KV。
 
 `--cord` 是**出单那一版**的 book-text 格框（rev 对应的文本版本，如 004-r3 ↔ 004 0.2.2）。拿它和现行
 cell_shrink 的框比，对不上的格挂起，不写——现行 cv 重切过的列，旧格号已经不是读者看到的那个字。
@@ -71,11 +75,8 @@ def _item_votes(args) -> tuple[list[dict], str]:
     from ._cv import feedback_root
     from ._cv import load_votes
     from .review import pending_items as P
-    if args.from_kv:
-        tok = os.environ.get(args.token_env)
-        if not tok:
-            raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
-        raw, where = _fetch_kv_items(args.site_book, tok), "网站管理读 /api/cellreview?items=1"
+    if _live(args):
+        raw, where = _live_items(args), _live_where(args, items=True)
     else:
         p = Path(args.from_file) if args.from_file else feedback_root() / "lists" / "web" / args.site_book / "items.jsonl"
         if not p.exists():
@@ -113,6 +114,51 @@ def _fetch_kv_items(site_book: str, token: str, site: str = SITE) -> list[dict]:
             return items
 
 
+def _live(args) -> bool:
+    """当场读全网站票：``--from-kv``（网站 KV 管理读）或 ``--from-inbox``（中心库 web_inbox，A20 11-21）。"""
+    kv, inbox = bool(getattr(args, "from_kv", False)), bool(getattr(args, "from_inbox", False))
+    if kv and inbox:
+        raise SystemExit("--from-kv 与 --from-inbox 只能选一个")
+    return kv or inbox
+
+
+def _kv_token(args) -> str:
+    tok = os.environ.get(args.token_env)
+    if not tok:
+        raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
+    return tok
+
+
+def _inbox_rows(args) -> list[dict]:
+    """收件箱里本书的精校票（一次读全，缓存在 args 上；按单版、按条目两种键都在里面）。"""
+    rows = getattr(args, "_inbox_rows", None)
+    if rows is None:
+        from .feedback import web_inbox as WI
+        rows, seq = WI.fetch("cellreview", args.site_book, token_env=getattr(args, "inbox_token_env", None))
+        args._inbox_rows, args._inbox_seq = rows, seq
+    return rows
+
+
+def _live_rev(args) -> list[dict]:
+    if getattr(args, "from_inbox", False):
+        from .feedback import web_inbox as WI
+        return WI.rev_votes(_inbox_rows(args), args.site_book, args.rev)
+    return _fetch_kv(args.site_book, args.rev, _kv_token(args))
+
+
+def _live_items(args) -> list[dict]:
+    if getattr(args, "from_inbox", False):
+        from .feedback import web_inbox as WI
+        return WI.item_votes(_inbox_rows(args), args.site_book)
+    return _fetch_kv_items(args.site_book, _kv_token(args))
+
+
+def _live_where(args, items: bool = False) -> str:
+    if getattr(args, "from_inbox", False):
+        return f"中心库网站收件箱 web_inbox（{'按条目' if items else '按单版'}，seq≤{getattr(args, '_inbox_seq', 0)}）"
+    return "网站管理读 /api/cellreview" + ("?items=1" if items else "")
+
+
 def _votes(args) -> tuple[list[dict], str]:
     from ._cv import feedback_root
     from ._cv import load_votes
@@ -120,16 +166,13 @@ def _votes(args) -> tuple[list[dict], str]:
         return _item_votes(args)
     if args.from_file:
         return load_votes(Path(args.from_file)), f"文件 {args.from_file}"
-    if args.from_kv:
-        tok = os.environ.get(args.token_env)
-        if not tok:
-            raise SystemExit(f"--from-kv 要环境变量 {args.token_env}（网站管理令牌）")
-        items = _fetch_kv(args.site_book, args.rev, tok)
+    if _live(args):
+        items = _live_rev(args)
         args._n_rev_raw = len(items)                       # 按单版读到几条（读失败会直接抛，到这里就是读全了）
         if items:
             # 两种记法并存（旧网站按单版、新网站按条目）：只读了其中一种，另一种的票不会落——11-13 第五册 005-r13 的 25 票就这么漏的
             chap = args.rev.split("-r")[0].zfill(3)
-            n_item = sum(1 for v in _fetch_kv_items(args.site_book, tok) if str(v.get("vol") or "").zfill(3) == chap)
+            n_item = sum(1 for v in _live_items(args) if str(v.get("vol") or "").zfill(3) == chap)
             if n_item:
                 _print(f"⚠ 这一册还有 {n_item} 条按条目记的票没读（本次按单版读了 {len(items)} 票）：另跑一遍 --items 落它们，别漏。")
         if not items:
@@ -138,7 +181,7 @@ def _votes(args) -> tuple[list[dict], str]:
             raw, where = _item_votes(args)
             _print(f"按格号读到 0 票，自动改读条目票：{where}")
             return raw, where
-        return items, f"网站管理读 /api/cellreview（{len(items)} 条）"
+        return items, f"{_live_where(args)}（{len(items)} 条）"
     p = feedback_root() / "lists" / "web" / args.site_book / f"{args.rev}.jsonl"
     if not p.exists():
         raise SystemExit(f"数据目录没有 {p}（先 guji db pull；票刚投、还没同步就用 --from-kv）")
@@ -253,8 +296,8 @@ def _confirm_empty(args, where: str) -> dict:
     """``--allow-empty``：这张单确实没人投（殿本 21–99 册旧单，ZM 11-18）。只认刚从网站读全的结果：
     必须 ``--from-kv``（数据目录里的票文件可能是没同步的旧副本），按单版、按条目两种记法都读成功且这一章都是 0 条，
     且没有「条目找不到」被丢掉的票。读接口失败会直接抛错，走不到这里，所以守卫防的读票断连不会被放过去。"""
-    if not args.from_kv or getattr(args, "from_file", None):
-        raise SystemExit(f"读到 0 票（{where}）：--allow-empty 只认 --from-kv 当场从网站读全的结果，不认票文件")
+    if not _live(args) or getattr(args, "from_file", None):
+        raise SystemExit(f"读到 0 票（{where}）：--allow-empty 只认 --from-kv／--from-inbox 当场读全的结果，不认票文件")
     n_rev = getattr(args, "_n_rev_raw", None)
     n_item = getattr(args, "_n_item_raw", None)
     if n_item is None:                                  # 按单版读到 0 条时会自动改读条目票；没走到就补读一次
@@ -262,7 +305,7 @@ def _confirm_empty(args, where: str) -> dict:
         n_item = getattr(args, "_n_item_raw", None)
     lost = getattr(args, "_item_lost", 0)
     if n_rev is None:                                   # 一开始就按条目读（--items）：按单版也核一遍
-        n_rev = len(_fetch_kv(args.site_book, args.rev, os.environ.get(args.token_env) or ""))
+        n_rev = len(_live_rev(args))
     if n_rev or n_item or lost:
         raise SystemExit(f"读到 0 条可用票，但网站上按单版 {n_rev or 0} 条、按条目 {n_item or 0} 条"
                          f"（条目找不到 {lost} 条）：不是零票，别用 --allow-empty")
@@ -609,9 +652,36 @@ def cmd_rebase(args) -> None:
     _print(f"事件 {res.n_in} → 迁出 {len(res.events)}、不迁 {sum(res.skipped.values())}、待办 {len(res.pending)}  → {args.out}/report.md")
 
 
+def cmd_reconcile(args) -> int:
+    """双写对账（A20 11-21）：网站 KV 管理读 vs 中心库 web_inbox，逐票比。按条目的票全书比；按单版的票比 --rev 给的那张单
+    （可逗号分隔多张）。只读。有差异退出码 1。两边都只看本书（``book`` 是 cv 册 id 时不用，只认 --site-book）。"""
+    from .feedback import web_inbox as WI
+    if not args.site_book:
+        raise SystemExit("reconcile 要 --site-book")
+    tok = _kv_token(args)
+    rows, seq = WI.fetch("cellreview", args.site_book, token_env=getattr(args, "inbox_token_env", None))
+    pairs = [("按条目", _fetch_kv_items(args.site_book, tok), WI.item_votes(rows, args.site_book))]
+    for rev in [r for r in (args.rev or "").split(",") if r.strip()]:
+        pairs.append((f"按单版 {rev}", _fetch_kv(args.site_book, rev.strip(), tok), WI.rev_votes(rows, args.site_book, rev.strip())))
+    bad = 0
+    _print(f"{args.site_book}：收件箱精校票 {len(rows)} 行（seq≤{seq}）")
+    for name, kv, ib in pairs:
+        d = WI.diff_votes(kv, ib)
+        n = sum(len(v) for v in d.values())
+        bad += n
+        _print(f"- {name}：KV {len(kv)}，收件箱 {len(ib)}；只在 KV {len(d['only_kv'])}、只在收件箱 {len(d['only_inbox'])}、值不同 {len(d['differ'])}")
+        for k in ("only_kv", "only_inbox", "differ"):
+            for x in d[k][:10]:
+                _print(f"    {k} {x}")
+    _print("✓ 两边一致" if not bad else f"✗ 差 {bad} 票")
+    if bad:
+        raise SystemExit(1)
+    return 0
+
+
 def add_parser(sub) -> None:
     p = sub.add_parser("cellvotes", help="网站精校页投票 → 人裁事件：draft（只读出草稿）| write（写入并消费）| migrate（换图源迁票提案，只读）| rebase（页号不变的换图源：人裁锚换算提案，只读）")
-    p.add_argument("action", choices=["draft", "write", "migrate", "rebase"])
+    p.add_argument("action", choices=["draft", "write", "migrate", "rebase", "reconcile"])
     p.add_argument("book", help="cv 册 id，如 vol04")
     p.add_argument("dir", nargs="?", default=None, help="write：draft 的输出目录")
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
@@ -628,6 +698,9 @@ def add_parser(sub) -> None:
     p.add_argument("--no-none", dest="include_none", action="store_false", help="draft：「无字」票不写（挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
     p.add_argument("--from-kv", action="store_true", help="draft：票直接管理读网站")
+    p.add_argument("--from-inbox", action="store_true",
+                   help="draft：票读中心库网站收件箱 web_inbox（GET /v1/web/inbox，网站 KV 与 D1 双写；读令牌 GUJI_DATA_TOKEN 等）")
+    p.add_argument("--inbox-token-env", default=None, help="draft --from-inbox：读令牌的环境变量（缺省依次试 GUJI_DATA_TOKEN、_PROD、_READ）")
     p.add_argument("--allow-empty", action="store_true",
                    help="draft：确实没人投（0 票）也出空草稿，好照常换单；只认 --from-kv 当场读全、按单版和按条目都是 0 条")
     p.add_argument("--items", action="store_true", help="draft：读按条目记的票（换成条目现在的格号；--rev 给现行单）")
@@ -659,6 +732,8 @@ def cmd_cellvotes(args) -> None:
         cmd_migrate(args)
     elif args.action == "rebase":
         cmd_rebase(args)
+    elif args.action == "reconcile":
+        cmd_reconcile(args)
     else:
         if not args.dir or not args.batch or not args.reviewer:
             _print("错误：write 要 <目录> --batch --reviewer（缺：" + "、".join(
