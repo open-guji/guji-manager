@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.4.82] - 2026-11-20
+
+- PATCH：`guji collect` 落按格写的文意裁定（ZM 11-21 batch5 兩/雨 3 格、閔 1 格 landed 0 且无提示）：`ai_ruling_chars` 加第三路，seed_admit 没有 ask（字组没进）或 ask 同组同版本但窗口小变的格，按格号取最新一条非 O 文意裁定，conf=high、字是整理本字／库前五／组员、窗口紧邻 2 字相同且相似度 ≥0.8 才落，来源 `AI文意/<组>/按格`；对不上、终审裁定把握不够／admit_ok 假的都写进 notes，不再静默跳过。待审分类 V01 不再把 兩雨 味未 玉王 傅傳 箸著 住往 奕弈 寥𡚶 算异体（字典边实为形近，`review.reasons.NOT_VARIANT_PAIRS`）（#778）。
+
 ## [0.4.81] - 2026-11-20
 
 - PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#769）。

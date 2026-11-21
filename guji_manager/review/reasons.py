@@ -135,9 +135,26 @@ def build_context(cells: list[Cell], lib_n=None, are_variants=None, lib_split=No
 VARIANT_TIERS = frozenset({"T1", "T2"})
 
 
+#: 字典里有异体边、实为形近或通用的不同字（ZM 11-21 殿本 variant_pair 里挑出；兩/雨 是 twedu 的边，玉/王 hydzd＋twedu，
+#: 住/往 twedu 且 cv 自动语义表也并成一个字）。这些对不算 V 类异体，落回形近等后面的规则（AI 文意判可以管）。
+#: cv `config/variants/never_group.json` 同时登记（dev，随下一底库生效）；这里另写一份，装旧 cv 的机器也照此分类。
+NOT_VARIANT_PAIRS = frozenset(frozenset(p) for p in ("兩雨", "味未", "玉王", "傅傳", "箸著", "住往", "奕弈", "寥𡚶"))
+
+
+def _denied(c: Cell) -> bool:
+    """整理本字与库首位／机器字是人定「不是异体」的对。"""
+    if not c.ref:
+        return False
+    deny = NOT_VARIANT_PAIRS
+    return any(x and x != c.ref and frozenset((c.ref, x)) in deny for x in (c.top, c.char))
+
+
 def _variant_with_ref(c: Cell, ctx: Context) -> bool:
     """异体：带异体疑问码；或整理本字与**库首位或机器字**在异体表里有边（A24 V01 深挖 11-06 收窄：不再看前五里其它候选，
-    那些多是陪衬字碰巧与整理本有边；给了 `ctx.edge_tier` 时只认 T1／T2，通假、简繁的 T3 不算）。只改分类，不放行。"""
+    那些多是陪衬字碰巧与整理本有边；给了 `ctx.edge_tier` 时只认 T1／T2，通假、简繁的 T3 不算）。只改分类，不放行。
+    整理本字与库首位／机器字是「不是异体」的对（`NOT_VARIANT_PAIRS`）不算异体（ZM 11-21 兩/雨）。"""
+    if _denied(c):
+        return False
     if c.codes & _VARIANT:
         return True
     if not (ctx.are_variants and c.has_ref and c.top and c.top != c.ref):
