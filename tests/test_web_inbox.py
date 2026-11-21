@@ -125,3 +125,28 @@ def test_diff_votes():
     b = [vote("1:1:1", "char", "乙"), {"item": "pi_a", "voter": "v1", "choice": "char"}, vote("1:1:3", "none")]
     d = WI.diff_votes(a, b)
     assert d == {"only_kv": [f"{REV}:1:1:2:v1"], "only_inbox": [f"{REV}:1:1:3:v1"], "differ": [f"{REV}:1:1:1:v1"]}
+
+
+def test_tombstones_skipped_and_reconcile_treats_them_as_absent():
+    rows = rows_of([(f"cr:i:{BOOK}:pi_a:v1", {"item": "pi_a", "voter": "v1", "choice": "char"}),
+                    (f"cr:i:{BOOK}:pi_b:v1", {"deleted": True}),
+                    (f"cr:{REV}:{BOOK}:1:1:1:v1", {"deleted": True}),
+                    (f"cr:004-r4:{BOOK}:1:1:1:v1", {"deleted": True})])
+    assert [v["item"] for v in WI.item_votes(rows, BOOK)] == ["pi_a"]
+    assert WI.rev_votes(rows, BOOK, REV) == [] and WI.rev_files(rows, BOOK) == {}
+    kv = [{"item": "pi_a", "voter": "v1", "choice": "char"}]                  # pi_b 的 KV 键已删
+    assert WI.diff_votes(kv, WI.item_votes(rows, BOOK)) == {"only_kv": [], "only_inbox": [], "differ": []}
+
+
+def test_by_prefix_reads_without_book(monkeypatch):
+    got = {}
+
+    def fake_fetch(kind, book="", **kw):
+        got["args"] = (kind, book)
+        return [{"seq": 1, "kind": kind, "key": "th:x:2", "book": "", "ts": 0, "value": {"n": 2}},
+                {"seq": 2, "kind": kind, "key": "th:x:1", "book": "", "ts": 0, "value": {"n": 1}},
+                {"seq": 3, "kind": kind, "key": "th:x:3", "book": "", "ts": 0, "value": {"deleted": True}},
+                {"seq": 4, "kind": kind, "key": "th:y:1", "book": "", "ts": 0, "value": {"n": 9}}], 4
+    monkeypatch.setattr(WI, "fetch", fake_fetch)
+    assert [v["n"] for v in WI.by_prefix("thread", "th:x:")] == [1, 2]
+    assert got["args"] == ("thread", "")

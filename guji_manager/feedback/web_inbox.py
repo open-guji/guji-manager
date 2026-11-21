@@ -84,9 +84,19 @@ def fetch(kind: str, book: str = "", after: int = 0, token_env: str | None = Non
         cur = max(cur, int(nxt))
 
 
+def is_tombstone(r: dict) -> bool:
+    """墓碑（A20 11-21）：网站删了 KV 键（撤票、站方删除），收件箱同 kind＋key 写 ``value.deleted: true``。读到跳过，
+    等同 KV 里这个键已不存在。"""
+    return (r.get("value") or {}).get("deleted") is True
+
+
+def live_rows(rows: list[dict]) -> list[dict]:
+    """去掉探测条目（``probe:`` 键）与墓碑，按键排序（同 KV 列键顺序）。"""
+    return sorted((r for r in rows if not r["key"].startswith("probe:") and not is_tombstone(r)), key=lambda r: r["key"])
+
+
 def _sorted_values(rows: list[dict], pred) -> list[dict]:
-    """按键排序取值；``probe:`` 开头的是 A20/A41 的探测条目，一律不要。"""
-    return [r["value"] for r in sorted(rows, key=lambda r: r["key"]) if not r["key"].startswith("probe:") and pred(r["key"])]
+    return [r["value"] for r in live_rows(rows) if pred(r["key"])]
 
 
 def rev_votes(rows: list[dict], book: str, rev: str) -> list[dict]:
@@ -104,7 +114,7 @@ def item_votes(rows: list[dict], book: str) -> list[dict]:
 def rev_files(rows: list[dict], book: str) -> dict[str, list[dict]]:
     """按单版的票按 rev 分组成 ``{"<rev>.jsonl": [票…]}``（同中心库快照的文件名），给 ``opinions ingest``。"""
     out: dict[str, list[dict]] = {}
-    for r in sorted(rows, key=lambda r: r["key"]):
+    for r in live_rows(rows):
         parts = r["key"].split(":")
         if len(parts) < 4 or parts[0] != "cr" or parts[1] == "i" or parts[2] != book:
             continue
@@ -117,6 +127,13 @@ def fix_values(rows: list[dict]) -> list[dict]:
     return _sorted_values(rows, lambda k: True)
 
 
+def by_prefix(kind: str, prefix: str, token_env: str | None = None, **kw) -> list[dict]:
+    """不按书过滤、按键前缀取（A20 11-21：``thread`` 等值里没有 ``book``／``book_id`` 的，表里 book 为空，按书读不到）。
+    返回值（已去墓碑、探测条目，按键排序）。"""
+    rows, _ = fetch(kind, "", token_env=token_env, **kw)
+    return _sorted_values(rows, lambda k: k.startswith(prefix))
+
+
 # ---- 对账（双写期：KV 管理读 vs 收件箱）----
 
 def vote_id(v: dict) -> str:
@@ -127,7 +144,8 @@ def vote_id(v: dict) -> str:
 
 
 def diff_votes(kv: list[dict], inbox: list[dict]) -> dict[str, list[str]]:
-    """两边逐票比：只在 KV、只在收件箱、两边都有但值不同。"""
+    """两边逐票比：只在 KV、只在收件箱、两边都有但值不同。``inbox`` 要先去墓碑（``item_votes``／``rev_votes`` 已去）：
+    KV 键没了、收件箱是墓碑，两边都不出现，算一致。"""
     a = {vote_id(v): v for v in kv}
     b = {vote_id(v): v for v in inbox}
     same = lambda x, y: json.dumps(x, sort_keys=True, ensure_ascii=False) == json.dumps(y, sort_keys=True, ensure_ascii=False)

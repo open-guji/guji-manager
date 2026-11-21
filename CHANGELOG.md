@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-- PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目。
+- PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目；墓碑（`value.deleted: true`，网站删了 KV 键）读到跳过、对账算一致；`web_inbox.by_prefix` 按键前缀不按书读（thread 等无 book 的）。
 
 ## [0.4.80] - 2026-11-20
 
