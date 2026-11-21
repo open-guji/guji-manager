@@ -209,3 +209,49 @@ def test_run_parallel_one_sync(tmp_path, monkeypatch):
     assert {b: v["status"] for b, v in res.items()} == {"vol01": "to-publish", "vol02": "to-publish", "vol03": "blocked"}
     assert sum(1 for c in calls if "sync" in c) == 1 and sum(1 for c in calls if "pull" in c) == 1
     assert sorted(marked) == [("vol01", "sync"), ("vol02", "sync")]
+
+
+def test_ai_ruling_chars_by_cell(tmp_path):
+    """按格写的文意裁定（ZM 11-21 兩雨 3 格、閔 1 格 landed 0）：seed_admit 没 ask，或 ask 同组同版本但窗口小变，
+    按格号取、窗口大体一致（紧邻字一样、相似度够）且字是整理本字／库前五／组员才落；对不上的写进 notes。"""
+    from guji_manager._cv import RulingStore
+    from open_guji_cv.feedback.llm_queue import PENDING
+    L, R = "江南江北之地凡十有二", "淮之鹽皆屬焉其後又分"
+    store = RulingStore(tmp_path / "fb")
+    store._batch = "llm-wenyi-b5"
+    store.put("liang", "liang-l2-1", L, R, char="兩", conf="high", why="", model="m", cell="001:1:1:2")      # 无 ask，窗口一致
+    store.put("men", "men-l2-1", "統冠□□□冠燕居冠顔", R, char="閔", conf="high", why="", model="m", cell="001:1:1:5")  # ask 窗口远处一字不同
+    store.put("liang", "liang-l2-1", "完全不同的上文內容", R, char="兩", conf="high", why="", model="m", cell="001:1:1:7")  # 窗口对不上
+    store.put("liang", "liang-l2-1", "其他上文", "其他下文", char="木", conf="high", why="", model="m", cell="001:1:1:9")       # 字不沾边
+    ask = lambda g, v, l, r: {"evidence": {"group": {"id": g, "solvers": [{"why": PENDING, "ask": {"ver": v, "l": l, "r": r}}]}}}  # noqa: E731
+    root = tmp_path / "p"
+    for d in ("seed_admit", "align_ref", "glyph_match"):
+        (root / "001" / d).mkdir(parents=True)
+    seq = list(L) + ["X"] + list(R)
+    cells = [{"id": f"001:1:1:{100 + i}", "char": c, "admit": True, "slot": i + 1} for i, c in enumerate(seq)]
+    cells[len(L)]["id"] = "001:1:1:2"
+    cells[len(L)]["admit"] = False
+    cells[len(L)]["char"] = "雨"
+    cells += [{"id": "001:1:1:5", "char": "閑", "slot": 90, **ask("men", "men-l2-1", "載冠□□□冠燕居冠顔", R)},
+              {"id": "001:1:1:7", "char": "雨", "slot": 91, **ask("liang", "liang-l2-1", "另一段文字甲乙丙", R)},
+              {"id": "001:1:1:9", "char": "雨", "slot": 92, **ask("liang", "liang-l2-1", "其他上文", "其他下文又")}]
+    (root / "001" / "seed_admit" / "p0001.json").write_text(json.dumps({"seed_admit": {"page": 1, "columns": [{"col": 1, "chars": cells}]}}),
+                                                           encoding="utf-8")
+    (root / "001" / "align_ref" / "p0001.json").write_text(json.dumps({"align_ref": {"chars": [
+        {"id": "001:1:1:2", "align_char": "兩"}]}}), encoding="utf-8")
+    (root / "001" / "glyph_match" / "p0001.json").write_text(json.dumps({"glyph_match": {"columns": [{"chars": [
+        {"id": "001:1:1:2", "candidates": [["雨", 0.98], ["兩", 0.97], ["而", 0.96]]}]}]}}), encoding="utf-8")
+    got, notes = C.ai_ruling_chars(root, "001", RulingStore(tmp_path / "fb"),
+                                   members={"liang": {"兩", "雨"}, "men": {"閔", "閑"}}, rekey=[])
+    assert got.get("1:1:5") == ("閔", "AI文意/men/按格")
+    joined = "\n".join(notes)
+    assert "1:1:7" not in got and "1:1:7 按格文意裁定" in joined and "对不上" in joined
+    assert "1:1:9" not in got and "不是整理本字" in joined
+    # 无 ask 的格：窗口按 5c 口径从 seed_admit 现算
+    assert got.get("1:1:2") == ("兩", "AI文意/liang/按格"), notes
+
+
+def test_window_ok():
+    assert C._window_ok("甲乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]
+    assert C._window_ok("某乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]      # 远处一字变
+    assert not C._window_ok("甲乙丙丁戊己庚某", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]  # 紧邻字变
