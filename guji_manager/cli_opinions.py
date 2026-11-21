@@ -1,6 +1,7 @@
 """`guji opinions`：意见池（M11 第一阶段，设计 `doc/design/M11-分块-第一阶段最小闭环.md`）。不跑 Step，不进任何 Step 的 `code_deps`。
 
     guji opinions ingest  --book B --ws W [--remote] [--dry-run] [--live-vols 001,002] [--from-dir D]   # 三源入池，幂等
+                          [--from-inbox]   # 改字意见、精校票读中心库 web_inbox（网站 KV/D1 双写，A20 11-21）
     guji opinions list    --book B --ws W [--status S] [--vol V]
     guji opinions show    <id> --book B --ws W
     guji opinions versions --book B --ws W --book-text <检出>      # 从 book-text 提交信息的版本记录（和旧 CHANGES）更新 text_versions.json
@@ -57,10 +58,21 @@ def cmd_ingest(args) -> None:
         if not tok:
             raise SystemExit(f"读中心库网站意见要环境变量 {args.web_token_env or args.token_env}（或 --no-central）")
         c = I.read_central_web(WorkerSource(token=tok, branch=args.branch), args.ws, args.book, args.branch)
-        src.fixes += c.fixes
-        src.cellreview.update(c.cellreview)
-        src.hidden |= c.hidden
-        notes += c.notes
+        if getattr(args, "from_inbox", False):     # 改字意见、精校票改读收件箱；站方隐藏单 hidden.txt 仍取中心库
+            src.hidden |= c.hidden
+            notes.append(f"中心库 hidden.txt：{len(c.hidden)} 条（改字意见、精校票改读收件箱）")
+        else:
+            src.fixes += c.fixes
+            src.cellreview.update(c.cellreview)
+            src.hidden |= c.hidden
+            notes += c.notes
+    if getattr(args, "from_inbox", False):
+        if args.no_central:
+            notes.append("⚠ --no-central：没读站方隐藏单 hidden.txt，隐藏的意见会入池")
+        ib = I.read_inbox(args.book, token_env=args.inbox_token_env)
+        src.fixes += ib.fixes
+        src.cellreview.update(ib.cellreview)
+        notes += ib.notes
     if args.live_vols:
         vols = [v.strip() for v in args.live_vols.split(",") if v.strip()]
         src.public_fixes += I.fetch_public_fixes(args.book, vols, args.site)
@@ -566,6 +578,9 @@ def add_parser(sub) -> None:
     p.add_argument("--dry-run", action="store_true", help="只打印将入池的条目，不写")
     p.add_argument("--from-dir", default=None, help="离线来源目录（fixes.jsonl、<rev>.jsonl、api-fixes*.json、api-feedback*.json）")
     p.add_argument("--no-central", action="store_true", help="不读中心库 feedback/lists/web/<书>/")
+    p.add_argument("--from-inbox", action="store_true",
+                   help="改字意见、精校票读中心库网站收件箱 web_inbox（GET /v1/web/inbox），不读快照 fixes.jsonl、<rev>.jsonl；hidden.txt 照读")
+    p.add_argument("--inbox-token-env", default=None, help="--from-inbox 读令牌的环境变量（缺省依次试 GUJI_DATA_TOKEN、_PROD、_READ）")
     p.add_argument("--web-token-env", default=None, help="读中心库网站意见用的令牌环境变量（缺省同 --token-env）")
     p.add_argument("--live-vols", default="", help="另从网站公开实时读 /api/fixes 取这些章（逗号分隔，如 001,002,003）")
     p.add_argument("--channels", default="", help="只入这些渠道（逗号分隔，如 charfix,span）；缺省全入。夜间流程用 charfix,span，精校票 cellreview 走 cellvotes")

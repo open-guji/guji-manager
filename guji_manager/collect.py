@@ -420,7 +420,7 @@ def collect_book(a, ws: Path, book: str) -> dict:
         t = time.time()
         pack = a.pack or _pack_for(book, rev)
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
-               "--from-kv", "--items"]
+               votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
         if a.batch or not getattr(a, "no_ai", False):
             cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
@@ -650,16 +650,29 @@ def books_with_votes(votes: list[dict], open_of) -> list[str]:
     return out
 
 
+def votes_from_flag() -> str:
+    """收单读网站票的来源：缺省网站 KV（``--from-kv``）；``GUJI_VOTES_FROM=inbox`` 改读中心库 web_inbox
+    （A20 11-21 网站票直写 D1；双写对账通过前缺省不变）。"""
+    v = (os.environ.get("GUJI_VOTES_FROM") or "kv").strip().lower()
+    if v not in ("kv", "inbox"):
+        raise SystemExit(f"GUJI_VOTES_FROM 只能是 kv 或 inbox：{v}")
+    return "--from-inbox" if v == "inbox" else "--from-kv"
+
+
 def auto_books(ws: Path, text_id: str) -> list[str]:
     """``--books auto``：读一遍网站条目票（KV），挑出有票落在还开着的条目上的册（ZM 11-19：不知道哪些册有新票，
     只能全拉自己比）。要 CELLREVIEW_TOKEN；先拉库，条目以库为准。"""
     from .cli_cellvotes import _fetch_kv_items
     from .datastore.workcopy import data_dir
     from .review import pending_items as P
-    tok = os.environ.get("CELLREVIEW_TOKEN")
-    if not tok:
-        raise SystemExit("--books auto 要读网站票：设 CELLREVIEW_TOKEN")
-    votes = _fetch_kv_items(text_id, tok)
+    if votes_from_flag() == "--from-inbox":
+        from .feedback import web_inbox as WI
+        votes = WI.item_votes(WI.fetch("cellreview", text_id)[0], text_id)
+    else:
+        tok = os.environ.get("CELLREVIEW_TOKEN")
+        if not tok:
+            raise SystemExit("--books auto 要读网站票：设 CELLREVIEW_TOKEN")
+        votes = _fetch_kv_items(text_id, tok)
     data = data_dir(ws)
 
     def open_of(ch: str) -> set[str]:

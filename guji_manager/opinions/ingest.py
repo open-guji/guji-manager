@@ -315,6 +315,19 @@ def read_central_web(worker, ws: str, book: str, branch: str = "main") -> Source
     return src
 
 
+def read_inbox(book: str, token_env: str | None = None, fetch=None) -> Sources:
+    """中心库网站收件箱 ``web_inbox``（A20 11-21，网站 KV 与 D1 双写）：改字意见（``kind=charfix``）＝ ``fixes.jsonl`` 的行，
+    按单版的精校票（``cr:<rev>:<书>:…``）按 rev 分成 ``<rev>.jsonl``，与中心库快照同形，下游照旧。不含 ``hidden.txt``。"""
+    from ..feedback import web_inbox as WI
+    fetch = fetch or WI.fetch
+    fx, s1 = fetch("charfix", book, token_env=token_env)
+    cr, s2 = fetch("cellreview", book, token_env=token_env)
+    src = Sources(fixes=WI.fix_values(fx), cellreview=WI.rev_files(cr, book))
+    src.notes.append(f"中心库网站收件箱 web_inbox：改字意见 {len(src.fixes)} 条（seq≤{s1}），"
+                     f"按单版精校票 {sum(len(v) for v in src.cellreview.values())} 条（{len(src.cellreview)} 个 rev，seq≤{s2}）")
+    return src
+
+
 def read_dir(d: Path) -> Sources:
     """离线目录：``fixes.jsonl``、``<rev>.jsonl``、``hidden.txt``、``api-fixes*.json``、``api-feedback*.json``。"""
     d = Path(d)

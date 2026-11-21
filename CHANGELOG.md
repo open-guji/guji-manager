@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目。
+
 ## [0.4.80] - 2026-11-20
 
 - PATCH：`rulings-hits` 终审裁定未放行的兜底原因不再断言「产物早于裁定」（QTW 11-20：裁定 11-19、包 11-20 仍报这条），改写裁定时间并列两种可能（产物早于推库／5c 时邻格字被码位归一、pair_form 改过 manager 看不出），产物有 `evidence.vis_ctx` 时另说；新增可核原因：裁定库按窗口键取到的是同窗口更晚的另一条、裁定没写 `ctx.hash`（可补键）、这页 align_ref 没锚定（同 cv 不认整理本字，窗口也按此算）（#765）。
