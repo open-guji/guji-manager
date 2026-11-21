@@ -10,7 +10,7 @@
     guji cellvotes rebase vol05 --book-id 96mid1ogzk --source-rev 4 --out <目录> -w <工作区>
                                                   # 换图源（页号格号不变，只换像素）后的人裁事件换算：只读，锚里的框按页表 from_rev.H
                                                   # 换到新页、source_rev 改成新页表 rev，出 events.jsonl（id 加 ~r）／pending.tsv／report.md
-    guji cellvotes reconcile vol04 --site-book 96mid1ogzk [--rev 004-r13]
+    guji cellvotes reconcile vol04 --site-book 96mid1ogzk [--rev 004-r13|all]
                                                   # 双写对账：网站 KV 管理读 vs 中心库 web_inbox 逐票比（只读，差异退出码 1）
     guji cellvotes write vol04 <目录> --batch H-web-vol04-2026-10-20 --reviewer Sheldon -w <工作区>
                                                   # 写进数据目录（锚按现行产物算）并消费；推库另跑 guji db sync
@@ -652,6 +652,31 @@ def cmd_rebase(args) -> None:
     _print(f"事件 {res.n_in} → 迁出 {len(res.events)}、不迁 {sum(res.skipped.values())}、待办 {len(res.pending)}  → {args.out}/report.md")
 
 
+def _kv_retry(fn, *a, tries: int = 4, reads: int = 3, wait: float = 5.0):
+    """KV 管理读偶发 500／断连，翻页还会少回条目（11-21：殿本 001-r2 首读 10 条、重读 11 条；995ejelvk0 条目票
+    两次都是 372 条但缺的不是同一票）：读 ``reads`` 遍成功的，按票身份取并集（同一票取后读到的）；失败的重试，
+    总共最多 ``tries + reads`` 次。"""
+    import time
+    from .feedback import web_inbox as WI
+    seen: dict[str, dict] = {}
+    ok, err = 0, None
+    for _ in range(tries + reads):
+        try:
+            got = fn(*a)
+        except Exception as e:      # noqa: BLE001
+            err = e
+            time.sleep(wait)
+            continue
+        for v in got:
+            seen[WI.vote_id(v)] = v
+        ok += 1
+        if ok >= reads:
+            break
+    if not ok:
+        raise SystemExit(f"KV 管理读失败（试了 {tries + reads} 次）：{err}")
+    return list(seen.values())
+
+
 def cmd_reconcile(args) -> int:
     """双写对账（A20 11-21）：网站 KV 管理读 vs 中心库 web_inbox，逐票比。按条目的票全书比；按单版的票比 --rev 给的那张单
     （可逗号分隔多张）。只读。有差异退出码 1。两边都只看本书（``book`` 是 cv 册 id 时不用，只认 --site-book）。"""
@@ -660,9 +685,12 @@ def cmd_reconcile(args) -> int:
         raise SystemExit("reconcile 要 --site-book")
     tok = _kv_token(args)
     rows, seq = WI.fetch("cellreview", args.site_book, token_env=getattr(args, "inbox_token_env", None))
-    pairs = [("按条目", _fetch_kv_items(args.site_book, tok), WI.item_votes(rows, args.site_book))]
-    for rev in [r for r in (args.rev or "").split(",") if r.strip()]:
-        pairs.append((f"按单版 {rev}", _fetch_kv(args.site_book, rev.strip(), tok), WI.rev_votes(rows, args.site_book, rev.strip())))
+    pairs = [("按条目", _kv_retry(_fetch_kv_items, args.site_book, tok), WI.item_votes(rows, args.site_book))]
+    revs = [r.strip() for r in (args.rev or "").split(",") if r.strip()]
+    if revs == ["all"]:                     # 收件箱里这本书出现过的每张单（含已过期、只剩墓碑的不算）
+        revs = sorted(f[: -len(".jsonl")] for f in WI.rev_files(rows, args.site_book))
+    for rev in revs:
+        pairs.append((f"按单版 {rev}", _kv_retry(_fetch_kv, args.site_book, rev, tok), WI.rev_votes(rows, args.site_book, rev)))
     bad = 0
     _print(f"{args.site_book}：收件箱精校票 {len(rows)} 行（seq≤{seq}）")
     for name, kv, ib in pairs:
