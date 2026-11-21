@@ -652,24 +652,29 @@ def cmd_rebase(args) -> None:
     _print(f"事件 {res.n_in} → 迁出 {len(res.events)}、不迁 {sum(res.skipped.values())}、待办 {len(res.pending)}  → {args.out}/report.md")
 
 
-def _kv_retry(fn, *a, tries: int = 4, wait: float = 5.0):
-    """KV 管理读偶发 500／断连，翻页还会少回条目（11-21 殿本 001-r2 首读 10 条、重读 11 条）：失败重试，
-    成功就再读一遍取条数多的那次。"""
+def _kv_retry(fn, *a, tries: int = 4, reads: int = 3, wait: float = 5.0):
+    """KV 管理读偶发 500／断连，翻页还会少回条目（11-21：殿本 001-r2 首读 10 条、重读 11 条；995ejelvk0 条目票
+    两次都是 372 条但缺的不是同一票）：读 ``reads`` 遍成功的，按票身份取并集（同一票取后读到的）；失败的重试，
+    总共最多 ``tries + reads`` 次。"""
     import time
-    best, err = None, None
-    for i in range(tries):
+    from .feedback import web_inbox as WI
+    seen: dict[str, dict] = {}
+    ok, err = 0, None
+    for _ in range(tries + reads):
         try:
             got = fn(*a)
         except Exception as e:      # noqa: BLE001
             err = e
             time.sleep(wait)
             continue
-        if best is not None and len(got) <= len(best):
-            return best
-        best = got
-    if best is None:
-        raise SystemExit(f"KV 管理读失败（试了 {tries} 次）：{err}")
-    return best
+        for v in got:
+            seen[WI.vote_id(v)] = v
+        ok += 1
+        if ok >= reads:
+            break
+    if not ok:
+        raise SystemExit(f"KV 管理读失败（试了 {tries + reads} 次）：{err}")
+    return list(seen.values())
 
 
 def cmd_reconcile(args) -> int:
