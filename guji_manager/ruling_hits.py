@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 
@@ -82,7 +83,8 @@ def _diff(ctx: dict | None, left: str, right: str) -> str:
 
 
 def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset,
-               override: tuple | None = None, store=None, anchored: bool = True, ts: str | None = None) -> tuple[str, bool]:
+               override: tuple | None = None, store=None, anchored: bool = True, ts: str | None = None,
+               cp_targets: frozenset = frozenset()) -> tuple[str, bool]:
     """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。
     `store` 给了就核裁定库按这个窗口键实际取到的是不是这一条；`anchored`＝这页 align_ref 锚定了（没锚定管线不认整理本字）。"""
     from ._cv import ruling_ctx_hash
@@ -132,6 +134,11 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
     if isinstance(vc, dict):
         return ("按 cv 当场记的 5c 窗口也对得上、manager 能核的条件都满足，仍没放：" + when
                 + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 A31") + note, False
+    hit = sorted({ch for ch in (left or "")[-20:] + (right or "")[:20] if ch in cp_targets})
+    if hit:
+        return ("多半是码位归一：产物窗口里有码位表目标字 " + "、".join(hit) + "，seed_admit 最后一步才把邻格放行字改成它们，"
+                "5c 算键时还是原字，从产物终态算的窗口不准。产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后再 --rekey"
+                + ("；" + when.rstrip("，") if when else "")) + note, False
     return ("manager 能核的条件都满足，仍没放。两种可能：①产物早于裁定推库（" + when + "核包 manifest 的 db_rev ≥ 裁定 rev）；"
             "②5c 时邻格字与产物不同而 manager 看不出（码位归一 codepoint_semantic、pair_form 后来改了邻格放行字）。"
             "产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后，rulings-hits／--rekey 直接按 5c 窗口") + note, False
@@ -141,7 +148,23 @@ def half_cell(rec) -> bool:
     return (getattr(rec, "id", None) or "")[-1:] in ("a", "b")
 
 
-def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None) -> list[dict]:
+def codepoint_targets(book: str, data_dir=None) -> frozenset:
+    """本书码位表的目标字（有别的码位归到它、且与源字不同）。读不到 → 空。"""
+    m: dict = {}
+    try:
+        if data_dir:
+            from .charnorm import codepoints_of
+            m = codepoints_of(data_dir, book)
+        else:
+            from .charnorm import load_norm
+            m = load_norm(book).map
+    except Exception:  # noqa: BLE001
+        m = {}
+    return frozenset(v for k, v in m.items() if k != v)
+
+
+def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None,
+              cp_targets: frozenset = frozenset()) -> list[dict]:
     """终审／看图裁定（group=O，`vis_ruling` 通道）：写了可放行的裁定（high、admit_ok、有字）、产物里这格却仍待审。
     逐格按 seed_admit 的取法现算窗口，给出具体原因（人裁／疑点／子类／对位字／窗口／半格／越过整理本／产物旧）；
     只是窗口变了的可以 `--rekey` 按产物窗口补一条（字、子类、对位字照抄）。"""
@@ -184,7 +207,8 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
             w = win.get(c["id"])
             rec, l, r = w if w is not None else (None, "", "")
             why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs, override, store=store, anchored=anchored,
-                                 ts=ts.get(c["id"]))
+                                 ts=ts.get(c["id"]),
+                                 cp_targets=cp_targets if not ((rec.evidence or {}).get("vis_ctx") if rec is not None else None) else frozenset())
             rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
                          "把握": "high", "原因": why,
                          "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
@@ -255,11 +279,15 @@ def cmd(a) -> None:
     if a.batch:
         store._batch = a.batch
     books = [b.strip() for b in a.books.split(",") if b.strip()]
+    if getattr(a, "fetch", False):
+        fetch_books(books, Path(a.products), a.label, a.jobs)
     allrows = []
     for b in books:
         rows = check(Path(a.products), b, store)
         ovr = tuple(x.strip() for x in a.override_groups.split(",") if x.strip()) if a.override_groups is not None else None
-        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr)
+        cps = codepoint_targets(b, getattr(a, "data_dir", None))
+        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr,
+                        cp_targets=cps)
         allrows += rows + vis
         print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
     cols = ["cell", "组", "裁定字", "把握", "原因", "差在", "裁定窗口", "产物窗口"]
@@ -278,6 +306,23 @@ def cmd(a) -> None:
         print(f"按产物窗口补写文意裁定 {n} 条、终审裁定 {nv} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
 
 
+FETCH_STEPS = ("seed_admit", "align_ref")
+
+
+def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4) -> None:
+    """各册取产物包，只解 seed_admit／align_ref 到 `root`（已有就覆盖：这里是核对用的产物根，别指向本机正在跑的产物）。"""
+    from concurrent.futures import ThreadPoolExecutor
+    from .datastore import packs as PK
+
+    def one(b):
+        t = time.time()
+        info = PK.fetch_products(b, root, label=label, force=True, steps=list(FETCH_STEPS))
+        return b, info["name"].rsplit("/", 1)[-1], time.time() - t
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+        for b, lab, dt in ex.map(one, books):
+            print(f"  取 {b} 包 {lab}（只解 seed_admit、align_ref）{dt:.0f} 秒", file=sys.stderr)
+
+
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("rulings-hits", help="AI 文意裁定命中核对：产物里仍在问、却有裁定没命中的格（窗口变了）；--rekey 按产物窗口补写")
     p.add_argument("--books", required=True, help="册，逗号分隔（如 001,002 或 vol20）")
@@ -288,6 +333,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
     p.add_argument("--vis-subclasses", default=None,
                    help="书级 seed_admit.vis_ruling_ctx_subclasses（如殿本 P,D）：判「子类不收」时一并算收（缺省只算 Z,N）")
+    p.add_argument("--fetch", action="store_true",
+                   help="先按册取产物包（缺省 main），只解 seed_admit、align_ref 到 --products（覆盖；指向专门的核对目录），各册并行")
+    p.add_argument("--label", default=None, help="--fetch 取哪个包标签（缺省各册 main）")
+    p.add_argument("--jobs", type=int, default=4, help="--fetch 同时取几册（缺省 4）")
+    p.add_argument("--data-dir", default=None, help="数据目录（读 config/codepoints.yaml 等码位表；缺省按 cv 找本册配置）")
     p.add_argument("--override-groups", default=None,
                    help="书级 seed_admit.ruling_override_groups，逗号分隔（殿本 ly,dt,wm,ts,mb,fc,rr,ry,guan,wxs,jys）；给了才核越过整理本")
 

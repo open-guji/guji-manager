@@ -150,3 +150,44 @@ def test_vis_unanchored_and_no_hash(tmp_path):
         {"id": "001:1:1:2", "align_char": "曰"}]}}, ensure_ascii=False), encoding="utf-8")
     row = RH.check_vis(q / "p", "001", RulingStore(tmp_path / "fb2"))[0]
     assert "没写 ctx.hash" in row["原因"] and row["_vis"]
+
+
+def test_vis_codepoint_hint(tmp_path):
+    """QTW (c)：产物没有 vis_ctx、窗口里有码位表目标字 → 原因写明多半是码位归一（全唐文 陜／戸／勲）。"""
+    from guji_manager._cv import RulingLog
+    log = RulingLog(tmp_path / "fb")
+    _vis_event(log, 1, "001:1:1:2", "曰", "曰", "N", "甲", "丙")
+    _one_page(tmp_path)
+    row = RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"), cp_targets=frozenset("丙"))[0]
+    assert "码位归一" in row["原因"] and "丙" in row["原因"]
+
+
+def test_fetch_steps_filter(tmp_path):
+    """pack fetch --steps：整包取、只解指定步。"""
+    import io
+    import tarfile
+    from guji_manager.datastore import packs as PK
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name in ("001/_raw_index.json", "001/seed_admit/p0001.json", "001/align_ref/p0001.json", "001/glyph_match/p0001.json"):
+            data = b"{}"
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tf.addfile(ti, io.BytesIO(data))
+    blob = buf.getvalue()
+    import hashlib
+    man = {"parts": [{"name": "part-000", "sha256": hashlib.sha256(blob).hexdigest()}], "files": 4}
+
+    class Src:
+        pass
+    orig = (PK._call, PK._parts_in_order, PK._ws_name, PK.write_mark)
+    try:
+        PK._call = lambda src, m, k, **kw: json.dumps(man).encode()
+        PK._parts_in_order = lambda src, name, parts: iter([blob])
+        PK._ws_name = lambda: "ws"
+        PK.write_mark = lambda *a, **k: None
+        PK.fetch_products("001", tmp_path / "r", label="x", src=Src(), steps=["seed_admit", "align_ref"])
+    finally:
+        PK._call, PK._parts_in_order, PK._ws_name, PK.write_mark = orig
+    got = sorted(str(p.relative_to(tmp_path / "r")) for p in (tmp_path / "r").rglob("*.json"))
+    assert got == ["001/_raw_index.json", "001/align_ref/p0001.json", "001/seed_admit/p0001.json"]

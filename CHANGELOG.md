@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+- PATCH：新命令 `guji ctx-ruling write`：按「格号＋字」写终审文意裁定（group O、ctx-m1），键按 seed_admit 5c 窗口（`key_windows`，有 `evidence.vis_ctx` 就用），越过整理本、取不到窗口逐行提示；收进 ZM 会话脚本 `write_ctx_ruling_by_cell.py`（ZM 11-21）。
+- PATCH：`rulings-hits --fetch`：各册并行取产物包、只解 seed_admit／align_ref；`products pack fetch --steps` 同（整包仍要下载，省解包落盘）（ZM 11-21）。
+- PATCH：`rulings-hits` 开了码位表的书、产物没有 `vis_ctx` 时，窗口里有码位目标字的格原因直接写「多半是码位归一」（QTW 11-21，全唐文 陜／戸／勲）；`--data-dir` 指定读码位表的数据目录。
+
 - PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#PR）。
 - PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目；墓碑（`value.deleted: true`，网站删了 KV 键）读到跳过、对账算一致；`web_inbox.by_prefix` 按键前缀不按书读（thread 等无 book 的）。
 
