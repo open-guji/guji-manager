@@ -152,15 +152,17 @@ def test_by_prefix_reads_without_book(monkeypatch):
     assert got["args"] == ("thread", "")
 
 
-def test_kv_retry_rereads_and_keeps_longer(monkeypatch):
+def test_kv_retry_unions_partial_reads(monkeypatch):
     monkeypatch.setattr("time.sleep", lambda s: None)
-    seq = iter([RuntimeError("500"), [1], [1, 2], [1, 2]])
+    a, b, c = vote("1:1:1", "char", "甲"), vote("1:1:2", "none"), vote("1:1:3", "none")
+    seq = iter([RuntimeError("500"), [a, b], [a, c], [b, c]])
 
     def fn():
         x = next(seq)
         if isinstance(x, Exception):
             raise x
         return x
-    assert C._kv_retry(fn) == [1, 2]
+    got = C._kv_retry(fn)
+    assert sorted(WI.vote_id(v) for v in got) == sorted(WI.vote_id(v) for v in (a, b, c))
     with pytest.raises(SystemExit, match="KV 管理读失败"):
-        C._kv_retry(lambda: (_ for _ in ()).throw(RuntimeError("x")), tries=2)
+        C._kv_retry(lambda: (_ for _ in ()).throw(RuntimeError("x")), tries=1, reads=1)
