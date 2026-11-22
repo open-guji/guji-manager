@@ -106,5 +106,5 @@ params:
 ## 八、相关
 
 - 逐格明细与图：本目录 `benchmark/`、`图/`；原稿 ai-team `domain/CV/质检/待审原因深挖/D01-*.md`、`D02-*.md`；第 7 轮全局分析 ai-team `domain/CV/质检/待审清单-2026-11-07-r7/按码-A24-第8轮建议.md`。
-- cv：`doc/design/印章遮挡格-判据与放行.md`、`doc/字组/折叠组.md`。
+- cv：`doc/design/印章遮挡格-判据与放行.md`、`doc/4-定字/字组/折叠组.md`。
 - manager：`doc/01-粗校/印章遮挡格-校对处理.md`（校对环节怎么处理）。

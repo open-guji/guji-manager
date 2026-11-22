@@ -1,4 +1,4 @@
-"""`guji close-check <册>`：一册书交付前的逐项体检（overview#413 C2；标准见 doc/runbook/整理一册书.md 第五节）。
+"""`guji close-check <册>`：一册书交付前的逐项体检（overview#413 C2；标准见 cv doc/archive/runbook/整理一册书.md 第五节）。
 
 只读：不改产物、不清缓存、不写事件。每项给出 pass / fail / manual / skip 与依据数字，
 全部 pass（manual 由人另行确认）才算机器这一侧过关。

@@ -18,7 +18,7 @@
 改的是工作区的 glyph.db（索引）；字形真源在中心库，本机副本在数据目录
 `$GUJI_DATA_HOME/<分支>/<工作区 id>/output/glyph_store/`。裁完 `guji db sync -w <工作区>`：
 push 前见 glyph.db 指纹变了会先导出成字形库账本再推（`datastore/workcopy.py`），不用手工 export，
-也不再进 git（2026-10-19 写入切换，`doc/datastore.md` 第六节）。
+也不再进 git（2026-10-19 写入切换，`cv doc/参考/datastore.md` 第六节）。
 对手在**别的工作区**的，这里不动它的库——去那本书的字形库页处理。
 """
 

@@ -139,7 +139,7 @@ def cmd_check(args) -> None:
 
 
 def cmd_groups(args) -> None:
-    """字组：table 由注册表重生成 doc/字组/字组总表.md（--check 只比对）；status 一轮产物 × 人工数据 → 每组状态报告。"""
+    """字组：table 由注册表重生成 cv doc/4-定字/字组/字组总表.md（--check 只比对）；status 一轮产物 × 人工数据 → 每组状态报告。"""
     if args.action == "table":
         from ._cv import groups_catalog as catalog
         raise SystemExit(catalog.main(["--check"] if args.check else []))
