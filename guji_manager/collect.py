@@ -848,9 +848,9 @@ def books_with_votes(votes: list[dict], open_of) -> list[str]:
 
 
 def votes_from_flag() -> str:
-    """收单读网站票的来源：缺省网站 KV（``--from-kv``）；``GUJI_VOTES_FROM=inbox`` 改读中心库 web_inbox
-    （A20 11-21 网站票直写 D1；双写对账通过前缺省不变）。"""
-    v = (os.environ.get("GUJI_VOTES_FROM") or "kv").strip().lower()
+    """收单读网站票的来源：缺省中心库 web_inbox（``--from-inbox``，A20 11-22 起 D1 为网站票真源）；
+    ``GUJI_VOTES_FROM=kv`` 应急改读网站 KV（KV 已不再写入，只是旧数据）。"""
+    v = (os.environ.get("GUJI_VOTES_FROM") or "inbox").strip().lower()
     if v not in ("kv", "inbox"):
         raise SystemExit(f"GUJI_VOTES_FROM 只能是 kv 或 inbox：{v}")
     return "--from-inbox" if v == "inbox" else "--from-kv"

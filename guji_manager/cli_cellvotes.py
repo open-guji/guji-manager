@@ -119,6 +119,10 @@ def _live(args) -> bool:
     kv, inbox = bool(getattr(args, "from_kv", False)), bool(getattr(args, "from_inbox", False))
     if kv and inbox:
         raise SystemExit("--from-kv 与 --from-inbox 只能选一个")
+    if not kv and not inbox and not getattr(args, "from_file", None):
+        # A20 11-22：网站票缺省读中心库 web_inbox（D1 为真源）；--from 文件或 GUJI_VOTES_FROM=kv 才不走
+        if (os.environ.get("GUJI_VOTES_FROM") or "inbox").strip().lower() != "kv":
+            args.from_inbox = inbox = True
     return kv or inbox
 
 

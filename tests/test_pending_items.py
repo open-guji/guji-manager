@@ -117,6 +117,7 @@ def test_cellvotes_item_votes_map_to_current_cell(tmp_path, monkeypatch):
     import argparse
     from guji_manager import cli_cellvotes as CV
     monkeypatch.setenv("GUJI_FEEDBACK_DIR", str(tmp_path / "feedback"))
+    monkeypatch.setenv("GUJI_VOTES_FROM", "kv")      # 离线读快照文件（缺省已改读收件箱）
     s = P.ItemStore.open(tmp_path, "bk", "004")
     P.reconcile(s, _cells(("1:1:1", "a")), src="r1", fps={"1:1:1": "f1"})
     P.reconcile(s, _cells(("1:1:5", "a")), src="r2", fps={"1:1:5": "f1"})   # 重切后挪到 1:1:5
