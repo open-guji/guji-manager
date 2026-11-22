@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Z04 `group_ref_dissent`（与参校本不同）体检：一本书★main 包里哪些格是 Z04、分哪几类、哪个解法给的字。
-新书开工后跑一遍，得到 doc/01-粗校/待审原因/group_ref_dissent/README.md 第六节的体检信号。只读，不写产物包、不写中心库。
+新书开工后跑一遍，得到 doc/参考/待审原因/group_ref_dissent/README.md 第六节的体检信号。只读，不写产物包、不写中心库。
 
     python tools/z04_profile.py --ws <工作区目录> --text <中心库文本号> --out /tmp/z04 [--vols vol20,vol44] [--jobs 4]
         [--gold Z04-逐格-三书147格.tsv]   # 可选：带目视金标，另算拦对率

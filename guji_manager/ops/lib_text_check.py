@@ -31,7 +31,7 @@
 - 自动：`guji pipeline` 整册跑完（`hooks.finished`，在放行格回库之后）对这一册跑一遍。缺省只报告；
   `workspace.yaml` 写 `glyph_lib.text_check: apply` 才动库，写 `false` 关掉；`GUJI_LIB_TEXT_CHECK=0` 临时关。
 
-用法、数字与边界见 `doc/01-粗校/开书/库文一致.md`。
+用法、数字与边界见 `wiki/自动化流程/库文一致.md`。
 """
 from __future__ import annotations
 

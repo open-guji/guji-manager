@@ -13,71 +13,6 @@ from . import _cv   # 共用辅助现取（测试 monkeypatch cv 源模块 照�
 from ._cv import imread as cv_imread
 
 
-def cmd_batch(args) -> None:
-    from ._cv import EventLog
-    from ._cv import Batch, BatchStore, render_registry_markdown
-    store, log = BatchStore(), EventLog()
-    if args.action == "list":
-        bs = [store.refresh_counts(b, log) for b in store.list()]
-        if args.json:
-            print(json.dumps([b.to_dict() for b in bs], ensure_ascii=False))
-        elif args.md:
-            print(render_registry_markdown(bs), end="")
-        else:
-            for b in bs:
-                print(f"  {b.id:24s} {b.step:14s} {b.transport:8s} 卡 {b.n_cards:4d} "
-                      f"裁 {b.n_events:4d} 消费 {b.n_consumed:4d}  {b.status}")
-    elif args.action == "new":
-        if store.get(args.id):
-            print(f"批次 {args.id} 已存在")
-            sys.exit(1)
-        b = Batch(id=args.id, title=args.title or args.id, step=args.step, kind=args.kind,
-                  book=args.book, transport=args.transport, url=args.url, shard=args.shard,
-                  cards_ref=args.cards_ref, n_cards=args.n_cards)
-        print(f"已建 {store.save(b)}")
-    elif args.action == "show":
-        b = store.get(args.id)
-        if not b:
-            print(f"没有批次 {args.id}")
-            sys.exit(1)
-        print(json.dumps(store.refresh_counts(b, log).to_dict(), ensure_ascii=False, indent=1))
-
-
-def cmd_label_batch(args) -> None:
-    """L3 补标签两批：make（出批次）| harvest（收割进 dataset）| migrate-legacy（旧 overview 列端卡入新分片）。"""
-    from ._cv import steps as _s  # noqa: F401 —— 兜底：确保 Step 先注册，否则 store.read 的 kind_of() 查不到产物种类
-    from ._cv import review_label_batches as LB
-    try:
-        if args.action == "make":
-            fn = {"cutline-gold": LB.build_cutline_gold, "column-end": LB.build_column_end}[args.kind]
-            if not args.book:
-                raise ValueError("make 需要册 id：guji label-batch make <cutline-gold|column-end> <册>")
-            n = args.n or (200 if args.kind == "cutline-gold" else 240)
-            out = fn(args.book, n=n, batch_id=args.id, pages=args.pages, seed=args.seed)
-            print(json.dumps(out, ensure_ascii=False, indent=1))
-            where = ("Step3「拖切线」页码框填 " + out["console_pages"] if "console_pages" in out
-                     else "Step1 页「Step2 上下版框核校」页码框填 batch:" + out["batch"])
-            print(f"\n控制台：{where}；批次框填 {out['batch']}")
-        elif args.action == "harvest":
-            from ._cv import GoldStore
-            ds = GoldStore(Path(args.dataset)) if args.dataset else None
-            print(json.dumps(LB.harvest_batch(args.kind, dataset=ds), ensure_ascii=False, indent=1))
-        elif args.action == "migrate-legacy":
-            from ._cv import GoldStore
-            ds = GoldStore(Path(args.dataset)) if args.dataset else None
-            print(json.dumps(LB.migrate_legacy_overview(Path(args.kind), book=args.book or "vol02", dataset=ds),
-                             ensure_ascii=False, indent=1))
-    except (FileNotFoundError, FileExistsError, ValueError) as e:
-        print(f"错误：{e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:                                  # noqa: BLE001
-        from ._cv import ProductMissing
-        if isinstance(e, ProductMissing):
-            print(f"错误：{e}", file=sys.stderr)
-            sys.exit(1)
-        raise
-
-
 def cmd_events(args) -> None:
     from ._cv import route_and_consume
     from ._cv import EventLog
@@ -246,29 +181,6 @@ def cmd_gold(args) -> None:
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("batch", help="[v2] 审查批次：list | new | show")
-    p.add_argument("action", choices=["list", "new", "show"])
-    p.add_argument("id", nargs="?", default=None)
-    p.add_argument("--title", default=None)
-    p.add_argument("--step", default="")
-    p.add_argument("--kind", default="verdict")
-    p.add_argument("--book", default=None)
-    p.add_argument("--transport", default="server", choices=["server", "artifact"])
-    p.add_argument("--url", default=None, help="artifact 模式的持久 URL")
-    p.add_argument("--shard", default=None, help="目标金标分片")
-    p.add_argument("--cards-ref", default=None)
-    p.add_argument("--n-cards", type=int, default=0)
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--md", action="store_true", help="出台账 markdown")
-    p = sub.add_parser("label-batch", help="[v2] L3 补标签两批：make cutline-gold|column-end <册> | harvest <批次> | migrate-legacy <文件>")
-    p.add_argument("action", choices=["make", "harvest", "migrate-legacy"])
-    p.add_argument("kind", help="make 时：cutline-gold | column-end；harvest 时：批次 id；migrate-legacy 时：旧 verdicts.jsonl 路径")
-    p.add_argument("book", nargs="?", default=None, help="make：册 id；migrate-legacy：册（缺省 vol02）")
-    p.add_argument("--n", type=int, default=0, help="张数（缺省：切线 200 / 列端 240）")
-    p.add_argument("--id", default=None, help="批次 id（缺省自动命名）")
-    p.add_argument("--pages", default="body", help="body（缺省，21 格标准版式页）| dev_set | 页号表达式")
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--dataset", default=None, help="测试集仓路径（缺省 GUJI_DATASET_DIR 或 ../open-guji-dataset）")
     p = sub.add_parser("events", help="[v2] 反馈事件：harvest | route | list | verdicts | import-vision | lint")
     p.add_argument("action", choices=["harvest", "route", "list", "verdicts", "import-vision", "lint"])
     p.add_argument("batch", nargs="?", default=None, help="批次名；import-vision 时是 jsonl 路径")
@@ -309,6 +221,4 @@ def add_parser(sub) -> None:
 COMMANDS = {
     "events": (add_parser, cmd_events),
     "gold": (add_parser, cmd_gold),
-    "batch": (add_parser, cmd_batch),
-    "label-batch": (add_parser, cmd_label_batch),
 }

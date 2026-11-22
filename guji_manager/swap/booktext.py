@@ -1,7 +1,7 @@
 """换包落 book-text：格号变了（增删格、改号）也一条命令走完，不再报 need-A33。
 
 总纲：guji-manager `doc/00-总览/待审单-人裁事件-book-text格子.md`；格号变动的整体整理见
-`doc/02-精校/换包落book-text-增删格.md`。要点：
+`wiki/反馈迭代/换包落book-text-增删格.md`。要点：
 
 * **格的身份认图块，不认格号**：新旧两版 cord 在同一张图上，按框 IoU≥0.5 一对一配（配不上的同页按中心距再配一次），
   出「旧格→新格」对照表（与 A31 回放脚本 `bt_celltable.py`、book-text `remap_anchors.py` 同格式）。

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """L05 `garble_gate`（像框线或墨点）体检：一本书（或几册）★main 包里哪些格是 L05、分哪几类、
 `rare_ref_coord_min_cov`／`rare_ref_coord_group_top` 改了能放多少。新书开工后跑一遍，得到
-doc/01-粗校/待审原因/garble_gate/benchmark.md 里的指标表。只读，不写产物包、不写中心库。
+doc/参考/待审原因/garble_gate/benchmark.md 里的指标表。只读，不写产物包、不写中心库。
 
     python tools/l05_profile.py --ws <工作区目录> --text <中心库文本号> --out /tmp/l05 [--vols vol20,vol44] [--jobs 4]
         [--min-cov 0.85] [--no-group-top]     # 离线回放用的参数；缺省 0.85、group_top 开

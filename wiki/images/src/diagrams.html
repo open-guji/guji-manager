@@ -52,14 +52,15 @@ table.c td{padding:4px 8px;font-size:15px;white-space:nowrap}
  </div>
 </div></div>
 
-<div class="d" id="stages"><h3>一部书的四个阶段</h3>
-<div class="row">
- <div class="box mg" style="width:190px"><div class="big">01 粗校</div>开书（书目 · 原图 · 工作区 · 试跑 · 冷启动）→ 整册跑 · 逐轮降人审 · 收口<br><span class="small">出口：文本 0.1.0 进 book-text</span></div><div class="arr">→</div>
- <div class="box mg" style="width:170px"><div class="big">02 点校</div>AI 读文意：判字 · 标点 · 专名／实体<br><span class="small">保守放行；推 book-text</span></div><div class="arr">→</div>
- <div class="box mg" style="width:170px"><div class="big">03 精校</div>线上待审单 · 网站投票 · 重跑循环<br><span class="small">出口：1.0 发布标准、冻结</span></div><div class="arr">→</div>
- <div class="box gy" style="width:170px"><div class="big">04 反馈迭代</div>1.0 之后：用户报错、算法变好后的机器反馈</div>
+<div class="d" id="stages"><h3>文本化一套书（一个 book ID）的五步　命令：guji &lt;步&gt; &lt;命令&gt;</h3>
+<div class="row" style="align-items:stretch">
+ <div class="box mg" style="width:170px"><div class="big">1 新书启动</div><code>start</code><br>a 元数据与资源<br>b 页面分析与参数<br>c 选页试运行<br><span class="small">出口：关口 A，先行册 2–3 册达标</span></div><div class="arr" style="align-self:center">→</div>
+ <div class="box mg" style="width:200px"><div class="big">2 自动化流程</div><code>pipeline</code><br>多册分批（约 10 册一批）<br>a 跑 CV 管线<br>b 切分检查与优化<br>c 少见字入库、OCR 候选<br>d 形近字处理<br><span class="small">初期 b–d 人参与多，逐步减少<br>出口：本批标 v0.1，导入 book-text</span></div><div class="arr" style="align-self:center">→</div>
+ <div class="box cv" style="width:160px"><div class="big">3 文意与知识</div><code>text</code><br>AI 文意判字<br>标点<br>专名<br><span class="small">两路独立判、机器校验；判不了的留人审</span></div><div class="arr" style="align-self:center">→</div>
+ <div class="box hm" style="width:190px"><div class="big">4 反馈迭代</div><code>feedback</code><br>出单上线 → 收单落票<br>→ 更新 book-text → 0.x 升版<br>→ 1.0 冻结 → 1.x 反馈<br><span class="small">读者对照原图认字，一人裁即算</span></div><div class="arr" style="align-self:center">→</div>
+ <div class="box st" style="width:140px"><div class="big">5 排版输出</div><code>output</code><br>按 book-text<br>导出排版文本</div>
 </div>
-<div class="small" style="margin-top:12px">第 1–3 步做的过程中就会发布到 book-text，发布不单列一步。</div></div>
+<div class="small" style="margin-top:12px">后层发现前层的问题就回到那一层；各步做的过程中就发布到 book-text。</div></div>
 
 <div class="d" id="loop"><h3>精校循环：人投票 → 机器重跑 → 新单子</h3>
 <div class="row">
