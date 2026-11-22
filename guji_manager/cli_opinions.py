@@ -42,6 +42,8 @@ def _print(s: str = "") -> None:
 
 def cmd_ingest(args) -> None:
     from .opinions import ingest as I
+    if not args.from_dir and (os.environ.get("GUJI_VOTES_FROM") or "inbox").strip().lower() != "kv":
+        args.from_inbox = True      # A20 11-22：缺省读收件箱（D1 真源）；--from-dir 离线或 GUJI_VOTES_FROM=kv 不走
     src = I.Sources()
     notes = []
     if args.from_dir:
