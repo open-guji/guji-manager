@@ -4,7 +4,7 @@
         [--codepoints <工作区>/config/codepoints.yaml] --out <dataset>/char-groups/status [--tag main-v0.5.10]
 
 产物根下是 `<册>/seed_admit/p*.json`（`guji products pack fetch` 的布局，或工作区的 `products/`）。只读，不跑管线。
-写 `<日期>-<tag>.json`（每组 × 每册全量）与同名 `.md`（总表）。口径（规范见 `doc/字组/README.md` 第四节）：
+写 `<日期>-<tag>.json`（每组 × 每册全量）与同名 `.md`（总表）。口径（规范见 `cv doc/4-定字/字组/README.md` 第四节）：
 
 - **出现格**：放行字在组里的格，加上进过组流程（`evidence.group.id`＝本组）的格。一个字可属多组（日：ry、rm），各组各算。
 - **组判**：进过组流程的格；**给字**：组流程给出了字（`group.pick`）。组判率＝给字 ÷ 组判。

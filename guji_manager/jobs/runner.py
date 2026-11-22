@@ -353,7 +353,7 @@ class Job:
         self.ev(f"人裁 {got} 格，对上")
 
     def glyph_recheck(self) -> None:
-        """改钉字形库后只点名受影响的格（`guji recheck --glyph-diff <旧号>`，见 doc/受控重跑.md 第五节）；
+        """改钉字形库后只点名受影响的格（`guji recheck --glyph-diff <旧号>`，见 cv doc/参考/受控重跑.md 第五节）；
         接着的 pipeline 不加 --force，只重算点名的格和它们的下游。"""
         sp = self.spec
         out = self.guji("recheck", sp["book"], "--glyph-diff", str(sp["glyph_diff"]), "-w", self.ws or "")

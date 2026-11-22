@@ -16,7 +16,7 @@
 | 重跑统计和分类的脚本（每本书、每次重分都从这里重跑） | [`脚本/新-11-07/`](脚本/新-11-07/)（现行）、[`脚本/旧-11-06/`](脚本/旧-11-06/) |
 | D2 搭档文意裁定（待裁、答案，干净会话判读，已写进裁定缓存） | [`D2裁定/`](D2裁定/) |
 | 看图 | [`图/`](图/) |
-| cv 里的开关与代码 | cv `doc/字组/判法打架.md`、`doc/开关登记表.md`（`group_flow_dissent_keep`、`ref_pair`、`dissent_l1`、`ctx_agree`），bench 在 cv `research/a24/z02/` |
+| cv 里的开关与代码 | cv `doc/4-定字/字组/判法打架.md`、`doc/开关登记表.md`（`group_flow_dissent_keep`、`ref_pair`、`dissent_l1`、`ctx_agree`），bench 在 cv `research/a24/z02/` |
 
 **下一本书怎么做**：①`guji pipeline pending-stats` 看这个码有多少格；②`脚本/新-11-07/extract_z.py`（`VOLS`＝册号）取格 → `collect_items.py`；③`partition_new.py` 分类（先标种子真字，见 `数据/Z02-bench-seed.tsv` 的格式）；④`rr_eval.py` 看入人八各来源对错；⑤定开关组名单和 margin，每组每书抽 30 格看图；⑥写进书的 `config/book_defaults.yaml`。云端取数要假工作区、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`pip install psycopg[binary]`。
 
@@ -239,7 +239,7 @@ seed_admit 主循环放行
 ## 九、材料
 
 - 逐格表 `Z02-逐格-三书132格.tsv`（类、真字、各解法字）、`Z02-bench-seed.tsv`、图 `图/`。
-- cv：`research/a24/z02/`（`bench_z02.py`、`Z02_seed.jsonl`、`scan_groups.py`、`rule_audit.py`、`loadall.py`）；`tests/test_group_flow_z02.py`；`config/groups/{zh,yh,yt,rm,js}/rules.yaml`；`doc/字组/判法打架.md`。
+- cv：`research/a24/z02/`（`bench_z02.py`、`Z02_seed.jsonl`、`scan_groups.py`、`rule_audit.py`、`loadall.py`）；`tests/test_group_flow_z02.py`；`config/groups/{zh,yh,yt,rm,js}/rules.yaml`；`doc/4-定字/字组/判法打架.md`。
 - 云端取数：同 Z01／Z03（venv 装 cv、manager --no-deps、psycopg[binary]、websockets；假工作区 `workspace.yaml`＋`.central.json`；`GUJI_DATA_TOKEN=$GUJI_DATA_TOKEN_READ GUJI_DATA_HOME=<目录>`；`guji db pull -w <ws>`（要 `glyph.db` 就别加 `--no-rebuild`）、`products pack fetch`、`source pull`）。注意 ★main 包各册生成的 cv 版本不一，三书口径是「各册 ★main 现有产物」。
 
 

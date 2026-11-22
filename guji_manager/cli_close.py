@@ -14,7 +14,7 @@ from ._cv import ops_prep as prep
 
 
 def cmd_close_check(args) -> None:
-    """一册书交付前逐项体检（只读）。标准见 doc/runbook/整理一册书.md 第五节。"""
+    """一册书交付前逐项体检（只读）。标准见 cv doc/archive/runbook/整理一册书.md 第五节。"""
     from ._cv import workspace_root, reports_root
     from .ops import close_check as CC
     eng = cli_v2._engine(args.book, args.pipeline, quiet=True)

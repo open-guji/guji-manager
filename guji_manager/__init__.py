@@ -2,5 +2,5 @@
 
 __version__ = "0.5.0"
 
-#: 本版 manager 支持的 pipeline 契约版本范围（闭区间）。契约见 open-guji-cv `doc/契约.md`；兼容矩阵见 COMPAT.md。
+#: 本版 manager 支持的 pipeline 契约版本范围（闭区间）。契约见 open-guji-cv `doc/参考/契约.md`；兼容矩阵见 COMPAT.md。
 SUPPORTED_CONTRACT = (1, 1)
