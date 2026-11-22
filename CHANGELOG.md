@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.5.0] - 2026-11-21
+
+- **MINOR**：网站票、改字意见缺省改读中心库 `web_inbox`（D1 为真源，网站 KV 已淘汰，A20 11-22；缺省变了所以升 MINOR）：`cellvotes draft`、`opinions ingest`、收单 `votes_from_flag()` 不带参数即读收件箱；`--from`/`--from-dir` 文件离线读不变；应急读旧 KV 用 `--from-kv` 或 `GUJI_VOTES_FROM=kv`（网站已不再写 KV）。
+
 - PATCH：`cellvotes reconcile` 的 KV 管理读改为读 3 遍取并集（按票身份）：两次读条数相同、缺的却是不同的票（995ejelvk0 条目票 372／373），只比条数会误报「只在收件箱」。
 
 - PATCH：`cellvotes reconcile` 加 `--rev all`（收件箱里出现过的每张单都比）；KV 管理读失败重试，并再读一遍取条数多的那次（11-21 殿本首轮对账 3 票「只在收件箱」、2 张单 500，都是 KV 管理读不稳，重读即一致）。
