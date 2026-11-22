@@ -130,7 +130,7 @@ manager reasons._group_kind：复核、解法折叠后只有 1 个字、不是 r
 
 ## 六、benchmark 怎么定义
 
-**对象**：复核模式下「有路给了与放行字不同的字」的格（总体）；Z03 是其中最终被降的那部分。三书这次总体：被降 247 格；**有异议但被豁免放过去的 769 格**（`dis_kept`：殿本 keep 235、provisional 59、fix 4；史記 keep 236、fix 21；全唐文 keep 96、provisional 118；字组 xz 127、rr 107、zh 109、guang 34、jue 20…）。后者才能量「误保留」，取数脚本 `Z03-scripts/extract.py` 已一并输出。**金标**：每格的真字，人看图加文意定（`guji-manager review-pages build gold_sample`，每组每书各抽 30 格；三书各自留出，不继承殿本）。
+**对象**：复核模式下「有路给了与放行字不同的字」的格（总体）；Z03 是其中最终被降的那部分。三书这次总体：被降 247 格；**有异议但被豁免放过去的 769 格**（`dis_kept`：殿本 keep 235、provisional 59、fix 4；史記 keep 236、fix 21；全唐文 keep 96、provisional 118；字组 xz 127、rr 107、zh 109、guang 34、jue 20…）。后者才能量「误保留」，取数脚本 `Z03-scripts/extract.py` 已一并输出。**金标**：每格的真字，人看图加文意定（`guji pipeline review-pages build gold_sample`，每组每书各抽 30 格；三书各自留出，不继承殿本）。
 
 **指标**（按册留出，门槛先定在「误保留 0」）：
 
@@ -165,7 +165,7 @@ manager reasons._group_kind：复核、解法折叠后只有 1 个字、不是 r
 
 ## 九、材料
 
-ai-team `待审原因深挖/Z03-逐格-三书247格.tsv`（逐格：类、放行字、整理本字、复核字、库首位、给字的解法、是否新增）、`Z03-bench-seed.tsv`、`图/`、`Z03-scripts/`（`extract.py` 取数并输出 `dis_kept`、`crops.py` 裁格图、`sheet.py`／`bigsheet.py`／`mont.py` 拼图）。云端取数装法同 Z01：假工作区（`workspace.yaml`＋`.central.json`）、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`guji products pack fetch`、`guji source pull`。★main 包各册生成的 cv 版本不一（殿本 80 册是 0.6.16，其余旧包），口径是「各册 ★main 现有产物」。
+ai-team `待审原因深挖/Z03-逐格-三书247格.tsv`（逐格：类、放行字、整理本字、复核字、库首位、给字的解法、是否新增）、`Z03-bench-seed.tsv`、`图/`、`Z03-scripts/`（`extract.py` 取数并输出 `dis_kept`、`crops.py` 裁格图、`sheet.py`／`bigsheet.py`／`mont.py` 拼图）。云端取数装法同 Z01：假工作区（`workspace.yaml`＋`.central.json`）、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`guji pipeline products pack fetch`、`guji start source pull`。★main 包各册生成的 cv 版本不一（殿本 80 册是 0.6.16，其余旧包），口径是「各册 ★main 现有产物」。
 
 ## 十、第 7 轮复查（2026-11-08，殿本 vol20–99，cv v0.6.17，★main 现算）
 

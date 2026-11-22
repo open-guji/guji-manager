@@ -107,4 +107,4 @@ python3 Z05-scripts/sheet_cls.py                    # 按类出拼图
 python3 Z05-scripts/extract_all.py                  # 全册扫描带字组证据的格（审计底数）
 python3 Z05-scripts/z05_bench.py Z05-逐格-三书36格.tsv Z05-audit-只靠字形放行与整理本不同-80格.tsv
 ```
-云端装法同 Z01／Z04：假工作区（`workspace.yaml`＋`.central.json`）、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`guji products pack fetch`、`guji source pull`。
+云端装法同 Z01／Z04：假工作区（`workspace.yaml`＋`.central.json`）、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`guji pipeline products pack fetch`、`guji start source pull`。

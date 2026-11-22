@@ -111,7 +111,7 @@
 
 ## 五、参数（每本书自己试）
 
-框架固定，下面这些是**每本书可以调的旋钮**（册 yaml `params.seed_admit`，`guji book show --effective` 看生效值）。
+框架固定，下面这些是**每本书可以调的旋钮**（册 yaml `params.seed_admit`，`guji pipeline book show --effective` 看生效值）。
 
 | 旋钮 | 作用 | 缺省 | 殿本 | 史記 | 全唐文 |
 |---|---|---|---|---|---|

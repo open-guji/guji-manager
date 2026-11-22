@@ -18,7 +18,7 @@
 | 看图 | [`图/`](图/) |
 | cv 里的开关与代码 | cv `doc/字组/判法打架.md`、`doc/开关登记表.md`（`group_flow_dissent_keep`、`ref_pair`、`dissent_l1`、`ctx_agree`），bench 在 cv `research/a24/z02/` |
 
-**下一本书怎么做**：①`guji-manager pending-stats` 看这个码有多少格；②`脚本/新-11-07/extract_z.py`（`VOLS`＝册号）取格 → `collect_items.py`；③`partition_new.py` 分类（先标种子真字，见 `数据/Z02-bench-seed.tsv` 的格式）；④`rr_eval.py` 看入人八各来源对错；⑤定开关组名单和 margin，每组每书抽 30 格看图；⑥写进书的 `config/book_defaults.yaml`。云端取数要假工作区、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`pip install psycopg[binary]`。
+**下一本书怎么做**：①`guji pipeline pending-stats` 看这个码有多少格；②`脚本/新-11-07/extract_z.py`（`VOLS`＝册号）取格 → `collect_items.py`；③`partition_new.py` 分类（先标种子真字，见 `数据/Z02-bench-seed.tsv` 的格式）；④`rr_eval.py` 看入人八各来源对错；⑤定开关组名单和 margin，每组每书抽 30 格看图；⑥写进书的 `config/book_defaults.yaml`。云端取数要假工作区、`GUJI_DATA_HOME`、`guji db pull --no-rebuild`、`pip install psycopg[binary]`。
 
 
 > **11-07 更新：按新码重做。** manager#304 把 Z 类按「解法给出什么」重分：新 Z02＝几个字打架（≥2 个不同字，补放、联合判、复核都算）；联合判里解法只给一个字的（原 D2 与 67 格共字组弃权）改去 Z07。**下面「一」到「九」是 11-06 旧定义（132 格）的分析，留作过程记录；现行数字以本节为准。** 范围、统计、脚本都已按新码重做（[`脚本/新-11-07/`](脚本/新-11-07/)，逐格表 [`数据/Z02-逐格-新Z02-73格.tsv`](数据/Z02-逐格-新Z02-73格.tsv)）。
@@ -73,7 +73,7 @@
 
 ### 范围与脚本已同步
 
-- 统计：`guji-manager pending-stats` 自动用 dev 定义，每个会话重跑就是自己这个码下的内容；我这个码的字符级重统计跑 [`脚本/新-11-07/`](脚本/新-11-07/)：`extract_z.py`（逐册取 Z02 格，`VOLS`＝册号）→ `collect_items.py` → `partition_new.py`（分类）→ `rr_eval.py`（rr 各来源对错）。
+- 统计：`guji pipeline pending-stats` 自动用 dev 定义，每个会话重跑就是自己这个码下的内容；我这个码的字符级重统计跑 [`脚本/新-11-07/`](脚本/新-11-07/)：`extract_z.py`（逐册取 Z02 格，`VOLS`＝册号）→ `collect_items.py` → `partition_new.py`（分类）→ `rr_eval.py`（rr 各来源对错）。
 - 旧脚本、旧逐格表保留在 [`脚本/旧-11-06/`](脚本/旧-11-06/)、[`数据/Z02-逐格-三书132格.tsv`](数据/Z02-逐格-三书132格.tsv)（11-06 版）。
 
 
@@ -207,7 +207,7 @@ seed_admit 主循环放行
 **总体扫描与规则审计**（给下一本书）：
 1. `research/a24/z02/scan_groups.py`：逐册拉 ★main 包，记所有带 `evidence.group` 的格（组、模式、决定、放行字、整理本字、各解法字和 margin、前后 20 字）。殿本 99 册约 34 万格，全套约 15 分钟。
 2. `research/a24/z02/rule_audit.py`：把每条 L1 规则放到这些格上，输出 `rule_audit.tsv`（命中、与整理本同、冲突、冲突样例）。冲突率 >10% 且 n≥10 的先看。jys／ry 等折叠组整理本本不分，不算。
-3. 复跑 `bench_z02.py`，再按每组每书抽 30 格补进种子（用 `guji-manager review-pages build gold_sample` 模板）。
+3. 复跑 `bench_z02.py`，再按每组每书抽 30 格补进种子（用 `guji pipeline review-pages build gold_sample` 模板）。
 
 ## 七、改动（cv PR，投 dev；等下一轮统一重跑，不自己重跑整册）
 

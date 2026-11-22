@@ -20,7 +20,7 @@
 
 1. **放行精度**：每书抽 30 格建金标（`review-pages build` 的 gold_sample 页型，人看图判是否整理本字），候选放行规则在留出集上**错放 = 0** 才允许缺省开。
 2. **放行召回**：规则能放行的格占整理本字清晰可认格的比例。
-3. **回放**：规则开前后各跑一次待审统计（`guji-manager pending-stats`），确认只把待审挪到放行、不改已放行格。
+3. **回放**：规则开前后各跑一次待审统计（`guji pipeline pending-stats`），确认只把待审挪到放行、不改已放行格。
 
 ## 三、基线（2026-11-06，★main 包，正文页）
 
@@ -58,7 +58,7 @@
 ```
 python tools/l01_profile.py --ws <假工作区> --text <书 id> --out out/<书> --jobs 4 --crops
 ```
-取数配置（假工作区、`GUJI_DATA_HOME`、`guji db pull`、`guji products pack fetch`、`guji source pull`）见 ai-team `domain/CV/质检/待审原因深挖/L01-少见的字.md` 第一节。
+取数配置（假工作区、`GUJI_DATA_HOME`、`guji db pull`、`guji pipeline products pack fetch`、`guji start source pull`）见 ai-team `domain/CV/质检/待审原因深挖/L01-少见的字.md` 第一节。
 
 ## 五、待补
 

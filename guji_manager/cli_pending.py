@@ -1,4 +1,4 @@
-"""`guji pending`：待审条目（一格一条，设计 doc/00-总览/设计-待审条目化.md）。
+"""`guji pending`：待审条目（一格一条，设计 doc/4-反馈迭代/设计-待审条目化.md）。
 
     guji pending ls vol04 -w <工作区> [--state open|withdrawn|resolved|closed|all] [--json]
     guji pending show vol04 <条目 id 或格号> -w <工作区>          # 当前版本与全部改动记录

@@ -85,11 +85,11 @@
 
 ## 五、整条流程与参数（下一本书照做）
 
-1. **取数**：`guji-manager pending-stats --ws <ws> --text <书> --out <目录>`，`cells.tsv` 里 `pending_reason ∈ {ref_mismatch, ref_final_diff}` 是线上单；再用 `P02-scripts/extract.py`（P01 的同款，只改 `want`）逐册拉 ★main 包，`reasons_for_pending` 取 `ref_final_diff` 格，附机器字、整理本字、库候选、cov、前后文、`align_op`（P02 一定是 `coord`）。
+1. **取数**：`guji pipeline pending-stats --ws <ws> --text <书> --out <目录>`，`cells.tsv` 里 `pending_reason ∈ {ref_mismatch, ref_final_diff}` 是线上单；再用 `P02-scripts/extract.py`（P01 的同款，只改 `want`）逐册拉 ★main 包，`reasons_for_pending` 取 `ref_final_diff` 格，附机器字、整理本字、库候选、cov、前后文、`align_op`（P02 一定是 `coord`）。
 2. **体检**：看 `align_op` 是不是全是 `coord`（是＝文本对位丢段，本报告的情形）；再看 cov 分布。
 3. **裁格图、看图**：`crops.py` 裁格（要先 `guji db pull -w <ws> --no-rebuild`，云端要 `.central.json`，见 P01 报告「云端坑」）、`sheet.py` 拼表，每张 18 格，逐格标 R／M／S／V／Q／N／?。
 4. **定 cov 上限**：取已标 M 的最小 cov 之下（殿本、史記都是 0.94）。**书不同要各标各的**，不要继承。
-5. **开旋钮**：册 yaml `seed_admit` params：`p_ref_admit: true`、`p_ref_coord: true`、`p_ref_max_cov: 0.94`、`p_ref_jiazhu: true`；`guji book show --effective` 核对。`p_ref_adjacent` 不开。
+5. **开旋钮**：册 yaml `seed_admit` params：`p_ref_admit: true`、`p_ref_coord: true`、`p_ref_max_cov: 0.94`、`p_ref_jiazhu: true`；`guji pipeline book show --effective` 核对。`p_ref_adjacent` 不开。
 6. **回放**：`p02_bench.py` 比较放出数和看图精度；上线后用 benchmark 核。
 7. **留审的格**：文意终审在 {整理本字, 机器字} 里选；回人审的在网页 `pick` 卡。
 

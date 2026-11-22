@@ -159,46 +159,6 @@ def cmd_groups(args) -> None:
         print("写后台", group_progress.write(rs), "行")
 
 
-def cmd_cards(args) -> None:
-    """待审卡片的数据：dingzi | cutline | jiazhu | groups，一律出 JSON。
-
-    对应控制台第六类。**这不是给人看卡片用的**——是给云端道用来
-    「统计还剩多少待审、抽查自动放行那批、量一刀改动前后的待审率变化」
-    （方案 §二 第六类：需要人在场的是浏览器里那个页面，不是这些接口）。
-    """
-    from ._cv import EventLog
-    from ._cv import ProductStore
-
-    st = ProductStore()
-    if args.action == "dingzi":
-        from ._cv import cards
-        _cv.out(cards(args.book, args.pages, args.limit, args.only, st))
-    elif args.action == "jiazhu":
-        from ._cv import jiazhu_segments
-        _cv.out(jiazhu_segments(args.book, args.pages, args.only, args.batch, st, EventLog()))
-    elif args.action == "groups":
-        from ._cv import group_view
-        _cv.out(group_view(args.book, args.pages, args.edition, args.limit, st))
-    elif args.action == "cutline":
-        from ._cv import eval_touching as T
-        from ._cv import load_book
-        pg = (T.body_pages(args.book) if args.pages == "body"
-              else load_book(args.book).resolve_pages(args.pages))
-        if args.kind == "split_char":
-            cases = T.split_char_boundaries(args.book, pg, st)
-        elif args.kind == "all":
-            cases = T.r2s_boundaries(args.book, pg, st) + T.split_char_boundaries(args.book, pg, st)
-        else:
-            cases = T.r2s_boundaries(args.book, pg, st)
-        n_all = len(cases)
-        done = T.gold_ids() if args.skip_done else set()
-        if args.batch:
-            done |= {e.target.key for e in EventLog().read(args.batch) if e.kind == "cutline"}
-        cases = [c for c in cases if c["id"] not in done]
-        _cv.out({"book": args.book, "n_r2s": n_all, "n_done": len(done),
-              "n": len(cases), "cases": T.pick_cases(cases, args.limit, seed=args.seed)})
-
-
 def cmd_collate(args) -> None:
     """Step9-9.3 对勘：字位流 × 整理本 → JSON 正本（＋可选 HTML ＋可选截图）。
 
@@ -308,20 +268,6 @@ def add_parser(sub) -> None:
     p.add_argument("--prev", default="", help="status：上一份报告的 json，表里写送审增减")
     p.add_argument("--progress", default="", metavar="BOOK_ID",
                    help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写 Neon 正式库）")
-    p = sub.add_parser("cards", help="[v2] 待审卡片数据：dingzi | cutline | jiazhu | groups")
-    p.add_argument("action", choices=["dingzi", "cutline", "jiazhu", "groups"])
-    p.add_argument("book")
-    p.add_argument("--pages", default="dev_set")
-    p.add_argument("--only", default="review", choices=["review", "auto", "all"],
-                   help="dingzi 默认 review；jiazhu 默认 all")
-    p.add_argument("--limit", type=int, default=400)
-    p.add_argument("--edition", default="", help="groups：用字账版本")
-    p.add_argument("--batch", default=None, help="cutline / jiazhu：跳过这批已裁的")
-    p.add_argument("--kind", default="r2s", choices=["r2s", "split_char", "all"],
-                   help="cutline：用例类型")
-    p.add_argument("--seed", type=int, default=0, help="cutline：抽样种子")
-    p.add_argument("--no-skip-done", dest="skip_done", action="store_false",
-                   help="cutline：连已进金标的也出")
     p = sub.add_parser("collate", help="[v2] Step9-9.3 与整理本对勘（出 JSON + HTML）")
     p.add_argument("book")
     p.add_argument("--pages", default="", help="页表达式；空 = 全部有 Step7 产物的页")
@@ -347,7 +293,6 @@ COMMANDS = {
     "eval": (add_parser, cmd_eval),
     "check": (add_parser, cmd_check),
     "groups": (add_parser, cmd_groups),
-    "cards": (add_parser, cmd_cards),
     "progress": (add_parser, cmd_progress),
     "collate": (add_parser, cmd_collate),
 }

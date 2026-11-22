@@ -96,13 +96,13 @@
 
 ## 五、整条流程与参数（下一本书照做）
 
-1. **取数**：`guji-manager pending-stats --ws <ws> --text <书> --out <目录>`（线上单，P01 在 `cells.tsv` 里 `pending_reason=ref_replaced`，旧名；新单叫 `ref_ocr_diff`）；再 `P01-scripts/extract.py` 逐册拉 ★main 包，`reasons_for_pending` 取 `ref_ocr_diff` 格，附机器字、整理本字、库候选、cov、前后文、replace 段长、cell_shrink 框。
+1. **取数**：`guji pipeline pending-stats --ws <ws> --text <书> --out <目录>`（线上单，P01 在 `cells.tsv` 里 `pending_reason=ref_replaced`，旧名；新单叫 `ref_ocr_diff`）；再 `P01-scripts/extract.py` 逐册拉 ★main 包，`reasons_for_pending` 取 `ref_ocr_diff` 格，附机器字、整理本字、库候选、cov、前后文、replace 段长、cell_shrink 框。
 2. **裁格图、看图**：`crops.py` 裁格、`sheet.py` 拼表（每张 18 格，左图右字），逐格标 R/M/V/N/S/B/?。
 3. **判书的类型**：看 M 比例。M 很少（殿本、史記）→ 整理本与图源同一底本，可以取整理本字；M 占多数（全唐文）→ 整理本是另一底本，不要取。
 4. **标 cov 上限**：把标过的格画 cov 分布（图 0），取「M 的最小 cov 之下」作 `p_ref_max_cov`（殿本 0.93、史記 0.97）。书的库覆盖率口径不同，每本自己标。
-5. **开旋钮**：册 yaml `seed_admit` params 写 `p_ref_admit: true`、`p_ref_max_cov: x`、`p_ref_adjacent: true`、`p_ref_jiazhu: true`、`p_ref_skip_variant: true`；`guji book show --effective` 核对。
+5. **开旋钮**：册 yaml `seed_admit` params 写 `p_ref_admit: true`、`p_ref_max_cov: x`、`p_ref_adjacent: true`、`p_ref_jiazhu: true`、`p_ref_skip_variant: true`；`guji pipeline book show --effective` 核对。
 6. **回放**：`p_ref_sim.py` 模拟、`rule_eval.py` 比较放出数和看图精度；上线后用 benchmark 核。
-7. **留审的格**：文意终审（`guji-manager final-review`）在 {整理本字, 机器字} 里选；回人审的在网页 `pick` 卡。
+7. **留审的格**：文意终审（`guji text final-review`）在 {整理本字, 机器字} 里选；回人审的在网页 `pick` 卡。
 
 参数表：
 

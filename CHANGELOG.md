@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+- **MINOR**（删命令，用户 11-22 定）：`guji` 命令按五步加前缀 `guji <步> <命令>`，步为 `start` 新书启动／`pipeline` 自动化流程／`text` 文意与知识／`feedback` 反馈迭代／`output` 排版输出（`guji_manager/steps.py`）；不带前缀的老写法照旧能用，`guji <步> commands` 列本步命令。前缀经 cv 新钩子时点 `route` 去掉（cv #1786）；cv 旧版没有该时点时 `start`／`text`／`feedback`／`output` 靠同名子命令兜底，`pipeline` 前缀不可用。原只能 `guji-manager <命令>`／`python -m` 调的 `pending-stats`、`central-gc`、`triage`、`review-pages`、`progress-sync`、`iterate`、`suggest`、`pair-attr`、`final-review`、`online-lists`、`datastore` 并进 `guji`。**删除** `guji release`、`deploy`、`batch`、`label-batch`、`cards`、`store`（及 `ops/release_check.py`）。
+- 文档：doc 只留规格与事实，教程、做法、坑搬进 Wiki（`wiki/<步名>/`）；四步改名新书启动／自动化流程／文意与知识／反馈迭代，加第五步排版输出（cv 原 Step9 移来）。
+
 ## [0.5.0] - 2026-11-21
 
 - **MINOR**：网站票、改字意见缺省改读中心库 `web_inbox`（D1 为真源，网站 KV 已淘汰，A20 11-22；缺省变了所以升 MINOR）：`cellvotes draft`、`opinions ingest`、收单 `votes_from_flag()` 不带参数即读收件箱；`--from`/`--from-dir` 文件离线读不变；应急读旧 KV 用 `--from-kv` 或 `GUJI_VOTES_FROM=kv`（网站已不再写 KV）。

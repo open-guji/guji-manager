@@ -449,8 +449,6 @@ _LOCAL: dict[str, tuple[str, str | None]] = {
     "from_dict": ("exp.config", "from_dict"),
     "exp_config": ("exp.config", None),
     "exp_runner": ("exp.runner", None),
-    "ops_release_check": ("ops.release_check", None),
-    "ops_deploy_check": ("ops.deploy_check", None),
     "ArchiveError": ("ops.archive_fetch", "ArchiveError"),
     "DEFAULT_REPO": ("ops.archive_fetch", "DEFAULT_REPO"),
     "fetch": ("ops.archive_fetch", "fetch"),

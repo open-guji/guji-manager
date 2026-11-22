@@ -90,7 +90,7 @@ python benchmark/score.py benchmark/gold_human.tsv
 # 4 候选规则要上线：按准确率守则——金标放行子集 0 错、盲读抽样 0 错（<100 格抽 30，>300 抽 100）
 ```
 
-新书没有人裁格时：用 `guji-manager iterate gold sample` 从 N01 型格里按类抽 30 格，请 sheldon 用 `review-pages build gold_sample` 页标注，标注结果就是该书的金标；一本书各类至少 30 格才打分。
+新书没有人裁格时：用 `guji pipeline iterate gold sample` 从 N01 型格里按类抽 30 格，请 sheldon 用 `review-pages build gold_sample` 页标注，标注结果就是该书的金标；一本书各类至少 30 格才打分。
 
 ## 五、局限，用基准时要记得
 

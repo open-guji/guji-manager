@@ -1,6 +1,6 @@
 # 全唐文（995ejelvk0）开书脚本
 
-全唐文册 04、05 开书时用的本机脚本（2026-10-29～31）。做法与经验见 [开书全流程](../../../doc/1-新书启动/开书全流程-详细版.md) 第 S7–S11 步、[全唐文开书经验](../../../doc/案例/开书经验/全唐文.md)、[案例：全唐文](../../../doc/案例/全唐文.md)。
+全唐文册 04、05 开书时用的本机脚本（2026-10-29～31）。做法与经验见 [开书全流程](../../../wiki/新书启动/开书全流程-详细版.md) 第 S7–S11 步、[全唐文开书经验](../../../doc/案例/开书经验/全唐文.md)、[案例：全唐文](../../../doc/案例/全唐文.md)。
 
 **都是一次性工具，没进 cv、也没测试**。能抽成通用的（目录页配篇题、格位表、缩略图重绑）以后并入 cv `books/<套书>/` 或 `scripts/`（见开书全流程「缺口清单」）。
 
@@ -15,12 +15,12 @@
 | 步 | 做什么 | 脚本／命令 |
 |---|---|---|
 | 0 | 拉中心库（500 时分页小批） | `PAGE=100 python pull_small.py $WS` |
-| 1 | 借殿本整库、重建 glyph.db；在 **cv 仓根目录**导入字体域 `font:jigmo`、`font:iming` | `python borrow.py $WS`；`guji glyph-db import-font --edition …` |
+| 1 | 借殿本整库、重建 glyph.db；在 **cv 仓根目录**导入字体域 `font:jigmo`、`font:iming` | `python borrow.py $WS`；`guji pipeline glyph-db import-font --edition …` |
 | 2 | 参照语料（只做一次，全书共用） | `make_grid_corpus.py <book-text Work d59f2nqla48x/default> qtw_kanripo_grid.txt` |
-| 3 | 取图、写册 yaml（照册 04：`period_prior: 205`、`frame_bar_strategy: border_line`） | `guji source pull --book-id 995ejelvk0 --vol 05` |
+| 3 | 取图、写册 yaml（照册 04：`period_prior: 205`、`frame_bar_strategy: border_line`） | `guji start source pull --book-id 995ejelvk0 --vol 05` |
 | 4 | 首跑 Step1–4 | `guji pipeline keben_body_v2 05 --pages all --to cell_shrink --no-pack` |
 | 5 | 正文页钉位：按**叶号**算（页＝卷首页＋2×(叶−1)＋b），卷首页由墨量＋看图定；Kanripo 缺的半叶不钉，卷尾 `NFKB_QTW_-…` 头要单独钉 | 手算后追加 `corpus/page_pins.jsonl`（册 05 的结果在中心库里） |
-| 6 | 目录页：先对目录页跑 glyph_match，再配篇题、生成目录页参照 | `guji cache warm --pages <目录页>`；`… --from glyph_match --to glyph_match`；`VOL=05 toc_match.py`；看输出把配错的列写进 `volcfg.py` 的 `MANUAL`；`VOL=05 toc_build.py toc.txt tocpins.jsonl` → 分别追加进语料和钉位表 |
+| 6 | 目录页：先对目录页跑 glyph_match，再配篇题、生成目录页参照 | `guji pipeline cache warm --pages <目录页>`；`… --from glyph_match --to glyph_match`；`VOL=05 toc_match.py`；看输出把配错的列写进 `volcfg.py` 的 `MANUAL`；`VOL=05 toc_build.py toc.txt tocpins.jsonl` → 分别追加进语料和钉位表 |
 | 7 | 格位表 | `VOL=05 make_qtw_layout.py layout05.jsonl` → 追加进 `corpus/qtw_layout.jsonl`；册 yaml 加 `params.row_segment.layout_prior`、`params.align_ref.page_pins` |
 | 8 | 从切分重跑到放行 | 交任务库（`base`=首跑包，`steps.from=row_segment`）；`run_vol.sh 05` 只是本机试跑时用的 |
 | 9 | 核对 | `VOL=05 metrics.py`（放行率）、`cmp_kanripo.py`（列字数 vs 参照）、`draw_page.py out.png 7,54`（画框看）、`sheet.py <旗> out.png`、`sheet_ids.py ids.json out.png` |

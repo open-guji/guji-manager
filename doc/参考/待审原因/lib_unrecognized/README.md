@@ -61,7 +61,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
 
 门槛取殿本口径（0.96／0.01），对开了 `reference_trust` 的书偏严，只作分档，不作判定。`context_page_end` 已按 A31 11-06 裁定算进白名单（cv 侧由 A24 加）。
 
-细分随出单写进待审单；`guji-manager pending-stats` 的 `cells.tsv` 末列 `detail` 就是它。本页之前出的单，detail 只有参校字。
+细分随出单写进待审单；`guji pipeline pending-stats` 的 `cells.tsv` 末列 `detail` 就是它。本页之前出的单，detail 只有参校字。
 
 ## 二、三书现状（2026-11-06）
 
@@ -124,7 +124,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
 3. **`doubt_blocked`**：按疑问码找负责人。比如 `coord_conflict` 是对位冲突，留审。
 4. **`lib_other`、`low_cov`、`near_rival`**：对话看图审，用 `guji_manager/review/vis_review.py`：
    ```bash
-   guji-manager pending-stats --ws <工作区> --text <文本号> --out /tmp/ps
+   guji pipeline pending-stats --ws <工作区> --text <文本号> --out /tmp/ps
    python -m guji_manager.review.vis_review export --cells /tmp/ps/cells.tsv --reason lib_unrecognized \
        --pkg <出单产物包根> --vol-fmt 'vol{n:02d}' --ws <工作区> --text <文本号> --out /tmp/l04
    # 对话读 /tmp/l04/sheets/*.png 和 todo.jsonl，逐行补 char／conf（high/mid/low）／why，存 answers.jsonl

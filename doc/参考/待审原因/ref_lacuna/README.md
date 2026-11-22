@@ -31,7 +31,7 @@ cv#1604（cv v0.7.52 殿本线、v0.7.53 dev 线、v0.7.54 史記线起）与 ma
 - **语义相同**：两种都是「这里有字、参校本读不出，不当证人」。cv 一律走 `utils/gap.is_gap`（seed_admit、groups/flow），manager 一律走 `review/reasons.ref_missing`、`taxonomy._MISSING_REF`，**判成 R01 的条件不变**，统计、闸门（`release_gates` LACUNA、`exit_check`、`close_check`、`sheet_audit`）两种都算缺字。
 - **只在成因明细上分开**：`review/causes.py` 两种都是成因 A2，▣ 的 `detail="image"`，方便单独统计、按字图出图片格页。▣ 处多是字形引述（见下面 D1），按「图片格」处理，不硬录常用字。
 - **对位**：`align_ref_coord.is_text_char` 认 ▣，占一个格位；旧 cv 不认 ▣，会当标点丢掉、整列错一格。**换含 ▣ 的参校本语料前，册必须先钉认 ▣ 的 cv（见上）**，manager 至少 v0.4.53。
-- **语料**：现网整理本用 cv `scripts/dzg_placeholders.py` 就地换字（码表能定的换成字，以图代字换 ▣，其余仍〓），并出侧表 `slots.jsonl`（原码位、前后文、码表依据、字图 sha），行数、逐行字数不变。`guji corpus build` 遇到残留的缅甸字母占位码会拦下，提示换成 ▣。
+- **语料**：现网整理本用 cv `scripts/dzg_placeholders.py` 就地换字（码表能定的换成字，以图代字换 ▣，其余仍〓），并出侧表 `slots.jsonl`（原码位、前后文、码表依据、字图 sha），行数、逐行字数不变。`guji start corpus build` 遇到残留的缅甸字母占位码会拦下，提示换成 ▣。
 - **不要混用**：`guji_page`／`guji_char_cord` 的 `ZI_NO_NEAR = "〓"` 是「组字没有近似字」的占位，与参校本缺字无关，不改成 ▣。
 - 书仓 `code/` 里自己写的 `== "〓"` 判断要改走 `is_gap`，否则 ▣ 漏判。出单时用这格前后的参校本文字回到殆知阁源里查，能找回原码位（cv `utils/pua_lookup`）。
 
@@ -79,7 +79,7 @@ manager#304 起，原 Z04 里「唯一的反证是参校本〓」的格改落 R0
 
 | 书 | 口径 | 格数 |
 |---|---|---:|
-| 四库总目（殿本） | 线上单（`guji-manager pending-stats`） | 264（79 册，vol20 最多 42 格） |
+| 四库总目（殿本） | 线上单（`guji pipeline pending-stats`） | 264（79 册，vol20 最多 42 格） |
 | 四库总目（殿本） | ★main 包现算（A31 三书统计） | 287 |
 | 史記 | ★main 包，01–10 册 | 12 |
 | 全唐文 | ★main 包，005–015 册 | 2 |

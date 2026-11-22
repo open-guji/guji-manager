@@ -1,11 +1,11 @@
 # seg_check：切分核查一条命令
 
-> **2026-11-12 起并进 `guji seg check`**（A22，SJ 同意）：判据搬进 cv `eval/seg_screen.py`（与本目录逐格对过一致），
+> **2026-11-12 起并进 `guji pipeline seg check`**（A22，SJ 同意）：判据搬进 cv `eval/seg_screen.py`（与本目录逐格对过一致），
 > 汇总、处置分类、缩略图在 `guji_manager/seg_check.py`；点名跳过页写进工作区 `workspace.yaml` 的 `seg_check:`。
-> 新用法：`guji seg check 01 02 -w <工作区> [--skip 01:39-52] [--recall <guji seg ruler 出的尺子>] --out <报告目录>`。
+> 新用法：`guji pipeline seg check 01 02 -w <工作区> [--skip 01:39-52] [--recall <guji pipeline seg ruler 出的尺子>] --out <报告目录>`。
 > 本目录的脚本留作别名／对照，不再加东西。
 
-输入一轮出包（产物根＋列图／字块缓存），输出切分类问题列清单、需看图的整列缩略图和报告。用法、判据、处置分类与 r41 结果见 [doc/2-迭代/b-切分检查与优化/切分快筛.md](../../doc/2-迭代/b-切分检查与优化/切分快筛.md) 第九至十一节。
+输入一轮出包（产物根＋列图／字块缓存），输出切分类问题列清单、需看图的整列缩略图和报告。用法、判据、处置分类与 r41 结果见 [wiki/自动化流程/切分快筛.md](../../wiki/自动化流程/切分快筛.md) 第九至十一节。
 
 ```
 python tools/seg_check/seg_check.py --products <产物根> --cache <缓存根> --vols 01,02 \
