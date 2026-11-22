@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.5.0] - 测试中
+
+- **MINOR**：网站票、改字意见缺省改读中心库 `web_inbox`（D1 为真源，网站 KV 已淘汰，A20 11-22；缺省变了所以升 MINOR）：`cellvotes draft`、`opinions ingest`、收单 `votes_from_flag()` 不带参数即读收件箱；`--from`/`--from-dir` 文件离线读不变；应急读旧 KV 用 `--from-kv` 或 `GUJI_VOTES_FROM=kv`（网站已不再写 KV）。
+
 - PATCH：`cellvotes reconcile` 的 KV 管理读改为读 3 遍取并集（按票身份）：两次读条数相同、缺的却是不同的票（995ejelvk0 条目票 372／373），只比条数会误报「只在收件箱」。
 
 - PATCH：`cellvotes reconcile` 加 `--rev all`（收件箱里出现过的每张单都比）；KV 管理读失败重试，并再读一遍取条数多的那次（11-21 殿本首轮对账 3 票「只在收件箱」、2 张单 500，都是 KV 管理读不稳，重读即一致）。
@@ -15,7 +19,6 @@
 ## [0.4.81] - 2026-11-20
 
 - PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#769）。
-- PATCH：网站票、改字意见缺省改读中心库 `web_inbox`（D1 为真源，A20 11-22）：`cellvotes draft`、`opinions ingest`、收单 `votes_from_flag()` 不带参数即读收件箱；`--from`/`--from-dir` 文件离线读不变；应急读旧 KV 用 `--from-kv` 或 `GUJI_VOTES_FROM=kv`（网站已不再写 KV）。
 - PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目；墓碑（`value.deleted: true`，网站删了 KV 键）读到跳过、对账算一致；`web_inbox.by_prefix` 按键前缀不按书读（thread 等无 book 的）。
 
 ## [0.4.80] - 2026-11-20
