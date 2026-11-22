@@ -36,7 +36,7 @@
 
 ### 2. 待审单（问题）
 
-- **含义**：一册当前**还要人看**的格的清单，每格带「为什么要看」和「看什么」。11-10 起**一格一条待审条目**（[设计-待审条目化](设计-待审条目化.md)）：条目各自增、撤、改，换单只动有变化的条目；整张单是从条目导出的查询结果，每格带条目 `id`／`ver`。
+- **含义**：一册当前**还要人看**的格的清单，每格带「为什么要看」和「看什么」。11-10 起**一格一条待审条目**（[设计-待审条目化](../4-网站人审与版本迭代/a-出单上线/设计-待审条目化.md)）：条目各自增、撤、改，换单只动有变化的条目；整张单是从条目导出的查询结果，每格带条目 `id`／`ver`。
 - **范围**：一册（一章）一张，带版本号 `rev`（如 `001-r13`）。包含三类格：
   1. 机器没放行的格（`review: pending`）；
   2. 复审格（`recheck: true`）：人裁过但要再看的——机器推翻了人裁、旧人裁绑定失效、**撤库重审**（撤库的格，不论册在哪个版本）、别处发现的疑点；
@@ -104,7 +104,7 @@
 
 优先级：**人裁 > 机器新结果 > 现行文本里的机器旧字**。机器可以挑战人（出复审格），不能覆盖人。
 手改字（0.x 直接改 char、1.x 里没有事件对应的格）**补录成人裁事件**后并入「人裁」一级，不单列。
-本表 0.x、1.x 都适用；旧口径「1.x 已放行格只增不改」已废。1.x 的差别只在通道（经意见→裁决→revise 或重切发布批，不整册替换），见 [04 全流程与覆盖优先级](../04-反馈迭代/全流程与覆盖优先级.md) 第五、七节。
+本表 0.x、1.x 都适用；旧口径「1.x 已放行格只增不改」已废。1.x 的差别只在通道（经意见→裁决→revise 或重切发布批，不整册替换），见 [04 全流程与覆盖优先级](../4-网站人审与版本迭代/e-1.0之后的反馈/全流程与覆盖优先级.md) 第五、七节。
 
 | 情形 | book-text | 待审单 |
 |---|---|---|
@@ -136,7 +136,7 @@
 | 问题 | 唯一出口 | 说明 |
 |---|---|---|
 | 这一格现在有没有**被采信**的定字人裁？ | cv `feedback.lookup.human_chars`（过绑定表，`valid`／`rebound` 才认；换图源后 `unanchored`／`review`／`void` 不认） | `proof_cycle.human_chars_of` 已改为调它（对沙箱产物算绑定）。仍有的另一套读法只作它用：`pending_route.deciding`（出单时扣「单后已有人裁」的格，配 `stale.ts`／`--keep`）、`swap/booktext.human_ledger`（按旧 cord 框对照表认，换包守卫）、`web_votes.latest_human`（票落事件前）。**新代码不要再加第四套** |
-| 换包／重跑后，book-text 这一格改不改、改成什么？ | 第三节的表 = manager `swap/resolve.resolve`；`proof_cycle.split_changes` 是同一张表的「按格号」实现，格号有变时不用它（走格级对照表，见 [换包落book-text-增删格](../02-精校/换包落book-text-增删格.md)） | 两处各有一份实现是已知的重复，待合并（改任何一处都要同步另一处与本表） |
+| 换包／重跑后，book-text 这一格改不改、改成什么？ | 第三节的表 = manager `swap/resolve.resolve`；`proof_cycle.split_changes` 是同一张表的「按格号」实现，格号有变时不用它（走格级对照表，见 [换包落book-text-增删格](../4-网站人审与版本迭代/c-更新book-text/换包落book-text-增删格.md)） | 两处各有一份实现是已知的重复，待合并（改任何一处都要同步另一处与本表） |
 | 哪些格进判字单（`cells[]`）？ | 产物未放行（`admit=false`，排除名单上人已定的除外）＋复审清单（`recheck`）＋同字对照自检旗，经 `pending_route` 扣掉已裁的格 | 锚点格在 `anchor_cells[]`，不在这里 |
 | 复审格什么时候成立？ | 只有「**被采信的**人裁**被机器推翻**」：旧字是最新人裁，机器认出了**另一个字**（非空、码位归一后不同） | 机器无字（遮挡）→ 留人裁字不复审；人裁已失效 → 不是复审，是普通待审格或直接放行 |
 | 上线前最后一道关 | `guji pending audit`（manager `review/sheet_audit.py`），`republish.py push` 内置 `sheet_gate` | 拦：`overturn_untrusted`、`overturn_same`、`anchor_only_in_cells`、`dup_cell`；提示：`overturn_empty`（Sheldon 11-19：以新包为准，照常上单）、`no_reason`、`recheck_no_note`。确要照上线加 `--ack-sheet-audit "<原因>"` |
@@ -148,7 +148,7 @@
 - **待审格在 book-text 里看不出来，读者会不会被误导？** 会显示首选字，可能是错的（例：殿本一处标题曾因参校本首选变成「雜史類臣三弁」）。这正是待审单要人看的格；网站上「待审」的标记读的是待审单，不是 book-text。
 - **网站票算不算人裁？** 票在 KV 里只是意见；落成事件（`cellvotes` → `events`）之后才算，下一轮才进文本。
 - **大模型裁定、点校放行算不算人裁？** 不算（`rulings`／`notes` 另存，不进人裁通道）。点校放行（两路同字 high、放行子集金标 0 错）写裁定库，下一轮由机器放行改字；它们改 book-text 走的是「机器放行」那一行。
-- **重切后格号变了怎么办？**（如殿本 vol01 锚点平移）**只走一条路**（11-10 sheldon 定）：[换包落book-text-增删格](../02-精校/换包落book-text-增删格.md)（`swap/booktext.py`，swap run 遇增删格自动调）。先出新旧格对照表；人裁按锚重绑（平移到新格号），绑不上的回待审单复审；标点专名按对照表平移（`auto_remap --cell-map`，不单跑不带表的）；字形库键 rekey；book-text 只换变化页，按上表逐格判（人裁平移后的字＞机器新字）。待审条目先按图块指纹认（同一块图挪了格号只改 `cell`），认不出再按格号认（指纹变了标 `fp_changed`，怎么处理待定）。
+- **重切后格号变了怎么办？**（如殿本 vol01 锚点平移）**只走一条路**（11-10 sheldon 定）：[换包落book-text-增删格](../4-网站人审与版本迭代/c-更新book-text/换包落book-text-增删格.md)（`swap/booktext.py`，swap run 遇增删格自动调）。先出新旧格对照表；人裁按锚重绑（平移到新格号），绑不上的回待审单复审；标点专名按对照表平移（`auto_remap --cell-map`，不单跑不带表的）；字形库键 rekey；book-text 只换变化页，按上表逐格判（人裁平移后的字＞机器新字）。待审条目先按图块指纹认（同一块图挪了格号只改 `cell`），认不出再按格号认（指纹变了标 `fp_changed`，怎么处理待定）。
 - **`decision.json`、char v0.4、`pending_reason` 写在 char 里？** 都已废弃（11-09）。
 
 ## 六、废弃说法对照
@@ -167,6 +167,6 @@
 ## 七、真源
 
 - book-text 格子：book-text `docs/design/2026-11-book-text只录首选字.md`（#427）、guji-format char 规范、本仓 `formats/guji_char_cord.py`
-- 待审单：cv `scripts/zhengli/pending_list.py`（单头与字段）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../01-粗校/待审原因/README.md)）
+- 待审单：cv `scripts/zhengli/pending_list.py`（单头与字段）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../参考/待审原因/README.md)）
 - 人裁事件：cv `doc/formats/人裁事件规范.md`、`doc/design/15-人裁锚定与重切后重绑定.md`
-- 改不改 book-text：[04 反馈迭代 / 全流程与覆盖优先级](../04-反馈迭代/全流程与覆盖优先级.md)、本仓 `swap/resolve.py`
+- 改不改 book-text：[4e 1.0 之后的反馈 / 全流程与覆盖优先级](../4-网站人审与版本迭代/e-1.0之后的反馈/全流程与覆盖优先级.md)、本仓 `swap/resolve.py`
