@@ -20,3 +20,5 @@
 ## write_go.py、vpairs.json（ZM 殿本 11-23，GM3 收入）
 - `write_go.py`：把文意判放行的格按管线键窗口写成 ctx 裁定。内含硬编码路径（产物根、feedback 根、`go_keep.tsv`），**是示例，用前要改路径**；改成传 feedback 根后没再跑过，首次先不加 `--apply`。两个坑见文件头：`RulingLog` 传 feedback 根、`key_windows` 传含各册目录的产物根。
 - `vpairs.json`：异体对对称表（来自 guji-runner `config/variants/variants.json` 的 `directed` 与 `config/dicts/variants.tsv`，对称化、不传递，约 83k 对），供异体闸第②条用；生僻字（如 𲍠／鵓）表里没有。全唐文 11-23 复核另发现缺 䕶↔護、蹖↔踳、巿↔市，已转 CV4 评估补表。闸规则见 Wiki「文意判字标点专名合并判定」8.2 第 3a 条。
+
+> 更正（CV4 11-23，open-guji-cv#1811）：`vpairs.json` 是快照，不含 `variants.pairkind.tsv` 的 V 行；新用法优先 `open_guji_cv.variants.are_variants`。䕶→護、蹖→踳（chǔn 义）已进 cv 异体表；巿／市 是形近不同义（C），不进异体表，靠闸①与看图。
