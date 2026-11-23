@@ -47,3 +47,13 @@ def test_other_evals_fall_through(tmp_path):
     assert extract("rare_char", {"result": {}}) == (None, "")
     assert bench_lock("cut_bench", tmp_path, tmp_path) == {}
     assert "glyph_db" in bench_lock("match_bench", tmp_path, tmp_path)
+
+
+def test_advset_headline():
+    data = {"headline": {"way": "cov", "near_false_same": 7, "near_false_same_rate": 7 / 919,
+                         "variant_false_same": 1},
+            "result": {"cov": {"形近": {"n_query": 919, "partner_false_same": 7}, "异体": {"n_query": 293}}}}
+    ms, err = extract("advset_shiji", data)
+    assert not err
+    d = _names(ms)
+    assert d["形近误认"] == 7 and d["异体下 same"] == 1 and d["形近误认率"] == 0.76

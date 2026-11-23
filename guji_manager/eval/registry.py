@@ -215,6 +215,15 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
       for i, sh, t in (("match_bench", "004-siku-v2-human", "殿本"),
                        ("match_bench_shiji", "005-shiji-human", "史記"),
                        ("match_bench_qtw", "006-qtw-human", "全唐文"))],
+    # 3a 子基准 A2 库外拒识（A23，2026-11-23）：库外形近字对抗集（ai-team 11-15 建，冻结成自带归一图的分片），
+    # 用生产的逐对判官量「库里没有的字被判 same」。各书按生产配置：全唐文 CNN+fuse（glyph_sim_qtw），殿本／史記覆盖分。
+    *[EvalSpec(id=i, script="eval_advset.py", shard=f"glyph-match/advset-{d}", pythonpath=True, extra=x,
+               title=f"3a 库外拒识·{t}", needs=n,
+               note="头条＝形近层误认题数（护栏：不增）；异体层（同形异码）另报；不碰字形库")
+      for i, d, t, x, n in (("advset", "siku-v2", "殿本", (), ()),
+                            ("advset_shiji", "shiji", "史記", (), ()),
+                            ("advset_qtw", "qtw", "全唐文", ("--sim-model", "models/glyph_sim_qtw/model.pt"),
+                             ("heavy",)))],
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",

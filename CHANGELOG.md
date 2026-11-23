@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-- **PATCH**（11-23，A23 识字 benchmark 第 2 期）：`guji eval run` 的识字评测器按 `--out` JSON 取数（`eval/extract.py`）——match_pairs*／sim_bench 不再报「跑不起来」，match_bench 报 same 精度／覆盖／novel 误放／rank1／auroc，rare_* 头条改为生产用的 emb 路与 unseen top10，**emb top10 为 0（缺向量包）判失败**不再静默报 ok；报告加 `lock`（cv、dataset 提交、glyph.db sha16），命令行打「钉版」一行。测试 `test_eval_extract_read.py`。只动评测，不动产物（L0）。
+- **PATCH**（11-23，A23 识字 benchmark 第 2 期）：`guji eval run` 的识字评测器按 `--out` JSON 取数（`eval/extract.py`）——match_pairs*／sim_bench 不再报「跑不起来」，match_bench 报 same 精度／覆盖／novel 误放／rank1／auroc，rare_* 头条改为生产用的 emb 路与 unseen top10，**emb top10 为 0（缺向量包）判失败**不再静默报 ok；报告加 `lock`（cv、dataset 提交、glyph.db sha16），命令行打「钉版」一行。测试 `test_eval_extract_read.py`。另登记 3a 库外拒识 `advset`／`advset_shiji`／`advset_qtw`（cv `eval_advset.py`，dataset `glyph-match/advset-*`）。只动评测，不动产物（L0）。
 - **PATCH**（11-23，Sheldon 点抽查页反馈）：`col_check` 1.0.1——第 1 列排到最右（原先反了），页面说明补「格框带框线不算错，这一轮只看字间切点」。
 - **PATCH**（11-23，A22 切字 benchmark 银标抽查）：审阅页加页型 `col_check`「整列切分抽查」——一页书一屏、各列从右到左叠格框，点并字／劈字／框歪的格标红，整列没问题翻页记全对；结果 `review-pages colcheck-apply` 导出（`review_pages/col_check.py`）。测试 `test_col_check_screens_and_labels`。只加页型，不动产物（L0）。
 - **PATCH**（11-23，史记 2 册 8:2:13b 待审格在网站显示成阙字）：`close-check` 2c「□ 有去向」加一条——待审单上、非人裁、有首选字（`first_choice`）的格，导出里若仍是 □ 就报错（`pending_blank`）。原先「在待审单上」即算有去向，v0.1 首发单没带候选，1,332 个待审格落成 □＋lacuna 也过了关。`release_gates.load_pending_blank_cells`，测试 `test_pending_blank_with_first_choice_flagged`。L0。
