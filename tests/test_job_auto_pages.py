@@ -44,7 +44,7 @@ def _man(**v):
 def test_resolve_default_on(monkeypatch):
     monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man(db_rev=100))
     seen = {}
-    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: seen.setdefault("rev", rev) and {3, 4, 9})
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev, rows=None, since_ts=None: seen.setdefault("rev", rev) and {3, 4, 9})
     raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
     AP.resolve(raw)                       # 缺省按页（11-23 起按入库 rev，不再漏页）
     assert raw["pages"] == "3-4,9" and seen["rev"] == 100
@@ -57,7 +57,7 @@ def test_resolve_default_on(monkeypatch):
     raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "glyph_match"}, "pages": "auto:50"}
     AP.resolve(raw)
     assert seen["rev"] == 100             # setdefault 只记首次；下面单独验 auto:rev
-    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: {rev})
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev, rows=None, since_ts=None: {rev})
     raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "glyph_match"}, "pages": "auto:50"}
     AP.resolve(raw)
     assert raw["pages"] == "50"
@@ -65,16 +65,23 @@ def test_resolve_default_on(monkeypatch):
 
 def test_resolve_old_pack_no_rev(monkeypatch):
     monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man())
+    seen = {}
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev, rows=None, since_ts=None: seen.update(rev=rev, ts=since_ts) or {7})
     raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
     AP.resolve(raw)
-    assert "pages" not in raw             # 缺省：整册
+    assert raw["pages"] == "7" and seen == {"rev": None, "ts": "2026-11-20T00:00:00Z"}   # 老包：按入库时间
+    m = _man(); m.pop("created")
+    monkeypatch.setattr(AP, "base_manifest", lambda b, base: m)
+    raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
+    AP.resolve(raw)
+    assert "pages" not in raw             # 连生成时间都没有：整册
     with pytest.raises(SystemExit):
         AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}, "pages": "auto"})
 
 
 def test_resolve_no_changes_refuses(monkeypatch):
     monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man(db_rev=100))
-    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: set())
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev, rows=None, since_ts=None: set())
     with pytest.raises(SystemExit):
         AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}, "pages": "auto"})
 
