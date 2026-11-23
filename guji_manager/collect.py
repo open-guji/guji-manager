@@ -974,9 +974,11 @@ def cmd_collect(a) -> int:
         if len(books) > 1 and not a.no_pull and not getattr(a, "child", False):
             # 多册只拉一次库（GM4 11-23：原先每册各拉一次，8 册拉 8 次）
             env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-            if _run([*GUJI, "db", "pull", "-w", ws], env, tries=3):
-                raise SystemExit("guji db pull 失败")
-            a.no_pull = True
+            if _run([*GUJI, "db", "pull", "-w", ws], env, tries=2):
+                # 上一趟被打断、本地有没推的改动：拉不了，交各册自己判（续跑的册跳过拉库），不在这里整趟停下
+                print("⚠ 整趟拉库没成，各册按各自进度处理（续跑的册不用再拉；不然先 guji db sync）")
+            else:
+                a.no_pull = True
     a._defer_publish = len(books) > 1 and not a.dry_run
     run_log = ws / "reports" / "_collect" / "runs" / f"{time.strftime('%Y%m%dT%H%M%S')}.json"
     if getattr(a, "child", False):
