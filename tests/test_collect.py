@@ -306,3 +306,22 @@ def test_publish_throttled_when_last_sync_recent(monkeypatch, tmp_path):
     a = types.SimpleNamespace(text_id="x")
     out = collect.publish_and_verify(a, tmp_path, ["vol01"])
     assert out["vol01"]["status"] == "synced" and "throttled" in out["vol01"]["publish"]
+
+
+def test_write_handoff_tsv(tmp_path):
+    ws = tmp_path
+    d = ws / "reports" / "vol20" / "_collect" / "020-r15"
+    (d / "draft").mkdir(parents=True)
+    (d / "draft" / "old_sheet.tsv").write_text(
+        "现格\t投票时格\t投票时单\t票\t当年人裁\t挡下原因\n"
+        "64:9:8\t64:9:8\t020-r12\tchar=逵\tevt_H-web-vol20-020-r12-2026-11-19_000008\t页面显示字「陸」≠book-text 现格字「□」，格号对不上\n",
+        encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text(
+        "格位\t票\t票时间\t现行人裁\t人裁时间\n43:5:17\tfigure\t1794807512408\tevt_x\t2026-11-19T00:26:13Z\n", encoding="utf-8")
+    out = tmp_path / "out"
+    fs = C.write_handoff(ws, {"vol20": {"rev": "020-r15"}, "vol21": {}}, out)
+    assert [p.name for p in fs] == ["vol20-交项目确认.tsv"]
+    rows = [r.split("\t") for r in fs[0].read_text(encoding="utf-8").splitlines()]
+    assert rows[0] == C.HANDOFF_HEAD
+    assert rows[1][:6] == ["旧单票挡下", "64:9:8", "char=逵", "陸", "□", "2026-11-19"]
+    assert rows[2][1] == "43:5:17" and rows[2][5].startswith("2026-")
