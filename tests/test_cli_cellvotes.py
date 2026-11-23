@@ -240,3 +240,11 @@ def test_split_old_sheet_hollow_cell_is_not_a_mismatch():
     cur, old = CVT._split_old_sheet("vol20", "r2", raw, {}, items, {"1:1:1": "□", "1:1:2": "鉉", "1:1:3": "丙", "1:1:4": "□"})
     assert [v["a"] for v in cur] == ["1:1:1", "1:1:2", "1:1:4"]      # 现格是 □：没记显示字也不挡
     assert [o[0] for o in old] == ["1:1:3"]
+
+
+def test_split_old_sheet_drops_mismatch_when_vote_char_already_current():
+    from guji_manager import cli_cellvotes as CVT
+    items = {"a": {"state": "open", "cell": "1:1:1"}}
+    raw = [{"item": "a", "a": "1:1:1", "vote_a": "1:1:1", "vote_rev": "r1", "choice": "char", "char": "日", "shown": "曰"}]
+    cur, old = CVT._split_old_sheet("vol13", "r2", raw, {}, items, {"1:1:1": "日"})
+    assert cur == [] and old == []
