@@ -60,6 +60,8 @@ NOT_REGISTRY_SHAPED = {
                    # 靶子是三书人裁 5b 冻结集（rare.jsonl），不是单一分片位置参数；结果见 ai-team 字形领域
     "seg_health",  # 切分体检（回退监控）：靶子是 --root 指的某批产物（--books 必填）＋中心库
                    # daizhige 格位表与整理本，不是数据集分片；新一批和上一批比数
+    "frame_rules",  # 框型规则前后对比（CV1，cv #1813）：靶子是 layout-gold 里点名页的原图
+                    # （FRAME_GOLD／FRAME_IMG_GLOB 环境变量手指标注包 png），不是数据集分片位置参数
 }
 
 
