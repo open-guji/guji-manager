@@ -83,9 +83,7 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("glyph_evictions", ("instance_id", "at"), has_doc=False),
     TableSpec("glyph_approx_labels", ("instance_id",), has_doc=False),
     TableSpec("glyph_approx_clears", ("instance_id", "at"), has_doc=False),
-    TableSpec("glyph_pairs", ("inst_a", "inst_b", "relation"), has_doc=False),
     TableSpec("glyph_meta", ("key",), has_doc=False),
-    TableSpec("glyph_events", ("src_path", "src_line"), has_doc=False),
 )}
 
 #: 不进库的文件（备份、占位）。匹配工作区内相对路径。
@@ -101,9 +99,10 @@ GLYPH_FILES = {
     "sources.jsonl": "glyph_sources", "glyphs.jsonl": "glyphs",
     "exemplars.jsonl": "glyph_exemplars", "admissions.jsonl": "glyph_admissions",
     "evictions.jsonl": "glyph_evictions", "approx_labels.jsonl": "glyph_approx_labels",
-    "approx_clears.jsonl": "glyph_approx_clears", "pairs.jsonl": "glyph_pairs",
-    "meta.jsonl": "glyph_meta",
+    "approx_clears.jsonl": "glyph_approx_clears", "meta.jsonl": "glyph_meta",
 }
+# pairs.jsonl、events/*.jsonl（cv glyph_db 导出的形近字对与改动流水）从没有过内容，11-23 删了 glyph_pairs、glyph_events
+# 两张空表，这两类文件改当整文件进 files（kind=glyph_misc）
 
 GS = "output/glyph_store/"
 
@@ -157,8 +156,6 @@ def classify(rel: str) -> str | None:
             return "glyph_instances"
         if len(sp) == 2 and sp[0] == "patches" and sub.endswith(".png"):
             return "patch"                 # 不是表：给 glyph_instances.patch_sha 用
-        if len(sp) == 2 and sp[0] == "events" and sub.endswith(".jsonl"):
-            return "glyph_events"
         return "files"                     # README、_snapshot.json、rescued/…
     return None
 
@@ -272,12 +269,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "glyph_approx_labels": _glyph(
         ("instance_id", "label", "ids", "note", "reviewer", "created_at"), ("instance_id",)),
     "glyph_approx_clears": _glyph(("instance_id", "label", "at"), ("instance_id", "at")),
-    "glyph_pairs": _glyph(
-        ("inst_a", "inst_b", "relation", "origin", "source_id", "created_at"),
-        ("inst_a", "inst_b", "relation")),
     "glyph_meta": _glyph(("key", "value"), ("key",)),
-    "glyph_events": lambda rec, rel, line: (
-        (rel, line), _pick(rec, ("source_id", "batch", "seq", "ts", "op", "payload"), _INT)),
 }
 
 
