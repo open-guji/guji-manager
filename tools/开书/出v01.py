@@ -163,7 +163,7 @@ def parse_juan(spec: str | None, title: str) -> list[int] | None:
 
 
 def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: str, note: str, juan: list[int] | None = None) -> None:
-    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
+    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件（有 NNN.gaps.json 一并拷、写 gaps_file）、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
     d = bt_dir(bt, text_id)
     dd = d / "default"
     for kind in ("char", "cord", "norm"):
@@ -171,6 +171,11 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
         if not src.exists():
             sys.exit(f"✗ 导出里没有 {src.name}")
         shutil.copyfile(src, dd / src.name)
+    gaps = export / f"{chapter}.gaps.json"          # 缺页旁挂（guji-gaps/0.1，导出时册 yaml 有落在本章的 gaps 才有）
+    if gaps.exists():
+        shutil.copyfile(gaps, dd / gaps.name)
+    else:
+        (dd / gaps.name).unlink(missing_ok=True)    # 重出时缺页已撤：删掉旧文件，条目也不写 gaps_file
     cord = json.loads((export / f"{chapter}.cord.json").read_text(encoding="utf-8"))
     pages = sorted({int(p.get("page", 0)) for p in cord.get("pages", []) if isinstance(p, dict) and p.get("page")})
     char = json.loads((export / f"{chapter}.char.json").read_text(encoding="utf-8"))
@@ -180,6 +185,8 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
     ent = {"n": int(chapter), "file": chapter, "title": title, "char_file": f"{chapter}.char.json",
            "cord_file": f"{chapter}.cord.json", "norm_file": f"{chapter}.norm.json",
            "pages": f"{pages[0]}-{pages[-1]}" if pages else "", "text_version": tv, "proofing": True}
+    if gaps.exists():
+        ent["gaps_file"] = gaps.name                 # 网站／阅读包按它读缺页（Web 11-23 要），与 cord_file 同级
     if juan:
         ent["juan"] = juan
     chs = [c for c in idx["chapters"] if c.get("file") != chapter] + [ent]
