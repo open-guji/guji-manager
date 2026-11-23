@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 from .._cv import Event, EventTarget, Kind, make_event, replay_key
 

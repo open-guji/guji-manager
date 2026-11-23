@@ -1,7 +1,7 @@
 """待审格分类规范（A31，2026-10-28；10-28 从 open-guji-cv 搬到 guji-manager）：每个待审格 → (大类, 小类, 键, 跟进方, 处理方式)。
 
 在 cv `open_guji_cv/review/causes.py` 的主成因码（A1…I）上细分，并把 `eval/review_breakdown.py` 的 G/V/N/O 并进来（对照表见
-ai-team `domain/CV/质检/待审分类规范.md`）。纯函数，只看线上待审单里一格自带的字段，不碰产物包：
+guji-manager `doc/参考/待审原因/待审分类规范.md`）。纯函数，只看线上待审单里一格自带的字段，不碰产物包：
 
     pending_reason_cause（成因码，老单叫 cause）、pending_reason_cause_detail（老单 cause_detail）、why（疑问码）、ref.c（整理本字）、ctx.c（文意字）、lib_top、occ、recheck，
     以及发布时补的 `grp`（字组 id）、`refc`（整理本字，单子里没 ref 时用）。
@@ -31,31 +31,31 @@ FIX = {"auto": "算法／数据可解", "confirm": "快速确认", "decide": "�
 
 #: 小类 → (大类, 名, 跟进方, 处理方式, 怎么判)
 SUBS: dict[str, tuple[str, str, str, str, str]] = {
-    "S1": ("S", "乱码闸：字形像框线／墨点", "A22", "auto", "成因 A6：整理本这位没字且 ctx_garble_shape 等乱码护栏拦下"),
-    "S2": ("S", "列格数与整理本字数对不上", "A22", "auto", "成因 A3：整列没对位"),
-    "S3": ("S", "整页锚不上整理本", "A22", "auto", "成因 A5"),
-    "S4": ("S", "与现役对位冲突，整列退回", "A22", "auto", "成因 A4"),
-    "S5": ("S", "坐标对位说这一位是空格（多半假格）", "A22", "auto", "成因 A1"),
-    "S6": ("S", "整理本这位没字（别的原因）", "A22", "auto", "成因 A9"),
-    "O1": ("O", "遮挡·整页成片（首叶印章等）", "A31", "confirm", "成因 D，且同页遮挡格 ≥ 15；整理本有字"),
-    "O2": ("O", "遮挡·零散，整理本有字", "A31", "confirm", "成因 D，整理本有字（occ.ref_blank=false 或 ref 有字）"),
-    "O3": ("O", "遮挡·整理本这位没字", "A32", "human", "成因 D，ref 空／〓（occ.ref_blank=true）"),
-    "O0": ("O", "遮挡·单子缺整理本信息", "A31", "confirm", "成因 D，单子没有 ref／occ（瘦单）"),
-    "Z1": ("Z", "字组流程弃权", "A24", "auto", "成因 C，疑问码含 group_flow_abstain：文意表缺／字形判法弃权"),
-    "Z2": ("Z", "字组流程分歧／与整理本异议", "A24", "decide", "成因 C，含 group_flow_disagree／ref_dissent／coord_dissent／ctx_contra／conflict"),
-    "Z3": ("Z", "字组弱证据降审", "A24", "auto", "成因 C，含 group_flow_joint／weak"),
-    "Z4": ("Z", "只有形近护栏（无字组流程结论）", "A24", "auto", "成因 C，只有 near_form／solo_confusable／ji_yi_si_review"),
+    "S1": ("S", "乱码闸：字形像框线／墨点", "CV2", "auto", "成因 A6：整理本这位没字且 ctx_garble_shape 等乱码护栏拦下"),
+    "S2": ("S", "列格数与整理本字数对不上", "CV2", "auto", "成因 A3：整列没对位"),
+    "S3": ("S", "整页锚不上整理本", "CV2", "auto", "成因 A5"),
+    "S4": ("S", "与现役对位冲突，整列退回", "CV2", "auto", "成因 A4"),
+    "S5": ("S", "坐标对位说这一位是空格（多半假格）", "CV2", "auto", "成因 A1"),
+    "S6": ("S", "整理本这位没字（别的原因）", "CV2", "auto", "成因 A9"),
+    "O1": ("O", "遮挡·整页成片（首叶印章等）", "GM2", "confirm", "成因 D，且同页遮挡格 ≥ 15；整理本有字"),
+    "O2": ("O", "遮挡·零散，整理本有字", "GM2", "confirm", "成因 D，整理本有字（occ.ref_blank=false 或 ref 有字）"),
+    "O3": ("O", "遮挡·整理本这位没字", "GM4", "human", "成因 D，ref 空／〓（occ.ref_blank=true）"),
+    "O0": ("O", "遮挡·单子缺整理本信息", "GM2", "confirm", "成因 D，单子没有 ref／occ（瘦单）"),
+    "Z1": ("Z", "字组流程弃权", "CV4", "auto", "成因 C，疑问码含 group_flow_abstain：文意表缺／字形判法弃权"),
+    "Z2": ("Z", "字组流程分歧／与整理本异议", "CV4", "decide", "成因 C，含 group_flow_disagree／ref_dissent／coord_dissent／ctx_contra／conflict"),
+    "Z3": ("Z", "字组弱证据降审", "CV4", "auto", "成因 C，含 group_flow_joint／weak"),
+    "Z4": ("Z", "只有形近护栏（无字组流程结论）", "CV4", "auto", "成因 C，只有 near_form／solo_confusable／ji_yi_si_review"),
     "M1": ("M", "码位已定，单子未跟上", "A30", "auto", "成因 B，字对已在 codepoints.yaml：重落即按码位放行"),
-    "M2": ("M", "码位未定", "A24", "decide", "成因 B，字对不在 codepoints.yaml：sheldon 定码位或做刻形判法"),
-    "L1": ("L", "库里没有这个字", "A23", "auto", "成因 F：补刻例"),
-    "L2": ("L", "库首选＝整理本，仍被拦", "A23", "auto", "成因 H：看 why，ctx_guard_ref＝文意与整理本不一"),
-    "L3": ("L", "证据不足（库 unsure、文意不够）", "A23", "human", "成因 I：兜底，目标 <10%"),
-    "L4": ("L", "库样本过少（整理本字在字形库样本数≤2）", "A23", "human", "成因 I，且整理本字在字形库样本≤2（需给 lib_n；补库 sheldon 11-1 暂搁置，只统计，不动 Step）"),
-    "R1": ("R", "与整理本冲突", "A31", "human", "成因 E：context_vs_ref／iron_vs_ref 等"),
-    "R2": ("R", "对齐改字层（replace 段）", "A31", "human", "成因 G：整理本这段是 replace"),
-    "P1": ("P", "整理本写〓（没码位的生僻字）", "A32", "human", "成因 A2"),
-    "P2": ("P", "复审格", "A32", "human", "单子里 recheck=true（上一单留下、请照书影核定）"),
-    "U0": ("U", "未归类", "A31", "human", "没有成因码，或码不在表里"),
+    "M2": ("M", "码位未定", "CV4", "decide", "成因 B，字对不在 codepoints.yaml：sheldon 定码位或做刻形判法"),
+    "L1": ("L", "库里没有这个字", "CV3", "auto", "成因 F：补刻例"),
+    "L2": ("L", "库首选＝整理本，仍被拦", "CV3", "auto", "成因 H：看 why，ctx_guard_ref＝文意与整理本不一"),
+    "L3": ("L", "证据不足（库 unsure、文意不够）", "CV3", "human", "成因 I：兜底，目标 <10%"),
+    "L4": ("L", "库样本过少（整理本字在字形库样本数≤2）", "CV3", "human", "成因 I，且整理本字在字形库样本≤2（需给 lib_n；补库 sheldon 11-1 暂搁置，只统计，不动 Step）"),
+    "R1": ("R", "与整理本冲突", "GM2", "human", "成因 E：context_vs_ref／iron_vs_ref 等"),
+    "R2": ("R", "对齐改字层（replace 段）", "GM2", "human", "成因 G：整理本这段是 replace"),
+    "P1": ("P", "整理本写〓（没码位的生僻字）", "GM4", "human", "成因 A2"),
+    "P2": ("P", "复审格", "GM4", "human", "单子里 recheck=true（上一单留下、请照书影核定）"),
+    "U0": ("U", "未归类", "GM2", "human", "没有成因码，或码不在表里"),
 }
 
 _DISSENT = {"group_flow_disagree", "group_flow_ref_dissent", "group_flow_coord_dissent", "group_flow_ctx_contra",

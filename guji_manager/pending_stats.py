@@ -5,7 +5,7 @@
   - 线上待审单：`files` 表 `feedback/lists/proofing/<文本号>/<册号>.pending.json`（每格自带成因码 cause，republish 发布时写入）
   - 全册格数：`progress.volume.cells_total`（算人审率）
   - 码位表：`files` 表 `config/codepoints.yaml`（判「码位已定」）
-分类规则见 `guji_manager/taxonomy.py`，跟进方与口径见 ai-team `domain/CV/质检/待审分类规范.md`。
+分类规则见 `guji_manager/taxonomy.py`，跟进方与口径见 `doc/参考/待审原因/待审分类规范.md`。
 
   guji-manager pending-stats --out /tmp/ps                 # 全套，写 report.md／cells.tsv／summary.json
   guji-manager pending-stats --vols 20-50 --out /tmp/ps
@@ -234,7 +234,7 @@ def _d(now: int, prev) -> str:
 
 
 def reason_specs() -> dict:
-    """{pending_reason: (码, 名, 去向)}；真源 cv `review/pending_reason.py`，没装 cv 就只列英文名。"""
+    """{pending_reason: (码, 名, 去向)}；真源本仓 `review/pending_reason.py`，取不到就只列英文名。"""
     try:
         from ._cv import pending_reason_specs as specs
     except (ImportError, AttributeError):
@@ -248,7 +248,7 @@ def render_reasons(s: dict, prev: dict | None) -> list[str]:
     pr = (prev or {}).get("by_reason", {})
     sp = reason_specs()
     out = ["## 零、按待审原因（pending_reason）", "",
-           "原因码表真源 `open_guji_cv/review/pending_reasons.yaml`；单上没有这个字段的格记 `unknown`。", "",
+           "原因码表真源 guji-manager `guji_manager/review/pending_reasons.yaml`；单上没有这个字段的格记 `unknown`。", "",
            "| 原因 | 码 | 名 | 去向 | 格数 | 占比 |", "|---|---|---|---|---|---|"]
     route_n = Counter()
     for r, k in sorted(s.get("by_reason", {}).items(), key=lambda kv: -kv[1]):
@@ -273,7 +273,7 @@ def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) 
            f"口径：线上待审单（中心库 `files` 表），{len(s['vols'])} 册，待审 **{n}** 格"
            + (f"，占全册 {tot_cells} 格的 {n / tot_cells:.2%}" if tot_cells else "")
            + (f"；另有非正文页（职名、表格）待审 {s['n_nonbody']} 格，单列、不计入" if s.get("n_nonbody") else "")
-           + "。分类规则 `open_guji_cv/review/taxonomy.py`；跟进方见 ai-team `domain/CV/质检/待审分类规范.md`。"
+           + "。分类规则 `guji_manager/taxonomy.py`；跟进方见 guji-manager `doc/参考/待审原因/待审分类规范.md`。"
            + ("括号里是比上一份的增减。" if prev else ""), "",
            *render_reasons(s, prev),
            *([f"单独计数（已含在上面的原因里）：" + "；".join(f"{SRC_NAMES.get(k, k)} {v}{_d(v, ((prev or {}).get('by_src') or {}).get(k, 0) if prev else None)}"

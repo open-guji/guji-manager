@@ -35,7 +35,6 @@ from . import codepoint as cp_mod
 from . import glyph_quality as gq_mod
 from . import seg_cut as sc_mod
 from . import col_check as cc_mod
-from .preselect import KINDS
 from .registry import PageType, get
 
 KIND_NAMES = {"ref_vs_lib": "参校≠库", "ref_missing": "参校缺", "lib_missing": "库没有",

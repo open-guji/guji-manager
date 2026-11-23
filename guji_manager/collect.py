@@ -43,7 +43,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books, vol_no
+from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books
 
 PLACEHOLDERS = ("□", "〓", "▣")
 GUJI = [sys.executable, "-m", "open_guji_cv.cli_v2"]

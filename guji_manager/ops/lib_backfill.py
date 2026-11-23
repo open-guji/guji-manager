@@ -413,9 +413,8 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
     `pool`（一次性补历史册用，配 `run_pools`）：只选格、核验，把核验过的候选连图和向量存成这个 pickle，
     不挑、不入库；各册可以并行各出一份，再合起来统一挑。"""
     import cv2
-    from .._cv import (EventLog, EventTarget, GlyphDB, ImageCache, ProductStore, RunContext,
-                       binarize_page, enrich_events, export_store, glyph_db_path, glyph_store_path,
-                       load_book, make_event, products_root)
+    from .._cv import (EventLog, ImageCache, ProductStore, RunContext,
+                       binarize_page, glyph_db_path, load_book, products_root)
     say = log or (lambda *_: None)
     if apply:
         bad = apply_problem()

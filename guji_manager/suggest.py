@@ -30,7 +30,6 @@ def _patch(step, key, value, **kw):
 def suggest(rows: list[dict], lib_n=None) -> list[dict]:
     """→ [{id, sig, n, kind, tier, ...}]，按格数从多到少。rows 同 `diagnose.signals`。"""
     out: list[dict] = []
-    n_all = len(rows) or 1
     for sg in diagnose.signals(rows, lib_n):
         if sg["tier"] not in ("A", "A–B", "A→B"):
             if sg["sig"].startswith(("借来的字形", "真生僻字")):

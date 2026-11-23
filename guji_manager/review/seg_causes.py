@@ -2,7 +2,7 @@
 
 切分领域长期计划（ai-team `domain/CV/A22/切分领域长期计划与总览.md`）第四节第 2 步：S 类待审
 （`seg_page_unaligned` S01／`seg_col_unaligned` S02／`col_width_out_of_band` S03／`seg_defect` S04）是按数量判的，
-大半不是切分错。本工具把每格 S 类待审按**包里已有的事实**拆开，告诉各书项目先往哪个方向查，不用每次找 A22 代查。
+大半不是切分错。本工具把每格 S 类待审按**包里已有的事实**拆开，告诉各书项目先往哪个方向查，不用每次找 CV2 代查。
 
 **只读、不改任何东西**：不写待审单、不改 `pending_reason`（统计口径仍是 `pending_reason`，这里只是它下面的
 「成因旗」，不是新的待审原因）、不在任何 Step 的 `code_deps` 里。
@@ -15,12 +15,12 @@
 | pinned 钉页 | align_ref `note` 含「钉页」 | 人审（整理本错页），派单扣掉 |
 | page_kind 特殊页型 | border_detect_gate `page_type` 不是 body | 人标页型（册 yaml `page_kinds`），整页人审／跳过 |
 | ref_none 整理本∅ | align_ref 没有一个字对上（chars、coord 都空） | 对位，不是切分；抽看一页确认切得对 |
-| grid_ok 格位对得上 | 每列都做成了坐标对位、没有退回的列、有字的格 ≥95% 配上整理本字 | 格数格位与整理本一致，多半不是切分：认字／字形库／图源断烂，转 A23／A24；抽看一页（切线偏半字这种看不出） |
+| grid_ok 格位对得上 | 每列都做成了坐标对位、没有退回的列、有字的格 ≥95% 配上整理本字 | 格数格位与整理本一致，多半不是切分：认字／字形库／图源断烂，转 CV3／CV4；抽看一页（切线偏半字这种看不出） |
 | seal_stain 疑假大印 | seal_detect 有 `stain`／`frame` 印 | 调参 `seal_detect.stain_pages`，从 seal_detect 重跑 |
 | seal 印章页 | seal_detect 有别的印 | 看图（印章页切分） |
 | invert 反色带 | invert_detect 有 band | 控制台反色带送审 |
 | page_gate 页未过闸 | border_detect_gate／row_segment_gate 未放行 | 看图：Step1/3 整页失败 |
-| col_grid 列网异常 | border_detect_gate 旗 `col_width_out_of_band`、列数≠版式列数 | 看图；单页 `vline_overrides`，成批找 A22 |
+| col_grid 列网异常 | border_detect_gate 旗 `col_width_out_of_band`、列数≠版式列数 | 看图；单页 `vline_overrides`，成批找 CV2 |
 | col_gate 列未过闸 | row_segment_gate 列 `reject`、row_segment 列 `error` | 看图：Step3 这列失败 |
 | slot_short 格少于整理本 | align_ref `coord_fallback` 「格数少于整理本字数」 | 挤格（人标 22 格）或漏切，看图 |
 | slot_shift 错位一格 | `coord_fallback`「错位」 | 看图：多半首字漏切／多切一格 |
@@ -62,12 +62,12 @@ CAUSES: dict[str, tuple[str, str]] = {
     "pinned": ("钉页", "人审（整理本错页），派单扣掉"),
     "page_kind": ("特殊页型", "人标页型 page_kinds，整页人审／跳过"),
     "ref_none": ("整理本∅", "对位，不是切分；抽看一页确认切得对"),
-    "grid_ok": ("格位对得上", "格数格位与整理本一致，多半不是切分：认字／字形库／图源，转 A23／A24；抽看一页"),
+    "grid_ok": ("格位对得上", "格数格位与整理本一致，多半不是切分：认字／字形库／图源，转 CV3／CV4；抽看一页"),
     "seal_stain": ("疑假大印", "调参 seal_detect.stain_pages，从 seal_detect 重跑"),
     "seal": ("印章页", "看图（印章页切分）"),
     "invert": ("反色带", "控制台反色带送审"),
     "page_gate": ("页未过闸", "看图：Step1/3 整页失败"),
-    "col_grid": ("列网异常", "看图；单页 vline_overrides，成批找 A22"),
+    "col_grid": ("列网异常", "看图；单页 vline_overrides，成批找 CV2"),
     "col_gate": ("列未过闸", "看图：Step3 这列失败"),
     "slot_short": ("格少于整理本", "挤格（人标 22 格）或漏切，看图"),
     "slot_shift": ("错位一格", "看图：首字漏切／多切一格"),

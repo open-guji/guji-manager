@@ -222,11 +222,11 @@ def publish(db, *, force: bool = False, dry: bool = False, min_gap: float | None
         queued = sum(1 for r in table["rows"] if r["status"] == "排队")
         if dry:
             return table
-        # 看板写进中心库 progress（仍是 Neon），与任务库（jobs，可能已切到新机）分开连
+        # 看板写进中心库 progress（D1），与任务库（jobs，美国机 Postgres 或 D1 guji-jobs）分开连
         global _central
         if _central is None:
             from .._cv import jobs_store as S
-            _central = S.DB(S.connect_neon)
+            _central = S.DB(S.connect_central)
         _central(_put, table, f"在跑 {running}、排队 {queued}")
         return table
     except Exception as e:      # noqa: BLE001 —— 看板写不上不能拖垮执行方；进展以任务库为准，但原因要留下来

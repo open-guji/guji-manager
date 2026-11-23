@@ -393,7 +393,7 @@ def seg_kind_of(c: Cell) -> str:
 #: 「少见的字」细分（A23，sheldon 11-04 定本书字样标注归书 Project）：作 lib_missing 的 pending_reason_detail，
 #: 写成 ``<细分>:<整理本字>``，不新增取值。lib_missing 的意思是「库里没有像这一格的刻例」（glyph_match verdict=diff），
 #: 不等于库里没有这个字；按整理本字在本书库、借来库里各有几例分开派单：
-#:   ref_blank           整理本这一位没字（语料漏字／对位问题，不是字形库的事，转 A24／书 Project）
+#:   ref_blank           整理本这一位没字（语料漏字／对位问题，不是字形库的事，转 CV4／书 Project）
 #:   all_zero            本书、借来库都没有这个字（真缺字：首例人裁入库）
 #:   own_zero_borrow_has 本书没有、借来库有（借来的字样不像这本：本书字样标注，归书 Project）
 #:   own_has             本书已有这个字的刻例，这一格仍不像（多半淡印、切坏或形近：看图）

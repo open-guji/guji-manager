@@ -29,7 +29,7 @@ def test_occlusion_splits():
 def test_group_and_pair_keys():
     g = {"曰": "ry"}.get
     z = classify({"cause": "C", "cause_detail": "group_flow_abstain,near_form", "ref": {"c": "曰"}}, group_of=g)
-    assert (z.sub, z.key, z.owner) == ("Z1", "ry", "A24")
+    assert (z.sub, z.key, z.owner) == ("Z1", "ry", "CV4")
     assert classify({"cause": "C", "why": ["group_flow_ref_dissent"], "grp": "jys"}).sub == "Z2"
     assert classify({"cause": "C", "cause_detail": "near_form"}).key == "?"        # 瘦单没字组 id
     dec = lambda a, b: (a, b) == ("策", "䇿")   # noqa: E731
@@ -53,7 +53,7 @@ def test_lib_few_samples_is_l4_only_with_lib_n():
     assert classify(cell).sub == "L3"                               # 不给 lib_n：老行为
     n = {"予": 2, "子": 50}.get
     v = classify(cell, lib_n=lambda c: n(c, 0))
-    assert (v.sub, v.key, v.owner) == ("L4", "机器字≠整理本", "A23")
+    assert (v.sub, v.key, v.owner) == ("L4", "机器字≠整理本", "CV3")
     same = {"cause": "I", "cause_detail": "予/予", "ref": {"c": "予"}}
     assert classify(same, lib_n=lambda c: n(c, 0)).key == "上下文=整理本"
     assert classify(cell, lib_n=lambda c: 9).sub == "L3"            # 样本够不进 L4

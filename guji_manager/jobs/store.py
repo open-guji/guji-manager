@@ -64,18 +64,20 @@ def connect():
                      "请用 guji_jobs（会自动载入 secret），或先 . /etc/guji_secrets.sh。")
 
 
-def connect_neon():
-    """连中心库（名字沿用；2026-11-18 起是 Cloudflare D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
-    ``GUJI_JOBS_BRANCH`` 只给测试连中心库别的分支。"""
+def connect_central():
+    """连中心库（2026-11-18 起是 Cloudflare D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
+    ``GUJI_JOBS_BRANCH`` 只给测试连中心库别的分支（分支直接按名字连）。"""
     from ..datastore.connect import connect as _connect
     br = os.environ.get("GUJI_JOBS_BRANCH")
     if br and br != "main":
-        from ..datastore.neonapi import branch_endpoint
-        c = _connect(endpoint=branch_endpoint(br))
+        c = _connect(endpoint=br)
     else:
         c = _connect()
     c.autocommit = True
     return c
+
+
+connect_neon = connect_central   # 旧名（中心库还在 Neon 时起的），留给老调用处
 
 
 class DB:

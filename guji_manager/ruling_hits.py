@@ -131,7 +131,7 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
     vc = ev.get("vis_ctx")
     if isinstance(vc, dict):
         return ("按 cv 当场记的 5c 窗口也对得上、manager 能核的条件都满足，仍没放：" + when
-                + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 A31") + note, False
+                + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 GM2") + note, False
     return ("manager 能核的条件都满足，仍没放。两种可能：①产物早于裁定推库（" + when + "核包 manifest 的 db_rev ≥ 裁定 rev）；"
             "②5c 时邻格字与产物不同而 manager 看不出（码位归一 codepoint_semantic、pair_form 后来改了邻格放行字）。"
             "产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后，rulings-hits／--rekey 直接按 5c 窗口") + note, False

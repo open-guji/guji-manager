@@ -110,4 +110,3 @@ def check(book_id: str, products_root: Path, src=None) -> dict:
             "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
-from .._cv import describe_purity as describe  # noqa: E402  —— 给 promote 的拒绝理由、存包时的打印用；实现在低层 datastore.packs（标 main 也要用，不能反向依赖 ops）

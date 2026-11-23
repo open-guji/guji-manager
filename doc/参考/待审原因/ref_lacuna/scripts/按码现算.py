@@ -5,8 +5,8 @@
 这里每册拉 ★main 包，用本机 guji-manager 的 reasons.py 现算，改完判法马上能看。和 run3.py 的区别：接上待收字登记表
 （中心库 config/pua/glyph_pending_codes.json）和殆知阁源回查私用码，R03 才算得出来；并且把指定码的格逐格写出来。
 
-    pip install -e <guji-manager> -e <open-guji-cv>; pip install "psycopg[binary]" websockets
-    export GUJI_DATA_TOKEN=$GUJI_DATA_TOKEN_READ      # 拉包；连库用 NEON_DATABASE_URL
+    pip install -e <guji-manager> -e <open-guji-cv>
+    export GUJI_DATA_TOKEN=$GUJI_DATA_TOKEN_READ      # 拉包、连库都用它（中心库 11-18 起在 D1，经 Worker）
     python3 按码现算.py --codes R01,R03 --out /tmp/r01 [--books siku,sj,qtw] [--vols vol20,vol21] [--dzg <殆知阁 0001–0005.jsonl 目录>]
 
 每本书要一个工作区目录，里面只放 `.central.json`（{"ws": "<工作区 id>"}），本脚本缺了会自己建在 --ws-root 下。

@@ -13,7 +13,7 @@
 
 `guji feedback swap run`（auto_cycle → proof_cycle → `republish issue/push --book-text`）里，导出的 char 与 book-text 现文**格号集合或次序不同**时，
 `bump_book_text` 不再走「待重标清单」，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
-只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时 auto_cycle 报 **guard-stop**（旧称 need-A33），线上单不换：切坏的交切分线重出包，锚点挪不了的交 A33，修好后用下面的命令补落、补推单。
+只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时 auto_cycle 报 **guard-stop**（旧称 need-A33），线上单不换：切坏的交切分线重出包，锚点挪不了的交 GM3，修好后用下面的命令补落、补推单。
 
 ## 手动补（已导出、没落成的册）
 
