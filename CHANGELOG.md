@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，GM2，格式瘦身 punct／entity v0.3 读端）：`closeout` 写回（`fix-misplaced`）判人改改读 `effective_source`（条目省 source 时取 `default_source`），`char_offset` 有才更新、不新增；换单 `swap` 守卫按有效 source 比标点条目，v0.2→v0.3 迁移不误报。book-text 侧 `check_anchor_drift`／`remap_anchors`／`char_edits` 同口径（book-text #501）。L0。
 ## [0.6.5] - 2026-11-23
 
 - **PATCH**（11-23，#848 直接进 main，随本版回到 dev）：runner 自更新循环修复——manager 切换（checkout）失败不再当成功；自更新后仍判过期就不再 exec，避免空闲 runner 反复「已拉新代码，重新 exec」不领单。L0。
