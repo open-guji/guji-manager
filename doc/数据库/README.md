@@ -22,7 +22,7 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 | 中心库 字形库各表 `glyph_*`、`glyphs`、`files`（kind=glyph_misc） | 第二步 `pipeline` | GM2 | 字形库算法归 CV3，表与同步归 GM2 |
 | 中心库 看板 `progress_*` | 第二步 `pipeline`（`guji pipeline progress`、任务看板） | GM2 主导 | 第四步的 `progress-sync` 也写，改结构由 GM2 做 |
 | 任务库 `jobs`（D1 `guji-jobs`） | 第二步 `pipeline`（`guji pipeline job`、执行方） | GM2 | Worker 的 `/v1/sql?db=jobs` 路由归 CV0 |
-| 第三步 `text` | — | GM3 | 现在中心库里没有第三步专用的表；裁定直落 book-text |
+| 第三步 `text` | — | GM3 | 第三步暂无专用表；裁定写 `events`，由第四步（GM4）管。裁定是否直落 book-text 未定 |
 | 中心库 `events`、`consumed`、`verdicts`、`anchors`、`anchor_patches_meta`、`files`（kind=list、batch、feedback_misc） | 第四步 `feedback` | GM4 | |
 | 网站收件箱 `web_inbox` | 第四步 `feedback` | GM4 主导 | 网站（Web）写入端配合；Worker 接口改动也由 GM4 提、CV0 部署 |
 | 第五步 `output` | — | — | 不写库 |
