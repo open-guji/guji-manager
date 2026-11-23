@@ -4,8 +4,16 @@
 
 ## [未发版]
 
+## [0.6.6] - 2026-11-23
+
+- **PATCH**（11-23，GM1，中心库第一步表精简）：`files` 里 kind=config 的 `.json` 不再解析进 `doc`（无读者；kind=list 等不变，`row_sha` 只由 raw 算，不触发重推）；`workcopy` 推库前的 corpus-pack／glyph-pack manifest 保护查询由 `LIKE … OR LIKE` 改成主键区间查询，不再扫整个 ws 的 files。生产库已把 config 的 doc 置空。L0。
+- **PATCH**（11-23，Sheldon「写中心库不用我同意，可以改 manager 文档」）：文档里「写中心库、推库、传 R2 要用户点头／先报条数等点头」改为：推前 `db pull`＋`push --dry-run`，常规推库不用问用户（与 ai-team 项目管理指南 11-20 白名单一致）；删数据、批量撤除、换正式库、字形账本缩水等仍先停下问。只改文档（L0）。
+
+- **PATCH**（11-23，GM4；格式瘦身 A＋B 读端补充，guji-format #33）：`revise.dump_like`（revise／revert 写盘共用）认 v0.3 punct／entity「每条一行」写法并原样写回，改一条只动一行；v0.1／v0.2 旧写法不变。用 GM3 三册样本（殿本050、全唐文010、史記003）验往返逐字节一致、旧新格式 `plan_fixes` 结果相同；加 3 条测试。swap 写盘仍走 book-text `original_version.dump_json`，其对 v0.3 的保排版需 GM3／CV0 另核。（来源判定与换单守卫已由 GM2 #878 做。）
+- **PATCH**（11-23，GM2，格式瘦身 punct／entity v0.3 读端）：`closeout` 写回（`fix-misplaced`）判人改改读 `effective_source`（条目省 source 时取 `default_source`），`char_offset` 有才更新、不新增；换单 `swap` 守卫按有效 source 比标点条目，v0.2→v0.3 迁移不误报。book-text 侧 `check_anchor_drift`／`remap_anchors`／`char_edits` 同口径（book-text #501）。L0。
 ## [0.6.5] - 2026-11-23
 
+- **PATCH**（11-23，#848 直接进 main，随本版回到 dev）：runner 自更新循环修复——manager 切换（checkout）失败不再当成功；自更新后仍判过期就不再 exec，避免空闲 runner 反复「已拉新代码，重新 exec」不领单。L0。
 - **PATCH**（11-23，GM2 版本普查）：执行方上线时 worker 表的 `runner` 一栏带上本机 manager 版本（如 `36f1e242 m0.6.4`），`guji job workers` 直接看全部执行机版本，不用逐台问。L0。
 - **PATCH**（11-23，CV0 转用户数据库分工：字形库归 GM2）：`guji db push`／`sync` 核「库里已有哪些图」不再按工作区整表读 `glyph_instances.patch_sha`（殿本 18 万行，中心库读量大户）：要推的图 ≤2000 张时按 sha 问（`= ANY`），多了才整表读；锚图、整理本表同理。增量 pull 本来就按改动的实例取 patch_sha，全量 pull 要还原全部刻例图、仍整表读。L0。
 

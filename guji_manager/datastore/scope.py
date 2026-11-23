@@ -336,7 +336,7 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
                 res.problems.append(f"{rel}: 不是 UTF-8 文本，未入库")
                 continue
             doc = None
-            if rel.endswith(".json"):
+            if rel.endswith(".json") and file_kind(rel) != "config":   # config 的 doc 没有读者，不存（GUJI GM1 11-23）
                 try:
                     doc = json.loads(text)
                 except ValueError:

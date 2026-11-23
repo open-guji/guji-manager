@@ -400,3 +400,21 @@ def test_soft_break_kept_where_model_ends_sentence():
     res = sx.assemble_volume(prep, sx.results_from_paragraphs(prep, {1: ans}), None, "x")
     assert [p.pre_char for p in res.puncts if p.kind == "break"] == ["冠", "略", "卷"]
     assert res.report["soft_breaks_joined"] == 2 and res.report["soft_breaks_kept"] == 1
+
+
+def test_sample_without_offset_cache(tmp_path):
+    """v0.3 不写 char_offset／span：抽检与对照由 anchor 反查，结果与带缓存时相同。"""
+    probe, _ = _run(tmp_path, {})
+    _, res = _run(tmp_path, _answers(probe.asked))
+    paths = sx.write_outputs(res, tmp_path, 2, book_id="b", title="t", creator="fake")
+    chars, anchors = sx.load_render_chars(LINES)
+    pj = json.loads(paths["punct"].read_text(encoding="utf-8"))
+    ej = json.loads(paths["entity"].read_text(encoding="utf-8"))
+    pj3 = dict(pj, punctuations=[{k: v for k, v in p.items() if k != "char_offset"} for p in pj["punctuations"]])
+    ej3 = dict(ej, entities=[{k: v for k, v in e.items() if k != "span"} for e in ej["entities"]])
+    assert sx.sample_punct(pj3, chars, n=3, seed=1, anchors=anchors) == sx.sample_punct(pj, chars, n=3, seed=1)
+    m = _matcher(tmp_path / "bi")
+    assert sx.sample_entities(ej3, chars, m, n=50, anchors=anchors) == sx.sample_entities(ej, chars, m, n=50)
+    assert [a.char_offset for a in sx.puncts_from_json(pj3, anchors)] == [a.char_offset for a in sx.puncts_from_json(pj)]
+    n = len(chars)
+    assert sx.spans_from_entities(ej3["entities"], 0, n, anchors) == sx.spans_from_entities(ej["entities"], 0, n)

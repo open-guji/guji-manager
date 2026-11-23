@@ -990,7 +990,9 @@ def sweep_unconsumed(ws: Path, a) -> dict:
         out["errors"].append(f"读不了消费账：{type(e).__name__}: {e}")
         return out
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-    mine = sorted({b for (b, _c) in rep if b.startswith("H-web-")})
+    # glyphdb_admit 要原图字块缓存，云端没有，route 了也消费不掉（每趟白跑）：只补有别的消费者没记账的批次，
+    # glyphdb_admit 留给有产物的机器 db sync／CV3 扫尾，列进「事件未消费.tsv」
+    mine = sorted({b for (b, c) in rep if b.startswith("H-web-") and c != "glyphdb_admit"})
     if mine and not a.dry_run:
         for b in mine:
             if _run([*GUJI, "events", "route", b, "-w", ws], env, tries=1):
@@ -1021,7 +1023,8 @@ def write_unconsumed(outdir: Path, remaining: dict) -> Path | None:
     for (b, c), n in sorted(remaining.items(), key=lambda kv: (kv[0][0], kv[0][1])):
         m = re.search(r"vol(\d+)", b)
         vol = f"vol{m.group(1)}" if m else ""
-        rows.append("\t".join([b, c, str(n), vol, f"缺产物包先 guji products pack fetch {vol or '<册>'}，再 guji events route {b}；手写批次请对应书线补 route"]))
+        rows.append("\t".join([b, c, str(n), vol, ("缺原图字块缓存，云端消费不了：到有产物包的机器 guji db sync，或交 CV3 扫尾" if c == "glyphdb_admit" else
+                                          f"缺产物包先 guji products pack fetch {vol or '<册>'}，再 guji events route {b}；手写批次请对应书线补 route")]))
     p.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return p
 
