@@ -98,27 +98,39 @@ def read_manifests(src, packs: dict[tuple, Pack], workers: int = 16) -> None:
         list(ex.map(one, packs.values()))
 
 
-def db_refs(conn) -> dict:
-    """中心库里点名产物包的地方：冻结记录、线上单的 cv_commit、排队／在跑的任务。"""
-    freeze: set[str] = set()
-    for (raw,) in conn.execute("SELECT raw FROM files WHERE src_path LIKE 'feedback/lists/freeze/%%'"):
-        for line in (raw or "").splitlines():
+def _file_rows(conn, like: str):
+    """files 表按路径前缀取行；大文件（``body_r2=1``）的 raw／doc 不在表里，去 R2 取原文再补上。"""
+    for ws, path, raw, doc, body_r2, sha in conn.execute(
+            "SELECT ws, src_path, raw, doc, body_r2, sha256 FROM files WHERE src_path LIKE %s", (like,)):
+        if body_r2 and not raw:
+            backend = getattr(conn, "backend", None)
+            if backend is None or not hasattr(backend, "get_body"):
+                raise RuntimeError(f"{ws}:{path} 原文在 R2（body_r2），本连接取不到")
+            raw = backend.get_body(sha)
             try:
-                p = json.loads(line).get("pack")
+                doc = json.loads(raw)
             except ValueError:
-                continue
-            if p:
-                freeze.add(p.strip("/"))
-    online: dict[tuple, str] = {}      # (ws, 册号三位) → cv_commit
-    for ws, path, commit in conn.execute(
-            "SELECT ws, src_path, doc->>'cv_commit' FROM files WHERE src_path LIKE 'feedback/lists/proofing/%%.pending.json'"):
-        m = re.search(r"/(\w+)\.pending\.json$", path)
-        if m and commit:
-            online[(ws, m.group(1))] = commit
-    jobs: set[tuple[str, str]] = set()   # (册, 标签)
+                doc = None
+        if isinstance(doc, str):
+            try:
+                doc = json.loads(doc)
+            except ValueError:
+                doc = None
+        yield ws, path, raw, doc
+
+
+def job_refs(conn=None) -> set[tuple[str, str]] | None:
+    """任务库里排队／在跑的单点名的产物包 → {(册, 标签)}；读不了返回 None。
+
+    任务库是单独的库（美国机 Postgres 或 D1 guji-jobs），不在中心库里：按 ``databases.toml`` 的 ``[jobs]`` 连。
+    """
+    jobs: set[tuple[str, str]] = set()
     try:
+        if conn is None:
+            from .jobs import store as S
+            conn = S.connect()
         q = ("SELECT j.book, j.spec FROM jobs.job j WHERE j.status IN ('queued', 'running')")
-        live = [(b, s) for b, s in conn.execute(q)]
+        live = [(b, s) for b, s in conn.execute(q).fetchall()]
         dep_ids = set()
         for b, s in live:
             s = s if isinstance(s, dict) else json.loads(s or "{}")
@@ -130,11 +142,35 @@ def db_refs(conn) -> dict:
                     dep_ids.add(int(v["job"]))
         if dep_ids:
             for (name,) in conn.execute("SELECT name FROM jobs.result WHERE kind='pack' AND job_id = ANY(%s)",
-                                        (sorted(dep_ids),)):
+                                        (sorted(dep_ids),)).fetchall():
                 jobs.add(("*", name))
-    except Exception as e:                               # noqa: BLE001 —— 没有 jobs schema 的库
-        print(f"⚠️ 读不了任务库（{type(e).__name__}）：不按任务保留", file=sys.stderr)
-    return {"freeze": freeze, "online": online, "jobs": jobs}
+    except (Exception, SystemExit) as e:                  # noqa: BLE001 —— 没令牌、连不上
+        print(f"⚠️ 读不了任务库（{type(e).__name__}: {str(e)[:120]}）：不按任务保留", file=sys.stderr)
+        return None
+    return jobs
+
+
+def db_refs(conn, jobs_conn=None) -> dict:
+    """点名产物包的地方：冻结记录、线上单的 cv_commit（中心库），排队／在跑的任务（任务库）。
+
+    ``jobs`` 为 None 表示任务库读不了（``--apply`` 据此拒删）。
+    """
+    freeze: set[str] = set()
+    for _ws, _path, raw, _doc in _file_rows(conn, "feedback/lists/freeze/%"):
+        for line in (raw or "").splitlines():
+            try:
+                p = json.loads(line).get("pack")
+            except ValueError:
+                continue
+            if p:
+                freeze.add(p.strip("/"))
+    online: dict[tuple, str] = {}      # (ws, 册号三位) → cv_commit
+    for ws, path, _raw, doc in _file_rows(conn, "feedback/lists/proofing/%.pending.json"):
+        m = re.search(r"/(\w+)\.pending\.json$", path)
+        commit = (doc or {}).get("cv_commit") if isinstance(doc, dict) else None
+        if m and commit:
+            online[(ws, m.group(1))] = commit
+    return {"freeze": freeze, "online": online, "jobs": job_refs(jobs_conn)}
 
 
 def _vol_key(book: str) -> str:
@@ -170,7 +206,8 @@ def plan(packs: dict[tuple, Pack], mains: dict[tuple, list[str]], refs: dict, *,
                 pk.keep.append("线上单所用版本")
             if pk.created is None or pk.created >= cut:
                 pk.keep.append(f"{keep_days} 天内" if pk.created else "不知存于何时")
-            if (bk, pk.label) in refs["jobs"] or ("*", pk.label) in refs["jobs"]:
+            jobs = refs.get("jobs") or set()
+            if (bk, pk.label) in jobs or ("*", pk.label) in jobs:
                 pk.keep.append("排队任务要用")
     return sorted((p for p in packs.values() if not p.keep), key=lambda p: (p.ws, p.book, p.created or ""))
 
@@ -237,6 +274,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.apply:
         if not a.from_list:
             raise SystemExit("--apply 要配 --from-list（先出清单、给用户看过再删）")
+        if refs["jobs"] is None:
+            raise SystemExit("--apply 要能读任务库（排队／在跑的单点名的包不能删）：先配好 [jobs] 的令牌")
         n, b = apply(src, drop)
         s["deleted_objects"], s["deleted_bytes"] = n, b
     if a.json:

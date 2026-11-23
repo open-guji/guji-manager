@@ -1,5 +1,6 @@
 """中心库清理（产物包保留规则）：不连库，假数据。"""
 
+import json
 from datetime import datetime, timezone
 
 from guji_manager import central_gc as G
@@ -33,3 +34,48 @@ def test_unknown_created_is_kept():
     p = _p("vol02", "x", None)
     drop = G.plan({("w", "vol02", "x"): p}, {}, {"freeze": set(), "online": {}, "jobs": set()})
     assert drop == [] and p.keep == ["不知存于何时"]
+
+
+def _central():
+    from guji_manager.datastore import d1conn
+    c = d1conn.Conn(d1conn.SqliteBackend())
+    db = c.backend.db
+    db.execute("INSERT INTO workspaces (ws, dir, src_path, raw, rev, src_line) VALUES ('w', 'w', 'workspace.yaml', '', 1, 0)")
+    big = json.dumps({"cv_commit": "bigsha"})
+    sha = d1conn.d1sql_sha(big)
+    c.backend.bodies[sha] = big
+    rows = [
+        ("feedback/lists/freeze/vol01.jsonl", '{"pack": "products/w/vol01/e/"}\n', None, 0, "s1"),
+        ("feedback/lists/proofing/t/001.pending.json", "{}", '{"cv_commit": "abc"}', 0, "s2"),
+        ("feedback/lists/proofing/t/002.pending.json", "", None, 1, sha),       # 大文件：原文在 R2
+    ]
+    for path, raw, doc, r2, s in rows:
+        db.execute("INSERT INTO files (ws, src_path, kind, sha256, bytes, raw, doc, rev, body_r2) "
+                   "VALUES ('w', ?, 'x', ?, 1, ?, ?, 1, ?)", (path, s, raw, doc, r2))
+    return c
+
+
+def _jobs(rows):
+    from guji_manager.jobs import d1 as J
+    jc = J.connect({"driver": "sqlite", "path": ":memory:"})
+    for book, status, spec in rows:
+        jc.execute("INSERT INTO job (kind, book, spec, spec_hash, status, submitted_by) VALUES "
+                   "('rerun', %s, %s, 'h', %s, 'me')", (book, json.dumps(spec), status))
+    return jc
+
+
+def test_db_refs_reads_body_r2_and_jobs_db():
+    jc = _jobs([("vol01", "queued", {"base": "lab1"}), ("vol02", "succeeded", {"base": "old"})])
+    refs = G.db_refs(_central(), jobs_conn=jc)
+    assert refs["freeze"] == {"products/w/vol01/e"}
+    assert refs["online"] == {("w", "001"): "abc", ("w", "002"): "bigsha"}
+    assert refs["jobs"] == {("vol01", "lab1")}
+
+
+def test_db_refs_jobs_unreadable_is_none():
+    class Bad:
+        def execute(self, *a, **k):
+            raise OSError("连不上")
+    refs = G.db_refs(_central(), jobs_conn=Bad())
+    assert refs["jobs"] is None
+    assert G.plan({}, {}, refs) == []
