@@ -5,7 +5,7 @@ from guji_manager.jobs import runner as R
 
 
 def test_refresh_logs_merge_failure(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(R, "_refresh_manager", lambda: None)
+    monkeypatch.setattr(R, "_refresh_manager", lambda: True)
     monkeypatch.setattr(R, "RUNNER_ROOT", tmp_path)
 
     def fake_run(cmd, **kw):
@@ -17,7 +17,7 @@ def test_refresh_logs_merge_failure(monkeypatch, tmp_path, capsys):
 
 
 def test_refresh_logs_timeout(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(R, "_refresh_manager", lambda: None)
+    monkeypatch.setattr(R, "_refresh_manager", lambda: True)
     monkeypatch.setattr(R, "RUNNER_ROOT", tmp_path)
 
     def fake_run(cmd, **kw):
@@ -30,7 +30,7 @@ def test_refresh_logs_timeout(monkeypatch, tmp_path, capsys):
 
 def test_refresh_detaches_when_clean(monkeypatch, tmp_path, capsys):
     """ff 失败（HEAD 在别的提交上）但工作区干净：切到 origin/dev。"""
-    monkeypatch.setattr(R, "_refresh_manager", lambda: None)
+    monkeypatch.setattr(R, "_refresh_manager", lambda: True)
     monkeypatch.setattr(R, "RUNNER_ROOT", tmp_path)
     calls = []
 
@@ -52,7 +52,7 @@ def test_refresh_detaches_when_clean(monkeypatch, tmp_path, capsys):
 
 
 def test_refresh_keeps_dirty_checkout(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(R, "_refresh_manager", lambda: None)
+    monkeypatch.setattr(R, "_refresh_manager", lambda: True)
     monkeypatch.setattr(R, "RUNNER_ROOT", tmp_path)
 
     def fake_run(cmd, **kw):

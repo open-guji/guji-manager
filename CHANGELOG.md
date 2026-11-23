@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+## [0.6.5] - 2026-11-23
+
+- **PATCH**（11-23，#848 直接进 main，随本版回到 dev）：runner 自更新循环修复——manager 切换（checkout）失败不再当成功；自更新后仍判过期就不再 exec，避免空闲 runner 反复「已拉新代码，重新 exec」不领单。L0。
 - **PATCH**（11-23，GM2 版本普查）：执行方上线时 worker 表的 `runner` 一栏带上本机 manager 版本（如 `36f1e242 m0.6.4`），`guji job workers` 直接看全部执行机版本，不用逐台问。L0。
 - **PATCH**（11-23，CV0 转用户数据库分工：字形库归 GM2）：`guji db push`／`sync` 核「库里已有哪些图」不再按工作区整表读 `glyph_instances.patch_sha`（殿本 18 万行，中心库读量大户）：要推的图 ≤2000 张时按 sha 问（`= ANY`），多了才整表读；锚图、整理本表同理。增量 pull 本来就按改动的实例取 patch_sha，全量 pull 要还原全部刻例图、仍整表读。L0。
 
