@@ -21,6 +21,9 @@ def cmd_eval(args) -> None:
             ok, why = runnable(s)
             print(f"  {s.id:18s} {s.shard:40s} {'可跑' if ok else why:22s} {s.title}")
         return
+    from .eval.registry import expand_suites
+    args.evals = expand_suites(args.evals or [])
+    save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
     keys = args.evals or [k for k, s in EVALS.items()
                           if not ({"heavy", "engine", "corpus", "dump", "intermediate"} & set(s.needs))]
     # 以前 run_eval 只放行 products，点名跑 match_pairs / oov 这类 heavy 的也一律 skipped，
@@ -29,7 +32,12 @@ def cmd_eval(args) -> None:
                                   if x.strip())
     reports = []
     for k in sorted(keys):
-        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow)
+        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow,
+                     **({"report_dir": save} if save else {}))
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            (save / f"{k}.report.json").write_text(json.dumps(r.to_dict(), ensure_ascii=False, indent=1),
+                                                    encoding="utf-8")
         reports.append(r)
         mark = {"ok": "✓", "regressed": "⚠", "failed": "✗", "skipped": "–"}[r.status]
         print(f"{mark} {r.summary_line()}")
@@ -37,6 +45,13 @@ def cmd_eval(args) -> None:
             print(f"    ⚠ {w}")
         if r.status == "failed":
             print(f"    {r.error[:160]}")
+        lock = getattr(r, "lock", None)
+        if lock:
+            print("    钉版 " + " ".join(f"{k}={v}" for k, v in lock.items()))
+    if getattr(args, "against", ""):
+        from .eval.compare import compare_dirs
+        print()
+        print(compare_dirs(Path(args.against), reports, save))
     if args.json:
         print(json.dumps([r.to_dict() for r in reports], ensure_ascii=False))
     n_bad = sum(1 for r in reports if r.status == "failed")
@@ -151,7 +166,7 @@ def cmd_groups(args) -> None:
                               codepoints=Path(args.codepoints) if args.codepoints else None, tag=args.tag,
                               prev=Path(args.prev) if args.prev else None)
     print("写", pj, "\n写", pm)
-    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（Neon 正式库）
+    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（中心库正式库）
         import json
         from ._cv import eval_group_progress as group_progress
         prev = json.loads(Path(args.prev).read_text(encoding="utf-8")) if args.prev else None
@@ -239,6 +254,11 @@ def add_parser(sub) -> None:
     p.add_argument("--from-raw", action="store_true",
                    help="缺产物时从原图现跑 Step1-3 补齐（云端 clone 无 products/ 时用，"
                         "同 seg_harness.py 的同名开关）")
+    p.add_argument("--save-dir", default="",
+                   help="每个评测器的脚本 JSON 与报告存到这个目录（下次拿来 --against）；"
+                        "评测器 id 可写 @read／@read-3a／@read-3b 一次跑一套")
+    p.add_argument("--against", default="",
+                   help="上一次 --save-dir 的目录：逐项比指标、列误认／错例清单的新增与消失")
     p = sub.add_parser("check", help="[v2] 判据与体检：quality | rulers | round | rate | throughput | ledger")
     p.add_argument("action", choices=["quality", "rulers", "round", "rate", "throughput", "ledger"])
     p.add_argument("book", nargs="?", default="vol01")
@@ -267,8 +287,8 @@ def add_parser(sub) -> None:
     p.add_argument("--tag", default="", help="status：这一轮产物的标签，进文件名")
     p.add_argument("--prev", default="", help="status：上一份报告的 json，表里写送审增减")
     p.add_argument("--progress", default="", metavar="BOOK_ID",
-                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写 Neon 正式库）")
-    p = sub.add_parser("collate", help="[v2] Step9-9.3 与整理本对勘（出 JSON + HTML）")
+                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写中心库正式库）")
+    p = sub.add_parser("collate", help="[v2] 与整理本对勘（出 JSON + HTML；原 Step9-9.3，close-check 第 12 项要它）")
     p.add_argument("book")
     p.add_argument("--pages", default="", help="页表达式；空 = 全部有 Step7 产物的页")
     p.add_argument("--out", default=None,
@@ -282,7 +302,7 @@ def add_parser(sub) -> None:
     p.add_argument("--strip-radius", type=int, default=2, help="截条图目标格前后各几格（横排）")
     p.add_argument("--strip-h", type=int, default=44, help="截条图每格缩放到多高（px）")
     p.add_argument("--limit-strips", type=int, default=1500, help="--strips 最多出多少条截图（控体积）")
-    p = sub.add_parser("progress", help="[v2] Step9-9.0 进度复查：页范围内每页还挂着哪些待办（看板，不拦 9.1/9.2）")
+    p = sub.add_parser("progress", help="[v2] 进度复查：页范围内每页还挂着哪些待办（看板，不拦导出；原 Step9-9.0）")
     p.add_argument("book")
     p.add_argument("--pages", default="all", help="页表达式；默认全书")
     p.add_argument("--json", action="store_true", help="出 JSON（与控制台 /api/step9/progress 同形）")

@@ -30,7 +30,7 @@ _ICON = {"queued": "…", "running": "▶", "succeeded": "✓", "failed": "✗",
 
 
 def add_parser(sub) -> argparse.ArgumentParser:
-    p = sub.add_parser("job", help="任务库：交重跑／评测任务、看谁在跑什么、结果在哪（Neon jobs schema）")
+    p = sub.add_parser("job", help="任务库：交重跑／评测任务、看谁在跑什么、结果在哪（美国机 Postgres 或 D1 guji-jobs，看 databases.toml 的 [jobs]）")
     fill(p)
     return p
 

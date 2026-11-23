@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-"""字形库与语料命令：store（推中心库）、recheck、glyphlib、rekey-cells、promote、corpus。
+"""字形库与语料命令：recheck、glyphlib、rekey-cells、promote、corpus。
 
 拆分 P1（`doc/design/拆分-pipeline与manager.md`）从 `cli_v2` 原样搬出；经 `cli_v2.MANAGER_CLI_MODULES` 登记。
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path

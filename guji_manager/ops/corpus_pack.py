@@ -23,7 +23,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from .._cv import _base, BASE_DIR, BASE_WS, ITEMS, PACK_DIR, core_corpus_pin_REPO_ROOT as REPO_ROOT, base_manifest_path, base_versions, check_files, collect, core_corpus_pin_load_manifest as load_manifest, manifest_path, pack_root, versions
+from .._cv import _base, BASE_WS, core_corpus_pin_REPO_ROOT as REPO_ROOT, base_manifest_path, base_versions, check_files, collect, core_corpus_pin_load_manifest as load_manifest, manifest_path, versions
 
 
 def _never_match_hash() -> str:

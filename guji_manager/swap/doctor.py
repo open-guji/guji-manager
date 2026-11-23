@@ -12,7 +12,6 @@ ZM 11-18 换单提速第 3 项（A31）：殿本换单每次开新容器都要�
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 import sys

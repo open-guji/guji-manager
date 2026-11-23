@@ -17,6 +17,8 @@
   closeout：{id, label, n, rate?, examples?[格号 或 {id, img, note?}…], pre?(放行|留人审|算法再处理)}；img 按 cell_shrink 字框裁
   glyph_quality：{id, book?, char?, end?, ctx?, ref?, crops:[{key, sha, img}]}，或 dataset 金标信封（expected.crops.{off,on}，
              图路径相对 root）；--exclude 里的格号撤整格、sha 撤单块（见 glyph_quality.py）
+  col_check：{id(列号), vol, page, col, img(列图 PNG，调用者裁好缩好), cells:[{key, kind?, box:[x0,y0,x1,y1](图像素)}], note?}
+             一页书一屏、列从右到左（见 col_check.py）
 图一律内嵌（缩略图由调用者准备好；这里只做 base64，不依赖 cv2/PIL）。
 """
 from __future__ import annotations
@@ -32,7 +34,7 @@ from . import pair_audit
 from . import codepoint as cp_mod
 from . import glyph_quality as gq_mod
 from . import seg_cut as sc_mod
-from .preselect import KINDS
+from . import col_check as cc_mod
 from .registry import PageType, get
 
 KIND_NAMES = {"ref_vs_lib": "参校≠库", "ref_missing": "参校缺", "lib_missing": "库没有",
@@ -289,6 +291,10 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         data = {"book": book, "per_page": pp, "items": its, "hint": hint,
                 "options": [[o, n] for o, n in zip(pt.options, ("要切", "不切", "看不出"))]}
         stat = {"items": len(its), "pages": -(-len(its) // pp)}
+    elif page_type == "col_check":
+        its = [dict(r, img=embed(r["img"])) for r in cc_mod.normalize(items, root)]
+        data = {"book": book, "items": its, "hint": hint}
+        stat = {"items": len(its), "pages": len({r["screen"] for r in its})}
     elif page_type in ("gold_sample", "ref_check"):
         if page_type == "ref_check":
             mode = "check"

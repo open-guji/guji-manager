@@ -243,12 +243,14 @@ def _lacuna(book: str, export_dir: Path, chapter: str | None, pending: Path | st
     from .release_gates import check_lacuna, resolve_pending
     path, note = resolve_pending(pending, book, chapter or _export_chapter(export_dir))
     r = check_lacuna(book, export_dir, chapter, path)
-    bad = r["loose"] or r["recut_bad"]
+    bad = r["loose"] or r["recut_bad"] or r["pending_blank"]
     detail = (f"□ {r['lacuna']} 个：上人审页 {len(r['pending'])}，在重切清单 {len(r['recut'])}，"
               f"没去向 {len(r['loose'])}" + (f"（{note}）" if note else "")
+              + (f"；待审格有首选字却仍是 □ {len(r['pending_blank'])} 个（待审≠阙文，要填首选字）" if r["pending_blank"] else "")
               + (f"；重切清单有 {len(r['recut_bad'])} 行位置写坏" if r["recut_bad"] else ""))
     return _item("2c", "□ 有去向", FAIL if bad else PASS, detail,
-                 {"loose": r["loose"][:200], "recut_bad": r["recut_bad"][:50]} if bad else None)
+                 {"loose": r["loose"][:200], "recut_bad": r["recut_bad"][:50],
+                  "pending_blank": r["pending_blank"][:200]} if bad else None)
 
 
 def _fallback(book: str, pages, store) -> dict:

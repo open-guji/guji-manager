@@ -293,7 +293,6 @@ def _cmd_cache_build_font_index(args) -> None:
     big 一份，small 查询借 big 的矩阵，见 `font_candidates.warm()` 模块头），
     这里直接调它，不用自己再判断包含关系。
     """
-    import os
 
     from ._cv import _index_dir, _index_key, all_ready, font_candidates_warm as warm
     from ._cv import _rare_charsets

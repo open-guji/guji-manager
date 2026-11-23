@@ -18,7 +18,7 @@ def test_no_neon_fallback_even_when_asked(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.delenv("GUJI_JOBS_BRANCH", raising=False)
     monkeypatch.setenv("GUJI_REQUIRE_JOBSDB", "0")
-    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该走 Neon"))
+    monkeypatch.setattr(store, "connect_central", lambda: pytest.fail("不该走中心库"))
     with pytest.raises(SystemExit):
         store.connect()
 
@@ -28,7 +28,7 @@ def test_connect_uses_jobsdb_when_token(monkeypatch):
     class C:
         autocommit = False
     monkeypatch.setattr(jobsdb, "connect", lambda: C())
-    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该走 Neon"))
+    monkeypatch.setattr(store, "connect_central", lambda: pytest.fail("不该走中心库"))
     c = store.connect()
     assert c.autocommit is True
 
@@ -47,7 +47,7 @@ def test_pin_only_for_bare_ip(monkeypatch):
 def test_require_jobsdb_fails_loudly_without_token(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.setenv("GUJI_REQUIRE_JOBSDB", "1")
-    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该退回 Neon"))
+    monkeypatch.setattr(store, "connect_central", lambda: pytest.fail("不该退回中心库"))
     with pytest.raises(SystemExit):
         store.connect()
 
@@ -56,7 +56,7 @@ def test_default_refuses_neon_without_token(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.delenv("GUJI_JOBS_BRANCH", raising=False)
     monkeypatch.delenv("GUJI_REQUIRE_JOBSDB", raising=False)
-    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该退回 Neon"))
+    monkeypatch.setattr(store, "connect_central", lambda: pytest.fail("不该退回中心库"))
     with pytest.raises(SystemExit):
         store.connect()
 
@@ -65,6 +65,6 @@ def test_ci_branch_has_no_neon_fallback(monkeypatch):
     monkeypatch.delenv("JOBSDB_TOKEN", raising=False)
     monkeypatch.delenv("GUJI_REQUIRE_JOBSDB", raising=False)
     monkeypatch.setenv("GUJI_JOBS_BRANCH", "ci")
-    monkeypatch.setattr(store, "connect_neon", lambda: pytest.fail("不该走 Neon"))
+    monkeypatch.setattr(store, "connect_central", lambda: pytest.fail("不该走中心库"))
     with pytest.raises(SystemExit):
         store.connect()

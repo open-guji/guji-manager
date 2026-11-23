@@ -29,6 +29,13 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
 断点续跑：状态在 ``<工作区>/reports/<册>/_collect/<rev>/state.json``，每步做完记一笔；中途停了原命令再跑，做过的跳过
 （``write`` 本身也有幂等键）。``--fresh`` 从头。
 
+**一条命令落网站人审（GM4 11-23，用户定）**：``guji feedback collect -w <工作区> --book-text <检出>``（``--books`` 缺省 auto：读收件箱，
+挑有票落在开着条目上的册）。全自动，除「特殊需要分析」「待定」的票（挂起、切分类、推翻旧裁、格位变了、条目 fp_changed／撤下的旧单票、
+策略要多人而没到的格）——这些留在 held／old_sheet／waiting 里不落。旧单（vote_rev≠现行 rev）上投的条目票，条目图没变就按条目现格落，
+永远新结果覆盖旧的。落票策略 ``--policy``（缺省 auto；quorum:N 按审阅人会员身份分流，接口见 feedback/landing_policy.py）。
+命令末尾打票账（每册：收件箱票→有效→旧单→等多人→写人裁→挂起→book-text 写／已一致／等重放），同存 ``reports/_collect/runs/<本趟>.ledger.tsv``。
+批量落：每册一趟只做一个 book-text 提交；建议每半小时跑一次（没新票的册 auto 自动跳过）。
+
 ``guji collect --books vol20 -w <工作区> --book-text <book-text 检出> [--reviewer sheldon] [--batch <早先人裁批次> …]``
 """
 from __future__ import annotations
@@ -43,7 +50,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books, vol_no
+from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books
 
 PLACEHOLDERS = ("□", "〓", "▣")
 GUJI = [sys.executable, "-m", "open_guji_cv.cli_v2"]
@@ -604,6 +611,8 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
                votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
+        if getattr(a, "policy", None):
+            cmd += ["--policy", a.policy]
         if a.batch or not getattr(a, "no_ai", False):
             cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
         if _run(cmd, env, tries=3):
@@ -613,6 +622,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     if not hasattr(a, "_pack_roots"):
         a._pack_roots = {}
     a._pack_roots[book] = meta.get("products_root")
+    write_ledger(out, book, rev, meta)
     if a.dry_run:
         print(f"  --dry-run：不写人裁（可写 {meta.get('ready', 0)}、挂起 {meta.get('held', 0)}，见 {draft / 'report.md'}）")
     elif R.done("write"):
@@ -648,7 +658,17 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         same_ids = consistent_cells(draft)
         votes_now = vote_chars(draft)
         try:
-            hc = current_human(book, meta.get("products_root"))
+            try:
+                hc = current_human(book, meta.get("products_root"))
+            except RuntimeError as e:
+                if "字块图拿不到" not in str(e):
+                    raise
+                # 新机器没有原图／字块缓存：自己补拉再算一遍（11-22 实测 source pull 4 s＋cache warm 1 s），不再停下来等人跑
+                print(f"  缺字块图，自动 source pull＋cache warm {book} 后重算人裁")
+                env_ = dict(os.environ)
+                _run([*GUJI, "source", "pull", book, "-w", str(ws)], env_)
+                _run([*GUJI, "cache", "warm", "--book", book, "-w", str(ws)], env_)
+                hc = current_human(book, meta.get("products_root"))
         except Exception as e:  # noqa: BLE001
             return {"status": "blocked", "rev": rev,
                     "why": f"现行人裁（human_chars）算不出来，不落 book-text：{type(e).__name__}: {str(e)[:300]}"}
@@ -706,6 +726,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         for m in notes[:8]:
             print(f"    {m}")
         info = {"landed": {}, "plan": {k: len(v) for k, v in plan.items()}}
+        write_ledger(out, book, rev, meta, plan={k: len(v) for k, v in plan.items()}, want=len(want), n_ai=n_ai)
         if plan["apply"]:
             new_char = apply_edits(char, plan["apply"])
             exp = out / "export"
@@ -777,6 +798,62 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     if getattr(a, "_defer_publish", False):
         return {"status": "to-publish", "rev": rev, "landed": len(landed)}
     return publish_and_verify(a, ws, [book])[book]
+
+
+# ───────────────────────── 对账表（票 → 事件 → book-text） ─────────────────────────
+
+LEDGER_COLS = (("votes", "收件箱票"), ("valid", "有效票"), ("old_landed", "旧单并入"), ("old_blocked", "旧单挡下"),
+               ("waiting", "等多人"), ("ready", "写人裁"), ("held", "挂起"), ("skipped", "跳过"),
+               ("apply", "写book-text"), ("already", "已一致"), ("layout", "等重放"), ("fig", "以图代字"), ("missing", "无此格"))
+
+
+def ledger_of(book: str, rev: str, meta: dict, plan: dict | None = None, want: int | None = None, n_ai: int | None = None) -> dict:
+    """一册一趟的票账：收件箱票 → 有效 → 策略（等多人）→ 分流（写人裁／挂起／跳过）→ book-text（写／已一致／等重放…）。
+    票按「人×格」计，之后按格计；两段口径不同，不强求相加，但每一段都有数。"""
+    sk = meta.get("skipped")
+    return {"book": book, "rev": rev, "votes": meta.get("n_raw", 0), "valid": meta.get("n_votes", 0),
+            "old_landed": meta.get("old_landed", 0), "old_blocked": meta.get("old_sheet", 0),
+            "waiting": meta.get("waiting", 0), "ready": meta.get("ready", 0), "held": meta.get("held", 0),
+            "skipped": len(sk) if isinstance(sk, list) else (sk or 0), "policy": meta.get("policy", "auto"),
+            **({"want": want, "ai": n_ai, **{k: (plan or {}).get(k, 0) for k in ("apply", "already", "layout", "fig", "missing")}}
+               if plan is not None else {})}
+
+
+def write_ledger(out: Path, book: str, rev: str, meta: dict, **kw) -> None:
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "ledger.json").write_text(json.dumps(ledger_of(book, rev, meta, **kw), ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def render_ledger(rows: list[dict], status: dict[str, str] | None = None) -> str:
+    """每册一行的 TSV（也直接打印）。``status`` 是各册本趟结果。"""
+    head = ["册", "单版", *[t for _, t in LEDGER_COLS], "状态"]
+    L = ["\t".join(head)]
+    tot = {k: 0 for k, _ in LEDGER_COLS}
+    for r in rows:
+        L.append("\t".join([r["book"], str(r["rev"]), *[str(r.get(k, "-")) for k, _ in LEDGER_COLS], (status or {}).get(r["book"], "")]))
+        for k in tot:
+            tot[k] += int(r.get(k) or 0)
+    L.append("\t".join(["合计", "", *[str(tot[k]) for k, _ in LEDGER_COLS], ""]))
+    return "\n".join(L)
+
+
+def print_ledger(ws: Path, res: dict, run_log: Path) -> None:
+    rows = []
+    for b, v in res.items():
+        p = ws / "reports" / b / "_collect" / str(v.get("rev") or "") / "ledger.json"
+        if v.get("rev") and p.exists():
+            rows.append(json.loads(p.read_text(encoding="utf-8")))
+    if not rows:
+        return
+    txt = render_ledger(rows, {b: v.get("status", "") for b, v in res.items()})
+    print("\n== 票账（每册：票→事件→book-text 各段数量；票按人×格、后段按格）\n" + txt)
+    try:
+        run_log.with_suffix(".ledger.tsv").write_text(txt + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _state_of(ws: Path, text_id: str, book: str) -> tuple[Path, "Run", Path] | None:
@@ -876,6 +953,9 @@ def auto_books(ws: Path, text_id: str) -> list[str]:
         st = P.ItemStore.open(data, text_id, ch)
         return {r["id"] for r in st.by_state("open", "withdrawn")}
     books = books_with_votes(votes, open_of)
+    # 册 id 以工作区实有的 books/<册>.yaml 为准（史记叫 01 不叫 vol01；殿本叫 vol01）：不改名会白跑一趟 draft 报「没有 books/vol01.yaml」
+    have = {q.stem for q in (data / "books").glob("*.yaml")}
+    books = [b if b in have else (b[3:] if b.startswith("vol") and b[3:] in have else b) for b in books]
     print(f"网站条目票 {len(votes)} 条；有票落在开着的条目上的册：{'、'.join(books) or '没有'}")
     return books
 
@@ -913,6 +993,7 @@ def cmd_collect(a) -> int:
         res.update(publish_and_verify(a, ws, ready))
     _save_run(run_log, res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
+    print_ledger(ws, res, run_log)
     bad = {b: v for b, v in res.items() if v["status"] not in ("done", "synced", "dry-run")}
     if bad:
         print(f"\n没收完 {len(bad)} 册（原命令再跑，做过的步跳过）：")
@@ -952,6 +1033,8 @@ def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
                "--text-id", a.text_id, "--reviewer", a.reviewer, "--no-pull", "--child"]
         for x in a.batch or []:
             cmd += ["--batch", x]
+        if getattr(a, "policy", None):
+            cmd += ["--policy", a.policy]
         cmd += [f for f, on in (("--no-push", a.no_push), ("--no-ai", getattr(a, "no_ai", False)), ("--fresh", a.fresh),
                                 ("--keep-pack", getattr(a, "keep_pack", False))) if on]
         rp = logs / f"{b}.result.json"
@@ -991,7 +1074,7 @@ def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("collect", help="收单快路：读票→写人裁→定字直接落 book-text（不重放）→KV 结案→pull/sync 各一次→发站核对（断点续跑）")
-    p.add_argument("--books", required=True, help="如 vol20 或 vol20-vol25（逐册做）；auto＝读网站条目票，挑有票落在开着的条目上的册")
+    p.add_argument("--books", default="auto", help="如 vol20 或 vol20-vol25（逐册做）；auto（缺省）＝读网站条目票，挑有票落在开着的条目上的册")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True, help="book-text 检出（在它旁边建 <检出>-collect worktree，每册重置到 origin/dev）")
     p.add_argument("--worktree", default=None, help="book-text worktree 路径（缺省 <book-text>-collect）")
@@ -1000,6 +1083,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", action="append", default=None,
                    help="另把早先写进库、还没进 book-text 的人裁批次也落了（可重复；只认人裁，过绑定表、每格取最新）")
     p.add_argument("--pack", default=None, help="出单版产物包标签（缺省 rev-<rev>，没有就 ★main）")
+    p.add_argument("--policy", default=None,
+                   help="落票策略：auto（缺省，有票就落；用户 11-23 定，现只有本人在审）｜quorum:N（高等级审阅人一票即定，其余要 N 人同一结论；"
+                        "没到门槛的格不落、不结案，等多人）；也读 GUJI_LANDING_POLICY。详见 feedback/landing_policy.py")
     p.add_argument("--no-pull", action="store_true", help="不先拉库（刚拉过）")
     p.add_argument("--no-push", action="store_true", help="book-text 只提交在 worktree，不推")
     p.add_argument("--no-publish", action="store_true", help="推库后不触发网站发布、不核线上")

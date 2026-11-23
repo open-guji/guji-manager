@@ -39,6 +39,22 @@ def test_lacuna_needs_pending_or_recut(tmp_path):
     assert r["recut_bad"] == ["坏位置"]
 
 
+def test_pending_blank_with_first_choice_flagged(tmp_path):
+    """待审格有首选字（ref）却还是 □：算 pending_blank，要填首选字；无候选的待审格、人裁格不算。"""
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    _export(exp, "甲□乙□丙□", ["9:1:1", "9:1:2", "9:1:3", "9:1:4", "9:1:5", "9:1:6"])
+    pend = tmp_path / "001.pending.json"
+    pend.write_text(json.dumps({"cells": [
+        {"cell": "9:1:2", "review": "pending", "ref": {"c": "圖"}},
+        {"cell": "9:1:4", "review": "pending"},                      # 一个候选都没有
+        {"cell": "9:1:6", "review": "human", "ref": {"c": "圖"}},   # 人裁定保持 □
+    ]}), encoding="utf-8")
+    r = RG.check_lacuna("vol01", exp, None, pend, tmp_path / "lists")
+    assert r["pending_blank"] == ["9:1:2"]
+    assert r["pending"] == ["9:1:2", "9:1:4", "9:1:6"]
+
+
 def test_recut_list_granularity(tmp_path):
     rl = RG.RecutList([["89"], ["90:2"], ["101:2:3"], ["105:1:2a"]])
     assert rl.covers_cell("89:7:16") and rl.covers_col(89, 3)

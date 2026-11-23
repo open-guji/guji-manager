@@ -45,7 +45,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--chapter", default=None)
     p.add_argument("--cells", default=None, help="derive：旧→新格级对照表（给了才有 A02）；fix-misplaced：dev 当前→正确 的对照表")
     p.add_argument("--drift-base", default="origin/dev", help="derive：漂移检查的基准版")
-    p.add_argument("--replay", default=None, help="fix-misplaced：A33 回放不一致明细 tsv（取标点行，自动得 dev 当前→正确 对照表和旧 pre_char；与 --cells 二选一）")
+    p.add_argument("--replay", default=None, help="fix-misplaced：GM3（原 A33）回放不一致明细 tsv（取标点行，自动得 dev 当前→正确 对照表和旧 pre_char；与 --cells 二选一）")
     p.add_argument("--apply", action="store_true", help="fix-misplaced：真写 punct.json（缺省只出计划）")
     p.add_argument("--audit", default=None, help="fix-misplaced：审计 tsv")
     p.add_argument("--sample", type=int, default=30, help="fix-misplaced：抽审条数（固定种子）")

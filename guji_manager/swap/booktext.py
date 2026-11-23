@@ -29,7 +29,6 @@ def _chapter(book: str) -> str:
     return chapter_of(book)
 
 import collections
-import copy
 import json
 import os
 import random

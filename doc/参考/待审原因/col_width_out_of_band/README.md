@@ -60,7 +60,7 @@ A31 裁定（ai-team `domain/CV/质检/重跑轮次/第5轮修复清单.md` 末�
 ## 怎么处理
 
 1. 看整页，确认是真列网错还是列宽本来就不匀。
-2. 真错：单页 `vline_overrides`；成批出现报 A22 改 border_detect。
+2. 真错：单页 `vline_overrides`；成批出现报 CV2 改 border_detect。
 3. 本来就不匀的特殊列宽，写进书级 `columns:` 配置（带宽、strict／loose）。
 
 ## 回流与防再犯

@@ -1,11 +1,11 @@
 """三书冻结日历（T6）：只冻结 S 轮（结构层）。D 轮期间各线照常合决策层改动（框架 14.3，A22/用户 11-05）。
 
-日历文件（放 ai-team `domain/CV/质检/迭代降人审框架/冻结日历.yaml`，A31 维护，各线只读；时间洛杉矶）：
+日历文件（放 ai-team `domain/CV/质检/迭代降人审框架/冻结日历.yaml`，GM2 维护，各线只读；时间洛杉矶）：
 
   freezes:
-    - {book: dianben, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "S 轮 r5", notify: [A22, A23, A30, A20]}
+    - {book: dianben, from: "2026-11-05 10:00", to: "2026-11-05 22:00", steps: ["*"], note: "S 轮 r5", notify: [CV2, CV3, A30, CV0]}
   冻结期内**不合会改切分指纹的 PR**（border_detect、cell_shrink、row_segment、页型、图源、语料、库快照等）；`steps` 缺省＝这些结构步，
-  也可列具体 Step 名。格号变化通知名单缺省 A22 A23 A30 A20（用户 11-05：A33 不在粗校流程里）。
+  也可列具体 Step 名。格号变化通知名单缺省 CV2 CV3 A30 CV0（用户 11-05：GM3〔原 A33〕不在粗校流程里）。
 
   guji-manager iterate freeze list  --file 冻结日历.yaml [--at "2026-11-05 12:00"]
   guji-manager iterate freeze add   --file … --book sj --from … --to … [--steps border_detect,row_segment] [--note …]
@@ -25,7 +25,7 @@ import yaml
 FMT = "%Y-%m-%d %H:%M"
 #: 结构层 Step（改它们会改切分指纹/格号）；S 轮冻结的缺省范围
 STRUCT_STEPS = ("border_detect", "border_detect_gate", "cell_shrink", "row_segment", "page_kinds", "source", "corpus", "glyph_snapshot")
-NOTIFY = ["A22", "A23", "A30", "A20"]
+NOTIFY = ["CV2", "CV3", "A30", "CV0"]   # 11-23 改新名（原 A22 A23 A30 A20）
 
 
 def now_la() -> datetime.datetime:
@@ -85,7 +85,7 @@ def cmd_add(a) -> int:
     fr.append({"book": a.book, "from": a.from_, "to": a.to,
                "steps": a.steps.split(",") if a.steps else ["*"], "note": a.note, "notify": a.notify.split(",") if a.notify else NOTIFY})
     a.file.parent.mkdir(parents=True, exist_ok=True)
-    a.file.write_text("# 三书冻结日历（洛杉矶时间；A31 维护，各线只读）。用法见 guji-manager iterate freeze。\n"
+    a.file.write_text("# 三书冻结日历（洛杉矶时间；GM2 维护，各线只读）。用法见 guji-manager iterate freeze。\n"
                       + yaml.safe_dump({"freezes": fr}, allow_unicode=True, sort_keys=False), encoding="utf-8")
     print(f"已记：{a.book} {a.from_} → {a.to}")
     return 0

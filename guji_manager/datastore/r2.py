@@ -138,7 +138,8 @@ def upload_via_worker(repo, objs: dict[str, Obj], bucket: str = "exp", workers: 
     token = os.environ.get("GUJI_DATA_TOKEN")
     if not token:
         raise SystemExit("缺环境变量 GUJI_DATA_TOKEN，不能上传（dry-run 不需要）")
-    base = os.environ.get("GUJI_DATA_URL", "https://data.open-guji.com").rstrip("/")
+    from .. import dbconfig
+    base = dbconfig.url("central") or "https://data.open-guji.com"
     ca = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
     ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
     stats = Counter()

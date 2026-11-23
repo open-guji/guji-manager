@@ -1,4 +1,4 @@
-"""字组状态 → 网站后台「文本整理 · 形近字」栏（2026-10-25，A41 建的 Neon `progress` schema，口径归 A24）。
+"""字组状态 → 网站后台「文本整理 · 形近字」栏（2026-10-25 建，中心库 `progress` 表，口径归 CV4；表现归 Web）。
 
     python -m guji_manager.eval.group_progress <guji groups status 出的 json> [--book 96mid1ogzk] [--prev 上一份 json] [--write]
 
@@ -161,7 +161,7 @@ def main(argv=None) -> int:
     ap.add_argument("status_json", type=Path)
     ap.add_argument("--book", default="96mid1ogzk", help="book-index 套书 id（殿本《四庫全書總目》）")
     ap.add_argument("--prev", type=Path, help="上一份 guji groups status 的 json，总表写送审增减")
-    ap.add_argument("--write", action="store_true", help="真写 Neon 正式库（缺省只打印）")
+    ap.add_argument("--write", action="store_true", help="真写中心库正式库（缺省只打印）")
     a = ap.parse_args(argv)
     prev = json.loads(a.prev.read_text(encoding="utf-8")) if a.prev else None
     rs = rows(json.loads(a.status_json.read_text(encoding="utf-8")), a.book, prev)

@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 from .common import cell_key, col_of, read_tsv, write_tsv
@@ -68,8 +68,6 @@ def compare(cur_dir: Path, prev_dir: Path, released: set | None = None) -> dict:
     by_vol = []
     for v in sorted(set(cs["vols"]) | set(ps["vols"])):
         c, p = cs["vols"].get(v), ps["vols"].get(v)
-        cset = {k[1] for k in ckeys if k[0] == v.zfill(3)}
-        pset = {k[1] for k in pkeys if k[0] == v.zfill(3)}
         reg = sum(1 for k in ckeys if k[0] == v.zfill(3) and k not in pkeys)
         by_vol.append({"vol": v, "prev": p["n"] if p else "", "cur": c["n"] if c else "",
                        "delta": (c["n"] - p["n"]) if (c and p) else "", "cells": c.get("cells") if c else "",
@@ -109,7 +107,7 @@ def compare(cur_dir: Path, prev_dir: Path, released: set | None = None) -> dict:
         elif ratio >= REGRESS_YELLOW:
             yellow.append(f"回退格 {len(regress)} 占上一轮待审 {ratio * 100:.1f}% ≥{REGRESS_YELLOW * 100:.0f}%：看回退清单是否集中在少数列")
     if drift:
-        yellow.append(f"待审格号与上一轮重合率 <{GRID_OVERLAP_MIN * 100:.0f}% 的册：{','.join(drift)}（可能变列；S 轮标 main 前须逐册比格号，通知 A23/A30/A20）")
+        yellow.append(f"待审格号与上一轮重合率 <{GRID_OVERLAP_MIN * 100:.0f}% 的册：{','.join(drift)}（可能变列；S 轮标 main 前须逐册比格号，通知 CV3/A30/CV0）")
     if cs.get("n_nonbody", 0) != ps.get("n_nonbody", 0):
         yellow.append(f"非正文页待审格数变了（{ps.get('n_nonbody', 0)}→{cs.get('n_nonbody', 0)}）：核页型配置")
     if n > pn:

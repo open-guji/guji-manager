@@ -185,5 +185,22 @@ def test_split_old_sheet_keeps_current_sheet_votes_only():
            {"a": "1:1:1", "choice": "confirm"}]
     cur, old = CVT._split_old_sheet("vol01", "001-r17", raw, {"vol01:88:1:12a": E()})
     assert [v["a"] for v in cur] == ["88:4:18", "1:1:1"]
-    assert old == [("88:1:12a", "88:1:12a", "001-r16", "char=領", "evt_old"),
-                   ("103:5:13", "103:5:12", "001-r9", "char=太", None)]
+    assert old == [("88:1:12a", "88:1:12a", "001-r16", "char=領", "evt_old", "旧单票（没给条目表，不判）"),
+                   ("103:5:13", "103:5:12", "001-r9", "char=太", None, "旧单票（没给条目表，不判）")]
+
+
+def test_split_old_sheet_lands_unchanged_items_blocks_changed():
+    """GM4 11-23：旧单条目票，条目图没变（无 fp_changed、没撤下）按现格并入；图变了／撤下／找不到仍挡下。"""
+    from guji_manager import cli_cellvotes as CVT
+    items = {"i1": {"state": "open", "cell": "160:9:3"}, "i2": {"state": "resolved", "cell": "9:8:3", "fp_changed": True},
+             "i3": {"state": "withdrawn", "cell": "10:8:21"}}
+    raw = [{"item": "i1", "a": "160:9:3", "vote_a": "160:9:2", "vote_rev": "006-r9", "choice": "char", "char": "壼"},
+           {"item": "i2", "a": "9:8:3", "vote_a": "9:8:3", "vote_rev": "006-r9", "choice": "char", "char": "埸"},
+           {"item": "i3", "a": "10:8:21", "vote_a": "10:8:21", "vote_rev": "006-r9", "choice": "char", "char": "奬"},
+           {"item": "zz", "a": "1:1:1", "vote_a": "1:1:1", "vote_rev": "006-r9", "choice": "char", "char": "X"},
+           {"item": "i1", "a": "160:9:3", "vote_rev": "006-r13", "choice": "char", "char": "壺"}]
+    cur, old = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items)
+    assert [(v["a"], v.get("_old_rev")) for v in cur] == [("160:9:3", "006-r9"), ("160:9:3", None)]
+    assert [(o[0], o[5]) for o in old] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
+                                          ("1:1:1", "条目找不到")]
+

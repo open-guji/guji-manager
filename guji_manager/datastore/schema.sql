@@ -88,41 +88,6 @@ CREATE TABLE IF NOT EXISTS books (
     PRIMARY KEY (ws, book)
 );
 
--- 冻结基线（GUJI-601 的规矩落这里；首次导入不灌，由 close-check / 发布流程写）
-CREATE TABLE IF NOT EXISTS freeze_baselines (
-    ws          text NOT NULL,
-    book        text NOT NULL,
-    version     text NOT NULL,               -- 0.1.0 / 1.0.0 …
-    cv_version  text,
-    cv_commit   text,
-    snapshot_id text,
-    db_branch   text,
-    db_rev      bigint,
-    frozen_at   timestamptz NOT NULL DEFAULT now(),
-    note        text,
-    doc         jsonb,
-    PRIMARY KEY (ws, book, version)
-);
-
-CREATE TABLE IF NOT EXISTS cv_versions (
-    version     text PRIMARY KEY,
-    cv_commit   text NOT NULL,
-    released_at timestamptz,
-    note        text,
-    doc         jsonb
-);
-
-CREATE TABLE IF NOT EXISTS snapshots (
-    snapshot_id text PRIMARY KEY,
-    ws          text,
-    book        text,
-    created_at  timestamptz,
-    cv_commit   text,
-    db_branch   text,
-    db_rev      bigint,
-    doc         jsonb
-);
-
 -- ─── 人裁与台账（feedback/） ────────────────────────────────────────────
 -- 事件：feedback/events/*.jsonl（stream=events）与 feedback/vision/*.jsonl（stream=vision）。
 -- 主键带 src_path：现有数据里有同一 id 出现在两个文件、内容不同的情况（见导入报告），
@@ -349,18 +314,6 @@ CREATE TABLE IF NOT EXISTS glyph_approx_clears (
     PRIMARY KEY (ws, instance_id, at)
 );
 
-CREATE TABLE IF NOT EXISTS glyph_pairs (
-    ws text NOT NULL REFERENCES workspaces(ws),
-    inst_a text NOT NULL, inst_b text NOT NULL,
-    relation text NOT NULL,
-    origin text NOT NULL,
-    source_id text,
-    created_at text NOT NULL,
-    src_path text NOT NULL, src_line int NOT NULL, raw text NOT NULL,
-    rev bigint NOT NULL, ingested_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (ws, inst_a, inst_b, relation)
-);
-
 CREATE TABLE IF NOT EXISTS glyph_meta (
     ws text NOT NULL REFERENCES workspaces(ws),
     key text NOT NULL,
@@ -368,17 +321,6 @@ CREATE TABLE IF NOT EXISTS glyph_meta (
     src_path text NOT NULL, src_line int NOT NULL, raw text NOT NULL,
     rev bigint NOT NULL, ingested_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (ws, key)
-);
-
--- glyph_store/events/<source>.jsonl（生产库里目前全空，表照建）
-CREATE TABLE IF NOT EXISTS glyph_events (
-    ws text NOT NULL REFERENCES workspaces(ws),
-    src_path text NOT NULL,
-    src_line int NOT NULL,
-    source_id text, batch text, seq int, ts text, op text, payload text,
-    raw text NOT NULL,
-    rev bigint NOT NULL, ingested_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (ws, src_path, src_line)
 );
 
 INSERT INTO db_meta (key, value) VALUES ('schema_version', '1')

@@ -314,7 +314,7 @@ def _local(ws_dir: Path, data: Path):
     return f
 
 
-# ---- 工作区快照（Neon 免费档按公网流量计；新机器整拉殿本走 Neon 约 50 MB，快照包约 6–7 MB 走 R2 不收费）----
+# ---- 工作区快照（新机器整拉殿本走中心库约 50 MB、读行多；快照包约 6–7 MB 走 R2，不计 D1 读行）----
 
 SNAPSHOT_ENV = "GUJI_DATA_SNAPSHOT"      # 设 0 关掉快照（不下也不传）
 SNAPSHOT_SKIP_EXT = (".png",)            # 图另有 R2 缓存，不进快照

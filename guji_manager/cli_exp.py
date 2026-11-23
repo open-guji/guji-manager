@@ -107,7 +107,6 @@ def cmd_exp(args) -> None:
     from ._cv import BadRequest
     from ._cv import exp_config as EC
     from ._cv import exp_flips as FL
-    from ._cv import exp_report as RP
     from ._cv import exp_runner as RN
 
     _set_ws(args)

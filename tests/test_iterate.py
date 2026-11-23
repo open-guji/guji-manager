@@ -130,7 +130,7 @@ def test_freeze(tmp_path):
     freeze.main(["add", "--file", str(f), "--book", "dianben", "--from", "2026-11-05 10:00", "--to", "2026-11-05 20:00"])
     fr = freeze.load(f)
     at = freeze.parse_t("2026-11-05 12:00")
-    assert "A33" not in fr[0]["notify"]
+    assert "GM3" not in fr[0]["notify"] and "A33" not in fr[0]["notify"]
     assert freeze.conflicts(fr, ["dianben"], ["row_segment"], at)
     assert not freeze.conflicts(fr, ["dianben"], ["seed_admit"], at)      # D 轮不冻结
     assert not freeze.conflicts(fr, ["shiji"], ["row_segment"], at)
@@ -242,3 +242,9 @@ def test_auto_round_upgrades_pending_placeholder(monkeypatch):
     monkeypatch.setattr(cv, "connect", lambda: Conn(), raising=False)
     out = pr.auto_round("bk", "r5", write_db=False)
     assert out["verdict"] == "main" and "note" not in out and out["date"] == "2026-11-07" and out["pending"] == 3
+
+
+def test_iterate_help_exits_zero(capsys):
+    from guji_manager.iterate.__main__ import main
+    assert main(["--help"]) == 0 and "round-report" in capsys.readouterr().out
+    assert main([]) == 2
