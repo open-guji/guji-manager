@@ -93,32 +93,31 @@ def base_rev(man: dict) -> int | None:
         return None
 
 
-def _event_rows_since(rev: int):
-    """中心库里 rev 之后新写入的反馈事件／裁定（人裁、AI 裁定、看图裁定）：[(target, payload)]。"""
-    import json
+def _event_rows_since(rev: int | None = None, since_ts: str | None = None):
+    """中心库里 rev 之后（老包没记 rev 时改按 ``ingested_at`` 晚于包生成时间）新写入的反馈事件／裁定（人裁、AI 裁定、看图裁定）：[(target, payload)]。"""
     from .._cv import connect
     try:
         from ..datastore import packs as PK
         ws = PK._ws_name()
     except BaseException:  # noqa: BLE001 —— 认不出工作区就不按 ws 筛（册号带 volNN，混册只会多算页）
         ws = None
+    col, val = ("rev", int(rev)) if rev is not None else ("ingested_at", str(since_ts))
+    sel = "json_extract(target, '$.unit'), json_extract(target, '$.key'), json_extract(payload, '$.cell')"   # 只取要用的三项，不拉整条 payload
     with connect() as con:
         if ws:
-            rows = con.execute("SELECT target, payload FROM events WHERE rev > %s AND ws = %s", (int(rev), ws)).fetchall()
+            rows = con.execute(f"SELECT {sel} FROM events WHERE {col} > %s AND ws = %s", (val, ws)).fetchall()
         else:
-            rows = con.execute("SELECT target, payload FROM events WHERE rev > %s", (int(rev),)).fetchall()
-    out = []
-    for t, pl in rows:
-        out.append((json.loads(t) if isinstance(t, str) else (t or {}), json.loads(pl) if isinstance(pl, str) else (pl or {})))
-    return out
+            rows = con.execute(f"SELECT {sel} FROM events WHERE {col} > %s", (val,)).fetchall()
+    return [({"unit": u, "key": k}, {"cell": c}) for u, k, c in rows]
 
 
-def changed_pages(book: str, since_rev: int, rows=None) -> set[int]:
+def changed_pages(book: str, since_rev: int | None, rows=None, since_ts: str | None = None) -> set[int]:
     """中心库 rev > ``since_rev`` 之后有人裁／AI 裁定入库的页。
 
     按入库 rev 而不是事件 ts 判：ts 是判定时间，裁定早判、晚推库的会被 ts 口径漏掉（全唐文 閒 14 条，11-20）；
-    rev 是写进库那一刻的版本，铺底包记着自己跑时的 rev，两边同一把尺。"""
-    rows = _event_rows_since(since_rev) if rows is None else rows
+    rev 是写进库那一刻的版本，铺底包记着自己跑时的 rev，两边同一把尺。老包没记 rev 的，退而用库里的入库时间
+    ``ingested_at`` 比包的 created（都是入库／存包的墙钟时间，不是判定时间，不会像 ts 那样漏）。"""
+    rows = _event_rows_since(since_rev, since_ts) if rows is None else rows
     out: set[int] = set()
     for target, payload in rows:
         keys = []
@@ -164,22 +163,26 @@ def resolve(raw: dict) -> None:
             sys.exit(f"✗ --pages {pg}：auto: 后面要写中心库 rev（整数）")
     if rev is None:
         rev = base_rev(man)
+    since_ts = None
     if rev is None:
-        msg = f"铺底包 {man.get('label')} 没记中心库 rev（老包），算不出哪些页之后有新裁定"
-        if explicit:
-            sys.exit(f"✗ --pages auto {msg}；给基准 --pages auto:<rev>，或整册写 --pages all")
-        print(f"ⓘ 整册跑：{msg}", file=sys.stderr)
-        return
+        since_ts = man.get("created")
+        if not since_ts:
+            msg = f"铺底包 {man.get('label')} 既没记中心库 rev 也没有生成时间"
+            if explicit:
+                sys.exit(f"✗ --pages auto {msg}；给基准 --pages auto:<rev>，或整册写 --pages all")
+            print(f"ⓘ 整册跑：{msg}", file=sys.stderr)
+            return
+        print(f"ⓘ 铺底包 {man.get('label')} 没记中心库 rev（老包），改按入库时间晚于 {since_ts} 判", file=sys.stderr)
     try:
-        pages = changed_pages(book, rev)
+        pages = changed_pages(book, rev, since_ts=since_ts)
     except BaseException as e:  # noqa: BLE001
         if explicit:
             sys.exit(f"✗ --pages auto 读不了中心库事件（{type(e).__name__}: {str(e)[:120]}）；要整册写 --pages all")
         print(f"ⓘ 没按页跑（读不了中心库事件：{type(e).__name__}），整册", file=sys.stderr)
         return
     if not pages:
-        sys.exit(f"✗ 中心库 rev {rev}（铺底包 {man.get('label')}）之后 {book} 没有新入库的人裁／AI 裁定，不用重放；"
+        sys.exit(f"✗ 中心库 {'rev ' + str(rev) if rev is not None else '入库时间 ' + str(since_ts)}（铺底包 {man.get('label')}）之后 {book} 没有新入库的人裁／AI 裁定，不用重放；"
                  "确要整册写 --pages all")
     raw["pages"] = compress(pages)
-    print(f"按受影响的页跑：{book} {len(pages)} 页（{raw['pages']}），中心库 rev {rev}（铺底包 {man.get('label')}）之后有新入库的人裁／AI 裁定；"
+    print(f"按受影响的页跑：{book} {len(pages)} 页（{raw['pages']}），中心库 {'rev ' + str(rev) if rev is not None else '入库时间 ' + str(since_ts)}（铺底包 {man.get('label')}）之后有新入库的人裁／AI 裁定；"
           "要整册写 --pages all", file=sys.stderr)
