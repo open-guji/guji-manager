@@ -894,7 +894,6 @@ def print_ledger(ws: Path, res: dict, run_log: Path) -> None:
         run_log.with_suffix(".ledger.tsv").write_text(txt + "\n", encoding="utf-8")
     except OSError:
         pass
-    print_needs_review(ws, res)
 
 
 def needs_review_of(ws: Path, res: dict) -> dict[str, list[str]]:
@@ -979,12 +978,64 @@ def push_handoff(outdir: Path, files: list[Path]) -> str:
     return "推送失败：" + r.stderr.strip()[-200:]
 
 
-def print_needs_review(ws: Path, res: dict) -> None:
+def sweep_unconsumed(ws: Path, a) -> dict:
+    """端到端票账的最后一段：人裁事件已写、路由表要它去消费者、却还没记账的（漏 route，或缺产物包）。
+    GM4 管线写的批次（``H-web-*``）自动补 ``guji events route <批次>``，补完 ``guji db sync`` 推库；
+    别的线的批次（ZM-、H-ZM-、H-quick- 等）不替他们跑，只列清单交书线。返回 {"routed": [批次], "remaining": {(批次, 消费者): 条数}}。"""
+    from .cli_db import unconsumed_report
+    out = {"routed": [], "remaining": {}, "errors": []}
+    try:
+        rep = unconsumed_report(ws)
+    except Exception as e:  # noqa: BLE001
+        out["errors"].append(f"读不了消费账：{type(e).__name__}: {e}")
+        return out
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    mine = sorted({b for (b, _c) in rep if b.startswith("H-web-")})
+    if mine and not a.dry_run:
+        for b in mine:
+            if _run([*GUJI, "events", "route", b, "-w", ws], env, tries=1):
+                out["errors"].append(f"events route {b} 失败")
+            else:
+                out["routed"].append(b)
+        if out["routed"] and not a.no_push:
+            if _run([*GUJI, "db", "sync", "-w", ws], env, tries=3):
+                out["errors"].append("补 route 后 guji db sync 失败，原命令再跑会续推")
+        try:
+            rep = unconsumed_report(ws)
+        except Exception:  # noqa: BLE001
+            pass
+    out["remaining"] = rep
+    if out["routed"] or rep or out["errors"]:
+        print(f"\n== 事件未消费：本趟补 route {len(out['routed'])} 批（H-web-*）；仍未消费 {len(rep)} 组"
+              f"（多为缺产物包或别的线手写批次，见交项目确认 tsv「事件未消费.tsv」）" + "".join(f"\n  ⚠ {e}" for e in out["errors"]))
+    return out
+
+
+def write_unconsumed(outdir: Path, remaining: dict) -> Path | None:
+    import re
+    p = outdir / "事件未消费.tsv"
+    if not remaining:
+        p.unlink(missing_ok=True)
+        return None
+    rows = ["\t".join(["批次", "消费者", "条数", "册", "怎么补"])]
+    for (b, c), n in sorted(remaining.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        m = re.search(r"vol(\d+)", b)
+        vol = f"vol{m.group(1)}" if m else ""
+        rows.append("\t".join([b, c, str(n), vol, f"缺产物包先 guji products pack fetch {vol or '<册>'}，再 guji events route {b}；手写批次请对应书线补 route"]))
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return p
+
+
+def print_needs_review(ws: Path, res: dict, unc: dict | None = None) -> None:
     nr = needs_review_of(ws, res)
     hd = os.environ.get("GUJI_HANDOFF_DIR")
     if hd:
         try:
             files = write_handoff(ws, res, Path(hd))
+            if unc is not None:
+                uf = write_unconsumed(Path(hd), unc.get("remaining") or {})
+                if uf:
+                    files.append(uf)
             print(f"\n== 交项目确认清单已写 tsv：{'、'.join(p.name for p in files) or '（无）'}（{push_handoff(Path(hd), files)}）；"
                   f"发给项目的消息只带 {hd} 下的路径")
         except Exception as e:  # noqa: BLE001 —— 写清单失败不拦收单
@@ -1157,7 +1208,9 @@ def cmd_collect(a) -> int:
             res[b] = {**res[b], **nv}              # 保留 rev 等：票账、交项目确认清单要靠 rev 找各册的账
     _save_run(run_log, res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
+    unc = sweep_unconsumed(ws, a)
     print_ledger(ws, res, run_log)
+    print_needs_review(ws, res, unc)
     bad = {b: v for b, v in res.items() if v["status"] not in ("done", "synced", "dry-run")}
     if bad:
         print(f"\n没收完 {len(bad)} 册（原命令再跑，做过的步跳过）：")
