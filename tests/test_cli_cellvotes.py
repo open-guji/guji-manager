@@ -204,3 +204,18 @@ def test_split_old_sheet_lands_unchanged_items_blocks_changed():
     assert [(o[0], o[5]) for o in old] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
                                           ("1:1:1", "条目找不到")]
 
+
+
+def test_yield_to_newer_human_drops_older_votes():
+    """用户 11-23「按新的判定结果走」：票早于现行人裁就让位，晚于才照常走。"""
+    import types
+    from guji_manager import cli_cellvotes as CVT
+    ev = lambda i, ts: types.SimpleNamespace(id=i, ts=ts)  # noqa: E731
+    human = {"vol06:1:1:1": ev("e1", "2026-11-20T00:00:00Z"), "vol06:1:1:2": ev("e2", "2026-11-20T00:00:00Z")}
+    t_old, t_new = 1795000000000, 1795500000000      # 2026-11-18 / 2026-11-24（毫秒）
+    votes = [{"a": "1:1:1", "choice": "char", "char": "甲", "ts": t_old},
+             {"a": "1:1:2", "choice": "char", "char": "乙", "ts": t_new},
+             {"a": "1:1:3", "choice": "char", "char": "丙", "ts": t_old}]
+    keep, stale = CVT._yield_to_newer_human("vol06", votes, human)
+    assert [v["a"] for v in keep] == ["1:1:2", "1:1:3"]
+    assert [(s[0], s[1], s[3]) for s in stale] == [("1:1:1", "char=甲", "e1")]

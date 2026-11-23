@@ -20,7 +20,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-from .scope import BLOB_TABLES, GS, sha256
+from .scope import BLOB_TABLES, GS, TABLES, sha256
 
 WHOLE_TABLES = ("workspaces", "books", "files")
 LINE_COLS = ("src_path", "src_line", "raw")
@@ -229,7 +229,9 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
             continue
         fetched += len(need)
         want = set(need)
-        cols = WHOLE_COLS if tbl in WHOLE_TABLES else LINE_COLS
+        spec = TABLES.get(tbl)
+        kcols = spec.key if spec is not None and spec.key_ordered else ()
+        cols = WHOLE_COLS if tbl in WHOLE_TABLES else LINE_COLS + tuple(c for c in kcols if c not in LINE_COLS)
         if tbl in WHOLE_TABLES:
             rows = _whole_rows(src, tbl, ws, cols, need, files)
         else:
@@ -241,13 +243,23 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
                     texts[r["src_path"]] = r["raw"].encode("utf-8")
             continue
         lines: dict[str, dict[int, str]] = defaultdict(dict)
+        by_key: dict[str, list[tuple[tuple, str]]] = defaultdict(list)
         for r in rows:
             if r["src_path"] in want:
                 lines[r["src_path"]][int(r["src_line"])] = r["raw"]
+                if kcols:
+                    by_key[r["src_path"]].append((tuple(str(r[c]) for c in kcols), r["raw"]))
         for p in need:
             f = files[p]
             have = lines.get(p, {})
             n = int(f["n_lines"])
+            if kcols:
+                # 按主键排的文件：导入不推「只是行号变了」，库里行号可能过时，先按主键排回，sha 对上就用
+                keyed = [raw for _, raw in sorted(by_key.get(p, []))]
+                b = ("\n".join(keyed) + ("\n" if f["final_newline"] and keyed else "")).encode("utf-8")
+                if len(b) == int(f["bytes"]) and sha256(b) == f["sha256"]:
+                    texts[p] = b
+                    continue
             extra = [i for i in have if i >= n]
             if extra:
                 raise MaterializeError(f"{p}: 库里有超出 n_lines 的行 {sorted(extra)[:5]}")

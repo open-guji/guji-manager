@@ -803,7 +803,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
 # ───────────────────────── 对账表（票 → 事件 → book-text） ─────────────────────────
 
 LEDGER_COLS = (("votes", "收件箱票"), ("valid", "有效票"), ("old_landed", "旧单并入"), ("old_blocked", "旧单挡下"),
-               ("waiting", "等多人"), ("ready", "写人裁"), ("held", "挂起"), ("skipped", "跳过"),
+               ("stale_votes", "票早于人裁"), ("waiting", "等多人"), ("ready", "写人裁"), ("held", "挂起"), ("skipped", "跳过"),
                ("apply", "写book-text"), ("already", "已一致"), ("layout", "等重放"), ("fig", "以图代字"), ("missing", "无此格"))
 
 
@@ -813,7 +813,7 @@ def ledger_of(book: str, rev: str, meta: dict, plan: dict | None = None, want: i
     sk = meta.get("skipped")
     return {"book": book, "rev": rev, "votes": meta.get("n_raw", 0), "valid": meta.get("n_votes", 0),
             "old_landed": meta.get("old_landed", 0), "old_blocked": meta.get("old_sheet", 0),
-            "waiting": meta.get("waiting", 0), "ready": meta.get("ready", 0), "held": meta.get("held", 0),
+            "waiting": meta.get("waiting", 0), "stale_votes": meta.get("stale_votes", 0), "ready": meta.get("ready", 0), "held": meta.get("held", 0),
             "skipped": len(sk) if isinstance(sk, list) else (sk or 0), "policy": meta.get("policy", "auto"),
             **({"want": want, "ai": n_ai, **{k: (plan or {}).get(k, 0) for k in ("apply", "already", "layout", "fig", "missing")}}
                if plan is not None else {})}
