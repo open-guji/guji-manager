@@ -275,3 +275,22 @@ def test_needs_review_of_collects_three_sources(tmp_path):
     (d / "draft" / "stale_votes.tsv").write_text("格位\t票\n1:1:1\tchar=甲\n", encoding="utf-8")
     got = C.needs_review_of(tmp_path, {"vol21": {"rev": "021-r12"}, "vol22": {"rev": "022-r1"}})
     assert list(got) == ["vol21"] and len(got["vol21"]) == 2
+
+
+def test_collect_book_allow_lost_human_only_for_listed_books(monkeypatch):
+    import os
+    from pathlib import Path
+    from guji_manager import collect
+    seen = {}
+
+    def fake(a, ws, book):
+        seen[book] = os.environ.get("GUJI_ALLOW_LOST_HUMAN")
+        return {"status": "done"}
+
+    monkeypatch.setattr(collect, "_collect_book", fake)
+    monkeypatch.delenv("GUJI_ALLOW_LOST_HUMAN", raising=False)
+    monkeypatch.setenv("GUJI_ALLOW_LOST_HUMAN_BOOKS", "vol01, vol20")
+    for b in ("vol01", "vol13", "vol20"):
+        collect.collect_book(type("A", (), {})(), Path("."), b)
+    assert seen == {"vol01": "1", "vol13": None, "vol20": "1"}
+    assert "GUJI_ALLOW_LOST_HUMAN" not in os.environ
