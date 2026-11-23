@@ -1,7 +1,7 @@
 # guji-manager Wiki
 
-> **本 Wiki 对应 guji-manager v0.5**（2026-11-21 按 0.5.0 重改：网站票改读中心库收件箱、新增「数据库表一览」）。
-> 版本号差了一个 MINOR（比如代码到了 0.5.x），说明这里可能过时，以仓里 [doc/](https://github.com/open-guji/guji-manager/blob/dev/doc/README.md) 为准，并按[维护规矩](版本与Wiki维护)重改。
+> **本 Wiki 对应 guji-manager v0.6**（2026-11-22 按 0.6.0 重改：按五步重整，命令加步骤前缀 `guji <步> <命令>`，新增第五步排版输出）。
+> 版本号差了一个 MINOR（比如代码到了 0.7.x），说明这里可能过时，以仓里 [doc/](https://github.com/open-guji/guji-manager/blob/dev/doc/README.md) 为准，并按[维护规矩](版本与Wiki维护)重改。
 
 **guji-manager** 是开源古籍整理流水线的「管家」：新建工作区、登记和取原图、跑批派单、推拉中心库、出线上待审单、收读者投票、冻结发布——一切和外界打交道的事。
 识别算法本身（切分、识别、定字）在 [open-guji-cv](https://github.com/open-guji/open-guji-cv)。
