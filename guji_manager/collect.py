@@ -876,6 +876,9 @@ def auto_books(ws: Path, text_id: str) -> list[str]:
         st = P.ItemStore.open(data, text_id, ch)
         return {r["id"] for r in st.by_state("open", "withdrawn")}
     books = books_with_votes(votes, open_of)
+    # 册 id 以工作区实有的 books/<册>.yaml 为准（史记叫 01 不叫 vol01；殿本叫 vol01）：不改名会白跑一趟 draft 报「没有 books/vol01.yaml」
+    have = {q.stem for q in (data / "books").glob("*.yaml")}
+    books = [b if b in have else (b[3:] if b.startswith("vol") and b[3:] in have else b) for b in books]
     print(f"网站条目票 {len(votes)} 条；有票落在开着的条目上的册：{'、'.join(books) or '没有'}")
     return books
 
