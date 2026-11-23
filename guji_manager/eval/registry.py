@@ -243,6 +243,12 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                note="emb 检索 unicode-cjk-ab 全表；分 unseen／oov 两层报；--no-flagged 手跑可剔体检标过的")
       for k, sh, t in (("siku_v2", "004-siku-v2-human", "殿本"), ("shiji", "005-shiji-human", "史記"),
                        ("qtw", "006-qtw-human", "全唐文"))],
+    # 3b 子基准 B2 首次字头格（A23，2026-11-23）：全唐文 016–045 库例 0–2 的格，Sheldon 按刻形逐格选字（81 格）。
+    EvalSpec(id="rare_qtw_firstseen", script="eval_oov.py", shard="char-clustering/samples/007-qtw-firstseen",
+             arg_kind="none", out_flag="--json", pythonpath=True,
+             extra=("--bench", "../open-guji-dataset/char-clustering/samples/007-qtw-firstseen", "--items", "rare.jsonl"),
+             title="5b 候选·全唐文首次字头格", needs=("heavy",),
+             note="头条 emb top1／top10；分 firstseen／oov／extB+ 报；81 格约 60 字，按字去重另看"),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),

@@ -66,3 +66,11 @@ def test_match_pool_headline():
     ms, _ = extract("match_pool", data)
     d = _names(ms)
     assert d["误放"] == 9 and d["残笔 首位"] == 69.9 and d["全部 放行"] == 19.9
+
+
+def test_rare_extra_strata():
+    data = {"n": 81, "result": {"emb": {"top1": 56.8, "top10": 90.1}, "emb_oov": {"n": 57, "top10": 87.7},
+                                "emb_firstseen": {"n": 81, "top1": 56.8, "top10": 90.1}}}
+    ms, err = extract("rare_qtw_firstseen", data)
+    d = _names(ms)
+    assert not err and d["firstseen top10"] == 90.1 and "unseen top10" not in d

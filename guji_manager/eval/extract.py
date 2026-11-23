@@ -88,6 +88,12 @@ def _rare(data: dict) -> tuple[list[Metric], str]:
         _m("oov top1", oov.get("top1"), "%", den=oov.get("n")),
         _m("oov top10", oov.get("top10"), "%", den=oov.get("n")),
     ]
+    # 其他分层（如首次字头格的 firstseen／extB+）照报
+    for k, v in sorted(r.items()):
+        if k.startswith("emb_") and k not in ("emb_unseen", "emb_oov") and isinstance(v, dict):
+            out += [_m(f"{k[4:]} top1", v.get("top1"), "%", den=v.get("n")),
+                    _m(f"{k[4:]} top10", v.get("top10"), "%", den=v.get("n"))]
+    out = [m for m in out if m.value is not None]
     err = ""
     if n and not emb.get("top10"):
         err = ("emb top10 为 0：多半没有向量包（静默假数，判失败）。先跑 "
