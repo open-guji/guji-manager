@@ -1,7 +1,7 @@
-"""把本机跑批耗时记录（`core/perf.py` 写的 `perf/<册>/<run_id>.jsonl`）推到美国机任务库。
+"""把本机跑批耗时记录（`core/perf.py` 写的 `perf/<册>/<run_id>.jsonl`）推到任务库。
 
-**只推美国机**（`jobsdb.enabled()`，设了 JOBSDB_TOKEN）：没设就什么也不做，绝不往 Neon 写——
-Neon 存储和出流量都按量计费（Sheldon 11-03 定）。每次运行只推 run 一行＋每步一行（含最慢 20 页），
+只推任务库（美国机 Postgres 或 D1 guji-jobs，看 databases.toml ``[jobs]``；`store.enabled()`）：连不上就什么也不做，
+不往中心库写（Sheldon 11-03 定）。每次运行只推 run 一行＋每步一行（含最慢 20 页），
 约 15 KB；每页明细留在本机文件里。
 
 表 `jobs.perf_run`／`jobs.perf_step`（与任务库同库同 schema，`jobs_rw` 是属主，`CREATE … IF NOT EXISTS` 幂等）。
@@ -58,8 +58,8 @@ _ready = False
 
 
 def enabled() -> bool:
-    from .._cv import jobs_jobsdb as jobsdb
-    return jobsdb.enabled()
+    from .._cv import jobs_store as S
+    return S.enabled()
 
 
 def _ts(x):
@@ -104,8 +104,7 @@ def rows(path: Path) -> tuple[dict, list[dict]]:
 
 
 def push_file(path: Path, conn=None) -> bool:
-    """推一份；没开美国机任务库回 False。推完在旁边写 .pushed。"""
-    global _ready
+    """推一份；连不上任务库回 False。推完在旁边写 .pushed。"""
     if not enabled():
         return False
     path = Path(path)
@@ -115,26 +114,49 @@ def push_file(path: Path, conn=None) -> bool:
         from .._cv import jobs_store_connect as connect
         conn = connect()
     try:
-        with conn.transaction():
-            if not _ready:
-                conn.execute(DDL)
-                _ready = True
-            cols = list(head)
-            conn.execute(
-                f"INSERT INTO jobs.perf_run ({', '.join(cols)}) VALUES ({', '.join('%(' + c + ')s' for c in cols)}) "
-                "ON CONFLICT (run_id) DO UPDATE SET finished_at = EXCLUDED.finished_at, wall_s = EXCLUDED.wall_s, "
-                "stopped = EXCLUDED.stopped, pushed_at = now()", head)
-            for s in steps:
-                cols = list(s)
-                upd = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("run_id", "step"))
-                conn.execute(
-                    f"INSERT INTO jobs.perf_step ({', '.join(cols)}) VALUES ({', '.join('%(' + c + ')s' for c in cols)}) "
-                    f"ON CONFLICT (run_id, step) DO UPDATE SET {upd}", s)
+        if getattr(conn, "is_d1", False):
+            _push_d1(conn, head, steps)
+        else:
+            _push_pg(conn, head, steps)
     finally:
         if own:
             conn.close()
     path.with_suffix(".pushed").write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
     return True
+
+
+def _push_d1(conn, head: dict, steps: list[dict]) -> None:
+    """D1：表在 schema_d1.sql 里建好，一批原子写。"""
+    from .d1 import NOW
+    cols = list(head)
+    stmts = [(f"INSERT INTO perf_run ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
+              " ON CONFLICT (run_id) DO UPDATE SET finished_at = excluded.finished_at, wall_s = excluded.wall_s,"
+              f" stopped = excluded.stopped, pushed_at = {NOW}", [head[c] for c in cols])]
+    for st in steps:
+        cols = list(st)
+        upd = ", ".join(f"{c} = excluded.{c}" for c in cols if c not in ("run_id", "step"))
+        stmts.append((f"INSERT INTO perf_step ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
+                      f" ON CONFLICT (run_id, step) DO UPDATE SET {upd}", [st[c] for c in cols]))
+    conn.batch(stmts)
+
+
+def _push_pg(conn, head: dict, steps: list[dict]) -> None:
+    global _ready
+    with conn.transaction():
+        if not _ready:
+            conn.execute(DDL)
+            _ready = True
+        cols = list(head)
+        conn.execute(
+            f"INSERT INTO jobs.perf_run ({', '.join(cols)}) VALUES ({', '.join('%(' + c + ')s' for c in cols)}) "
+            "ON CONFLICT (run_id) DO UPDATE SET finished_at = EXCLUDED.finished_at, wall_s = EXCLUDED.wall_s, "
+            "stopped = EXCLUDED.stopped, pushed_at = now()", head)
+        for s in steps:
+            cols = list(s)
+            upd = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("run_id", "step"))
+            conn.execute(
+                f"INSERT INTO jobs.perf_step ({', '.join(cols)}) VALUES ({', '.join('%(' + c + ')s' for c in cols)}) "
+                f"ON CONFLICT (run_id, step) DO UPDATE SET {upd}", s)
 
 
 def sink(path: Path) -> None:
@@ -152,7 +174,7 @@ def pending(root: Path, book: str | None = None) -> list[Path]:
 def push_pending(root: Path, book: str | None = None) -> tuple[int, int]:
     """补推；返回 (推了几份, 失败几份)。一条连接推完。"""
     if not enabled():
-        raise SystemExit("没设 JOBSDB_TOKEN（美国机任务库）：耗时记录只推美国机，不推 Neon")
+        raise SystemExit("连不上任务库（没有令牌，见 databases.toml [jobs]）：耗时记录只推任务库")
     from .._cv import jobs_store_connect as connect
     files = pending(root, book)
     if not files:
@@ -190,6 +212,20 @@ def remote_top(days: float = 7, book: str | None = None, by: str | None = None) 
        WHERE r.started_at >= now() - make_interval(secs => %(secs)s) {where}
        GROUP BY s.step{extra_grp} ORDER BY sum(s.wall_s) DESC NULLS LAST"""
     c = connect()
+    if getattr(c, "is_d1", False):
+        try:
+            return c.q(f"""
+              SELECT s.step{extra_sel}, count(*) AS runs,
+                     sum(coalesce(s.ok, 0) + coalesce(s.failed, 0)) AS pages_run, sum(coalesce(s.skipped, 0)) AS skipped,
+                     round(sum(s.wall_s), 1) AS wall_s, round(sum(s.compute_s), 1) AS compute_s,
+                     round(sum(s.p50_s * s.ok) / nullif(sum(s.ok), 0), 3) AS p50_s, round(max(s.max_s), 2) AS max_s
+                FROM perf_step s JOIN perf_run r USING (run_id)
+               WHERE r.started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || ? || ' seconds')
+                 {"AND r.book = ?" if book else ""}
+               GROUP BY s.step{extra_grp} ORDER BY sum(s.wall_s) IS NULL, sum(s.wall_s) DESC""",
+                       [int(days * 86400)] + ([book] if book else []))
+        finally:
+            c.close()
     try:
         cur = c.execute(sql, {"secs": days * 86400, "book": book})
         names = [d.name for d in cur.description]

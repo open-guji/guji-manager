@@ -7,7 +7,7 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 |---|---|---|---|---|---|---|
 | `central` 中心库 | 册配置、人裁事件、字形库账、整文件、进度看板 | Cloudflare D1 `guji-data-main`（11-18 从 Neon 迁来） | guji-data Worker `data.open-guji.com/v1/sql` | 各线程、执行机（`guji db push/sync`）；控制台写看板 | 所有人（`guji db pull`）；cv 跑批经数据目录读 | [中心库.md](中心库.md) |
 | `webinbox` 网站收件箱 | 读者的票、改字意见、讨论、线上待审单、网站键值 | 与中心库同一个 D1 库，表 `web_inbox` | Worker `/v1/web/inbox` | 网站边缘函数（webinbox 令牌）；`guji feedback pending` 放待审单 | `guji feedback cellvotes`、`opinions ingest`；网站 | [网站收件箱.md](网站收件箱.md) |
-| `jobs` 任务库 | 重跑／评测单、领单记录、进展、结果、执行方、耗时统计 | 美国机 170.106.66.156 Postgres 库 `jobs`（11-03 从 Neon 搬来）；**计划搬 D1 `guji-jobs`** | wss 桥 `relay.open-guji.com/jobsdb` | `guji pipeline job submit`、执行方 | `guji pipeline job ls/show`、`guji pipeline perf`、控制台 | [任务库.md](任务库.md) |
+| `jobs` 任务库 | 重跑／评测单、领单记录、进展、结果、执行方、耗时统计 | 美国机 170.106.66.156 Postgres 库 `jobs`（11-03 从 Neon 搬来）；**正在搬 D1 `guji-jobs`**（代码两边都支持，见任务库.md「搬家」） | wss 桥 `relay.open-guji.com/jobsdb` | `guji pipeline job submit`、执行方 | `guji pipeline job ls/show`、`guji pipeline perf`、控制台 | [任务库.md](任务库.md) |
 | `catalog` 目录库 | 书目、实体、book-text 元数据（只读） | 美国机 Postgres `catalog_latest`／`catalog_rN` | 直连（只在美国机上） | A11 的 book-index 同步任务（每 15 分钟） | 网站搜索、专名识别；manager 现不连 | [目录库.md](目录库.md) |
 
 不算数据库、但常一起提到的：R2（大文件、产物包、原图、模型、语料，按 sha 寻址）、本机数据目录 `~/.guji-data/<分支>/<工作区>/` 和 `glyph.db`（中心库的本地副本，可重建）。
@@ -39,8 +39,8 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 [jobs]
 driver = "d1-worker"
 url = "https://data.open-guji.com"
-db = "jobs"
 token = ["JOBSDB_TOKEN"]
+env_url = "GUJI_JOBS_URL"     # 同一节的键是逐项合并的：不改这项，执行机上的 JOBSDB_URL（wss 桥）会盖掉 url
 ```
 
 `guji db where` 打印每个库最后解析出的连法、来源文件、哪些令牌变量已设（不打印令牌值）。

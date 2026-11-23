@@ -136,9 +136,9 @@ class Job:
             try:
                 # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
                 # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
-                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress)
+                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress,
+                         seen={"name": S.who(), "state": "busy", "job_id": self.id})   # 续租＋报到（D1 上一次请求）
                 if why != "lost":
-                    db(S.worker_seen, S.who(), state="busy", job_id=self.id)
                     BOARD.publish(db)
                 if REAP_EVERY > 0 and n % REAP_EVERY == 0 and why != "lost":
                     try:
@@ -698,12 +698,15 @@ def _runner_commit() -> str | None:
         return None
 
 
-def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 0, poll_s: int = 30,
+def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 0, poll_s: int | None = None,
          only: int | None = None, kinds: list[str] | None = None, dry: bool = False, say=print) -> int:
     """领单跑单。缺省跑到队列空就退出；`idle_minutes` 给了就空闲这么久才退（常驻执行方用，见 doc 第「执行方」节）。
 
     每个执行方一个名字（GUJI_JOBS_WHO），在 jobs.worker 登记：空闲时每次轮询报到一次，领到单记 busy 和单号，
     退出记 stopped。同一台机只许一个执行方（本机锁），多开执行方就多开会话。
+
+    空闲轮询：缺省每 `poll_s` 秒（Postgres 30、D1 60）一次领单请求，报到并在同一次里（`claim(seen=…)`）；
+    D1 上收回过期领单与通知提交人每 `IDLE_EVERY` 轮才做一次（D1 按请求计费，40 个执行方空闲时每天约 6 万次）。
     """
     HOME.mkdir(parents=True, exist_ok=True)
     lock = (HOME / "worker.lock").open("w")
@@ -716,6 +719,10 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     worker = S.who()
     session = os.environ.get("CLAUDE_CODE_SESSION_ID")
     db = S.DB()
+    d1 = S.backend() == "d1"
+    if poll_s is None:
+        poll_s = 60 if d1 else 30
+    loops = 0
     done = 0
     idle_since = time.time()
     rc = _runner_commit()
@@ -727,8 +734,11 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     try:
         while True:
             try:
-                for jid, st in db(S.reap):
-                    say(f"收回 #{jid} → {st}")
+                loops += 1
+                slow_tick = not d1 or loops % IDLE_EVERY == 1     # D1：收回、通知每几轮一次
+                if not d1:
+                    for jid, st in db(S.reap):
+                        say(f"收回 #{jid} → {st}")
                 if not (once or only or dry) and _runner_outdated():
                     # 走到这里手上没单（上一张单已收尾，这一张还没领）：可以换代码了。
                     # 拉新代码后用原命令行自己 exec 一次，不退出等人重起；拉不动才照旧退出。
@@ -754,19 +764,19 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                     say("自检通过，开始领单")
                     warned = None
                     db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
-                got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only)
+                got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only,
+                         seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
                     # 空闲时不碰 Neon（看板写在中心库，40 个执行方每 5 分钟写一次会让 Neon 永远不休眠，11-05 用户定）；
                     # 看板在领单、收尾、心跳与交单时更新
-                    notify_submitters(db, say)      # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发
+                    if slow_tick:
+                        notify_submitters(db, say)  # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发
                     if (until_empty and not idle_minutes) or time.time() - idle_since > idle_minutes * 60:
                         say(f"没有可跑的单，退出（本轮跑了 {done} 条）")
                         return done
-                    db(S.worker_seen, worker, state="idle", session=session, done=done)
                     time.sleep(poll_s)
                     continue
-                job, att = got
-                db(S.worker_seen, worker, state="busy", session=session, job_id=job["id"], done=done)
+                job, att = got                  # 领单那次已报到 busy＋单号
                 say(f"领到 #{job['id']} {job['kind']} {job['book'] or ''}：{SP.summary(job['spec'])}")
                 BOARD.publish(db, force=True)
                 jobrun = Job(job, att, db, dry=dry)
@@ -812,6 +822,8 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
 
 
 ENV_STREAK_PAUSE = 3
+#: D1 上空闲时每几轮领单才顺手收回过期领单、通知提交人
+IDLE_EVERY = int(os.environ.get("GUJI_JOBS_IDLE_EVERY", "5"))
 #: 连库全断时，执行方整体重试前等这么久（秒）
 CONN_RETRY_S = int(os.environ.get("GUJI_JOBS_CONN_RETRY_S") or 60)
 ENV_PAUSE_MIN = 30
