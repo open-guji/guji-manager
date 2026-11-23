@@ -4,7 +4,7 @@
 
 ## [未发版]
 
-## [0.6.2] - 测试中
+## [0.6.2] - 2026-11-23
 
 - **PATCH**（11-23，QTW 报：v0.6.1 标 main 必挂）：#818 用 ruff 删「未用 import」时误删 `ops/pack_purity.py` 末尾的再导出 `describe`，`guji products pack promote`（标 main）与存包打印纯净性时 `ImportError`／`AttributeError`。补回（标 `noqa: F401`）。新测试 `tests/test_import_names.py`：静态列出本包全部相对导入（含函数里的），逐条核对目标模块真有这个名字；另把 `_warn_impure`、`_purity` 两条路径真跑一遍。#818 其余删掉的 import 逐个查过，没有别的被外部引用。L0。
 - **PATCH**（11-23，CV2 修格确认页）：`col_check` 1.0.3——item 带 `focus: true` 的列加橙色粗描边、标「请确认」，同页其余列照常显示作对照（修完错格后出确认页用：整页看、刚修的列突出）。L0。
