@@ -12,3 +12,7 @@
 | `to_punct.py` | A 路 text → punct.json／entity.json 草稿（`pre_char`、实体 text 取现行文本字，不取所判字；专名全 new_candidate） |
 
 已知：模型会无声归一写法（絕/絶、茲/兹）、偶尔多/少一字，所以必须过 `check_out.py` 与 `repair.py`；段首接上一页句中时须带上下文，否则会凭空添字。
+
+## 待收（ZM 11-23 建议，GM3 评估通过）
+- 异体闸：variants 表（`config/variants/variants.json`＋`dicts/variants.tsv` 建对称表）＋「AI 字须等于机器首选或参校字」两道硬闸，规则见 wiki「文意判字标点专名合并判定」8.2 第 3a 条；脚本请 ZM 入库（`variant_gate.py`）。
+- 写裁定脚本（`write_go.py`／`write_ctx_ruling_by_cell.py`）：RulingLog 须传 feedback 根（不是 feedback/rulings）；`key_windows` 第一个参数是含各册目录的产物根。
