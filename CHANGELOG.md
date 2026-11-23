@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，CV3，Sheldon 定护栏按书按集、放 dataset）：新增 `guji eval guard`，读 open-guji-dataset `guards/*.yaml`（每条＝评测器＋指标＋max/min＋放宽后的门，要库的写 `lib: <书id>`、用 `--lib 书id=glyph.db` 给），逐条比、出总表，越线或未验证以 1 退出；`guji eval run` 跑到有护栏的评测器也自动比，越线记 regressed。`doc/版本号规矩.md` rc 步骤加「护栏必须全过」。新增 `eval/guards.py`、测试 `test_eval_guards.py`。
 - **PATCH**（11-23，SJ／CV0 问）：COMPAT.md 写明 manager 0.6 只硬核契约 v1，cv 0.7.x／0.8.x 也能用，只是 `pipeline` 步骤前缀要 cv ≥ 0.9.0（旧 cv 写 `guji job …` 等老写法）；`swap doctor` 的 cv 版本提示改成同一口径。L0。
 - **MINOR**（11-23，CV2 cut-bench L2）：新页型 `cut_check`（逐格切线审查）1.0.0——一屏原书一列，一格一张小图（上下各带半个邻格）画上、下切线，点图上半／下半标那条切线不准；列首尾与边框之间不画不审。结果 `guji review-pages cutcheck-apply`。L0。
 - **PATCH**（11-23，GM4／A32，GM2 转全唐文 006–008 实测；L0）：①`guji collect` 多册串行时某册 `SystemExit`／异常不再把后面几册一起带走：记成该册 blocked 并继续，开头打印「本趟收 N 册：…」，结尾照旧列没收完的册（`--books 006,007,008`、`007-008` 本就能展开，`parse_books` 已有测试）。②`swap doctor` 加版本检查：manager < 0.5.0、cv < 0.9.0 只提示不挡；`CELLREVIEW_TOKEN` 由必需改为可选（0.5.0 起缺省读收件箱，用 `GUJI_DATA_TOKEN_READ`）。未动落票口径。
