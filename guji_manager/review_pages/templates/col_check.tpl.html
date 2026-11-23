@@ -77,7 +77,7 @@ function render(){
   $("pg").textContent=`第 ${st.page+1} / ${NP()} 页（册 ${f.vol} 第 ${f.page} 页）`;
   $("sub").textContent=`${D.book} · ${D.items.length} 列 · 模板 ${D.tpl_version}`;
   $("hint").innerHTML="";const h=document.createElement("span");
-  h.textContent=D.hint||"一屏是一页书，各列从右到左。看每列的格框切得对不对：把两个字并进一格、把一个字劈开、框明显歪了，就点那一格标红（再点取消）。看不清的列点「看不出」。这一轮只看字与字之间的切点：格框左右按整列宽、带上框线是正常的，不算错。整列都对不用点，点「本页没问题，下一页」时没点的列记作全对。每点一下就存后台。";
+  h.textContent=D.hint||"一屏是一页书，各列从右到左。看每列的格框切得对不对：把两个字并进一格、把一个字劈开、框明显歪了，就点那一格标红（再点取消）。看不清的列点「看不出」。这一轮只确认格数对、大致切分对：字与字连在一起处切点准不准、格框带不带框线，都不用细看，不算错。整列都对不用点，点「本页没问题，下一页」时没点的列记作全对。每点一下就存后台。";
   const lg=document.createElement("div");lg.className="legend";lg.innerHTML="<b class=b>蓝框</b>正文格　<b class=j>橙框</b>夹注格　<b class=r>红</b>＝你标的错格";
   $("hint").append(h,lg);
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
