@@ -102,6 +102,7 @@ def test_every_template_builds(t, tmp_path):
                                                                    dict(key="on", sha="bb", img=str(img))])],
         "col_check": [dict(id="053:76:3", vol="053", page=76, col=3, img=str(img),
                            cells=[dict(key="053:76:3:1", kind="char", box=[0, 0, 1, 1])])],
+        "cut_check": [dict(id="053:76:3:2", vol="053", page=76, col=3, img=str(img), top=0.2, bottom=0.8)],
         "seg_cut": [dict(id="06:26:2:-1", column_image=str(img), expect_chars=["東", "雍"],
                          grids={"main": [dict(id="06:26:2:-1", slot=-1, sub=None, bbox_col=[0, 0, 1, 1], bbox_page=[10, 20, 11, 21])]})],
     }[t]
@@ -723,3 +724,20 @@ def test_col_check_screens_and_labels(tmp_path):
             dict(page_type="col_check", cell="c", label="x", how="click", t=1)]
     out = cc.label_rows(cc.labels_from_docs(docs))
     assert [(r["id"], r["label"], r["bad"]) for r in out] == [("a", "ok", []), ("b", "bad", ["b:3"])]
+
+
+def test_cut_check_screens_and_labels(tmp_path):
+    from guji_manager.review_pages import cut_check as ct
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    rows = ct.normalize([dict(id="v:3:1:1", vol="v", page=3, col=1, img=str(img), top=None, bottom=0.5),
+                         dict(id="v:3:1:2", vol="v", page=3, col=1, img=str(img), top=0.2, bottom=None),
+                         dict(id="v:3:2:1", vol="v", page=3, col=2, img=str(img), top=None, bottom=None),   # 单格列：无切线，跳过
+                         dict(id="v:3:3:1", vol="v", page=3, col=3, img=str(img), top=None, bottom=0.4)])
+    assert [(r["id"], r["screen"], r["top"], r["bottom"]) for r in rows] == [
+        ("v:3:1:1", 0, None, 0.5), ("v:3:1:2", 0, 0.2, None), ("v:3:3:1", 1, None, 0.4)]
+    docs = [dict(page_type="cut_check", cell="a", label="bad", bad=["top"], how="click", t=1),
+            dict(page_type="cut_check", cell="a", label="ok", how="page_ok", t=2),
+            dict(page_type="cut_check", cell="b", label="bad", bad=["bottom", "top"], how="click", t=1),
+            dict(page_type="col_check", cell="c", label="ok", how="click", t=1)]
+    out = ct.label_rows(ct.labels_from_docs(docs))
+    assert [(r["id"], r["label"], r["bad"]) for r in out] == [("a", "ok", []), ("b", "bad", ["bottom", "top"])]

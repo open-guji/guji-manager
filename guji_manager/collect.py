@@ -915,8 +915,80 @@ def needs_review_of(ws: Path, res: dict) -> dict[str, list[str]]:
     return out
 
 
+HANDOFF_HEAD = ["类别", "格号", "票", "读者当时看到的字", "book-text 现字", "票时间", "说明"]
+
+
+def handoff_rows(ws: Path, book: str, rev: str) -> list[list[str]]:
+    """一册的「交项目确认」清单转成 tsv 行（列见 ``HANDOFF_HEAD``），项目拿到就能按格看图，不用去执行机找文件。"""
+    import re
+    d = ws / "reports" / book / "_collect" / rev
+    rows: list[list[str]] = []
+
+    def lines(fn):
+        p = d / fn
+        return [ln.split("\t") for ln in p.read_text(encoding="utf-8").splitlines()[1:] if ln.strip()] if p.exists() else []
+    for c in lines("needs_review.tsv"):
+        rows.append(["落字≠人裁／手改", c[0], "", "", "", "", " | ".join(c[1:])])
+    for c in lines("draft/old_sheet.tsv"):          # 现格 投票时格 投票时单 票 当年人裁 挡下原因
+        c += [""] * (6 - len(c))
+        m = re.search(r"页面显示字「(.*?)」.*?现格字「(.*?)」", c[5])
+        day = re.search(r"(\d{4}-\d\d-\d\d)", c[4])
+        rows.append(["旧单票挡下", c[0], c[3], m.group(1) if m else "", m.group(2) if m else "", day.group(1) if day else "",
+                     f"{c[5]}（投票时格 {c[1]}，单 {c[2]}，批次事件 {c[4]}）"])
+    for c in lines("draft/stale_votes.tsv"):        # 格位 票 票时间(ms) 现行人裁 人裁时间
+        c += [""] * (5 - len(c))
+        try:
+            ts = dt.datetime.fromtimestamp(int(c[2]) / 1000, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            ts = c[2]
+        rows.append(["票早于人裁，让位", c[0], c[1], "", "", ts, f"现行人裁 {c[3]}（{c[4]}），按新的判定走，票未写"])
+    return rows
+
+
+def write_handoff(ws: Path, res: dict, outdir: Path) -> list[Path]:
+    """每册写 ``<册>-交项目确认.tsv``（覆盖更新）到 outdir；返回写了的文件。没有待确认项的册，已有的旧文件删掉。"""
+    outdir.mkdir(parents=True, exist_ok=True)
+    out = []
+    for b, v in res.items():
+        if not v.get("rev"):
+            continue
+        rows = handoff_rows(ws, b, str(v["rev"]))
+        p = outdir / f"{b}-交项目确认.tsv"
+        if not rows:
+            p.unlink(missing_ok=True)
+            continue
+        p.write_text("\n".join("\t".join(r) for r in [HANDOFF_HEAD, *rows]) + "\n", encoding="utf-8")
+        out.append(p)
+    return out
+
+
+def push_handoff(outdir: Path, files: list[Path]) -> str:
+    """outdir 在一个 git 检出（ai-team）里：提交、rebase、推 main。失败只报不拦。"""
+    def g(*args):
+        return subprocess.run(["git", "-C", str(outdir), *args], capture_output=True, text=True)
+    g("add", "-A", ".")
+    if not g("status", "--porcelain", "--", ".").stdout.strip():
+        return "无变化"
+    g("commit", "-q", "-m", "交项目确认清单更新（收单自动）：" + "、".join(p.stem.split("-")[0] for p in files))
+    for i in range(4):
+        g("pull", "-q", "--rebase", "origin", "main")
+        r = g("push", "-q", "origin", "HEAD:main")
+        if r.returncode == 0:
+            return "已推 main"
+        time.sleep(2 ** i)
+    return "推送失败：" + r.stderr.strip()[-200:]
+
+
 def print_needs_review(ws: Path, res: dict) -> None:
     nr = needs_review_of(ws, res)
+    hd = os.environ.get("GUJI_HANDOFF_DIR")
+    if hd:
+        try:
+            files = write_handoff(ws, res, Path(hd))
+            print(f"\n== 交项目确认清单已写 tsv：{'、'.join(p.name for p in files) or '（无）'}（{push_handoff(Path(hd), files)}）；"
+                  f"发给项目的消息只带 {hd} 下的路径")
+        except Exception as e:  # noqa: BLE001 —— 写清单失败不拦收单
+            print(f"⚠ 交项目确认 tsv 没写成：{type(e).__name__}: {e}")
     if not nr:
         return
     print("\n== 交项目确认（要看图或前后文；总管不逐个定，反馈给该书项目）")
@@ -960,11 +1032,17 @@ def verify_book(a, ws: Path, book: str, R: "Run", sheet_p: Path) -> dict:
 def publish_and_verify(a, ws: Path, books: list[str]) -> dict:
     """这些册一起触发一次 proofing-sync（``only=`` 多章；分开触发会互相取消），等跑完逐册核线上单。
     发布没成不算失败：单子已在中心库，每日定时发布兜底；云端 gh 没鉴权时 trigger-fail（ZM 11-19）。"""
-    from .swap import publish_batch
+    from .swap import last_publish_age_hours, publish_batch
     st = {b: _state_of(ws, a.text_id, b) for b in books}
     todo = [b for b in books if st[b] and not st[b][1].done("publish")]
     if todo:
         t = time.time()
+        minh = float(os.environ.get("GUJI_PUBLISH_MIN_HOURS", "3"))
+        age = last_publish_age_hours() if minh > 0 else None
+        if age is not None and age < minh:
+            print(f"  网站发布节流：上次 proofing-sync 在 {age:.1f} 小时前（不足 {minh:g} 小时，CDN purge 每日配额有限）；"
+                  f"本趟不发，已在中心库，下一趟有新写入时或每日定时发布会带上")
+            return {b: {"status": "synced", "publish": f"throttled({age:.1f}h)"} for b in books}
         concl = publish_batch(todo, a.text_id)
         if concl != "success":
             only = ",".join(f"{a.text_id}/{chapter_of(b)}" for b in todo)

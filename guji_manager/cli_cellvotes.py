@@ -318,6 +318,15 @@ def _confirm_empty(args, where: str) -> dict:
     return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
 
 
+HOLLOW = ("□", "〓")
+
+
+def _hollow(ch) -> bool:
+    """阙字／待定的占位（□、〓）：book-text 现格是占位、或读者当时看到的是占位时，「显示字≠现字」是正常的
+    （待定格被人裁／机器补成字，或反过来），不能据此判格号错位（用户 11-23 经总管定）。两边都是实字且不同才挡。"""
+    return ch in HOLLOW
+
+
 def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: dict | None = None, shown_now: dict | None = None) -> tuple[list[dict], list[tuple]]:
     """条目票里投在旧单上的（``vote_rev`` 不是现行单 ``rev``）拿出来，**图没变的**并回现行票，**图变了的**不写。
 
@@ -349,7 +358,8 @@ def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: d
             why = f"条目格号变过（投票时 {v.get('vote_a')}→现 {it.get('cell')}），要按对照表换号，不自动落"
         elif shown_now is None:
             why = "没给现行 book-text 的字表（--char-json），格号核不了，旧单票不自动并入"
-        elif not v.get("shown") or shown_now.get(it.get("cell")) != v["shown"]:
+        elif not _hollow(shown_now.get(it.get("cell"))) and (
+                not v.get("shown") or (shown_now.get(it.get("cell")) != v["shown"] and not _hollow(v["shown"]))):
             # 页面显示字（读者当时看到的）必须等于 book-text 现格的字：格号改过（ZM 11-23 vol01 职名页）时对不上，不落
             why = f"页面显示字「{v.get('shown') or '无'}」≠book-text 现格字「{shown_now.get(it.get('cell')) or '无'}」，格号对不上"
         if not why:
