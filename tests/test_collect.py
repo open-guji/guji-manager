@@ -341,11 +341,12 @@ def test_sweep_unconsumed_routes_only_web_batches(monkeypatch, tmp_path):
     import types
     from guji_manager import cli_db
     calls = []
-    reps = [{("H-web-vol20-r1", "gold_add"): 3, ("ZM-x", "gold_add"): 5}, {("ZM-x", "gold_add"): 5}]
+    reps = [{("H-web-vol20-r1", "gold_add"): 3, ("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2},
+            {("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2}]
     monkeypatch.setattr(cli_db, "unconsumed_report", lambda ws: reps.pop(0))
     monkeypatch.setattr(C, "_run", lambda cmd, env, tries=1: calls.append([str(c) for c in cmd]) and 0)
     a = types.SimpleNamespace(dry_run=False, no_push=False)
     out = C.sweep_unconsumed(tmp_path, a)
-    assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5}
+    assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2}
     assert any("route" in c and "H-web-vol20-r1" in c for c in calls) and any("sync" in c for c in calls)
-    assert not any("ZM-x" in c for c in calls)
+    assert not any("ZM-x" in c or "H-web-vol13-r1" in c for c in calls)
