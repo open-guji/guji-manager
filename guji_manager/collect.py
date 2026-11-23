@@ -752,6 +752,9 @@ def _collect_book(a, ws: Path, book: str) -> dict:
                 (out / "book-text-问题.txt").write_text(str(r.get("why")) + "\n" + "\n".join(r.get("problems") or []), encoding="utf-8")
                 return {"status": "book-text-" + r["status"], "why": r.get("why"), "rev": rev}
             info.update(status=r["status"], commit=r.get("commit"), pr=r.get("pr"), branch=r.get("branch"))
+            if r.get("needs_review"):
+                info["needs_review"] = r["needs_review"]
+                (out / "needs_review.tsv").write_text("说明\n" + "\n".join(r["needs_review"]) + "\n", encoding="utf-8")
             info["landed"] = {x[0]: x[2] for x in plan["apply"]}
             info["ai_landed"] = {x[0]: x[3] for x in plan["apply"] if x[3].startswith("AI")}
         landed = info["landed"]
@@ -862,6 +865,36 @@ def print_ledger(ws: Path, res: dict, run_log: Path) -> None:
         run_log.with_suffix(".ledger.tsv").write_text(txt + "\n", encoding="utf-8")
     except OSError:
         pass
+    print_needs_review(ws, res)
+
+
+def needs_review_of(ws: Path, res: dict) -> dict[str, list[str]]:
+    """各册本趟要交项目确认的格（要看图或前后文的，总管不定）：落文本时账不平的格（``needs_review.tsv``）、
+    旧单被挡的票（``old_sheet.tsv``：图变了／撤下）、被人裁让位的旧票（``stale_votes.tsv``）。"""
+    out: dict[str, list[str]] = {}
+    for b, v in res.items():
+        d = ws / "reports" / b / "_collect" / str(v.get("rev") or "")
+        if not v.get("rev"):
+            continue
+        rows: list[str] = []
+        for fn, tag in (("needs_review.tsv", "落字≠人裁／手改"), ("draft/old_sheet.tsv", "旧单票挡下"), ("draft/stale_votes.tsv", "票早于人裁，让位")):
+            p = d / fn
+            if p.exists():
+                rows += [f"{tag}：" + ln.replace("\t", " | ") for ln in p.read_text(encoding="utf-8").splitlines()[1:] if ln.strip()]
+        if rows:
+            out[b] = rows
+    return out
+
+
+def print_needs_review(ws: Path, res: dict) -> None:
+    nr = needs_review_of(ws, res)
+    if not nr:
+        return
+    print("\n== 交项目确认（要看图或前后文；总管不逐个定，反馈给该书项目）")
+    for b, rows in nr.items():
+        print(f"  {b}：{len(rows)} 项")
+        for r in rows[:30]:
+            print(f"    {r}")
 
 
 def _state_of(ws: Path, text_id: str, book: str) -> tuple[Path, "Run", Path] | None:
