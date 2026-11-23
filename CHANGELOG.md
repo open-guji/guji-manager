@@ -5,6 +5,7 @@
 ## [未发版]
 
 - **PATCH**（11-23，GM2 版本普查）：执行方上线时 worker 表的 `runner` 一栏带上本机 manager 版本（如 `36f1e242 m0.6.4`），`guji job workers` 直接看全部执行机版本，不用逐台问。L0。
+- **PATCH**（11-23，CV0 转用户数据库分工：字形库归 GM2）：`guji db push`／`sync` 核「库里已有哪些图」不再按工作区整表读 `glyph_instances.patch_sha`（殿本 18 万行，中心库读量大户）：要推的图 ≤2000 张时按 sha 问（`= ANY`），多了才整表读；锚图、整理本表同理。增量 pull 本来就按改动的实例取 patch_sha，全量 pull 要还原全部刻例图、仍整表读。L0。
 
 - **PATCH**（11-23，CV3，Sheldon 定护栏按书按集、放 dataset）：新增 `guji eval guard`，读 open-guji-dataset `guards/*.yaml`（每条＝评测器＋指标＋max/min＋放宽后的门，要库的写 `lib: <书id>`、用 `--lib 书id=glyph.db` 给），逐条比、出总表，越线或未验证以 1 退出；`guji eval run` 跑到有护栏的评测器也自动比，越线记 regressed。`doc/版本号规矩.md` rc 步骤加「护栏必须全过」。新增 `eval/guards.py`、测试 `test_eval_guards.py`。
 - **PATCH**（11-23，SJ／CV0 问）：COMPAT.md 写明 manager 0.6 只硬核契约 v1，cv 0.7.x／0.8.x 也能用，只是 `pipeline` 步骤前缀要 cv ≥ 0.9.0（旧 cv 写 `guji job …` 等老写法）；`swap doctor` 的 cv 版本提示改成同一口径。L0。

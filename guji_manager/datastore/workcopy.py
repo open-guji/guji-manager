@@ -1069,6 +1069,9 @@ def glyph_pack_blobs(ws_dir: Path, data: Path, base: dict[str, str], rows) -> di
     return out
 
 
+#: push 核「库里已有哪些图」时，要推的图不超过这么多张就按 sha 问（``= ANY``），多了才按工作区整表读
+KNOWN_BY_ID_MAX = 2000
+
 def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_delete: bool = False,
          uploader=None, glyph: GlyphHooks | None = None, shared_writer: bool = False,
          skip_prefixes: tuple[str, ...] = ()) -> dict:
@@ -1182,16 +1185,26 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     if images and uploader is not None and not dry_run:
         # 库里已有的图（导入或之前推过时已进桶）不再逐张签名核对：每次推都核两万张要十几分钟，
         # 连接闲置被断，事务一开就死（10-19 D 推 vol01 裁决两次失败）
+        # 要推的图不多（增量推通常几张到几百张）就只问这几张在不在，不再按工作区整表读 patch_sha
+        # （殿本 18 万行，中心库读量大户；GM2 11-23）；全量扫描、图多时照旧整表读一次
         known: dict[str, set[str]] = {}
         with conn.cursor() as cur:
-            cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha IS NOT NULL",
-                        (sc.ws,))
+            png = sorted(images.get("png", {}))
+            if png and len(png) <= KNOWN_BY_ID_MAX:
+                cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha = ANY(%s)", (sc.ws, png))
+            else:
+                cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha IS NOT NULL",
+                            (sc.ws,))
             known["png"] = {r[0] for r in cur.fetchall()}
             for t, ext in BLOB_TABLES.items():
                 cur.execute("SELECT to_regclass(%s)", (t,))
                 if cur.fetchone()[0] is None:          # 新表还没建（导入时 apply_schema 才建）
                     continue
-                cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s", (sc.ws,))
+                want = sorted(images.get(ext, {}))
+                if want and len(want) <= KNOWN_BY_ID_MAX:
+                    cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s AND sha256 = ANY(%s)", (sc.ws, want))
+                else:
+                    cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s", (sc.ws,))
                 known.setdefault(ext, set()).update(r[0] for r in cur.fetchall())
         conn.commit()
         images = {ext: {sha: p for sha, p in g.items() if sha not in known.get(ext, ())}
