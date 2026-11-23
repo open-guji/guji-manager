@@ -56,6 +56,7 @@ class EvalReport:
     stdout_tail: str = ""
     error: str = ""
     ts: float = field(default_factory=time.time)
+    lock: dict = field(default_factory=dict)  # 识字评测：库、代码、数据集各是哪一版（extract.bench_lock）
 
     def metric(self, name: str) -> Metric | None:
         return next((m for m in self.metrics if m.name == name), None)
