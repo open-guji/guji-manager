@@ -9,7 +9,7 @@
     guji products pack  push-index | fetch-index                           # 生僻字 embedding 索引（models/*/emb_*.npz）；push-index 另推训好的语言模型
 
 产物根就是含 `<册>/<步>/p0001.json` 的那一层（`products/`、`guji snapshot make` 出的目录、实验变体目录）。
-细则见 doc/受控重跑.md。
+细则见 cv doc/参考/受控重跑.md。
 """
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """L01 `lib_missing` 体检：一本书（或几册）★main 包里哪些格是 L01、各是什么情况、有多少能靠已有证据救。
 
-新书开工后跑一遍，得到 doc/01-粗校/待审原因/lib_missing/benchmark.md 里的指标表。只读，不写产物包、不写中心库。
+新书开工后跑一遍，得到 doc/参考/待审原因/lib_missing/benchmark.md 里的指标表。只读，不写产物包、不写中心库。
 
     python tools/l01_profile.py --ws <工作区目录> --text <中心库文本号> --out /tmp/l01 [--vols vol20,vol44] [--jobs 4]
     python tools/l01_profile.py --ws <工作区目录> --text <文本号> --out /tmp/l01 --crops   # 另裁格图并按形状分类（要原图）

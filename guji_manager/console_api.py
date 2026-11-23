@@ -190,10 +190,10 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     "reflow_page_structured": ("guji_manager.render.reading_layout", 'reflow_page_structured'),
     # report.progress
     "page_progress": ("guji_manager.report.progress", 'page_progress'),
-    # report.tiers
-    "JIAJIE_REL": ("report.tiers", 'JIAJIE_REL'),
-    "tier_of": ("report.tiers", 'tier_of'),
-    "tier_pairs": ("report.tiers", 'load_pairs'),
+    # output.tiers（cv 原 report.tiers，11-23 搬来）
+    "JIAJIE_REL": ("guji_manager.output.tiers", 'JIAJIE_REL'),
+    "tier_of": ("guji_manager.output.tiers", 'tier_of'),
+    "tier_pairs": ("guji_manager.output.tiers", 'load_pairs'),
     # review.alt_cands
     "alt_for_image": ("guji_manager.review.alt_cands", 'alt_for_image'),
     "pivots_of": ("guji_manager.review.alt_cands", 'pivots_of'),

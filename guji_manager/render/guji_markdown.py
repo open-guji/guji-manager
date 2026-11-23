@@ -5,7 +5,7 @@
 （下称"设计档"）。只做设计档 §四 定的范围：单页/多页拼出 guji-markdown 文本，
 不做整册体检表、不做与整理本比对——那是 Step9 另外两件事。
 
-命令行入口在 `scripts/render_guji_markdown.py`；控制台路由
+命令行入口在 `guji output export md`（`output/markdown.py`）；控制台路由
 （`console/routers/step9.py`）直接 import 本模块的 `render_page`。
 
 ## 字位流来自 `report/slots.py`（2026-09-13 改）

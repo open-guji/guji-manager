@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import cli_closeout, cli_code, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, round_check, ruling_hits, swap
+from . import cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
@@ -27,13 +27,13 @@ COMMANDS: dict = {
     "freeze": (_add_freeze, cmd_freeze),             # P2 第二批，原 cv cli_freeze（冻结登记）
     # P2 第三批（2026-11-04），原 cv 同名模块；一个模块几条命令共用一个 add_parser
     **cli_exp.COMMANDS,        # exp
-    **cli_ops.COMMANDS,        # snap、archive、release、deploy
-    **cli_feedback.COMMANDS,   # events、gold、batch、label-batch
-    **cli_eval.COMMANDS,       # eval、check、groups、cards、progress、collate
+    **cli_ops.COMMANDS,        # snap、archive
+    **cli_feedback.COMMANDS,   # events、gold
+    **cli_eval.COMMANDS,       # eval、check、groups、progress、collate
     # P2 第四批（2026-11-04），原 cv 同名模块
     **cli_close.COMMANDS,      # close-check、exit-check、audit、char-diff
     **cli_db.COMMANDS,         # db
-    **cli_glyph.COMMANDS,      # store、recheck、glyphlib、rekey-cells、promote、corpus
+    **cli_glyph.COMMANDS,      # recheck、glyphlib、pua-table、rekey-cells、promote、corpus
     **cli_glyph_db.COMMANDS,   # glyph-db
     **cli_model.COMMANDS,      # model、font
     **cli_code.COMMANDS,       # code（书级代码，2026-11-09，cv v0.7.0）
@@ -49,6 +49,9 @@ COMMANDS: dict = {
     **collect.COMMANDS,        # collect（收单快路：人裁直接落 book-text，不重放，A31 11-19）
     **ruling_hits.COMMANDS,    # rulings-hits（AI 文意裁定命中核对，A31 11-20）
     **round_check.COMMANDS,    # round-check（收轮检查：seg check×2→gate→premain→待审归层，A31 11-20）
+    # 按步骤分组（start／auto／text／feedback／output）与并进 guji 的模块入口（2026-11-22，见 steps.py）
+    **cli_output.COMMANDS,     # export、collation-report（第五步 排版输出，cv 原 Step9 搬来，11-23）
+    **steps.COMMANDS,
 }
 
 

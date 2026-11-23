@@ -2,6 +2,7 @@
 
 入口点 `guji.hooks` → `register(hooks)`。原先夹在 cv `cli_v2` 里的 manager 行为都在这里：
 
+- route：`guji <步> <命令> …` 去掉步骤前缀（`steps.route`，2026-11-22；cv 没有这个时点的旧版靠分组子命令兜底，`pipeline` 前缀除外）。
 - startup：注册去 R2 取派生缓存的取件器；跑批耗时推任务库；`step`／`pipeline` 装步内分段计时。
 - prepare：开跑前把册钉的字形库快照、模型、语料备好，跑 Step5-b 时预建生僻字模板索引（`ops/prep.py`）。
 - finished：整册跑完没有失败页就自动存包、放行格回库（`ops/lib_backfill.py`，书级开关）、库文一致核对（`ops/lib_text_check.py`）；提醒本机没存包的产物。
@@ -15,6 +16,9 @@ from .ops import prep
 
 
 def register(hooks) -> None:
+    from .steps import route
+    if "route" in getattr(hooks, "POINTS", ()):
+        hooks.add("route", route)
     hooks.add("startup", startup)
     hooks.add("prepare", prepare)
     hooks.add("finished", finished)
@@ -22,6 +26,9 @@ def register(hooks) -> None:
 
 
 def startup(command: str | None) -> None:
+    from .steps import STEPS
+    if command in STEPS:     # `guji <步> <命令>`：里层再进一次 guji，钩子到那时按真命令跑（免得耗时记录登记两遍）
+        return
     prep.install_derived_fetcher()
     try:                     # 跑批耗时记录写完就推美国机任务库（只在设了 JOBSDB_TOKEN 时）。见 cv doc/性能统计.md
         from .jobs import perf_push

@@ -14,7 +14,7 @@ from ._cv import ops_prep as prep
 
 
 def cmd_close_check(args) -> None:
-    """一册书交付前逐项体检（只读）。标准见 doc/runbook/整理一册书.md 第五节。"""
+    """一册书交付前逐项体检（只读）。标准见 cv doc/archive/runbook/整理一册书.md 第五节。"""
     from ._cv import workspace_root, reports_root
     from .ops import close_check as CC
     eng = cli_v2._engine(args.book, args.pipeline, quiet=True)
@@ -207,7 +207,7 @@ def add_parser(sub) -> None:
     p.add_argument("book")
     p.add_argument("--pipeline", default=cli_v2.DEFAULT_PIPELINE)
     p.add_argument("--pages", default="all")
-    p.add_argument("--export-dir", default=None, help="export_guji_format 的输出目录（查 lines.md 与 pages.json）")
+    p.add_argument("--export-dir", default=None, help="guji output export format 的输出目录（查 lines.md 与 pages.json）")
     p.add_argument("--chapter", default=None, help="章号 NNN；目录里有多章时用")
     p.add_argument("--notes", default=None, help="overview 里本册的记录目录（查避諱表、收尾记录）")
     p.add_argument("--tier", choices=["final", "rough"], default="final",

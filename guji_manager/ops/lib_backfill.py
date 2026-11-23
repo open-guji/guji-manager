@@ -35,7 +35,7 @@
   （`hooks.finished`；`GUJI_AUTO_BACKFILL=0` 临时关）。只改本机的库，随下一次 `guji db sync` 推上去。
 - 手动：`guji glyph-db backfill --books 001,002 [--apply]`（不加 `--apply` 只报告）。
 
-用法、数字与边界见 `doc/01-粗校/开书/放行格回库.md`。
+用法、数字与边界见 `wiki/自动化流程/放行格回库.md`。
 """
 from __future__ import annotations
 
