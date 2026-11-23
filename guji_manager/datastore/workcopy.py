@@ -1150,10 +1150,13 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                                  f"旧页号的裁决请用 `guji cellvotes migrate` 按格级对照表迁移后再推，"
                                  f"或从本地事件文件里删掉这几条")
         if not creating and not shared_writer:                 # 已发布的语料库、字形库版本不可改（用户 10-20；GUJI-727）
-            cur.execute("SELECT src_path, sha256 FROM files WHERE ws = %s "
-                        "AND (src_path LIKE 'config/corpus-pack/v%%/manifest.json' "
-                        "OR src_path LIKE 'config/glyph-pack/g%%/manifest.json')", (sc.ws,))
-            db_sha = dict(cur.fetchall())
+            # 区间查询走主键 (ws, src_path)；LIKE＋OR 会扫该 ws 的全部 files 行
+            db_sha = {}
+            for lo, hi, pat in (("config/corpus-pack/v", "config/corpus-pack/w", "config/corpus-pack/v%%/manifest.json"),
+                                ("config/glyph-pack/g", "config/glyph-pack/h", "config/glyph-pack/g%%/manifest.json")):
+                cur.execute("SELECT src_path, sha256 FROM files WHERE ws = %s AND src_path >= %s AND src_path < %s "
+                            "AND src_path LIKE %s", (sc.ws, lo, hi, pat))
+                db_sha.update(cur.fetchall())
             changed = sorted(r.src_path for r in sc.rows if r.tbl == "files" and r.src_path in db_sha
                              and r.cols.get("sha256", db_sha[r.src_path]) != db_sha[r.src_path])
             if changed:
