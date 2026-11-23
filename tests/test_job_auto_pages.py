@@ -21,35 +21,60 @@ def test_why_not_default():
     assert AP.why_not_default({**ok, "kind": "ab"})
 
 
-def _ev(ts, key, unit="cell", payload=None):
-    return NS(ts=ts, target=NS(unit=unit, key=key), payload=payload or {})
+def test_base_rev():
+    assert AP.base_rev({"versions": {"db_rev": 90, "db_revs": {"80": 5, "85": 2}}}) == 80
+    assert AP.base_rev({"versions": {"db_rev": 90}}) == 90
+    assert AP.base_rev({"versions": {"db_rev": 90, "db_revs": {"80": 5, "未记": 2}}}) is None   # 有页没记 rev：不信
+    assert AP.base_rev({"versions": {}}) is None
+    assert AP.base_rev({}) is None
 
 
-def test_changed_pages():
-    evs = [_ev("2026-11-20T10:00:00Z", "vol20:84:3:10"), _ev("2026-11-19T00:00:00Z", "vol20:5:1:1"),
-           _ev("2026-11-20T10:00:00Z", "vol21:9:1:1"), _ev("2026-11-20T10:00:00Z", "vol20:7", unit="page")]
-    rs = [_ev("2026-11-20T11:00:00Z", "x", payload={"cell": "vol20:12:2:3a"})]
-    assert AP.changed_pages("vol20", "2026-11-20T00:00:00Z", evs, rs) == {84, 12}
+def test_changed_pages_by_rev():
+    rows = [({"unit": "cell", "key": "vol20:84:3:10"}, {}),
+            ({"unit": "cell", "key": "vol21:9:1:1"}, {}),
+            ({"unit": "page", "key": "vol20:7"}, {}),
+            ({}, {"cell": "vol20:12:2:3a"})]
+    assert AP.changed_pages("vol20", 5, rows) == {84, 12}
 
 
-def test_resolve_fills_pages(monkeypatch):
-    monkeypatch.setattr(AP, "base_manifest", lambda b, base: {"label": "rev-9", "created": "2026-11-20T00:00:00Z",
-                                                               "versions": {"cv": "0.7.80"}})
-    monkeypatch.setattr(AP, "changed_pages", lambda b, since: {3, 4, 9})
+def _man(**v):
+    return {"label": "rev-9", "created": "2026-11-20T00:00:00Z", "versions": {"cv": "0.7.80", **v}}
+
+
+def test_resolve_default_on(monkeypatch):
+    monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man(db_rev=100))
+    seen = {}
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: seen.setdefault("rev", rev) and {3, 4, 9})
     raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
-    AP.resolve(raw)
-    assert "pages" not in raw            # 缺省已关（11-20：按 ts 会漏页）
+    AP.resolve(raw)                       # 缺省按页（11-23 起按入库 rev，不再漏页）
+    assert raw["pages"] == "3-4,9" and seen["rev"] == 100
     raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "seed_admit"}}
     AP.resolve(raw)                       # 换代码：整册
     assert "pages" not in raw
     raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "glyph_match"}, "pages": "auto"}
     AP.resolve(raw)                       # 显式 auto 照算
     assert raw["pages"] == "3-4,9"
+    raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "glyph_match"}, "pages": "auto:50"}
+    AP.resolve(raw)
+    assert seen["rev"] == 100             # setdefault 只记首次；下面单独验 auto:rev
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: {rev})
+    raw = {"book": "vol20", "cv": "v0.7.81", "steps": {"from": "glyph_match"}, "pages": "auto:50"}
+    AP.resolve(raw)
+    assert raw["pages"] == "50"
+
+
+def test_resolve_old_pack_no_rev(monkeypatch):
+    monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man())
+    raw = {"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}}
+    AP.resolve(raw)
+    assert "pages" not in raw             # 缺省：整册
+    with pytest.raises(SystemExit):
+        AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}, "pages": "auto"})
 
 
 def test_resolve_no_changes_refuses(monkeypatch):
-    monkeypatch.setattr(AP, "base_manifest", lambda b, base: {"label": "rev-9", "created": "x", "versions": {"cv": "0.7.80"}})
-    monkeypatch.setattr(AP, "changed_pages", lambda b, since: set())
+    monkeypatch.setattr(AP, "base_manifest", lambda b, base: _man(db_rev=100))
+    monkeypatch.setattr(AP, "changed_pages", lambda b, rev: set())
     with pytest.raises(SystemExit):
         AP.resolve({"book": "vol20", "cv": "v0.7.80", "steps": {"from": "seed_admit"}, "pages": "auto"})
 
