@@ -110,3 +110,4 @@ def check(book_id: str, products_root: Path, src=None) -> dict:
             "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
+from .._cv import describe_purity as describe  # noqa: E402,F401  —— 再导出：cli_products 标 main／存包打印用 PP.describe；实现在低层 datastore.packs（标 main 也要用，不能反向依赖 ops）
