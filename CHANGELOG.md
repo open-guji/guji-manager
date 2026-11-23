@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，ZM #16511／#16520 报）：任务库执行方缺省按需拉（部分副本），整册跑完的自动回库每单都报「⚠ 放行格回库失败」。部分副本推不上中心库本是预期，改成一行 ⓘ 说明（这里不回库；结果要进库，标 main 后在完整副本上 `guji db pull` 再 `guji glyph-db backfill --books … --apply`），不再去跑回库、不报失败；整拉的机器照旧回库。L0。
+
 ## [0.6.2] - 2026-11-23
 
 - **PATCH**（11-23，QTW 报：v0.6.1 标 main 必挂）：#818 用 ruff 删「未用 import」时误删 `ops/pack_purity.py` 末尾的再导出 `describe`，`guji products pack promote`（标 main）与存包打印纯净性时 `ImportError`／`AttributeError`。补回（标 `noqa: F401`）。新测试 `tests/test_import_names.py`：静态列出本包全部相对导入（含函数里的），逐条核对目标模块真有这个名字；另把 `_warn_impure`、`_purity` 两条路径真跑一遍。#818 其余删掉的 import 逐个查过，没有别的被外部引用。L0。
