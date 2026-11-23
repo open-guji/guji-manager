@@ -8,6 +8,8 @@
 .colc.ok .win{border-color:var(--ok)}
 .colc.bad .win{border-color:#d33}
 .colc.unsure .win{border-color:#5b5f8a}
+.colc.focus .win{outline:4px solid #e08a00;outline-offset:2px}
+.colc.focus .meta{color:#b86e00;font-weight:600}
 .win img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
 .win .bx{position:absolute;border:1px solid rgba(40,120,220,.75);box-sizing:border-box}
 .win .bx.jz{border-color:rgba(200,120,0,.85)}
@@ -40,14 +42,14 @@ function toggleCell(it,key){
   if(bad.length)S.set(it.id,{v:"bad",bad});else S.clear(it.id);
 }
 function paint(box,it){
-  const r=lab(it)||{};box.className="colc "+(r.v||"");
+  const r=lab(it)||{};box.className="colc "+(r.v||"")+(it.focus?" focus":"");
   const bad=new Set(r.v==="bad"?r.bad||[]:[]);
   for(const e of box.querySelectorAll(".bx"))e.classList.toggle("wrong",bad.has(e.dataset.k));
   for(const b of box.querySelectorAll(".qb button[data-v]"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
 }
 function card(it){
   const box=document.createElement("div");box.className="colc";
-  const m=document.createElement("div");m.className="meta";m.textContent="第 "+it.col+" 列"+(it.note?" · "+it.note:"");box.appendChild(m);
+  const m=document.createElement("div");m.className="meta";m.textContent="第 "+it.col+" 列"+(it.focus?" · 请确认":"")+(it.note?" · "+it.note:"");box.appendChild(m);
   const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;
   const im=document.createElement("img");im.src=it.img;im.alt="第 "+it.col+" 列";win.appendChild(im);
   for(const c of it.cells){const d=document.createElement("div");d.className="bx"+(String(c.kind||"").startsWith("jiazhu")?" jz":"");
