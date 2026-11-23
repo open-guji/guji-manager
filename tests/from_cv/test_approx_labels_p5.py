@@ -183,7 +183,6 @@ def test_seed_admit_params_hash_unchanged_without_approx(tmp_path):
     d = SeedAdmitParams(db_path=str(p)).model_dump()
     assert "approx_gate" not in d, "闸缺省关、不进 dump"
     assert d["approx_fingerprint"].startswith("1:"), "有近似例：要标注，产物跟着过期"
-    assert SeedAdmitParams(db_path=str(p), approx_gate=True).model_dump()["approx_gate"] is True
 
 
 def _run_seed(tmp_path, monkeypatch, db_path, recs, **params):
@@ -236,10 +235,7 @@ def test_seed_admit_marks_or_blocks_approx_exemplar(tmp_path, monkeypatch):
                                          "exemplar": "v2:lib:1:1:1", "ids": None, "note": None}
     assert "approx" not in got[2].evidence, "命中的是普通刻例：不标"
     assert got[3].evidence["approx"]["via"] == "char_only", "这个字在库里只有近似例"
-    gate = _run_seed(tmp_path / "gate", monkeypatch, p, recs, approx_gate=True)
-    assert not gate[1].admit and "approx_exemplar" in gate[1].doubts and gate[1].char == "衡", \
-        "开闸：命中近似例落人审，字不改"
-    assert gate[2].admit and not gate[3].admit
+    # 开闸（approx_gate）cv#1804 已退役（无书使用）：近似例只标注、不拦
 
 
 # ── 6. 文本 ──────────────────────────────────────────────────────────────

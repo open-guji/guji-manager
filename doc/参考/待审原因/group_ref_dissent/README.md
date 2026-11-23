@@ -126,7 +126,7 @@
 | `ref_topk_follow` | 参校字在库前 5 名、与首位差≤0.05 按参校字放 | 关 | 关 | 开 | 关 |
 | `ref_lib_coord`（`_cov` 0.96／`_gap` 0.01／`_dissent`） | 参校字＝库首位＝本格字放行 | 关 | 80/99 册开 | 关（`reference_trust` 已含） | 开（`_dissent` 开） |
 | `follow_ref` / `follow_ref_seen` | 看图核实过的字对按参校形放 | 空 | follow_ref 9 对（册内另有 47 册各自追加） | follow_ref、follow_ref_seen `傳=傅,太=大,大=太` | follow_ref 10 对 |
-| `lane_coord_few_stroke` | 少笔画字（一二三下十子予）盲放禁区 | 空 | 空 | 空（只是建议） | 空 |
+| `lane_coord_few_stroke` | 少笔画字盲放禁区；**已退役**（cv#1804），只能留空 | 空 | 空 | 空 | 空 |
 | `group_flow_provisional`／`_to` | 同义组暂归一／本书暂归一字形 | 开／空 | 缺省 | 缺省 | 彝 |
 | `group_flow_tolerate_extra` | 书级追加陪衬字（只放宽进入） | 空 | 空 | 空 | 空 |
 
