@@ -1042,13 +1042,13 @@ def publish_and_verify(a, ws: Path, books: list[str]) -> dict:
         if age is not None and age < minh:
             print(f"  网站发布节流：上次 proofing-sync 在 {age:.1f} 小时前（不足 {minh:g} 小时，CDN purge 每日配额有限）；"
                   f"本趟不发，已在中心库，下一趟有新写入时或每日定时发布会带上")
-            return {b: {"status": "synced", "publish": f"throttled({age:.1f}h)"} for b in books}
+            return {b: {"status": "synced", "publish": f"throttled({age:.1f}h)", "rev": st[b][2].name if st[b] else None} for b in books}
         concl = publish_batch(todo, a.text_id)
         if concl != "success":
             only = ",".join(f"{a.text_id}/{chapter_of(b)}" for b in todo)
             print(f"⚠ 网站发布没成（{concl}）：手动触发 kaiyuanguji-web proofing-sync.yml（target=production、parts=publish、"
                   f"only={only}），再原命令跑一次核线上；不管它，每日定时发布也会带上")
-            return {b: {"status": "synced", "publish": str(concl)} for b in books}
+            return {b: {"status": "synced", "publish": str(concl), "rev": st[b][2].name if st[b] else None} for b in books}
         for b in todo:
             st[b][1].mark("publish", {"conclusion": concl}, t)
     out = {}
@@ -1153,7 +1153,8 @@ def cmd_collect(a) -> int:
     ready = [b for b, v in res.items() if v["status"] == "to-publish"]
     if ready:
         print(f"\n== 发站：{'、'.join(ready)} 一起发一次，再逐册核线上单")
-        res.update(publish_and_verify(a, ws, ready))
+        for b, nv in publish_and_verify(a, ws, ready).items():
+            res[b] = {**res[b], **nv}              # 保留 rev 等：票账、交项目确认清单要靠 rev 找各册的账
     _save_run(run_log, res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
     print_ledger(ws, res, run_log)
