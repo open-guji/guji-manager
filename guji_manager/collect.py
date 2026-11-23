@@ -548,7 +548,25 @@ def live_sheet(text_id: str, chapter: str) -> dict | None:
 
 def collect_book(a, ws: Path, book: str) -> dict:
     """收一册；收完（不论要不要发站）把这册的出单版包解出来的目录删掉腾盘（``--keep-pack`` 留着），
-    省得每册前手工 ``rm -rf _packs/*``（ZM 11-21）。"""
+    省得每册前手工 ``rm -rf _packs/*``（ZM 11-21）。
+
+    ``GUJI_ALLOW_LOST_HUMAN_BOOKS=vol01,vol20``：只对列出的册放行「丢人裁超上限」（等于这几册设
+    ``GUJI_ALLOW_LOST_HUMAN=1``，用户 11-23 定 vol01／vol20 可以），别的册不受影响；定时任务用它。"""
+    allow = {x.strip() for x in os.environ.get("GUJI_ALLOW_LOST_HUMAN_BOOKS", "").split(",") if x.strip()}
+    had = os.environ.get("GUJI_ALLOW_LOST_HUMAN")
+    if book in allow:
+        os.environ["GUJI_ALLOW_LOST_HUMAN"] = "1"
+    try:
+        return _collect_book_guarded(a, ws, book)
+    finally:
+        if book in allow:
+            if had is None:
+                os.environ.pop("GUJI_ALLOW_LOST_HUMAN", None)
+            else:
+                os.environ["GUJI_ALLOW_LOST_HUMAN"] = had
+
+
+def _collect_book_guarded(a, ws: Path, book: str) -> dict:
     try:
         res = _collect_book(a, ws, book)
     except Exception as e:  # noqa: BLE001 —— 并行时一册出错不拖垮别的册；原因落进结果
