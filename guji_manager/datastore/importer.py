@@ -90,12 +90,28 @@ class Plan:
         return len(self.inserts) + len(self.updates) + len(self.deletes)
 
 
-def diff(rows: list[Row], existing: dict[tuple, tuple[str, int]]) -> Plan:
-    """``existing``：{主键: (fingerprint, src_line)}。"""
+def key_sorted_paths(rows: list[Row]) -> set[str]:
+    """哪些文件里的行严格按主键升序（没有重复键）。这些文件还原时按主键排就能逐字节还原，行号不用记准。"""
+    last: dict[str, tuple] = {}
+    bad: set[str] = set()
+    for r in rows:
+        p = r.src_path
+        if p in last and not (last[p] < r.key):
+            bad.add(p)
+        last[p] = r.key
+    return set(last) - bad
+
+
+def diff(rows: list[Row], existing: dict[tuple, tuple[str, int]], key_ordered: bool = False) -> Plan:
+    """``existing``：{主键: (fingerprint, src_line)}。
+
+    ``key_ordered``（表定义 ``key_ordered``）：文件里行严格按主键升序时，只是行号变了的行不推（``moves`` 为空）；
+    库里这些行的 ``src_line`` 可能过时，还原按主键排（``materialize``）。"""
     plan = Plan()
     want: dict[tuple, Row] = {}
     for r in rows:
         want[r.key] = r                   # 主键重复：后者覆盖（scope 已记入问题）
+    sorted_paths = key_sorted_paths(rows) if key_ordered else set()
     for k, r in want.items():
         old = existing.get(k)
         if old is None:
@@ -103,7 +119,7 @@ def diff(rows: list[Row], existing: dict[tuple, tuple[str, int]]) -> Plan:
         elif old[0] != fingerprint(r):
             plan.updates.append(r)
             plan.old_sha[k] = old[0]
-        elif old[1] != r.src_line:
+        elif old[1] != r.src_line and r.src_path not in sorted_paths:
             plan.moves.append(r)
     for k, (sha, _) in existing.items():
         if k not in want:
@@ -295,7 +311,7 @@ def import_scans(conn, scans: list[ScanResult], *, label: str, allow_delete: boo
             rep.skipped[sc.ws] = dict(Counter(_top(p) for p in sc.skipped))
             for tbl in TABLES:
                 existing = load_existing(cur, tbl, sc.ws, only_paths)
-                plan = diff(by_tbl[tbl], existing)
+                plan = diff(by_tbl[tbl], existing, key_ordered=TABLES[tbl].key_ordered)
                 if (plan.deletes and not allow_delete
                         and emptied_ledger(tbl, len(existing), len(by_tbl[tbl]), len(plan.deletes))):
                     refused.append(f"{sc.ws}/{tbl}: 本地只有 {len(by_tbl[tbl])} 行、库里有 {len(existing)} 行，"

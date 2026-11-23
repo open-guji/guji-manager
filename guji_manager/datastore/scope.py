@@ -61,6 +61,9 @@ class TableSpec:
     key: tuple[str, ...]        # 主键列（不含 ws）
     append_only: bool = False   # 只追加的台账：导入发现要删行时默认中止
     has_doc: bool = True
+    #: 文件里的行本来就按主键排（cv glyph_db 导出 ORDER BY 主键）：中间插几行时后面的行号全变，
+    #: 导入不再逐行推「只是行号变了」（GUJI-776：新机首推 moved 6 万行），还原时按主键排回（见 materialize）
+    key_ordered: bool = False
 
 
 #: 表 → 主键。顺序就是写入顺序（workspaces 先写，别的表外键引用它）。
@@ -76,7 +79,7 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("verdicts", ("src_path", "id")),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
-    TableSpec("glyph_instances", ("instance_id",), has_doc=False),
+    TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
     TableSpec("glyphs", ("edition_tag", "char"), has_doc=False),
     TableSpec("glyph_exemplars", ("edition_tag", "char", "instance_id"), has_doc=False),
     TableSpec("glyph_admissions", ("instance_id",), has_doc=False),
