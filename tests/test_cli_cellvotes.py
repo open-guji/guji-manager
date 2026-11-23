@@ -210,12 +210,13 @@ def test_yield_to_newer_human_drops_older_votes():
     """用户 11-23「按新的判定结果走」：票早于现行人裁就让位，晚于才照常走。"""
     import types
     from guji_manager import cli_cellvotes as CVT
-    ev = lambda i, ts: types.SimpleNamespace(id=i, ts=ts)  # noqa: E731
-    human = {"vol06:1:1:1": ev("e1", "2026-11-20T00:00:00Z"), "vol06:1:1:2": ev("e2", "2026-11-20T00:00:00Z")}
+    ev = lambda i, ts, sh="": types.SimpleNamespace(id=i, ts=ts, payload={"shape": sh})  # noqa: E731
+    human = {"vol06:1:1:1": ev("e1", "2026-11-20T00:00:00Z"), "vol06:1:1:2": ev("e2", "2026-11-20T00:00:00Z"), "vol06:1:1:4": ev("e4", "2026-11-20T00:00:00Z", "丁")}
     t_old, t_new = 1795000000000, 1795500000000      # 2026-11-18 / 2026-11-24（毫秒）
     votes = [{"a": "1:1:1", "choice": "char", "char": "甲", "ts": t_old},
              {"a": "1:1:2", "choice": "char", "char": "乙", "ts": t_new},
-             {"a": "1:1:3", "choice": "char", "char": "丙", "ts": t_old}]
+             {"a": "1:1:3", "choice": "char", "char": "丙", "ts": t_old},
+             {"a": "1:1:4", "choice": "char", "char": "丁", "ts": t_old}]       # 票字＝人裁字：让位但不报
     keep, stale = CVT._yield_to_newer_human("vol06", votes, human)
-    assert [v["a"] for v in keep] == ["1:1:2", "1:1:3"]
+    assert [v["a"] for v in keep] == ["1:1:2", "1:1:3"]       # 1:1:1、1:1:4 让位
     assert [(s[0], s[1], s[3]) for s in stale] == [("1:1:1", "char=甲", "e1")]
