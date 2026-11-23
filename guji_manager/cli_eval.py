@@ -21,6 +21,9 @@ def cmd_eval(args) -> None:
             ok, why = runnable(s)
             print(f"  {s.id:18s} {s.shard:40s} {'可跑' if ok else why:22s} {s.title}")
         return
+    from .eval.registry import expand_suites
+    args.evals = expand_suites(args.evals or [])
+    save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
     keys = args.evals or [k for k, s in EVALS.items()
                           if not ({"heavy", "engine", "corpus", "dump", "intermediate"} & set(s.needs))]
     # 以前 run_eval 只放行 products，点名跑 match_pairs / oov 这类 heavy 的也一律 skipped，
@@ -29,7 +32,12 @@ def cmd_eval(args) -> None:
                                   if x.strip())
     reports = []
     for k in sorted(keys):
-        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow)
+        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow,
+                     **({"report_dir": save} if save else {}))
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            (save / f"{k}.report.json").write_text(json.dumps(r.to_dict(), ensure_ascii=False, indent=1),
+                                                    encoding="utf-8")
         reports.append(r)
         mark = {"ok": "✓", "regressed": "⚠", "failed": "✗", "skipped": "–"}[r.status]
         print(f"{mark} {r.summary_line()}")
@@ -40,6 +48,10 @@ def cmd_eval(args) -> None:
         lock = getattr(r, "lock", None)
         if lock:
             print("    钉版 " + " ".join(f"{k}={v}" for k, v in lock.items()))
+    if getattr(args, "against", ""):
+        from .eval.compare import compare_dirs
+        print()
+        print(compare_dirs(Path(args.against), reports, save))
     if args.json:
         print(json.dumps([r.to_dict() for r in reports], ensure_ascii=False))
     n_bad = sum(1 for r in reports if r.status == "failed")
@@ -242,6 +254,11 @@ def add_parser(sub) -> None:
     p.add_argument("--from-raw", action="store_true",
                    help="缺产物时从原图现跑 Step1-3 补齐（云端 clone 无 products/ 时用，"
                         "同 seg_harness.py 的同名开关）")
+    p.add_argument("--save-dir", default="",
+                   help="每个评测器的脚本 JSON 与报告存到这个目录（下次拿来 --against）；"
+                        "评测器 id 可写 @read／@read-3a／@read-3b 一次跑一套")
+    p.add_argument("--against", default="",
+                   help="上一次 --save-dir 的目录：逐项比指标、列误认／错例清单的新增与消失")
     p = sub.add_parser("check", help="[v2] 判据与体检：quality | rulers | round | rate | throughput | ledger")
     p.add_argument("action", choices=["quality", "rulers", "round", "rate", "throughput", "ledger"])
     p.add_argument("book", nargs="?", default="vol01")

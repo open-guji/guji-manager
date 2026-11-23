@@ -307,6 +307,29 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
 ]}
 
 
+# 评测套（`guji eval run @<套>`）：第三步识字的子基准一次跑齐（A23，2026-11-23，方案 v2 第七节）。
+# 库相关的（match_bench*、match_pairs*、sim_bench、db_match_books）要按书换 GUJI_GLYPH_DB，不进缺省套；
+# 套里只放自带图块或不碰库的，一台干净机器 `--allow heavy` 就能跑。
+SUITES: dict[str, tuple[str, ...]] = {
+    "read-3a": ("advset", "advset_shiji", "advset_qtw", "match_pool", "match_pool_shiji"),
+    "read-3b": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
+}
+SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
+
+
+def expand_suites(keys: list[str]) -> list[str]:
+    """`@套名` 展开成评测器 id，其余原样；去重保序。"""
+    out: list[str] = []
+    for k in keys:
+        if k.startswith("@"):
+            if k[1:] not in SUITES:
+                raise SystemExit(f"没有评测套 {k}；有：{', '.join('@' + x for x in SUITES)}")
+            out += SUITES[k[1:]]
+        else:
+            out.append(k)
+    return list(dict.fromkeys(out))
+
+
 def find_eval(key: str) -> EvalSpec | None:
     """按 id 或分片名找评测器。"""
     if key in EVALS:

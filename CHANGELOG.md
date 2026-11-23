@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，A23 识字 benchmark 第 2 期 d）：`guji eval run @read`（另有 `@read-3a`／`@read-3b`）一次跑齐识字子基准；`--save-dir` 存各评测器 JSON 与报告，`--against <旧目录>` 逐项比指标、列误认／错例清单的新增与消失，钉版不同先提示（`eval/compare.py`）；rare_* 的钉版记字表与模型而不是 glyph.db。测试 `test_eval_compare_read.py`。L0。
 - **PATCH**（11-23，A23 识字 benchmark 第 2 期）：`guji eval run` 的识字评测器按 `--out` JSON 取数（`eval/extract.py`）——match_pairs*／sim_bench 不再报「跑不起来」，match_bench 报 same 精度／覆盖／novel 误放／rank1／auroc，rare_* 头条改为生产用的 emb 路与 unseen top10，**emb top10 为 0（缺向量包）判失败**不再静默报 ok；报告加 `lock`（cv、dataset 提交、glyph.db sha16），命令行打「钉版」一行。测试 `test_eval_extract_read.py`。另登记 3a 库外拒识 `advset`／`advset_shiji`／`advset_qtw`（cv `eval_advset.py`，dataset `glyph-match/advset-*`）与 3a 退化 `match_pool`／`match_pool_shiji`（cv `eval_match_pool.py`，dataset `glyph-match/damaged-*`）、3b 首次字头格 `rare_qtw_firstseen`（dataset `007-qtw-firstseen`）。只动评测，不动产物（L0）。
 - **PATCH**（11-23，Sheldon 点抽查页反馈）：`col_check` 1.0.1——第 1 列排到最右（原先反了），页面说明补「格框带框线不算错，这一轮只看字间切点」。
 - **PATCH**（11-23，A22 切字 benchmark 银标抽查）：审阅页加页型 `col_check`「整列切分抽查」——一页书一屏、各列从右到左叠格框，点并字／劈字／框歪的格标红，整列没问题翻页记全对；结果 `review-pages colcheck-apply` 导出（`review_pages/col_check.py`）。测试 `test_col_check_screens_and_labels`。只加页型，不动产物（L0）。
