@@ -4,6 +4,10 @@
     npx wrangler d1 execute guji-jobs --remote --file guji_manager/jobs/schema_d1.sql
     npx wrangler d1 execute guji-jobs --remote --file jobs.sql
     python scripts/jobs_pg_to_d1.py check                  # 两边逐表核行数与最大号
+    python scripts/jobs_pg_to_d1.py seed-seq               # 切换前：D1 自增号预留到 Postgres 最大号之后（见下）
+
+不停机切换的顺序（队列空了以后）：seed-seq → 发改缺省的版本（执行方空闲时自更新改连 D1，新单从预留号之后编）→
+Postgres 设只读 → dump → 导入（ON CONFLICT DO NOTHING，老号与新号不撞）→ check（D1 ≥ Postgres）。
 
 dump 连 Postgres 用 databases.toml ``[jobs]`` 的 pg-tunnel 连法（JOBSDB_TOKEN＋JOBSDB_PASSWORD），check 另连 D1
 （``--d1-url``，缺省 https://data.open-guji.com，令牌同 JOBSDB_TOKEN）。只读 Postgres，导出前请先让 Ops 把它设只读，
@@ -71,19 +75,20 @@ def dump(out: str) -> None:
             cur.itersize = 2000
             cur.execute(f"SELECT {', '.join(cs)} FROM jobs.{t} ORDER BY {order}")
             head = f"INSERT INTO {t} ({', '.join(cs)}) VALUES\n"
+            tail = " ON CONFLICT DO NOTHING;\n"     # 切换后执行方已在 D1 报到（worker 同名）
             buf: list[str] = []
             size = 0
             n = 0
             for row in cur:
                 v = "(" + ", ".join(lit(x) for x in row) + ")"
                 if buf and size + len(v.encode()) > MAX_STMT:
-                    f.write(head + ",\n".join(buf) + ";\n")
+                    f.write(head + ",\n".join(buf) + tail)
                     buf, size = [], 0
                 buf.append(v)
                 size += len(v.encode()) + 2
                 n += 1
             if buf:
-                f.write(head + ",\n".join(buf) + ";\n")
+                f.write(head + ",\n".join(buf) + tail)
             cur.close()
             print(f"{t}: {n} 行", file=sys.stderr)
             n_all += n
@@ -96,6 +101,26 @@ def dump(out: str) -> None:
     print(f"共 {n_all} 行 → {out}", file=sys.stderr)
 
 
+SEQ_TABLES = ["job", "attempt", "event", "result"]
+SEQ_MARGIN = 1000
+
+
+def seed_seq(d1_url: str | None) -> None:
+    """D1 的 AUTOINCREMENT 号预留到 Postgres 最大号＋SEQ_MARGIN：切换后新写的行从这之后编，稍后导入的老行用原号，不撞。"""
+    from guji_manager.jobs import d1
+    j = d1.connect({"driver": "d1-worker", "url": d1_url or "https://data.open-guji.com"})
+    c = pg()
+    stmts = []
+    for t in SEQ_TABLES:
+        n = (c.execute(f"SELECT coalesce(max(id), 0) FROM jobs.{t}").fetchone()[0] or 0) + SEQ_MARGIN
+        stmts += [("DELETE FROM sqlite_sequence WHERE name = ?", [t]),
+                  ("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)", [t, n])]
+        print(f"{t}: 从 {n + 1} 起编", file=sys.stderr)
+    j.batch(stmts)
+    c.close()
+    j.close()
+
+
 def check(d1_url: str | None) -> int:
     from guji_manager.jobs import d1
     spec = {"driver": "d1-worker", "url": d1_url or "https://data.open-guji.com"}
@@ -106,7 +131,7 @@ def check(d1_url: str | None) -> int:
         key = "count(*)" + (", max(id)" if t not in ORDER else "")
         a = c.execute(f"SELECT {key} FROM jobs.{t}").fetchone()
         b = j.execute(f"SELECT {key} FROM {t}").fetchone()
-        ok = tuple(a) == tuple(b)
+        ok = b[0] >= a[0] and (len(a) == 1 or (b[1] or 0) >= (a[1] or 0))   # 切换后 D1 只会更多
         bad += not ok
         print(f"{'✓' if ok else '✗'} {t}: Postgres {tuple(a)}  D1 {tuple(b)}")
     c.close()
@@ -121,9 +146,14 @@ def main() -> int:
     d.add_argument("--out", required=True)
     k = sub.add_parser("check")
     k.add_argument("--d1-url")
+    q = sub.add_parser("seed-seq")
+    q.add_argument("--d1-url")
     a = ap.parse_args()
     if a.cmd == "dump":
         dump(a.out)
+        return 0
+    if a.cmd == "seed-seq":
+        seed_seq(a.d1_url)
         return 0
     return check(a.d1_url)
 
