@@ -185,5 +185,45 @@ def test_split_old_sheet_keeps_current_sheet_votes_only():
            {"a": "1:1:1", "choice": "confirm"}]
     cur, old = CVT._split_old_sheet("vol01", "001-r17", raw, {"vol01:88:1:12a": E()})
     assert [v["a"] for v in cur] == ["88:4:18", "1:1:1"]
-    assert old == [("88:1:12a", "88:1:12a", "001-r16", "char=領", "evt_old"),
-                   ("103:5:13", "103:5:12", "001-r9", "char=太", None)]
+    assert old == [("88:1:12a", "88:1:12a", "001-r16", "char=領", "evt_old", "旧单票（没给条目表，不判）"),
+                   ("103:5:13", "103:5:12", "001-r9", "char=太", None, "旧单票（没给条目表，不判）")]
+
+
+def test_split_old_sheet_lands_unchanged_items_blocks_changed():
+    """GM4 11-23：旧单条目票，条目图没变（无 fp_changed、没撤下）按现格并入；图变了／撤下／找不到仍挡下。"""
+    from guji_manager import cli_cellvotes as CVT
+    items = {"i1": {"state": "open", "cell": "160:9:3"}, "i2": {"state": "resolved", "cell": "9:8:3", "fp_changed": True},
+             "i3": {"state": "withdrawn", "cell": "10:8:21"}}
+    raw = [{"item": "i1", "a": "160:9:3", "vote_a": "160:9:3", "vote_rev": "006-r9", "choice": "char", "char": "壼", "shown": "壺"},
+           {"item": "i2", "a": "9:8:3", "vote_a": "9:8:3", "vote_rev": "006-r9", "choice": "char", "char": "埸"},
+           {"item": "i3", "a": "10:8:21", "vote_a": "10:8:21", "vote_rev": "006-r9", "choice": "char", "char": "奬"},
+           {"item": "zz", "a": "1:1:1", "vote_a": "1:1:1", "vote_rev": "006-r9", "choice": "char", "char": "X"},
+           {"item": "i1", "a": "160:9:3", "vote_rev": "006-r13", "choice": "char", "char": "壺"}]
+    raw.append({"item": "i4", "a": "5:5:5", "vote_a": "5:5:4", "vote_rev": "006-r9", "choice": "char", "char": "甲"})    # 格号变过
+    raw.append({"item": "i5", "a": "6:6:6", "vote_a": "6:6:6", "vote_rev": "006-r9", "choice": "char", "char": "乙", "shown": "丙"})  # 现字对不上
+    items["i4"] = {"state": "open", "cell": "5:5:5"}
+    items["i5"] = {"state": "open", "cell": "6:6:6"}
+    cur, old = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items, {"160:9:3": "壺", "6:6:6": "丁"})
+    assert [(v["a"], v.get("_old_rev")) for v in cur] == [("160:9:3", "006-r9"), ("160:9:3", None)]
+    cur0, old0 = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items, None)       # 没给现字表：旧单票全挡
+    assert [v["a"] for v in cur0] == ["160:9:3"] and all("字表" in o[5] or "fp_changed" in o[5] or "撤下" in o[5] or "找不到" in o[5] or "格号变过" in o[5] for o in old0)
+    assert [o[0] for o in old][-2:] == ["5:5:5", "6:6:6"] and "格号变过" in old[-2][5] and "格号对不上" in old[-1][5]
+    assert [(o[0], o[5]) for o in old][:3] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
+                                              ("1:1:1", "条目找不到")]
+
+
+
+def test_yield_to_newer_human_drops_older_votes():
+    """用户 11-23「按新的判定结果走」：票早于现行人裁就让位，晚于才照常走。"""
+    import types
+    from guji_manager import cli_cellvotes as CVT
+    ev = lambda i, ts, sh="": types.SimpleNamespace(id=i, ts=ts, payload={"shape": sh})  # noqa: E731
+    human = {"vol06:1:1:1": ev("e1", "2026-11-20T00:00:00Z"), "vol06:1:1:2": ev("e2", "2026-11-20T00:00:00Z"), "vol06:1:1:4": ev("e4", "2026-11-20T00:00:00Z", "丁")}
+    t_old, t_new = 1795000000000, 1795500000000      # 2026-11-18 / 2026-11-24（毫秒）
+    votes = [{"a": "1:1:1", "choice": "char", "char": "甲", "ts": t_old},
+             {"a": "1:1:2", "choice": "char", "char": "乙", "ts": t_new},
+             {"a": "1:1:3", "choice": "char", "char": "丙", "ts": t_old},
+             {"a": "1:1:4", "choice": "char", "char": "丁", "ts": t_old}]       # 票字＝人裁字：让位但不报
+    keep, stale = CVT._yield_to_newer_human("vol06", votes, human)
+    assert [v["a"] for v in keep] == ["1:1:2", "1:1:3"]       # 1:1:1、1:1:4 让位
+    assert [(s[0], s[1], s[3]) for s in stale] == [("1:1:1", "char=甲", "e1")]

@@ -2,7 +2,7 @@
 """一册出 v0.1：判停 → 收口单 → 导出＋出待审单 → book-text 加章 → 校验，一条命令串起来。
 
 全唐文 004（2026-11-08）手工走 S4 收口＋S14 入库时，要串 6～7 个脚本、手改 book-text 三个文件；
-本脚本把能机器做的都做了（含 Step9 产物 `guji export md`＋`guji collate`，close-check 第 12 项要），只在两处停下：
+本脚本把能机器做的都做了（含第五步产物 `guji output export md`＋`guji pipeline collate`，原 Step9，close-check 第 12 项要），只在两处停下：
   1. 判停：待审格里有「算法再处理」类（切分对位、切分缺陷、列宽出带……）就停，列出格号、按页归并，
      不往下导出——这正是 S4「还有算法再处理就不出 v0.1」。
   2. 推东西（中心库、R2、book-text 远端、网站）一律不做，末尾打印要跑的命令。
@@ -163,7 +163,7 @@ def parse_juan(spec: str | None, title: str) -> list[int] | None:
 
 
 def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: str, note: str, juan: list[int] | None = None) -> None:
-    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
+    """book-text 条目加一章（已有同章则换文本、版本不动由调用方定）：拷文件（有 NNN.gaps.json 一并拷、写 gaps_file）、改 index／manifest 章数；版本记录打印出来，调用方写进提交信息（book-text 不再有 CHANGES.md）。"""
     d = bt_dir(bt, text_id)
     dd = d / "default"
     for kind in ("char", "cord", "norm"):
@@ -171,6 +171,11 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
         if not src.exists():
             sys.exit(f"✗ 导出里没有 {src.name}")
         shutil.copyfile(src, dd / src.name)
+    gaps = export / f"{chapter}.gaps.json"          # 缺页旁挂（guji-gaps/0.1，导出时册 yaml 有落在本章的 gaps 才有）
+    if gaps.exists():
+        shutil.copyfile(gaps, dd / gaps.name)
+    else:
+        (dd / gaps.name).unlink(missing_ok=True)    # 重出时缺页已撤：删掉旧文件，条目也不写 gaps_file
     cord = json.loads((export / f"{chapter}.cord.json").read_text(encoding="utf-8"))
     pages = sorted({int(p.get("page", 0)) for p in cord.get("pages", []) if isinstance(p, dict) and p.get("page")})
     char = json.loads((export / f"{chapter}.char.json").read_text(encoding="utf-8"))
@@ -180,6 +185,8 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
     ent = {"n": int(chapter), "file": chapter, "title": title, "char_file": f"{chapter}.char.json",
            "cord_file": f"{chapter}.cord.json", "norm_file": f"{chapter}.norm.json",
            "pages": f"{pages[0]}-{pages[-1]}" if pages else "", "text_version": tv, "proofing": True}
+    if gaps.exists():
+        ent["gaps_file"] = gaps.name                 # 网站／阅读包按它读缺页（Web 11-23 要），与 cord_file 同级
     if juan:
         ent["juan"] = juan
     chs = [c for c in idx["chapters"] if c.get("file") != chapter] + [ent]
@@ -197,14 +204,14 @@ def bt_add_chapter(bt: Path, text_id: str, chapter: str, export: Path, title: st
 
 
 def step9(py: str, book: str, ws: Path, env: dict) -> None:
-    """Step9 产物（close-check 第 12 项，R5 要它）：从刚取的 main 包本地出 reports/<册>/<册>.md 与对勘 html。
+    """第五步产物（原 Step9；close-check 第 12 项，R5 要它）：从刚取的 main 包本地出 reports/<册>/<册>.md 与对勘 html。
 
-    任务库包里不带 Step9 产物（它跨页、不进 products/），出 0.1.0 前在取包这台机器上补（A31 11-16 定口径）。
+    任务库包里不带这些产物（它跨页、不进 products/），出 0.1.0 前在取包这台机器上补（A31 11-16 定口径）。
     只读产物；对勘证人读书配置 `references:`。失败不拦导出，末尾 close-check 会报第 12 项。"""
     for cmd in (["export", "md", book], ["collate", book, "--console", ""]):
         rc = subprocess.run([py, "-m", "open_guji_cv.cli_v2", *cmd, "-w", str(ws)], env=env).returncode
         if rc:
-            print(f"⚠ Step9 `guji {' '.join(cmd)}` 退出码 {rc}：close-check 第 12 项会挂，修好后单跑这条补上")
+            print(f"⚠ 第五步产物 `guji {' '.join(cmd)}` 退出码 {rc}：close-check 第 12 项会挂，修好后单跑这条补上")
 
 
 def main() -> int:
@@ -286,7 +293,7 @@ def main() -> int:
     pub = sorted((ws / "reports" / book / "_publish").glob(f"{chapter}-r*"))
     rev = pub[-1].name if pub else "<rev>"
     print("\n接下来（推东西，人或总览线做）：")
-    print(f"  0. 出口检查（R5）：guji close-check {book} --tier rough -w {ws}（Step9 产物上面已出在 reports/{book}/）")
+    print(f"  0. 出口检查（R5）：guji close-check {book} --tier rough -w {ws}（第五步产物上面已出在 reports/{book}/）")
     print(f"  1. 看差异单 {ws}/reports/{book}/_publish/{rev}/差异单.md")
     print(f"  2. book-text：git add Book/…/{text_id} && git commit && git pull --rebase origin dev && git push origin HEAD:dev")
     print(f"  3. guji source pull {book} -w {ws}（出字块图要原图；图在 data_full/{book} 时建 data_full/_vol/{book} 链接）")

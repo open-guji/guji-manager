@@ -5,6 +5,25 @@
 ## [未发版]
 
 - **PATCH**（11-23，GM4／A32，GM2 转全唐文 006–008 实测；L0）：①`guji collect` 多册串行时某册 `SystemExit`／异常不再把后面几册一起带走：记成该册 blocked 并继续，开头打印「本趟收 N 册：…」，结尾照旧列没收完的册（`--books 006,007,008`、`007-008` 本就能展开，`parse_books` 已有测试）。②`swap doctor` 加版本检查：manager < 0.5.0、cv < 0.9.0 只提示不挡；`CELLREVIEW_TOKEN` 由必需改为可选（0.5.0 起缺省读收件箱，用 `GUJI_DATA_TOKEN_READ`）。未动落票口径。
+
+## [0.6.4] - 2026-11-23
+
+- 发版说明：0.6.2、0.6.3 号已被别的发版占用（tag v0.6.2 在 f96528b），本版号 0.6.4。
+
+- **PATCH**（11-23，GUJI-776 新机首次 db sync 168 秒、moved 61,251）：`glyph_instances` 标为按主键排的表（`TableSpec.key_ordered`）。cv 导出 `instances/*.jsonl` 按 instance_id 排，中间新增几行后面的行号全变；导入时文件严格按主键升序就不再逐行推「只是行号变了」（`importer.key_sorted_paths`），还原时按主键排回、整文件 sha 核对（`materialize`）。没按主键排的文件照旧。测试 `test_glyph_key_order.py`。L0。
+- **PATCH**（11-23，ZM #16511／#16520 报）：任务库执行方缺省按需拉（部分副本），整册跑完的自动回库每单都报「⚠ 放行格回库失败」。部分副本推不上中心库本是预期，改成一行 ⓘ 说明（这里不回库；结果要进库，标 main 后在完整副本上 `guji db pull` 再 `guji glyph-db backfill --books … --apply`），不再去跑回库、不报失败；整拉的机器照旧回库。L0。
+
+## [0.6.2] - 2026-11-23
+
+- **PATCH**（11-23，QTW 报：v0.6.1 标 main 必挂）：#818 用 ruff 删「未用 import」时误删 `ops/pack_purity.py` 末尾的再导出 `describe`，`guji products pack promote`（标 main）与存包打印纯净性时 `ImportError`／`AttributeError`。补回（标 `noqa: F401`）。新测试 `tests/test_import_names.py`：静态列出本包全部相对导入（含函数里的），逐条核对目标模块真有这个名字；另把 `_warn_impure`、`_purity` 两条路径真跑一遍。#818 其余删掉的 import 逐个查过，没有别的被外部引用。L0。
+- **PATCH**（11-23，CV2 修格确认页）：`col_check` 1.0.3——item 带 `focus: true` 的列加橙色粗描边、标「请确认」，同页其余列照常显示作对照（修完错格后出确认页用：整页看、刚修的列突出）。L0。
+
+## [0.6.1] - 2026-11-23
+
+- 发版缘由：执行机跟 manager main，任务库切 D1（#811）要发版才生效。
+
+- **PATCH**（11-23，GM2 清理第二批：三层迭代到出 v0.1 的命令、人审页、文档）：`close-check`、`collate`、`progress` 帮助与 `tools/开书/出v01.py` 的「Step9」改称第五步产物（原 Step9），出v01 提示改写 `guji output export md`；`review-pages` 帮助与 `seg_cause` 页型说明里「A22 seg_causes」改指本仓 `review/seg_causes.py`。Wiki「人审页模板」：页型表补 `col_check`、编号去重，第七节版本列按 `registry.py` 更新并补 `ref_check`／`variant_compare`／`seg_cut`／`col_check` 四行，旧路径 `doc/01-粗校/…`、旧名改掉；另修 4 处指向旧路径的文档（无法识别字、exp_framework、切分代码结构、spreads.py）。页型版本不变，不动产物（L0）。
+- **PATCH**（11-23，CV2 收 cut-bench 第 4 轮）：审阅页存档 `_store.js` 修丢标注——后台正在写时新的 flush 直接返回、不再补写，快速翻页（每页 1–2 秒）时最后几页的「本页没问题」标注没进后台（全唐文 3 页、史記 1 页、殿本 1 页）；改成写时记一笔、写完再补一轮。本机 localStorage 里仍有，重开页面会补写。所有用 `makeStore` 的页型都受益。`col_check` 1.0.2：说明改为「这一轮只确认格数与大致切分，连接处切点、框线不用细看」。L0。
 - **PATCH**（11-23，Sheldon「清理照做」）：中心库删五张一直为空的表 `cv_versions`、`freeze_baselines`、`snapshots`、`glyph_pairs`、`glyph_events`（schema、`scope.py` 的表定义与行解析都去掉；`pairs.jsonl`、`events/*.jsonl` 若出现改当整文件进 `files`）。文档与发布标准里「三张登记表各一行」改为查 `feedback/lists/freeze/<册>.jsonl`。删前整库已备份。L0。
 - **PATCH**（11-23，GM2 全面清理）：去掉中心库迁 D1 后的 Neon 残留——删 `datastore/neonapi.py` 空壳（`cli_db`、任务库看板直接按分支名连），`jobs.store.connect_neon` 改名 `connect_central`（旧名留别名），各命令帮助与注释里的「写 Neon 正式库」等改成中心库；`pending-stats` 报告里码表、分类规则、跟进方的出处从 cv／ai-team 旧路径改成本仓路径；待审原因 yaml 的 `owner`、`taxonomy` 的跟进方、`diagnose`／`machine_audit`／`seg_causes` 等输出里给人看的去向、`iterate freeze` 的通知名单换成 11-23 新 Project 名（CV0–CV4、GM2–GM4；进度看板的写入人 `WHO` 不动）；`guji iterate --help` 返回 0。删未用的 import 与变量、`_cv` 里三个重复键。文档：待审原因规范从 cv `doc/design/` 搬来成 `doc/参考/待审原因/规范-PendingReason.md`（补 11-09「book-text 只录首选字」后的写法）；`环境与令牌` 去掉 Neon／KV 令牌、补密钥仓取法与任务库令牌；`待审分类规范`、`按码现算.py`、两篇 Wiki 的 Neon 连法改成 D1；doc／Wiki 里「报／交／找 A2x／A3x」一类去向换新名；修 `doc/参考` 两处指向 `中心库.md` 的断链。不动产物（L0）。
 - **PATCH**（11-23，Sheldon「任务库也搬到 D1」「随时切」）：**任务库缺省改连 D1 `guji-jobs`**（`databases.toml` 的 `[jobs]` → `d1-worker`，`env_url` 改 `GUJI_JOBS_URL`）；旧美国机 Postgres 挪到 `[jobs_pg]`，`jobsdb` 在 `[jobs]` 不是 pg-tunnel 时读它（搬家脚本用）。执行方空闲时自更新即改连 D1；交接期 `scripts/jobs_pg_to_d1.py sync` 反复把 Postgres 的变动同步过来。`guji_jobs` 等提交端要更新到含此改动的 manager。L1（存放位置变，命令不变）。

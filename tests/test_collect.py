@@ -255,3 +255,23 @@ def test_window_ok():
     assert C._window_ok("甲乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]
     assert C._window_ok("某乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]      # 远处一字变
     assert not C._window_ok("甲乙丙丁戊己庚某", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]  # 紧邻字变
+
+
+def test_ledger_of_and_render():
+    from guji_manager import collect as C
+    meta = {"n_raw": 5, "n_votes": 4, "old_landed": 2, "old_sheet": 1, "waiting": 0, "ready": 3, "held": 1, "skipped": [("a", "x")]}
+    r = C.ledger_of("vol06", "006-r13", meta, plan={"apply": 2, "already": 1, "layout": 0}, want=3, n_ai=0)
+    assert (r["votes"], r["old_landed"], r["skipped"], r["apply"], r["already"]) == (5, 2, 1, 2, 1)
+    txt = C.render_ledger([r], {"vol06": "done"})
+    lines = txt.splitlines()
+    assert lines[0].startswith("册\t单版\t收件箱票") and lines[1].startswith("vol06\t006-r13\t5") and lines[-1].startswith("合计")
+
+
+def test_needs_review_of_collects_three_sources(tmp_path):
+    from guji_manager import collect as C
+    d = tmp_path / "reports" / "vol21" / "_collect" / "021-r12"
+    (d / "draft").mkdir(parents=True)
+    (d / "needs_review.tsv").write_text("说明\n143:9:4 新包「𣴭」≠人裁／手改「茫」\n", encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text("格位\t票\n1:1:1\tchar=甲\n", encoding="utf-8")
+    got = C.needs_review_of(tmp_path, {"vol21": {"rev": "021-r12"}, "vol22": {"rev": "022-r1"}})
+    assert list(got) == ["vol21"] and len(got["vol21"]) == 2

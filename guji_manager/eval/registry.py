@@ -224,6 +224,13 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                             ("advset_shiji", "shiji", "史記", (), ()),
                             ("advset_qtw", "qtw", "全唐文", ("--sim-model", "models/glyph_sim_qtw/model.pt"),
                              ("heavy",)))],
+    # 3a 子基准 A6 形近字组（CV3，2026-11-23）：OCR 研究 11-18 的形近字组基准（全唐文 118 对、三轮人裁最终标签），
+    # 冻结成自带归一图的分片；生产嵌入（glyph_sim_qtw）对全库近邻，量「首位是对家字」。要全唐文库。
+    EvalSpec(id="nearform", script="eval_nearform.py", shard="glyph-match/nearform-qtw", pythonpath=True,
+             extra=("--sim-model", "models/glyph_sim_qtw/model.pt"),
+             title="3a 形近字组·全唐文", needs=("heavy",),
+             note="头条＝对家误认格数（护栏：不增）；千干／日曰／天夭 标签由文意定，单列不进头条；"
+                  "按 GUJI_GLYPH_DB 取全唐文库，同一物理格的库刻例去掉"),
     # 3a 子基准 A5 退化（A23，2026-11-23）：ai-team 残笔细笔真实残损集（字是人裁），冻结成带固定候选池的分片；
     # 判官按生产配置（殿本、史記覆盖分）。头条＝误放（护栏，不增）＋各类别首位命中、放行。
     *[EvalSpec(id=i, script="eval_match_pool.py", shard=f"glyph-match/damaged-{d}", pythonpath=True,
@@ -232,9 +239,10 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
-                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human"),
+                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human",
+                                     "--model", "models/glyph_sim_qtw/model.pt", "--name", "cnn_qtw"),
              title="5a 相似度基准·全唐文", needs=("heavy",),
-             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报"),
+             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报；cnn_qtw＝全唐文生产在用的 CNN（要 scikit-learn）"),
     *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
@@ -315,6 +323,8 @@ SUITES: dict[str, tuple[str, ...]] = {
     "read-3b": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
 }
 SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
+# 要全唐文字形库的（先 export GUJI_GLYPH_DB=<全唐文 glyph.db>）：5a 相似度、A6 形近字组、A3 归一图端到端
+SUITES["read-qtw-lib"] = ("sim_bench", "nearform", "match_bench_qtw")
 
 
 def expand_suites(keys: list[str]) -> list[str]:

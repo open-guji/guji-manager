@@ -203,7 +203,7 @@ def cmd_audit(args) -> None:
 
 def add_parser(sub) -> None:
     p = sub.add_parser("close-check",
-                       help="[v2] 一册书交付前逐项体检（只读）：新鲜、缓存、待审、收尾闸、真源已提交、lines/pages 自洽、Step9")
+                       help="[v2] 一册书交付前逐项体检（只读）：新鲜、缓存、待审、收尾闸、真源已提交、lines/pages 自洽、第五步产物（原 Step9）")
     p.add_argument("book")
     p.add_argument("--pipeline", default=cli_v2.DEFAULT_PIPELINE)
     p.add_argument("--pages", default="all")

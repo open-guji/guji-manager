@@ -318,22 +318,46 @@ def _confirm_empty(args, where: str) -> dict:
     return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
 
 
-def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict) -> tuple[list[dict], list[tuple]]:
-    """条目票里投在旧单上的（``vote_rev`` 不是现行单 ``rev``）拿出来，不按条目现格写新事件。
+def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: dict | None = None, shown_now: dict | None = None) -> tuple[list[dict], list[tuple]]:
+    """条目票里投在旧单上的（``vote_rev`` 不是现行单 ``rev``）拿出来，**图没变的**并回现行票，**图变了的**不写。
 
-    ZM 11-19（v0.4.67 复测）：vol01 r9／r15／r16 单上投的票，格号是当年的切分；拿现行包同号格的字框建锚写成新事件，
-    88:1:12a 写成「領」（现格图是保）、18a 写成「武」（现格是臣）。旧单票当年落过的，人裁事件在库、由绑定表跟着改绑
-    （seed_admit／human_chars 认）；没落过的要用当年那张单的出单包另落，这里只报不写。
-    返回 (现行单的票, [(现格, 投票时格, 投票时单, 票, 当年人裁事件或 None)])。"""
+    ZM 11-19（v0.4.68）：vol01 r9／r15／r16 单上投的票，格号是当年的切分；拿现行包同号格的框建锚写成新事件，
+    88:1:12a 写成「領」（现格图是保）。当时一律挡下旧单票。GM4 11-23（用户定「永远是新结果覆盖旧的」）：条目 id 按图块
+    指纹认，条目还在、没有 ``fp_changed``（图没换）、没被人工撤下，它就还是读者当年看的那块图，票的含义没变，按条目**现格**落
+    （``items`` 给了才判；票上记 ``_old_rev``，报告里分开数）。仍挡下、交人看的（特殊需要分析）：条目 ``fp_changed``、
+    人工撤下、条目找不到。旧单票遇到更新的人裁不再跳过，同格同人后到的覆盖先到的（``latest_votes``）。
+    返回 (现行单的票＋并回的旧单票, [(现格, 投票时格, 投票时单, 票, 当年人裁事件或 None, 挡下原因)])。"""
     cur, old = [], []
     for v in raw:
         vr = v.get("vote_rev")
         if not vr or vr == rev:
             cur.append(v)
             continue
+        it = (items or {}).get(v.get("item") or "")
+        why = ""
+        if items is None:
+            why = "旧单票（没给条目表，不判）"
+        elif it is None:
+            why = "条目找不到"
+        elif it.get("fp_changed"):
+            why = "条目 fp_changed（图块变了，需人看）"
+        elif it.get("state") == "withdrawn":
+            why = "条目被人工撤下"
+        elif v.get("vote_a") and v.get("vote_a") != it.get("cell"):
+            # ZM 11-23（vol01 职名页 11-20 改号后旧单条目票落到邻格）：条目现格≠投票时的格，说明这之间改过格号，
+            # 条目存的格号不一定是换好的；没有对照表换号就不落，列进报告
+            why = f"条目格号变过（投票时 {v.get('vote_a')}→现 {it.get('cell')}），要按对照表换号，不自动落"
+        elif shown_now is None:
+            why = "没给现行 book-text 的字表（--char-json），格号核不了，旧单票不自动并入"
+        elif not v.get("shown") or shown_now.get(it.get("cell")) != v["shown"]:
+            # 页面显示字（读者当时看到的）必须等于 book-text 现格的字：格号改过（ZM 11-23 vol01 职名页）时对不上，不落
+            why = f"页面显示字「{v.get('shown') or '无'}」≠book-text 现格字「{shown_now.get(it.get('cell')) or '无'}」，格号对不上"
+        if not why:
+            cur.append({**v, "_old_rev": vr})
+            continue
         e = human.get(f"{book}:{v.get('vote_a')}")
         tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
-        old.append((v.get("a"), v.get("vote_a"), vr, tag, getattr(e, "id", None) if e is not None else None))
+        old.append((v.get("a"), v.get("vote_a"), vr, tag, getattr(e, "id", None) if e is not None else None, why))
     return cur, old
 
 
@@ -382,6 +406,33 @@ def _bound_only(book: str, human: dict, votes: list[dict]) -> tuple[dict, list[t
     return out, gone
 
 
+def _ts_s(x) -> float:
+    """票的 ts（网站毫秒时间戳）或事件的 ts（ISO 字符串）→ 秒。"""
+    if isinstance(x, (int, float)):
+        return x / 1000 if x > 1e11 else float(x)
+    try:
+        return dt.datetime.fromisoformat(str(x).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _yield_to_newer_human(book: str, votes: list[dict], human: dict) -> tuple[list[dict], list[tuple]]:
+    """「按新的判定结果走」（用户 11-23）：票比这格现行人裁**早**（票的时间 < 人裁事件时间），票让位，不写、不推翻，
+    只列进 ``stale_votes.tsv``（旧单上较早的票最常见）。票比人裁晚才照常走（一致跳过／推翻）。
+    返回 (留下的票, [(格, 票, 票时间, 人裁事件, 人裁时间)])。"""
+    keep, out = [], []
+    for v in votes:
+        e = human.get(f"{book}:{v['a']}")
+        if e is not None and _ts_s(v.get("ts") or 0) < _ts_s(getattr(e, "ts", 0)):
+            if v.get("choice") == "char" and v.get("char") and v["char"] == (getattr(e, "payload", None) or {}).get("shape"):
+                continue                                  # 票的字就是现行人裁的字（多半是这票自己落的）：不冲突，不报
+            tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
+            out.append((v["a"], tag, str(v.get("ts")), getattr(e, "id", ""), str(getattr(e, "ts", ""))))
+        else:
+            keep.append(v)
+    return keep, out
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -391,12 +442,21 @@ def cmd_draft(args) -> None:
         raise SystemExit("要给 --cord（出单那一版 book-text 的 <册>.cord.json）或 --pack（出单版产物包），或显式 --no-box-check")
     raw, where = _votes(args)
     human_all = latest_human(EventLog(feedback_root()).iter_all())
-    raw, old = _split_old_sheet(args.book, args.rev, raw, human_all)
+    item_tab = None
+    if getattr(args, "items", False):
+        from .review import pending_items as P
+        item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, args.rev.split("-r")[0]).items
+    shown_now = None
+    if getattr(args, "char_json", None):
+        from .swap.booktext import _chars
+        shown_now = {a_: x.get("c") for a_, x in _chars(json.loads(Path(args.char_json).read_text(encoding="utf-8")))}
+    raw, old = _split_old_sheet(args.book, args.rev, raw, human_all, item_tab, shown_now)
+    n_old_in = sum(1 for v in raw if v.get("_old_rev"))
+    if n_old_in:
+        _print(f"旧单上投的条目票 {n_old_in} 条：条目图没变，按条目现格并入（永远新结果覆盖旧的）")
     if old:
-        n_new = sum(1 for o in old if o[4] is None)
-        _print(f"旧单上投的条目票 {len(old)} 条不按现格落（格号是当年那张单的，现行包同号格可能已是别的字）："
-               f"{len(old) - n_new} 条当年已落过人裁、由绑定表跟着改绑；{n_new} 条没落过，见 old_sheet.tsv，"
-               f"要用当年那张单的出单包另落")
+        _print(f"旧单上投的条目票 {len(old)} 条仍挡下（图变了／撤下／找不到条目，需人看，见 old_sheet.tsv）："
+               + "；".join(sorted({o[5] for o in old})))
     empty_ok = None
     if not raw and old:
         empty_ok = {"only_old_sheet": len(old)}
@@ -406,8 +466,16 @@ def cmd_draft(args) -> None:
                              f"（确实没人投、要照换单：加 --from-kv --allow-empty）")
         empty_ok = _confirm_empty(args, where)
     votes, dropped = latest_votes(raw, args.site_book, args.rev)
+    from .feedback import landing_policy as LP
+    policy = LP.get_policy(getattr(args, "policy", None))
+    votes, waiting = LP.apply_policy(policy, votes)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
+    if waiting:
+        _print(f"落票策略 {policy.name}：{len(waiting)} 格没到门槛，不落（票留在收件箱，条目仍开着；见 waiting.tsv）")
     human = human_all
     human, unbound = _bound_only(args.book, human, votes) if not getattr(args, "no_bind_check", False) else (human, [])
+    votes, stale = _yield_to_newer_human(args.book, votes, human)
+    if stale:
+        _print(f"票比现行人裁早 {len(stale)} 格：按新的判定结果走，票让位不写（见 stale_votes.tsv）")
     if unbound:
         _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
                + "（" + "、".join(f"{a} {why}" for a, why in unbound[:8]) + ("…" if len(unbound) > 8 else "") + "）")
@@ -436,9 +504,17 @@ def cmd_draft(args) -> None:
             f.write(f"{d.a}\t{json.dumps(d.payload, ensure_ascii=False)}\t{d.held}\t"
                     f"{'；'.join(v['choice'] + (('=' + v['char']) if v.get('char') else '') for v in d.votes)}\n")
     with open(out / "old_sheet.tsv", "w", encoding="utf-8") as f:
-        f.write("现格\t投票时格\t投票时单\t票\t当年人裁\n")
+        f.write("现格\t投票时格\t投票时单\t票\t当年人裁\t挡下原因\n")
         for row in old:
             f.write("\t".join(x or "" for x in row) + "\n")
+    with open(out / "stale_votes.tsv", "w", encoding="utf-8") as f:
+        f.write("格位\t票\t票时间\t现行人裁\t人裁时间\n")
+        for row in stale:
+            f.write("\t".join(row) + "\n")
+    with open(out / "waiting.tsv", "w", encoding="utf-8") as f:
+        f.write("格位\t原因\t票\n")
+        for a_, why, vs in waiting:
+            f.write(f"{a_}\t{why}\t" + "；".join(f"{v.get('voter')}:{v.get('choice')}{('=' + v['char']) if v.get('char') else ''}" for v in vs) + "\n")
     rc = recheck_rows(t)
     with open(out / "recheck.tsv", "w", encoding="utf-8") as f:
         f.write("格位\t说明\t旧人裁\t旧人裁的字\t旧人裁时间\n")
@@ -449,7 +525,8 @@ def cmd_draft(args) -> None:
             "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
-            "dropped": dropped, "old_sheet": len(old), "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
+            "dropped": dropped, "old_sheet": len(old), "old_landed": n_old_in,
+            "policy": policy.name, "waiting": len(waiting), "stale_votes": len(stale), "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
             **({"empty_confirmed": empty_ok} if empty_ok else {})}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# {args.book} 网页投票 → 事件草稿（{args.rev}）", "",
@@ -719,6 +796,8 @@ def add_parser(sub) -> None:
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
     p.add_argument("--rev", help="draft：待审单版本，如 004-r3")
     p.add_argument("--cord", default=None, help="draft：出单那一版 book-text 的 <册>.cord.json")
+    p.add_argument("--policy", default=None, help="draft：落票策略（auto 缺省＝有票就落；quorum:N＝高等级一票即定、其余要 N 人同一结论；也读 GUJI_LANDING_POLICY）")
+    p.add_argument("--char-json", default=None, help="draft --items：现行 book-text 的 <册>.char.json；旧单条目票并入前核「页面显示字＝现格字」（格号改过的对不上，不落）；不给则旧单票一律不并入")
     p.add_argument("--no-box-check", action="store_true", help="draft：不核格位（自己担保产物没重切过）")
     p.add_argument("--no-bind-check", action="store_true",
                    help="draft：「与已有人裁一致」不核旧人裁在现行产物上的绑定（缺省核：绑不上的旧人裁不算已有，票照写）")

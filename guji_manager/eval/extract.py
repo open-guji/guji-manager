@@ -76,6 +76,21 @@ def _sim_bench(data: dict) -> list[Metric]:
     return out
 
 
+def _nearform(data: dict) -> list[Metric]:
+    r = data.get("result") or {}
+    out: list[Metric] = []
+    for key, label in (("全部|全部", ""), ("全部|test", "test "), ("文意三对|全部", "文意三对 ")):
+        x = r.get(key)
+        if not x:
+            continue
+        n = x.get("n")
+        out += [_m(f"{label}对家误认", x.get("pair_confuse"), "格", den=n,
+                   note=("护栏：不增" if not label else "")),
+                _m(f"{label}首位对", x.get("top1"), "%", den=n),
+                _m(f"{label}两字间", x.get("two_way"), "%", den=n)]
+    return out
+
+
 def _rare(data: dict) -> tuple[list[Metric], str]:
     r = data.get("result") or {}
     emb = r.get("emb") or {}
@@ -136,6 +151,8 @@ def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
         return _sim_bench(data), ""
     if eval_id.startswith("advset"):
         return _advset(data), ""
+    if eval_id.startswith("nearform"):
+        return _nearform(data), ""
     if eval_id.startswith("match_pool"):
         return _match_pool(data), ""
     if eval_id.startswith("rare_") and eval_id != "rare_char":
@@ -143,7 +160,7 @@ def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
     return None, ""
 
 
-READ_EVALS_PREFIX = ("advset", "match_pool", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
+READ_EVALS_PREFIX = ("advset", "nearform", "match_pool", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
                      "oov", "degradation", "zero_shot")
 
 

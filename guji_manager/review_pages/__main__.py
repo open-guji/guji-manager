@@ -3,7 +3,7 @@
   list                                      页型、版本、用途
   preselect  --cells cells.jsonl --out DIR  预选：三方一致的格归 auto（不上页），其余出 page.jsonl 与统计
   build      TYPE --items items.jsonl --book B --out page.html   出页（一字一卡同时写 page.cards.json）
-  seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   A22 seg_causes → 切分归因卡片
+  seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   review/seg_causes.py 的输出 → 切分归因卡片
   build ... --exclude landed.json            撤掉已录入的格（点过即录入、不再上页；可给多个文件）
   expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/pick/seg/unclear/bad/follow/audit）
   crop       --cells ids.txt --shrink-dir D --pages-dir D --out DIR   按 cell_shrink 字框裁审页图

@@ -1,4 +1,4 @@
-"""读 A22 的 seg_causes 输出（逐页.tsv / 逐格.tsv，中文表头）→ 切分归因看图页（seg_cause）的卡片。
+"""读 `review/seg_causes.py`（原 A22 做）的输出（逐页.tsv / 逐格.tsv，中文表头）→ 切分归因看图页（seg_cause）的卡片。
 
 一行逐页.tsv ＝ 一张卡；卡里列该页的待审格（取自逐格.tsv）。显示名和「先怎么办」从
 `guji_manager.review.seg_causes.CAUSES` 取（真源，不另抄）。

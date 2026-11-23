@@ -79,3 +79,12 @@ def test_rare_extra_strata():
 def test_rare_lock_records_charset_not_glyph_db(tmp_path):
     lock = bench_lock("rare_qtw", tmp_path, tmp_path, {"charset": "unicode-cjk-ab", "ckpt": "/x/models/glyph_cnn_r5/best.pt"})
     assert lock["charset"] == "unicode-cjk-ab" and lock["model"] == "glyph_cnn_r5" and "glyph_db" not in lock
+
+
+def test_nearform_headline_and_context_pairs_apart():
+    data = {"result": {"全部|全部": {"n": 100, "top1": 95.0, "pair_confuse": 2, "two_way": 98.0},
+                       "全部|test": {"n": 40, "top1": 96.0, "pair_confuse": 1, "two_way": 99.0},
+                       "文意三对|全部": {"n": 10, "top1": 80.0, "pair_confuse": 2, "two_way": 85.0}}}
+    ms, err = extract("nearform", data)
+    v = _names(ms)
+    assert err == "" and v["对家误认"] == 2 and v["test 对家误认"] == 1 and v["文意三对 对家误认"] == 2
