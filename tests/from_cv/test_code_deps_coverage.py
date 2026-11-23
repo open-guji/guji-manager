@@ -117,7 +117,6 @@ EXISTING_GAPS: dict[str, set[str]] = {
         "open_guji_cv.shadow.model",
         "open_guji_cv.shadow.signals",
         "open_guji_cv.steps.align_ref",
-        "open_guji_cv.steps.context_decide",
         "open_guji_cv.utils.ji_yi_si",
     },
 }
