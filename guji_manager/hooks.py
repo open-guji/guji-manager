@@ -16,6 +16,8 @@ from .ops import prep
 
 
 def register(hooks) -> None:
+    from . import dbconfig
+    dbconfig.apply_env()     # databases.toml 的中心库地址给 cv 的 datastore 客户端（它只认 GUJI_DATA_URL）
     from .steps import route
     if "route" in getattr(hooks, "POINTS", ()):
         hooks.add("route", route)
