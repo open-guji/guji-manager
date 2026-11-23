@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，SJ／CV0 问）：COMPAT.md 写明 manager 0.6 只硬核契约 v1，cv 0.7.x／0.8.x 也能用，只是 `pipeline` 步骤前缀要 cv ≥ 0.9.0（旧 cv 写 `guji job …` 等老写法）；`swap doctor` 的 cv 版本提示改成同一口径。L0。
+
 - **PATCH**（11-23，GM4／A32，GM2 转全唐文 006–008 实测；L0）：①`guji collect` 多册串行时某册 `SystemExit`／异常不再把后面几册一起带走：记成该册 blocked 并继续，开头打印「本趟收 N 册：…」，结尾照旧列没收完的册（`--books 006,007,008`、`007-008` 本就能展开，`parse_books` 已有测试）。②`swap doctor` 加版本检查：manager < 0.5.0、cv < 0.9.0 只提示不挡；`CELLREVIEW_TOKEN` 由必需改为可选（0.5.0 起缺省读收件箱，用 `GUJI_DATA_TOKEN_READ`）。未动落票口径。
 
 ## [0.6.4] - 2026-11-23
