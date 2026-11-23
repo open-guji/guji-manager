@@ -165,6 +165,18 @@ def test_writeback_old_pre_from_replay():
     assert m2 == {} and len(notes) == 1                                        # 同一 dev 锚点指向两处 → 丢弃交人看
 
 
+def test_writeback_v03_default_source_and_no_offset():
+    """punct v0.3：条目省 source 取 default_source 判人改；不写 char_offset 的写回后也不补（guji-format 00 §4.2/§4.6）。"""
+    c = char("甲乙丙丁")
+    punct = {"default_source": "claude:manual", "punctuations": [
+        {"mark": "，", "pre_char": "乙", "anchor": "1:1:1"},                          # 缺省＝人工：不动
+        {"mark": "。", "pre_char": "丙", "anchor": "1:1:2", "source": "rule:auto"}]}  # 显式机器：可写
+    ok, skip = writeback.plan_fixes(punct, c, {"1:1:1": "1:1:2", "1:1:2": "1:1:3"})
+    assert [f["idx"] for f in ok] == [1] and "人裁" in skip[0]["why"] and skip[0]["source"] == "claude:manual"
+    writeback.apply_fixes(punct, c, ok)
+    assert punct["punctuations"][1] == {"mark": "。", "pre_char": "丙", "anchor": "1:1:3", "source": "rule:auto"}
+
+
 def test_writeback_sample_deterministic():
     fx = [{"idx": i} for i in range(52)]
     s1, s2 = writeback.sample(fx, 30), writeback.sample(fx, 30)

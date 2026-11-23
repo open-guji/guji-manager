@@ -69,6 +69,14 @@ def test_guard_flags_lost_link_and_punct_change():
     assert any("挂法" in x for x in probs) and any("标点" in x for x in probs)
 
 
+def test_guard_punct_source_by_effective_value():
+    """v0.2→v0.3（source 提到文件头）不算标点变了；缺省产出方真变了才报。"""
+    p2 = {"punctuations": [{"mark": "，", "kind": "point", "source": "glm:x", "pos": "after"}]}
+    p3 = {"default_source": "glm:x", "punctuations": [{"mark": "，", "kind": "point", "pos": "after"}]}
+    assert bt.guard(p2, p3, None, None) == []
+    assert any("标点" in x for x in bt.guard(p2, {**p3, "default_source": "human:y"}, None, None))
+
+
 def test_structure_changed():
     assert bt.structure_changed(_char({1: "ab"}), _char({1: "abc"}))
     assert not bt.structure_changed(_char({1: "ab"}), _char({1: "xy"}))

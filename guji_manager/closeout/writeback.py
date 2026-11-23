@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import random
 
+from ..formats.guji_format import effective_source
+
 MANUAL_KEYS = ("human", "manual", "人裁", "手改")
 
 
@@ -41,11 +43,12 @@ def plan_fixes(punct: dict, char: dict, cellmap: dict[str, str],
         n = cellmap.get(a) if a else None
         if not a or n is None or n == a:
             continue                                   # 表里没要挪的
-        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": p.get("source", ""), "old": a, "new": n,
+        src = effective_source(p, punct) or ""        # v0.3 条目可省 source，取文件头 default_source
+        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": src, "old": a, "new": n,
                "dev_pre_char": p.get("pre_char")}
         if pc is None:
             skip.append({**rec, "why": "无 pre_char，无从核对"})
-        elif is_manual(p.get("source")):
+        elif is_manual(src):
             skip.append({**rec, "why": "来源不是机器（人裁／手改）"})
         elif n not in pos:
             skip.append({**rec, "why": f"对照表位置 {n} 不在 char 里"})
@@ -66,7 +69,9 @@ def apply_fixes(punct: dict, char: dict, fixes: list[dict]) -> int:
         p = punct["punctuations"][f["idx"]]
         if p.get("anchor") != f["old"]:
             raise ValueError(f"#{f['idx']} 锚点已不是 {f['old']}，计划过期")
-        p["anchor"], p["char_offset"] = f["new"], pos[f["new"]]
+        p["anchor"] = f["new"]
+        if "char_offset" in p:                          # v0.3 不写下标缓存：有才更新，不新增（guji-format 00 §4.2）
+            p["char_offset"] = pos[f["new"]]
         if "pre_char" in p:
             p["pre_char"] = f["pre_char"]               # 校验字回到换图前的旧值（＝新锚点上的字，条件 2 已核）
         n += 1
