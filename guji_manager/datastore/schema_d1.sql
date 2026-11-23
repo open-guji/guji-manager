@@ -169,14 +169,6 @@ CREATE TABLE IF NOT EXISTS corpus_files (
   PRIMARY KEY ("ws", "src_path"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
-CREATE TABLE IF NOT EXISTS cv_versions (
-  "version" TEXT NOT NULL,
-  "cv_commit" TEXT NOT NULL,
-  "released_at" TEXT,
-  "note" TEXT,
-  "doc" TEXT,
-  PRIMARY KEY ("version")
-);
 CREATE TABLE IF NOT EXISTS db_meta (
   "key" TEXT NOT NULL,
   "value" TEXT NOT NULL,
@@ -219,20 +211,6 @@ CREATE TABLE IF NOT EXISTS files (
   "body_r2" INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY ("ws", "src_path"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
-);
-CREATE TABLE IF NOT EXISTS freeze_baselines (
-  "ws" TEXT NOT NULL,
-  "book" TEXT NOT NULL,
-  "version" TEXT NOT NULL,
-  "cv_version" TEXT,
-  "cv_commit" TEXT,
-  "snapshot_id" TEXT,
-  "db_branch" TEXT,
-  "db_rev" INTEGER,
-  "frozen_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  "note" TEXT,
-  "doc" TEXT,
-  PRIMARY KEY ("ws", "book", "version")
 );
 CREATE TABLE IF NOT EXISTS glyph_admissions (
   "ws" TEXT NOT NULL,
@@ -279,23 +257,6 @@ CREATE TABLE IF NOT EXISTS glyph_approx_labels (
   "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   "row_sha" TEXT,
   PRIMARY KEY ("ws", "instance_id"),
-  FOREIGN KEY (ws) REFERENCES workspaces(ws)
-);
-CREATE TABLE IF NOT EXISTS glyph_events (
-  "ws" TEXT NOT NULL,
-  "src_path" TEXT NOT NULL,
-  "src_line" INTEGER NOT NULL,
-  "source_id" TEXT,
-  "batch" TEXT,
-  "seq" INTEGER,
-  "ts" TEXT,
-  "op" TEXT,
-  "payload" TEXT,
-  "raw" TEXT NOT NULL,
-  "rev" INTEGER NOT NULL,
-  "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  "row_sha" TEXT,
-  PRIMARY KEY ("ws", "src_path", "src_line"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
 CREATE TABLE IF NOT EXISTS glyph_evictions (
@@ -374,23 +335,6 @@ CREATE TABLE IF NOT EXISTS glyph_meta (
   PRIMARY KEY ("ws", "key"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
-CREATE TABLE IF NOT EXISTS glyph_pairs (
-  "ws" TEXT NOT NULL,
-  "inst_a" TEXT NOT NULL,
-  "inst_b" TEXT NOT NULL,
-  "relation" TEXT NOT NULL,
-  "origin" TEXT NOT NULL,
-  "source_id" TEXT,
-  "created_at" TEXT NOT NULL,
-  "src_path" TEXT NOT NULL,
-  "src_line" INTEGER NOT NULL,
-  "raw" TEXT NOT NULL,
-  "rev" INTEGER NOT NULL,
-  "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  "row_sha" TEXT,
-  PRIMARY KEY ("ws", "inst_a", "inst_b", "relation"),
-  FOREIGN KEY (ws) REFERENCES workspaces(ws)
-);
 CREATE TABLE IF NOT EXISTS glyph_sources (
   "ws" TEXT NOT NULL,
   "source_id" TEXT NOT NULL,
@@ -433,17 +377,6 @@ CREATE TABLE IF NOT EXISTS glyphs (
   "row_sha" TEXT,
   PRIMARY KEY ("ws", "edition_tag", "char"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
-);
-CREATE TABLE IF NOT EXISTS snapshots (
-  "snapshot_id" TEXT NOT NULL,
-  "ws" TEXT,
-  "book" TEXT,
-  "created_at" TEXT,
-  "cv_commit" TEXT,
-  "db_branch" TEXT,
-  "db_rev" INTEGER,
-  "doc" TEXT,
-  PRIMARY KEY ("snapshot_id")
 );
 CREATE TABLE IF NOT EXISTS source_files (
   "ws" TEXT NOT NULL,

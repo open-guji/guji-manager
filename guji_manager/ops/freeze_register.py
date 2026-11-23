@@ -6,7 +6,7 @@
 
 1. 产物存进 R2 冻结包，标签 `freeze-<文本版本>-<UTC>`（包按名字只增不改，就是 pin 住）并标成该册 main；
    包旁边另存 `baseline.json`（guji-snap/1 同形：每个产物文件的 sha256），close-check 1a 照它比，不再要 snap 分支；
-2. 中心库登记：数据目录 `feedback/lists/freeze/<册>.jsonl` 追加一行（字段同 schema.sql 的 `freeze_baselines`，
+2. 中心库登记：数据目录 `feedback/lists/freeze/<册>.jsonl` 追加一行（字段沿用已删的 `freeze_baselines` 表，
    另带 `pack`、`tag`、`text_commit`）。三张表还没有写入口（guji-data Worker 只读），先记文件、随 `guji db sync` 进库，
    以后有写入口时照这份文件导入即可；
 3. 册 yaml：`freeze:` 段换成 `{at, cv_version, cv_commit, pack, tag, registered}`，顶层 `cv_version` 设成同一版本（版本护栏只认顶层）；
