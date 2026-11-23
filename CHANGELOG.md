@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，史记 2 册 8:2:13b 待审格在网站显示成阙字）：`close-check` 2c「□ 有去向」加一条——待审单上、非人裁、有首选字（`first_choice`）的格，导出里若仍是 □ 就报错（`pending_blank`）。原先「在待审单上」即算有去向，v0.1 首发单没带候选，1,332 个待审格落成 □＋lacuna 也过了关。`release_gates.load_pending_blank_cells`，测试 `test_pending_blank_with_first_choice_flagged`。L0。
 - **MINOR**（删命令，用户 11-22 定）：`guji` 命令按五步加前缀 `guji <步> <命令>`，步为 `start` 新书启动／`pipeline` 自动化流程／`text` 文意与知识／`feedback` 反馈迭代／`output` 排版输出（`guji_manager/steps.py`）；不带前缀的老写法照旧能用，`guji <步> commands` 列本步命令。前缀经 cv 新钩子时点 `route` 去掉（cv #1786）；cv 旧版没有该时点时 `start`／`text`／`feedback`／`output` 靠同名子命令兜底，`pipeline` 前缀不可用。原只能 `guji-manager <命令>`／`python -m` 调的 `pending-stats`、`central-gc`、`triage`、`review-pages`、`progress-sync`、`iterate`、`suggest`、`pair-attr`、`final-review`、`online-lists`、`datastore` 并进 `guji`。**删除** `guji release`、`deploy`、`batch`、`label-batch`、`cards`、`store`（及 `ops/release_check.py`）。
 - 文档：doc 只留规格与事实，教程、做法、坑搬进 Wiki（`wiki/<步名>/`）；四步改名新书启动／自动化流程／文意与知识／反馈迭代，加第五步排版输出（cv 原 Step9 移来）。
 
