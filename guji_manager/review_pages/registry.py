@@ -48,6 +48,10 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "两套格网都切错、夹注小字被并成整字格；每格一段列图叠两套格界，点图画切线、或标不切/看不出；"
              "结果存列图与页图坐标，用 segcut-apply 导出交重切（见 seg_cut.py）",
              options=("cut", "keep", "unsure"), doc_prefix="review_segcut"),
+    PageType("col_check", "整列切分抽查（一页书一屏，点切错的格）", "col_check.tpl.html", "1.0.0",
+             "切字 benchmark 银标抽查、整列验收；各列从右到左叠格框，点并字/劈字/框歪的格标红，整列没问题翻页记全对；"
+             "结果用 colcheck-apply 导出（见 col_check.py）",
+             options=("ok", "bad", "unsure"), doc_prefix="review_colcheck"),
     PageType("near_pair", "形近字对比卡（两字各摆库刻例，待审格居中）", "near_pair.tpl.html", "1.0.1",
              "L4 同字聚合后的形近对（畫/書、全/今、文/又…）；选 A/B/都不是/看不清/切分有问题，点即存；"
              "可带 near_shape 差异区高亮；结果经 `pair_audit` 出 relabel/confirm 事件",

@@ -100,6 +100,8 @@ def test_every_template_builds(t, tmp_path):
         "ref_check": [dict(id="1:1:1:1", pre="百", left="白石", right="山房", cands={"百": ["整理本"], "白": ["库首位"]}, lib="白", img=str(img))],
         "glyph_quality": [dict(id="vol05:1:1:21", char="一", crops=[dict(key="off", sha="aa", img=str(img)),
                                                                    dict(key="on", sha="bb", img=str(img))])],
+        "col_check": [dict(id="053:76:3", vol="053", page=76, col=3, img=str(img),
+                           cells=[dict(key="053:76:3:1", kind="char", box=[0, 0, 1, 1])])],
         "seg_cut": [dict(id="06:26:2:-1", column_image=str(img), expect_chars=["東", "雍"],
                          grids={"main": [dict(id="06:26:2:-1", slot=-1, sub=None, bbox_col=[0, 0, 1, 1], bbox_page=[10, 20, 11, 21])]})],
     }[t]
@@ -705,3 +707,17 @@ def test_seg_cut_labels_and_page_coords():
             dict(page_type="seg_cut", cell="c", label="x", how="click", t=1)]
     rows = sc.label_rows(sc.labels_from_docs(docs))
     assert [(r["id"], r["label"]) for r in rows] == [("a", "keep"), ("b", "cut")]
+
+
+def test_col_check_screens_and_labels(tmp_path):
+    from guji_manager.review_pages import col_check as cc
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    rows = cc.normalize([dict(id=f"v:{p}:{c}", vol="v", page=p, col=c, img=str(img), cells=[])
+                         for p in (12, 3) for c in (1, 2)])
+    assert [(r["id"], r["screen"]) for r in rows] == [("v:3:2", 0), ("v:3:1", 0), ("v:12:2", 1), ("v:12:1", 1)]
+    docs = [dict(page_type="col_check", cell="a", label="bad", bad=["a:1"], how="click", t=1),
+            dict(page_type="col_check", cell="a", label="ok", how="page_ok", t=2),
+            dict(page_type="col_check", cell="b", label="bad", bad=["b:3"], how="click", t=1),
+            dict(page_type="col_check", cell="c", label="x", how="click", t=1)]
+    out = cc.label_rows(cc.labels_from_docs(docs))
+    assert [(r["id"], r["label"], r["bad"]) for r in out] == [("a", "ok", []), ("b", "bad", ["b:3"])]
