@@ -306,6 +306,7 @@ def test_publish_throttled_when_last_sync_recent(monkeypatch, tmp_path):
     a = types.SimpleNamespace(text_id="x")
     out = collect.publish_and_verify(a, tmp_path, ["vol01"])
     assert out["vol01"]["status"] == "synced" and "throttled" in out["vol01"]["publish"]
+    assert out["vol01"]["rev"] == tmp_path.name          # 带 rev，票账和交项目确认清单才找得到各册的账
 
 
 def test_write_handoff_tsv(tmp_path):
