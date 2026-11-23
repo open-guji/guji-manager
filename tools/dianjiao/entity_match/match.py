@@ -16,14 +16,24 @@ def tsv(p):
         if l.startswith('#') or not l.strip(): continue
         f=l.rstrip('\n').split('\t');r[f[0]]=f[1:]
     return r
+class Idx(collections.defaultdict): pass
+import re
 def build_index(root):
-    idx=collections.defaultdict(list)
+    idx=Idx(list);pid={};hint={}
     for f in glob.glob(f'{root}/Entity/*/*/*/*.json'):
         try:d=json.load(open(f,encoding='utf8'))
         except Exception: continue
         names=[d.get('primary_name')]+[a if isinstance(a,str) else (a or {}).get('name') for a in d.get('alt_names') or []]
+        pid[d['id']]=d.get('primary_name')
+        ps=set()
+        for h in d.get('history') or []:
+            if isinstance(h,dict) and h.get('parent_id'): ps.add(h['parent_id'])
+        hint[d['id']]=(ps,re.findall(r'見於：([^。；]+)',d.get('ai_note') or ''))
         rec=(d['id'],d.get('subtype'),d.get('dynasty') or '',d.get('primary_name'),d.get('place_level') or d.get('office_level') or '')
         for n in set(x for x in names if x): idx[K(n)].append(rec)
+    # 上下文提示词：上级条名＋ai_note「見於：」列出的县／州府名，供同名消歧
+    ctxn={i:set(pid[p] for p in ps if p in pid)|set(x for t in ts for x in re.split('[、，,]',t)) for i,(ps,ts) in hint.items()}
+    idx.ctxnames=ctxn
     return idx
 def match(e,idx,alias,annot):
     t=e['tag'];name=e['text']
@@ -39,6 +49,11 @@ def match(e,idx,alias,annot):
     if len(c)>1 and t in ('地','邦','官'):
         c2=[x for x in c if x[4]=='concept']
         if len(c2)==1: c=c2;by='concept'   # 跨朝代概念条，朝代留给后续按上下文挂具体条
+    if len(c)>1 and t in ('地','邦') and e.get('ctx'):
+        cn=getattr(idx,'ctxnames',{})
+        c2=[x for x in c if any(n and n!=name and n in e['ctx'] for n in cn.get(x[0],()))]
+        if len(c2)==1:   # 上下文里出现了该条的上级／所在县名：只作提示，不升 matched（册1–2 抽样约一半不稳，句里常列多个同名地）
+            return dict(status='ambiguous',by='ctx_hint',prefer=c2[0][0],cands=[x[0] for x in c[:5]],n=len(c))
     st='matched' if len(c)==1 else 'ambiguous'
     r=dict(status=st,by=by,cands=[x[0] for x in c[:5]],n=len(c))
     if st=='matched' and t=='人' and len(name)==1 and by=='name': r['weak']=True
