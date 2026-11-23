@@ -79,3 +79,26 @@ def test_disk_gate_sweep_cooldown(monkeypatch):
     assert R._disk_gate(msgs.append) is None
     assert len(calls) == 1
     assert any("没有可清的" in m for m in msgs)
+
+
+def test_clean_blob_cache_removes_root_and_keeps_data_home(tmp_path, monkeypatch):
+    cache = tmp_path / "gdcache"
+    blob = cache / "sha256" / "ab" / "abc.png"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"y" * 7)
+    data = tmp_path / "gdata" / "main" / "wsid1" / "feedback"
+    data.mkdir(parents=True)
+    (data / "x.jsonl").write_text("人裁", encoding="utf-8")
+    monkeypatch.setenv("GUJI_DATA_CACHE", str(cache))
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "gdata"))
+    assert R._clean_blob_cache() == 7
+    assert not cache.exists() and (data / "x.jsonl").exists()
+    assert R._clean_blob_cache() == 0
+
+
+def test_clean_blob_cache_keep_switch(tmp_path, monkeypatch):
+    cache = tmp_path / "gdcache"
+    cache.mkdir()
+    monkeypatch.setenv("GUJI_DATA_CACHE", str(cache))
+    monkeypatch.setenv("GUJI_JOBS_KEEP_ARTIFACTS", "1")
+    assert R._clean_blob_cache() == 0 and cache.exists()

@@ -537,6 +537,10 @@ class Job:
             freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
             if freed:
                 _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存、产物副本和原图，释放 {freed / 2**20:.0f} MB")
+        if getattr(self, "pushed", False):                          # 只在 pack push 成功后才清（失败、没推到的不清）
+            freed = _clean_blob_cache()
+            if freed:
+                _say_clean(f"单 #{self.id} 已存包，清本机图缓存 guji-data，释放 {freed / 2**20:.0f} MB（可从中心库重取）")
         return outcome
 
 
@@ -849,6 +853,21 @@ def _retire_dir(d: Path, outcome: str, job_id: int, n: int) -> None:
         for old in kept[FAILED_LOGS_KEEP:]:
             old.unlink(missing_ok=True)
     shutil.rmtree(d, ignore_errors=True)
+
+
+def _clean_blob_cache() -> int:
+    """存包成功后清本机图缓存（``$GUJI_DATA_CACHE``，缺省 ``~/.cache/guji-data``：按 sha 去重的图副本），返回释放的字节数。
+
+    这是跨册共享的 sha 缓存，清掉后下一单按需从 R2 重取（核 sha），代价只是重下。人裁、工作区数据在 ``$GUJI_DATA_HOME``（缺省 ``~/.guji-data``），
+    不碰。调用方只在 pack push 成功后调用；设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
+    if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
+        return 0
+    root = Path(os.environ.get("GUJI_DATA_CACHE") or (Path.home() / ".cache" / "guji-data"))
+    if not root.is_dir() or root.is_symlink():
+        return 0
+    size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file() and not f.is_symlink())
+    shutil.rmtree(root, ignore_errors=True)
+    return size
 
 
 def _say_clean(msg: str) -> None:
