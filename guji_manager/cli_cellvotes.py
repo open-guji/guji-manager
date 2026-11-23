@@ -365,6 +365,9 @@ def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: d
         if not why:
             cur.append({**v, "_old_rev": vr})
             continue
+        if why.startswith("页面显示字") and v.get("choice") == "char" and v.get("char") \
+                and shown_now and shown_now.get(it.get("cell")) == v["char"]:
+            continue       # 票的字已经就是 book-text 现格的字：无事可落，也不用交人看（vol13/14 曰日、已巳 这类）
         e = human.get(f"{book}:{v.get('vote_a')}")
         tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
         old.append((v.get("a"), v.get("vote_a"), vr, tag, getattr(e, "id", None) if e is not None else None, why))
