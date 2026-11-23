@@ -1,0 +1,38 @@
+# guji-manager 连库配置（包内缺省）。说明见 doc/数据库/README.md。
+#
+# 覆盖顺序（后者盖前者，按库逐键合并）：
+#   本文件 → ~/.config/guji/databases.toml → 环境变量 GUJI_DB_CONFIG 指的文件 → 单项环境变量（见各库 env_* 键）
+# 令牌值从不写进配置文件，只写「依次试哪些环境变量」。
+#
+# driver：
+#   d1-worker   经 guji-data Worker 的 /v1/sql（url + db + token）
+#   sqlite      本机 SQLite 文件（path；测试、核对用）
+#   pg-tunnel   美国机 Postgres，经 wss 桥（url + token + password；任务库切 D1 前用）
+#   postgres    直连 Postgres（dsn_env 指的环境变量里放 DSN）
+
+[central]                       # 中心库：册配置、人裁事件、字形库账、进度看板
+driver = "d1-worker"
+url = "https://data.open-guji.com"
+db = "main"                     # Worker 上的库名；实验分支写 exp/GUJI-<号>-说明
+token = ["GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ"]
+exp_token = ["GUJI_DATA_TOKEN_EXP"]   # 连实验分支时插在 GUJI_DATA_TOKEN 之后
+env_url = "GUJI_DATA_URL"       # 设了就盖过 url（老用法）
+env_db = "GUJI_DATA_BRANCH"
+env_path = "GUJI_DATA_SQLITE"   # 设了就改连本机 SQLite 文件
+
+[webinbox]                      # 网站收件箱 web_inbox：读者的票、意见、待审单、网站键值
+inherit = "central"             # 现与中心库同库；以后拆库只改这里
+token = ["GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ"]
+
+[jobs]                          # 任务库：重跑／评测单、执行方、耗时统计
+driver = "pg-tunnel"
+url = "wss://relay.open-guji.com/jobsdb"
+token = ["JOBSDB_TOKEN"]
+password = ["JOBSDB_PASSWORD"]
+user = "jobs_rw"
+env_url = "JOBSDB_URL"
+env_user = "JOBSDB_USER"
+
+[catalog]                       # 目录库（A11 维护，美国机 Postgres；manager 现不连，只登记）
+driver = "postgres"
+dsn_env = "CATALOG_DSN"

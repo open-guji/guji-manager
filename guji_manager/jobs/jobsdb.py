@@ -1,6 +1,7 @@
 """任务库新服务器（美国机 170.106.66.156）的连接：本进程内起一条本地隧道，转进 wss://…/jobsdb。
 
-启用条件：设了 ``JOBSDB_TOKEN``（rw 或 ro 令牌，决定能以哪个角色登录）。没设就不走这里，任务库仍连 Neon（过渡期）。
+连法在 databases.toml 的 ``[jobs]``（driver = "pg-tunnel"）：地址 url、令牌 token、口令 password、角色 user 都从那里取，
+下列环境变量是缺省配置点名的变量名，照旧能用。
 环境变量：
   JOBSDB_TOKEN        必填，桥的 Bearer 令牌（不进仓、不进聊天）
   JOBSDB_PASSWORD     必填，Postgres 口令（jobs_rw／jobs_ro 的，与令牌不是同一个）
@@ -29,8 +30,18 @@ _port: int | None = None
 _thread: threading.Thread | None = None
 
 
+def _spec() -> dict:
+    from .. import dbconfig
+    return dbconfig.get("jobs")
+
+
+def _url() -> str:
+    return str(_spec().get("url") or URL)
+
+
 def enabled() -> bool:
-    return bool(os.environ.get("JOBSDB_TOKEN", "").strip())
+    from .. import dbconfig
+    return _spec().get("driver") == "pg-tunnel" and bool(dbconfig.tokens("jobs"))
 
 
 def _pin() -> str | None:
@@ -40,7 +51,7 @@ def _pin() -> str | None:
     if v:
         return v.replace(":", "").lower()
     # 没指定：只有裸 IP（自签）才固定旧指纹；域名走系统 CA
-    url = os.environ.get("JOBSDB_URL", URL)
+    url = _url()
     return PIN.replace(":", "").lower() if "170.106.66.156" in url else None
 
 
@@ -57,7 +68,7 @@ def _ctx() -> ssl.SSLContext | None:
 async def _handle(r: asyncio.StreamReader, w: asyncio.StreamWriter, tok: str) -> None:
     import websockets
     try:
-        async with websockets.connect(os.environ.get("JOBSDB_URL", URL), ssl=_ctx(), max_size=2 ** 24, ping_interval=30,
+        async with websockets.connect(_url(), ssl=_ctx(), max_size=2 ** 24, ping_interval=30,
                                       additional_headers={"Authorization": f"Bearer {tok}"}) as ws:
             der = ws.transport.get_extra_info("ssl_object").getpeercert(binary_form=True)
             pin = _pin()
@@ -140,10 +151,16 @@ def connect():
     import time
 
     import psycopg
-    tok = os.environ["JOBSDB_TOKEN"].strip()
-    pw = os.environ.get("JOBSDB_PASSWORD")
-    if not pw:
-        raise SystemExit("要连新任务库：设 JOBSDB_PASSWORD（Postgres 口令，jobs_rw／jobs_ro 的）")
+    from .. import dbconfig
+    toks = dbconfig.tokens("jobs")
+    if not toks:
+        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names('jobs'))}（见 databases.toml [jobs]）")
+    tok = toks[0]
+    pws = dbconfig.tokens("jobs", key="password")
+    if not pws:
+        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names('jobs', key='password'))}"
+                         "（Postgres 口令，jobs_rw／jobs_ro 的）")
+    pw = pws[0]
     port = _tunnel_port(tok)
     last: Exception | None = None
     quick = 0                  # 普通失败（隧道没起好、握手慢）：短间隔重试 10 次
@@ -151,7 +168,7 @@ def connect():
     while True:
         try:
             return psycopg.connect(host="127.0.0.1", port=port, dbname="jobs",
-                                   user=os.environ.get("JOBSDB_USER", "jobs_rw"), password=pw,
+                                   user=str(_spec().get("user") or "jobs_rw"), password=pw,
                                    sslmode="disable", connect_timeout=20)
         except psycopg.OperationalError as e:
             last = e

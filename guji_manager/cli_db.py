@@ -13,8 +13,10 @@
     guji db branch  list | create <exp/GUJI-号-说明> [--from-rev N] | delete <名>
     guji db import  --from exp/<名> -w <工作区> [--events ids.txt] [--to main] [--dry-run]
     guji db diff    -w <工作区> --branch exp/<名> [--against main]   # 实验分支与正式库逐文件比
+    guji db where                                            # 各库（中心库、网站收件箱、任务库、目录库）解析出的连法
 
-连接：`GUJI_DATA_URL`（缺省 https://data.open-guji.com）、`GUJI_DATA_TOKEN`、`GUJI_DATA_BRANCH`（缺省 main）。
+连接：databases.toml 的 `[central]`（见 doc/数据库/README.md）；老环境变量 `GUJI_DATA_URL`、`GUJI_DATA_TOKEN`、
+`GUJI_DATA_BRANCH`（缺省 main）照旧能盖。
 push 写中心库（2026-11-18 起 Cloudflare D1）：经 Worker `/v1/sql`（同一个 `GUJI_DATA_TOKEN`）；新图经 Worker 传正式桶。
 
 实验分支（`--branch exp/GUJI-号-说明` 或 `GUJI_DATA_BRANCH`）：数据目录换成 `$GUJI_DATA_HOME/exp__GUJI-…/<工作区>/`，
@@ -307,6 +309,10 @@ def _rev_gate_dropped(ws_dir: Path | None) -> dict[str, int]:
 
 
 def cmd_db(args) -> None:
+    if args.action == "where":
+        from . import dbconfig
+        _print(dbconfig.describe())
+        return
     from ._cv import BlobCache, WorkerSource
     ws_dir = _ws_dir(args)
     need_ws = {"pull", "push", "sync", "migrate", "import", "init"}
@@ -427,8 +433,8 @@ def cmd_db(args) -> None:
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("db", help="中心库：init / migrate / pull / push / status / branch / import（GUJI-606/608）")
-    p.add_argument("action", choices=["status", "init", "migrate", "pull", "push", "sync", "branch", "import", "diff"])
+    p = sub.add_parser("db", help="中心库：init / migrate / pull / push / status / branch / import（GUJI-606/608）；where 看各库连到哪")
+    p.add_argument("action", choices=["status", "init", "migrate", "pull", "push", "sync", "branch", "import", "diff", "where"])
     p.add_argument("args", nargs="*", help="branch 的子命令与分支名")
     p.add_argument("-w", "--workspace", default=None, help="工作区仓根（含 workspace.yaml）；不给读 GUJI_WORKSPACE")
     p.add_argument("--branch", default=None,

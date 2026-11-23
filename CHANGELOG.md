@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-22，Sheldon「所有数据库尽量抽象，可随时通过配置文件改链接方式」）：连库配置 `databases.toml`（包内 `guji_manager/config/databases.toml` → `~/.config/guji/databases.toml` → `GUJI_DB_CONFIG` → 老环境变量），`guji_manager/dbconfig.py` 按库名（`central`、`webinbox`、`jobs`、`catalog`）取连法；中心库连接、网站收件箱读、R2 上传、任务库隧道改从配置取，缺省值与原来一致，老环境变量照旧能盖。新命令 `guji db where` 列各库解析出的连法（不打印令牌）。装载时若 `GUJI_DATA_URL` 没设，按配置给 cv 设上。文档 `doc/数据库/`：README（四库一览＋配置说明）、中心库（原 `doc/参考/中心库.md` 移来并按 D1 改写，含全部表）、网站收件箱、任务库、目录库。测试 `tests/test_dbconfig.py`。不动产物（L0）。
 - **PATCH**（11-23，Sheldon 点抽查页反馈）：`col_check` 1.0.1——第 1 列排到最右（原先反了），页面说明补「格框带框线不算错，这一轮只看字间切点」。
 - **PATCH**（11-23，A22 切字 benchmark 银标抽查）：审阅页加页型 `col_check`「整列切分抽查」——一页书一屏、各列从右到左叠格框，点并字／劈字／框歪的格标红，整列没问题翻页记全对；结果 `review-pages colcheck-apply` 导出（`review_pages/col_check.py`）。测试 `test_col_check_screens_and_labels`。只加页型，不动产物（L0）。
 - **PATCH**（11-23，史记 2 册 8:2:13b 待审格在网站显示成阙字）：`close-check` 2c「□ 有去向」加一条——待审单上、非人裁、有首选字（`first_choice`）的格，导出里若仍是 □ 就报错（`pending_blank`）。原先「在待审单上」即算有去向，v0.1 首发单没带候选，1,332 个待审格落成 □＋lacuna 也过了关。`release_gates.load_pending_blank_cells`，测试 `test_pending_blank_with_first_choice_flagged`。L0。
