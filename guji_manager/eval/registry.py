@@ -215,6 +215,20 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
       for i, sh, t in (("match_bench", "004-siku-v2-human", "殿本"),
                        ("match_bench_shiji", "005-shiji-human", "史記"),
                        ("match_bench_qtw", "006-qtw-human", "全唐文"))],
+    # 3a 子基准 A2 库外拒识（A23，2026-11-23）：库外形近字对抗集（ai-team 11-15 建，冻结成自带归一图的分片），
+    # 用生产的逐对判官量「库里没有的字被判 same」。各书按生产配置：全唐文 CNN+fuse（glyph_sim_qtw），殿本／史記覆盖分。
+    *[EvalSpec(id=i, script="eval_advset.py", shard=f"glyph-match/advset-{d}", pythonpath=True, extra=x,
+               title=f"3a 库外拒识·{t}", needs=n,
+               note="头条＝形近层误认题数（护栏：不增）；异体层（同形异码）另报；不碰字形库")
+      for i, d, t, x, n in (("advset", "siku-v2", "殿本", (), ()),
+                            ("advset_shiji", "shiji", "史記", (), ()),
+                            ("advset_qtw", "qtw", "全唐文", ("--sim-model", "models/glyph_sim_qtw/model.pt"),
+                             ("heavy",)))],
+    # 3a 子基准 A5 退化（A23，2026-11-23）：ai-team 残笔细笔真实残损集（字是人裁），冻结成带固定候选池的分片；
+    # 判官按生产配置（殿本、史記覆盖分）。头条＝误放（护栏，不增）＋各类别首位命中、放行。
+    *[EvalSpec(id=i, script="eval_match_pool.py", shard=f"glyph-match/damaged-{d}", pythonpath=True,
+               title=f"3a 退化·{t}真实残损", note="类别 残笔／细笔／对照 分报；不碰字形库")
+      for i, d, t in (("match_pool", "siku-v2", "殿本"), ("match_pool_shiji", "shiji", "史記"))],
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
@@ -229,6 +243,12 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                note="emb 检索 unicode-cjk-ab 全表；分 unseen／oov 两层报；--no-flagged 手跑可剔体检标过的")
       for k, sh, t in (("siku_v2", "004-siku-v2-human", "殿本"), ("shiji", "005-shiji-human", "史記"),
                        ("qtw", "006-qtw-human", "全唐文"))],
+    # 3b 子基准 B2 首次字头格（A23，2026-11-23）：全唐文 016–045 库例 0–2 的格，Sheldon 按刻形逐格选字（81 格）。
+    EvalSpec(id="rare_qtw_firstseen", script="eval_oov.py", shard="char-clustering/samples/007-qtw-firstseen",
+             arg_kind="none", out_flag="--json", pythonpath=True,
+             extra=("--bench", "../open-guji-dataset/char-clustering/samples/007-qtw-firstseen", "--items", "rare.jsonl"),
+             title="5b 候选·全唐文首次字头格", needs=("heavy",),
+             note="头条 emb top1／top10；分 firstseen／oov／extB+ 报；81 格约 60 字，按字去重另看"),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
