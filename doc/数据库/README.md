@@ -7,8 +7,28 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 |---|---|---|---|---|---|---|
 | `central` 中心库 | 册配置、人裁事件、字形库账、整文件、进度看板 | Cloudflare D1 `guji-data-main`（11-18 从 Neon 迁来） | guji-data Worker `data.open-guji.com/v1/sql` | 各线程、执行机（`guji db push/sync`）；控制台写看板 | 所有人（`guji db pull`）；cv 跑批经数据目录读 | [中心库.md](中心库.md) |
 | `webinbox` 网站收件箱 | 读者的票、改字意见、讨论、线上待审单、网站键值 | 与中心库同一个 D1 库，表 `web_inbox` | Worker `/v1/web/inbox` | 网站边缘函数（webinbox 令牌）；`guji feedback pending` 放待审单 | `guji feedback cellvotes`、`opinions ingest`；网站 | [网站收件箱.md](网站收件箱.md) |
-| `jobs` 任务库 | 重跑／评测单、领单记录、进展、结果、执行方、耗时统计 | 美国机 170.106.66.156 Postgres 库 `jobs`（11-03 从 Neon 搬来）；**正在搬 D1 `guji-jobs`**（代码两边都支持，见任务库.md「搬家」） | wss 桥 `relay.open-guji.com/jobsdb` | `guji pipeline job submit`、执行方 | `guji pipeline job ls/show`、`guji pipeline perf`、控制台 | [任务库.md](任务库.md) |
+| `jobs` 任务库 | 重跑／评测单、领单记录、进展、结果、执行方、耗时统计 | Cloudflare D1 `guji-jobs`（11-23 从美国机 Postgres 搬来，旧库只读保留到 12 月初） | guji-data Worker `/v1/sql?db=jobs` | `guji pipeline job submit`、执行方 | `guji pipeline job ls/show`、`guji pipeline perf`、控制台 | [任务库.md](任务库.md) |
 | `catalog` 目录库 | 书目、实体、book-text 元数据（只读） | 美国机 Postgres `catalog_latest`／`catalog_rN` | 直连（只在美国机上） | A11 的 book-index 同步任务（每 15 分钟） | 网站搜索、专名识别；manager 现不连 | [目录库.md](目录库.md) |
+
+## 谁负责哪个库、哪些表（11-23 用户定）
+
+按 guji-manager 的步骤分工：**哪一步写这些数据，哪一步的 Project 负责**——表结构、字段去重、空表、读法优化、旧数据删减都由它自己做。
+一件事要跨项目改（比如同时动 Worker、cv、manager），由下表「主导」的那个 Project 一家做完所有改动，别人配合核对，不各改一半。
+
+| 库／表 | 负责的步骤 | 负责 Project | 说明 |
+|---|---|---|---|
+| 中心库 同步底座：`workspaces`、`source_files`、`changes`、`imports`、`db_meta`、`_guard`；guji-data Worker；整库备份 | 公共命令 `guji db`、`datastore` | CV0 | 各表通用的列（`raw`、`rev`、`row_sha`、`ingested_at`）也归这里 |
+| 中心库 `books`、`files`（kind=config）、`corpus_files` | 第一步 `start` | 暂无 GM1，CV0 代管 | |
+| 中心库 字形库各表 `glyph_*`、`glyphs`、`files`（kind=glyph_misc） | 第二步 `pipeline` | GM2 | 字形库算法归 CV3，表与同步归 GM2 |
+| 中心库 看板 `progress_*` | 第二步 `pipeline`（`guji pipeline progress`、任务看板） | GM2 主导 | 第四步的 `progress-sync` 也写，改结构由 GM2 做 |
+| 任务库 `jobs`（D1 `guji-jobs`） | 第二步 `pipeline`（`guji pipeline job`、执行方） | GM2 | Worker 的 `/v1/sql?db=jobs` 路由归 CV0 |
+| 第三步 `text` | — | GM3 | 第三步暂无专用表；裁定写 `events`，由第四步（GM4）管。裁定是否直落 book-text 未定 |
+| 中心库 `events`、`consumed`、`verdicts`、`anchors`、`anchor_patches_meta`、`files`（kind=list、batch、feedback_misc） | 第四步 `feedback` | GM4 | |
+| 网站收件箱 `web_inbox` | 第四步 `feedback` | GM4 主导 | 网站（Web）写入端配合；Worker 接口改动也由 GM4 提、CV0 部署 |
+| 第五步 `output` | — | — | 不写库 |
+| 目录库 `catalog` | — | A11 | manager 不连 |
+
+各表的明细与优化方向见 [中心库.md](中心库.md)「按流程分类」一节。
 
 不算数据库、但常一起提到的：R2（大文件、产物包、原图、模型、语料，按 sha 寻址）、本机数据目录 `~/.guji-data/<分支>/<工作区>/` 和 `glyph.db`（中心库的本地副本，可重建）。
 
