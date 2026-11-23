@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """专名匹配：entity.json（conv 产出）→ 对 book-index Entity 的 target 状态。
 用法：match.py ENT.json... --index /path/to/book-index [--alias extra.tsv] [--annot extra.tsv] -o OUT.json
-规则：名称→异体归一(opencc t2s＋EXT)→别名表→按类型过滤→唯一=matched；同名多个时按注家表朝代选，选中记 by=annotator；其余 ambiguous；无=new_candidate。
+规则：名称→异体归一(opencc t2s＋EXT)→别名表→按类型过滤→唯一=matched；同名多个时按注家表朝代选，选中记 by=annotator；其余 ambiguous；无=new_candidate。地／邦／官同名多条时，若恰有一条 concept 级则 matched(by=concept)。
 书名（Work 层）不在 Entity 里，状态 no_work_layer，另接。人名唯一≠安全：单字名标 weak=True，须抽检。"""
 import json,glob,sys,os,collections,argparse
 import opencc
@@ -22,7 +22,7 @@ def build_index(root):
         try:d=json.load(open(f,encoding='utf8'))
         except Exception: continue
         names=[d.get('primary_name')]+[a if isinstance(a,str) else (a or {}).get('name') for a in d.get('alt_names') or []]
-        rec=(d['id'],d.get('subtype'),d.get('dynasty') or '',d.get('primary_name'))
+        rec=(d['id'],d.get('subtype'),d.get('dynasty') or '',d.get('primary_name'),d.get('place_level') or d.get('office_level') or '')
         for n in set(x for x in names if x): idx[K(n)].append(rec)
     return idx
 def match(e,idx,alias,annot):
@@ -36,6 +36,9 @@ def match(e,idx,alias,annot):
     if len(c)>1 and t=='人' and name in annot:
         d=annot[name][0];c2=[x for x in c if d in x[2]]
         if len(c2)==1: c=c2;by='annotator'
+    if len(c)>1 and t in ('地','邦','官'):
+        c2=[x for x in c if x[4]=='concept']
+        if len(c2)==1: c=c2;by='concept'   # 跨朝代概念条，朝代留给后续按上下文挂具体条
     st='matched' if len(c)==1 else 'ambiguous'
     r=dict(status=st,by=by,cands=[x[0] for x in c[:5]],n=len(c))
     if st=='matched' and t=='人' and len(name)==1 and by=='name': r['weak']=True
