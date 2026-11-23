@@ -42,7 +42,7 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "横向邻格条＋整理本前后文；结果 `ref-check-apply` 出改字 tsv，喂 book-text 改字流程",
              doc_prefix="labels"),
     PageType("seg_cause", "切分归因看图", "seg_cause.tpl.html", "1.1.0",
-             "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 A22 seg_causes",
+             "S01–S04；按页成卡，列该页待审格，定切分错/切对了不是切分/特殊页型/看不出；输入来自 review/seg_causes.py（切分归因）",
              options=("切分错", "切对了不是切分", "特殊页型", "看不出"), doc_prefix="review_seg"),
     PageType("seg_cut", "人裁切线（小字被并成一格，点哪里该切开）", "seg_cut.tpl.html", "1.0.0",
              "两套格网都切错、夹注小字被并成整字格；每格一段列图叠两套格界，点图画切线、或标不切/看不出；"

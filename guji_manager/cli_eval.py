@@ -288,7 +288,7 @@ def add_parser(sub) -> None:
     p.add_argument("--prev", default="", help="status：上一份报告的 json，表里写送审增减")
     p.add_argument("--progress", default="", metavar="BOOK_ID",
                    help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写中心库正式库）")
-    p = sub.add_parser("collate", help="[v2] Step9-9.3 与整理本对勘（出 JSON + HTML）")
+    p = sub.add_parser("collate", help="[v2] 与整理本对勘（出 JSON + HTML；原 Step9-9.3，close-check 第 12 项要它）")
     p.add_argument("book")
     p.add_argument("--pages", default="", help="页表达式；空 = 全部有 Step7 产物的页")
     p.add_argument("--out", default=None,
@@ -302,7 +302,7 @@ def add_parser(sub) -> None:
     p.add_argument("--strip-radius", type=int, default=2, help="截条图目标格前后各几格（横排）")
     p.add_argument("--strip-h", type=int, default=44, help="截条图每格缩放到多高（px）")
     p.add_argument("--limit-strips", type=int, default=1500, help="--strips 最多出多少条截图（控体积）")
-    p = sub.add_parser("progress", help="[v2] Step9-9.0 进度复查：页范围内每页还挂着哪些待办（看板，不拦 9.1/9.2）")
+    p = sub.add_parser("progress", help="[v2] 进度复查：页范围内每页还挂着哪些待办（看板，不拦导出；原 Step9-9.0）")
     p.add_argument("book")
     p.add_argument("--pages", default="all", help="页表达式；默认全书")
     p.add_argument("--json", action="store_true", help="出 JSON（与控制台 /api/step9/progress 同形）")
