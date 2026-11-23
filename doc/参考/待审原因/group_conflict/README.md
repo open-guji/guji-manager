@@ -191,7 +191,7 @@ seed_admit 主循环放行
 | 书 | `group_flow_ref_pair`（组名列表） | 空 | 【新】补放／联合判卡住：整理本字（现役对位）＝本组解法给的字、反对只有图像路 → 取它。建议 men chuo zy yr wm zh ts sy rm |
 | 书 | `group_flow_ref_pair_margin` | 1.5 | 图像路反对票的 margin 上限；没有文意支持时，反对的图像路须比支持的 ids 弱 |
 | 书 | `reference_trust`／`group_flow_abstain_ref_ok`／`group_flow_lift_shape_ref` | none | 已有：按参校本走；`shape_ref_ok` 是 `dissent_keep` 的窄版（只认 ids，且要 reference_trust≥high） |
-| 书 | `group_flow_joint` | 开 | 共字组联合补放（日曰目等）；关了 joint 格全部走 lift |
+| 书 | `group_flow_joint` | 恒开 | 共字组联合补放（日曰目等）；cv#1806（11-23）起不再是参数，写 false 报「参数已退役」 |
 | 组 | `review`／`review_methods`／`review_weak`／`review_fix*` | 看组 | 已有，见 Z03 第五节 |
 | 组 | `ctx_over`／`ctx_over_panel`／`CLEAR_OVER` | rr、ry、ts | 文意硬（L1 或 strong）压过图像（rr）；量横清晰压过 ids（ts，gap 0.12） |
 | 规则 | `config/groups/<组>/rules.yaml` | — | L1 文意规则（只在 100% 把握时给字）；用 `research/a24/z02/rule_audit.py` 审 |

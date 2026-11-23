@@ -28,7 +28,7 @@
 |---|---|---|
 | `pua_code_table` | 关（殿本开） | 总开关 |
 | `pua_code_keep_channels` | 空 | **已退役**（cv#1804，无书用过），只能留空 |
-| `pua_code_family_demote` | 开 | 族外字是否降审；关＝只计数 |
+| `pua_code_family_demote` | 恒开 | 族外字降审；cv#1806（11-23）起不再是参数，写 false 报「参数已退役」 |
 | 码表 `codes` / `families` | 见 json | 码→字；族＝一码多字的族内字 |
 | pua_table `verdict=multi` + `family`（或 `chars`） | | 私用码线程登记的多字码（含 daizhige 码经 `same_as` 指到的 F 码） |
 | 离线 `--min-anch` / `--min-match` | 3 / 0.85 | 码→格对位的锚点数与整页相似度 |
