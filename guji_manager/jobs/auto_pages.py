@@ -97,8 +97,16 @@ def _event_rows_since(rev: int):
     """中心库里 rev 之后新写入的反馈事件／裁定（人裁、AI 裁定、看图裁定）：[(target, payload)]。"""
     import json
     from .._cv import connect
+    try:
+        from ..datastore import packs as PK
+        ws = PK._ws_name()
+    except BaseException:  # noqa: BLE001 —— 认不出工作区就不按 ws 筛（册号带 volNN，混册只会多算页）
+        ws = None
     with connect() as con:
-        rows = con.execute("SELECT target, payload FROM events WHERE rev > %s", (int(rev),)).fetchall()
+        if ws:
+            rows = con.execute("SELECT target, payload FROM events WHERE rev > %s AND ws = %s", (int(rev), ws)).fetchall()
+        else:
+            rows = con.execute("SELECT target, payload FROM events WHERE rev > %s", (int(rev),)).fetchall()
     out = []
     for t, pl in rows:
         out.append((json.loads(t) if isinstance(t, str) else (t or {}), json.loads(pl) if isinstance(pl, str) else (pl or {})))
