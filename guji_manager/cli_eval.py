@@ -37,6 +37,9 @@ def cmd_eval(args) -> None:
             print(f"    ⚠ {w}")
         if r.status == "failed":
             print(f"    {r.error[:160]}")
+        lock = getattr(r, "lock", None)
+        if lock:
+            print("    钉版 " + " ".join(f"{k}={v}" for k, v in lock.items()))
     if args.json:
         print(json.dumps([r.to_dict() for r in reports], ensure_ascii=False))
     n_bad = sum(1 for r in reports if r.status == "failed")

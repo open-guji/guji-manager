@@ -128,16 +128,32 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
     # 反过来也有脚本把指标印完了才在收尾处崩（left_cut 的除零）。
     # 所以判据是「有没有解析出指标」，退出码只作参考。
     rep.metrics = parse_metrics(out)
+    structured_err = ""
     if out_path and out_path.exists():
         try:
-            rep.metrics = _merge_json_metrics(rep.metrics, json.loads(out_path.read_text(encoding="utf-8")))
+            data = json.loads(out_path.read_text(encoding="utf-8"))
+            from .extract import extract
+            ms, structured_err = extract(spec.id, data)
+            if ms is not None:
+                # 识字评测器按 id 读 JSON（stdout 抠出来的数不全、头条取错路，见 extract 模块头）
+                rep.metrics = ms
+            else:
+                rep.metrics = _merge_json_metrics(rep.metrics, data)
         except Exception:   # noqa: BLE001
             pass
+    try:
+        from .extract import bench_lock
+        rep.lock = bench_lock(spec.id, repo_root(), ds)
+    except Exception:   # noqa: BLE001
+        pass
 
     gate = _gate_verdict(out)
     if gate:
         rep.gate = gate
-    if rep.metrics or gate:
+    if structured_err:
+        # 数是假的（如 rare_* 缺向量包全 0%）：判失败，别报 ok
+        rep.status, rep.error = "failed", structured_err
+    elif rep.metrics or gate:
         # **回归门的结论本身就是结果**：印了「回归门：通过」而没有别的数字，
         # 也是跑成功了（这类闸的产出就是过没过）。失败同理——门拦住了东西，
         # 跟门本身坏掉是两回事，混报会让人分不清该看算法还是该修评测。
