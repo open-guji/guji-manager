@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+## [0.6.6] - 2026-11-23
+
 - **PATCH**（11-23，GM1，中心库第一步表精简）：`files` 里 kind=config 的 `.json` 不再解析进 `doc`（无读者；kind=list 等不变，`row_sha` 只由 raw 算，不触发重推）；`workcopy` 推库前的 corpus-pack／glyph-pack manifest 保护查询由 `LIKE … OR LIKE` 改成主键区间查询，不再扫整个 ws 的 files。生产库已把 config 的 doc 置空。L0。
 - **PATCH**（11-23，Sheldon「写中心库不用我同意，可以改 manager 文档」）：文档里「写中心库、推库、传 R2 要用户点头／先报条数等点头」改为：推前 `db pull`＋`push --dry-run`，常规推库不用问用户（与 ai-team 项目管理指南 11-20 白名单一致）；删数据、批量撤除、换正式库、字形账本缩水等仍先停下问。只改文档（L0）。
 
