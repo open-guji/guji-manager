@@ -74,7 +74,7 @@ PASSTHROUGH: dict[str, tuple[str, str]] = {
     "pair-attr": ("guji_manager.pair_attribution:main", "形近字对归属表（刻形／文意／暂归一）查看与校验"),
     "final-review": ("guji_manager.final_review.__main__:main", "AI 文意终审跨书流水线"),
     "online-lists": ("guji_manager.online_lists:main", "线上待审单：出单、体检（--audit）、同步"),
-    "datastore": ("guji_manager.datastore:main", "中心库底层：schema、导入、核对、备份"),
+    "datastore": ("guji_manager.datastore.__main__:main", "中心库底层：schema、导入、核对、备份"),
 }
 
 
