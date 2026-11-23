@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，GUJI-776 新机首次 db sync 168 秒、moved 61,251）：`glyph_instances` 标为按主键排的表（`TableSpec.key_ordered`）。cv 导出 `instances/*.jsonl` 按 instance_id 排，中间新增几行后面的行号全变；导入时文件严格按主键升序就不再逐行推「只是行号变了」（`importer.key_sorted_paths`），还原时按主键排回、整文件 sha 核对（`materialize`）。没按主键排的文件照旧。测试 `test_glyph_key_order.py`。L0。
 - **PATCH**（11-23，ZM #16511／#16520 报）：任务库执行方缺省按需拉（部分副本），整册跑完的自动回库每单都报「⚠ 放行格回库失败」。部分副本推不上中心库本是预期，改成一行 ⓘ 说明（这里不回库；结果要进库，标 main 后在完整副本上 `guji db pull` 再 `guji glyph-db backfill --books … --apply`），不再去跑回库、不报失败；整拉的机器照旧回库。L0。
 
 ## [0.6.2] - 2026-11-23
