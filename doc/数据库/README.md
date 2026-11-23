@@ -18,7 +18,7 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 | 库／表 | 负责的步骤 | 负责 Project | 说明 |
 |---|---|---|---|
 | 中心库 同步底座：`workspaces`、`source_files`、`changes`、`imports`、`db_meta`、`_guard`；guji-data Worker；整库备份 | 公共命令 `guji db`、`datastore` | CV0 | 各表通用的列（`raw`、`rev`、`row_sha`、`ingested_at`）也归这里 |
-| 中心库 `books`、`files`（kind=config）、`corpus_files` | 第一步 `start` | 暂无 GM1，CV0 代管 | |
+| 中心库 `books`、`files`（kind=config）、`corpus_files` | 第一步 `start` | GM1 | 11-23 由 CV0 移交 |
 | 中心库 字形库各表 `glyph_*`、`glyphs`、`files`（kind=glyph_misc） | 第二步 `pipeline` | GM2 | 字形库算法归 CV3，表与同步归 GM2 |
 | 中心库 看板 `progress_*` | 第二步 `pipeline`（`guji pipeline progress`、任务看板） | GM2 主导 | 第四步的 `progress-sync` 也写，改结构由 GM2 做 |
 | 任务库 `jobs`（D1 `guji-jobs`） | 第二步 `pipeline`（`guji pipeline job`、执行方） | GM2 | Worker 的 `/v1/sql?db=jobs` 路由归 CV0 |
