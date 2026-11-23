@@ -21,6 +21,8 @@ def cmd_eval(args) -> None:
             ok, why = runnable(s)
             print(f"  {s.id:18s} {s.shard:40s} {'可跑' if ok else why:22s} {s.title}")
         return
+    if args.action == "guard":
+        return _cmd_guard(args)
     from .eval.registry import expand_suites
     args.evals = expand_suites(args.evals or [])
     save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
@@ -48,6 +50,11 @@ def cmd_eval(args) -> None:
         lock = getattr(r, "lock", None)
         if lock:
             print("    钉版 " + " ".join(f"{k}={v}" for k, v in lock.items()))
+        for g in getattr(r, "guards", None) or []:
+            if g["verdict"] != "pass":
+                op = "≤" if g["dir"] == "max" else "≥"
+                print(f"    护栏{'越线' if g['verdict'] == 'fail' else '未验证'}：{g['book']} {g['metric']} "
+                      f"{g['value']}（门 {op} {g['limit']}）")
     if getattr(args, "against", ""):
         from .eval.compare import compare_dirs
         print()
@@ -58,6 +65,67 @@ def cmd_eval(args) -> None:
     n_reg = sum(1 for r in reports if r.status == "regressed")
     print(f"\n通过 {sum(1 for r in reports if r.status=='ok')} / 回归门失败 {n_reg} / 跑不起来 {n_bad}")
     sys.exit(1 if n_bad and args.strict else 0)
+
+
+def _cmd_guard(args) -> None:
+    """跑 dataset guards/*.yaml 里的全部评测器，逐条比护栏，出总表；有越线／未验证就以 1 退出（发版用）。"""
+    import os
+    from ._cv import GoldStore, run_eval
+    from .eval.guards import GuardResult, GuardSummary, check_report, guards_for, load_guards
+    ds = GoldStore(None).root
+    guards = load_guards(ds)
+    if not guards:
+        print(f"数据集 {ds} 下没有 guards/*.yaml")
+        sys.exit(1)
+    libs = {}
+    for x in getattr(args, "lib", None) or []:
+        k, _, v = x.partition("=")
+        libs[k.strip()] = v.strip()
+    want = set(args.evals or [])
+    ids = sorted({g.eval for g in guards if not want or g.eval in want})
+    save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
+    allow = ("products", "heavy") + tuple(x.strip() for x in (getattr(args, "allow", "") or "").split(",")
+                                          if x.strip())
+    summary = GuardSummary()
+    for k in ids:
+        gs = guards_for(guards, k)
+        need = {g.lib for g in gs if g.lib}
+        if len(need) > 1:
+            raise SystemExit(f"{k} 的护栏要了不同书的库 {need}，护栏表写错了")
+        lib = next(iter(need), "")
+        if lib and lib not in libs:
+            print(f"– {k}：要书 {lib} 的字形库，没给 --lib {lib}=<glyph.db>，记未验证")
+            summary.results += [GuardResult(g, None, "unverified")
+                                for g in gs]
+            continue
+        old = os.environ.get("GUJI_GLYPH_DB")
+        if lib:
+            os.environ["GUJI_GLYPH_DB"] = libs[lib]
+        try:
+            r = run_eval(k, timeout=args.timeout, allow=allow, **({"report_dir": save} if save else {}))
+        finally:
+            if lib:
+                if old is None:
+                    os.environ.pop("GUJI_GLYPH_DB", None)
+                else:
+                    os.environ["GUJI_GLYPH_DB"] = old
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            (save / f"{k}.report.json").write_text(json.dumps(r.to_dict(), ensure_ascii=False, indent=1),
+                                                    encoding="utf-8")
+        res = check_report(r, gs)
+        summary.results += res
+        mark = "✓" if all(x.verdict == "pass" for x in res) else "✗"
+        print(f"{mark} {k}（{r.status}，{r.elapsed:.0f}s）" + (f"：{r.error[:120]}" if r.status == "failed" else ""))
+        lock = getattr(r, "lock", None)
+        if lock:
+            print("    钉版 " + " ".join(f"{a}={b}" for a, b in lock.items()))
+    print()
+    print(summary.table())
+    if save:
+        (save / "guards.json").write_text(json.dumps([x.to_dict() for x in summary.results], ensure_ascii=False,
+                                                     indent=1), encoding="utf-8")
+    sys.exit(0 if summary.ok else 1)
 
 
 def cmd_check(args) -> None:
@@ -242,8 +310,10 @@ def cmd_progress(args) -> None:
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("eval", help="[v2] 评测：list | run")
-    p.add_argument("action", choices=["list", "run"])
+    p = sub.add_parser("eval", help="[v2] 评测：list | run | guard（按 dataset guards/*.yaml 验护栏，发版必跑）")
+    p.add_argument("action", choices=["list", "run", "guard"])
+    p.add_argument("--lib", action="append", default=[], metavar="书id=glyph.db",
+                   help="guard：护栏要字形库的书给库路径（可重复）；没给的记未验证")
     p.add_argument("evals", nargs="*", help="评测器 id；留空跑全部轻量的")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json", action="store_true")

@@ -177,8 +177,25 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
                      f"猜测（未证实，别当结论）：产物已经在跑之前查过（见上面 needs 检查），"
                      f"多半是 parse_metrics 认不出这个脚本的输出格式")
 
+    _apply_guards(rep, ds)
     _fill_gold(rep, store, spec)
     return rep
+
+
+def _apply_guards(rep: EvalReport, ds: Path) -> None:
+    """dataset guards/*.yaml 里有这个评测器的护栏就逐条比；越线 → regressed（回归门失败）。"""
+    try:
+        from .guards import check_report, guards_for, load_guards
+        gs = guards_for(load_guards(ds), rep.eval_id)
+    except Exception as e:   # noqa: BLE001 —— 护栏表坏了要让人看见，但别吞掉评测结果
+        rep.error = (rep.error + "；" if rep.error else "") + f"护栏表读不了：{e}"
+        return
+    if not gs:
+        return
+    res = check_report(rep, gs)
+    rep.guards = [r.to_dict() for r in res]
+    if rep.status == "ok" and any(r.verdict == "fail" for r in res):
+        rep.status, rep.gate = "regressed", "失败"
 
 
 def _missing_pages_by_book(spec: EvalSpec, store) -> dict[str, list[int]]:

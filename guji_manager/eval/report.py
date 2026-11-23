@@ -57,6 +57,7 @@ class EvalReport:
     error: str = ""
     ts: float = field(default_factory=time.time)
     lock: dict = field(default_factory=dict)  # 识字评测：库、代码、数据集各是哪一版（extract.bench_lock）
+    guards: list = field(default_factory=list)  # 护栏逐条结论（eval.guards.GuardResult.to_dict），dataset guards/*.yaml 里有它才有
 
     def metric(self, name: str) -> Metric | None:
         return next((m for m in self.metrics if m.name == name), None)
