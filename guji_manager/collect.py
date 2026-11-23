@@ -971,6 +971,12 @@ def cmd_collect(a) -> int:
         books = auto_books(ws, a.text_id)
     else:
         books = parse_books(a.books)
+        if len(books) > 1 and not a.no_pull and not getattr(a, "child", False):
+            # 多册只拉一次库（GM4 11-23：原先每册各拉一次，8 册拉 8 次）
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            if _run([*GUJI, "db", "pull", "-w", ws], env, tries=3):
+                raise SystemExit("guji db pull 失败")
+            a.no_pull = True
     a._defer_publish = len(books) > 1 and not a.dry_run
     run_log = ws / "reports" / "_collect" / "runs" / f"{time.strftime('%Y%m%dT%H%M%S')}.json"
     if getattr(a, "child", False):
