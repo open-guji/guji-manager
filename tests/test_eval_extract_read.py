@@ -74,3 +74,8 @@ def test_rare_extra_strata():
     ms, err = extract("rare_qtw_firstseen", data)
     d = _names(ms)
     assert not err and d["firstseen top10"] == 90.1 and "unseen top10" not in d
+
+
+def test_rare_lock_records_charset_not_glyph_db(tmp_path):
+    lock = bench_lock("rare_qtw", tmp_path, tmp_path, {"charset": "unicode-cjk-ab", "ckpt": "/x/models/glyph_cnn_r5/best.pt"})
+    assert lock["charset"] == "unicode-cjk-ab" and lock["model"] == "glyph_cnn_r5" and "glyph_db" not in lock

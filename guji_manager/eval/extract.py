@@ -163,12 +163,20 @@ def _git_head(d: Path) -> str:
         return ""
 
 
-def bench_lock(eval_id: str, cv_root: Path, dataset_root: Path) -> dict:
+def bench_lock(eval_id: str, cv_root: Path, dataset_root: Path, data: dict | None = None) -> dict:
     """识字评测的钉版记录：库、代码、数据集各是哪一版。库一变数就漂，不同 lock 的数不能直接比。"""
     if not eval_id.startswith(READ_EVALS_PREFIX):
         return {}
     lock = {"cv": _git_head(cv_root), "dataset": _git_head(dataset_root)}
     if eval_id.startswith(("advset", "match_pool")):
+        return lock
+    if eval_id.startswith("rare_"):
+        # 5b 检索的是字表向量包，不碰字形库：钉字表与模型（模型随 cv 提交）
+        d = data or {}
+        if d.get("charset"):
+            lock["charset"] = d["charset"]
+        if d.get("ckpt"):
+            lock["model"] = Path(str(d["ckpt"])).parent.name
         return lock     # 分片自带图块，不碰字形库；模型随 cv 提交钉住
     db = os.environ.get("GUJI_GLYPH_DB") or ""
     if not db and os.environ.get("GUJI_WORKSPACE"):

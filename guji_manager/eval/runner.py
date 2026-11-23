@@ -129,6 +129,7 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
     # 所以判据是「有没有解析出指标」，退出码只作参考。
     rep.metrics = parse_metrics(out)
     structured_err = ""
+    data = None
     if out_path and out_path.exists():
         try:
             data = json.loads(out_path.read_text(encoding="utf-8"))
@@ -143,7 +144,7 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
             pass
     try:
         from .extract import bench_lock
-        rep.lock = bench_lock(spec.id, repo_root(), ds)
+        rep.lock = bench_lock(spec.id, repo_root(), ds, data if isinstance(data, dict) else None)
     except Exception:   # noqa: BLE001
         pass
 
