@@ -80,10 +80,11 @@ def load(conn, books: list[str] | None = None) -> tuple[list[dict], dict, dict]:
     vols = [dict(zip(("book", "vol", "ws", "pending_rev", "extra"), r)) for r in conn.execute(
         "SELECT book_id, vol, ws, pending_rev, extra FROM progress.volume").fetchall()]
     lists = {}
-    for path, rev in conn.execute(
-            "SELECT src_path, doc->>'rev' FROM files WHERE src_path LIKE 'feedback/lists/proofing/%%.pending.json'").fetchall():
+    from .central_gc import _file_rows                # 大文件（body_r2）的 doc 不在表里，要去 R2 取
+    for _ws, path, _raw, doc in _file_rows(conn, "feedback/lists/proofing/%.pending.json"):
         parts = path.split("/")
-        lists[(parts[3], parts[4][:-len(".pending.json")])] = rev
+        rev = doc.get("rev") if isinstance(doc, dict) else None
+        lists[(parts[3], parts[4][:-len(".pending.json")])] = None if rev is None else str(rev)
     rounds = {}
     for book, key, rate, verdict in conn.execute(
             "SELECT book_id, key, value, detail->>'verdict' FROM progress.metric "
