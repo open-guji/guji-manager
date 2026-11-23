@@ -19,6 +19,7 @@ class ExecCalled(BaseException):
 def _setup(monkeypatch, tmp_path, *, claims, outdated_seq, refresh_ok):
     monkeypatch.setattr(R, "HOME", tmp_path)
     monkeypatch.setattr(S, "who", lambda: "worker-test")
+    monkeypatch.delenv(R.REEXEC_KEY_ENV, raising=False)     # 上一个用例的 exec 标记不能带进来
     monkeypatch.setattr(R, "_runner_commit", lambda: None)
     monkeypatch.setattr(R, "_preflight", lambda: None)
     monkeypatch.setattr(R, "_disk_gate", lambda say=print: None)
@@ -146,3 +147,15 @@ def test_refresh_refuses_when_checkout_has_diverged(monkeypatch, tmp_path):
     monkeypatch.setattr(R, "RUNNER_ROOT", runner)
     _git(runner, "fetch", "-q", "origin", "dev")
     assert R._refresh_runner() is False
+
+
+def test_outdated_again_after_self_update_does_not_exec_again(monkeypatch, tmp_path):
+    """自更新后的进程仍判过期（目标没真正生效）：不再 exec，继续跑，不无限循环。"""
+    fake_db, order, execs = _setup(monkeypatch, tmp_path, claims=[None, None], outdated_seq=[True, True],
+                                   refresh_ok=True)
+    monkeypatch.setattr(R, "_update_key", lambda: "aaa+bbb")
+    monkeypatch.setenv(R.REEXEC_KEY_ENV, "aaa+bbb")
+    said: list[str] = []
+    _run(fake_db, idle_minutes=0, say=said.append)      # 队列空就退出，不进常驻空闲
+    assert execs == [] and "refresh" not in order
+    assert any("不再 exec" in s for s in said)

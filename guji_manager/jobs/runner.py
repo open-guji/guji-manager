@@ -634,18 +634,49 @@ def _manager_outdated() -> bool:
     return r.returncode == 0 and len(ids) == 2 and ids[0] != ids[1]
 
 
-def _refresh_manager() -> None:
-    """把本包检出切到 origin/main（同 cv `scripts/ensure_manager.sh`）。可编辑安装，exec 之后就是新代码。"""
+#: 自更新 exec 时传给新进程的目标（runner HEAD + manager HEAD），新进程发现仍过期就不再 exec（见 work）
+REEXEC_KEY_ENV = "GUJI_JOBS_REEXEC_KEY"
+
+
+def _update_key() -> str | None:
+    """当前两个检出的 HEAD 组成的标识：自更新前后比对用。读不出来返回 None。"""
+    def head(root: Path, rev: str = "HEAD") -> str | None:
+        try:
+            r = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=12", rev], capture_output=True,
+                               text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout.strip() or None if r.returncode == 0 else None
+    rh = head(RUNNER_ROOT)
+    mh = head(MANAGER_ROOT) if _managed() else "-"
+    return f"{rh}+{mh}" if rh and mh else None
+
+
+def _refresh_manager() -> bool:
+    """把本包检出切到 origin/main（同 cv `scripts/ensure_manager.sh`）。可编辑安装，exec 之后就是新代码。
+
+    返回是否真的切到了：checkout 失败（如本地有改动）或切完 guji_manager 目录的树仍不等于 FETCH_HEAD 都算没成。
+    旧版本忽略了 checkout 的失败，于是「已拉新代码」照常 exec，而代码没换，下一个进程又判过期，一直循环。"""
     if not _managed():
-        return
+        return True
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         subprocess.run(["git", "-C", str(MANAGER_ROOT), "fetch", "-q", "--depth", "1", "origin", "main"],
                        capture_output=True, timeout=120, env=env, check=True)
-        subprocess.run(["git", "-C", str(MANAGER_ROOT), "checkout", "-q", "--detach", "FETCH_HEAD"],
-                       capture_output=True, timeout=60, env=env)
-    except (OSError, subprocess.SubprocessError):
-        pass
+        r = subprocess.run(["git", "-C", str(MANAGER_ROOT), "checkout", "-q", "--detach", "FETCH_HEAD"],
+                           capture_output=True, text=True, timeout=60, env=env)
+        if r.returncode != 0:
+            print(f"[runner 自更新] manager 检出切到 origin/main 失败：{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+            return False
+        ids = subprocess.run(["git", "-C", str(MANAGER_ROOT), "rev-parse", "HEAD:guji_manager", "FETCH_HEAD:guji_manager"],
+                             capture_output=True, text=True, timeout=30).stdout.split()
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[runner 自更新] manager 检出：{type(e).__name__}: {str(e)[:300]}", flush=True)
+        return False
+    if len(ids) != 2 or ids[0] != ids[1]:
+        print("[runner 自更新] manager 切换后 guji_manager 目录仍和 origin/main 不一样", flush=True)
+        return False
+    return True
 
 
 #: 自更新 merge 的超时（秒）。落后几百个提交时 checkout 慢，原来 120 秒偏紧
@@ -658,7 +689,8 @@ def _refresh_runner() -> bool:
     失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
     当时看不出是超时还是 merge 报错。"""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    _refresh_manager()
+    if not _refresh_manager():
+        return False
     try:
         r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
                            text=True, timeout=REFRESH_TIMEOUT_S, env=env)
@@ -728,6 +760,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
         poll_s = 60 if d1 else 30
     loops = 0
     done = 0
+    warned_loop = False
     idle_since = time.time()
     from .. import __version__ as mver
     rc = f"{_runner_commit() or '?'} m{mver}"   # 带上本执行方 manager 版本：`guji job workers` 一眼看全执行机的版本（GM2 11-23 普查）
@@ -747,15 +780,26 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                 if not (once or only or dry) and _runner_outdated():
                     # 走到这里手上没单（上一张单已收尾，这一张还没领）：可以换代码了。
                     # 拉新代码后用原命令行自己 exec 一次，不退出等人重起；拉不动才照旧退出。
-                    (HOME / "runner_fresh").unlink(missing_ok=True)     # 让下一次 start 一定刷新，不受 10 分钟节流
-                    if _refresh_runner():
-                        say("执行方代码在 dev 上有更新，空闲中，已拉新代码，用原参数重新 exec 自己")
-                        db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
-                        lock.close()                                    # 释放本机锁，新进程自己拿
-                        sys.stdout.flush()
-                        os.execv(sys.executable, _reexec_argv())
-                    say("执行方代码在 dev 上有更新，但拉不动（本地有改动或分叉），退出让执行方线程重新 start")
-                    return done
+                    key = _update_key()
+                    if key and os.environ.get(REEXEC_KEY_ENV) == key:
+                        # 循环保护：本进程就是按同一目标（runner HEAD + manager HEAD）自更新出来的，却还判过期，
+                        # 说明拉新没有真正生效。不再 exec（否则每次都回到同一份代码，无限循环），用现在载入的代码继续跑。
+                        if not warned_loop:
+                            say(f"执行方代码仍判为过期（目标 {key}），但本进程已是按它自更新的，不再 exec，继续用现有代码跑")
+                            warned_loop = True
+                    else:
+                        (HOME / "runner_fresh").unlink(missing_ok=True)     # 让下一次 start 一定刷新，不受 10 分钟节流
+                        if _refresh_runner():
+                            new_key = _update_key()
+                            say("执行方代码在 dev 上有更新，空闲中，已拉新代码，用原参数重新 exec 自己")
+                            db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
+                            lock.close()                                    # 释放本机锁，新进程自己拿
+                            sys.stdout.flush()
+                            if new_key:
+                                os.environ[REEXEC_KEY_ENV] = new_key       # 新进程据此识别「自更新后仍过期」的循环
+                            os.execv(sys.executable, _reexec_argv())
+                        say("执行方代码在 dev 上有更新，但拉不动（本地有改动或分叉），退出让执行方线程重新 start")
+                        return done
                 bad = _preflight() or _ml_env_gate(say) or _disk_gate(say)
                 if bad:
                     # 本会话缺东西（多半是没挂 guji-workspace 私仓）：不领单，免得把每条单的重试次数在几秒内耗光
