@@ -186,6 +186,32 @@ def test_apply_problem_guards(tmp_path, monkeypatch):
     assert "比字形账本旧" in LB.apply_problem(ws)
 
 
+def test_auto_backfill_partial_copy_is_note_not_failure(tmp_path, monkeypatch, capsys):
+    """任务库执行方是部分副本：整册跑完不去回库、只给一行说明，不报「回库失败」（GM2 11-23，ZM #16511/#16520）。"""
+    import json
+    import types
+    from guji_manager import _cv
+    from guji_manager.datastore import workcopy as W
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home"))
+    (ws / ".central.json").write_text(json.dumps({"ws": "t", "branch": "main"}), encoding="utf-8")
+    data = W.data_dir(ws)
+    data.mkdir(parents=True)
+    W.write_state(data, ws="t", rev=1, base={}, exclude=["feedback/lists/proofing/"])
+    monkeypatch.setattr(_cv, "workspace_root", lambda: ws)
+    monkeypatch.setattr(LB, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("部分副本不该回库")))
+    eng = types.SimpleNamespace(book=types.SimpleNamespace(id="vol20"))
+    LB.auto_backfill(types.SimpleNamespace(pages="all"), eng, ["seed_admit"])
+    out = capsys.readouterr().out
+    assert "ⓘ 放行格回库" in out and "部分副本" in out and "失败" not in out and "vol20" in out
+    W.write_state(data, ws="t", rev=1, base={})                       # 整拉的照旧回库
+    called = []
+    monkeypatch.setattr(LB, "run", lambda books, **k: called.append(books) or {})
+    LB.auto_backfill(types.SimpleNamespace(pages="all"), eng, ["seed_admit"])
+    assert called == [["vol20"]]
+
+
 # ---- 抢首位核验（cv #1679 BackfillProbe.steal_check，2026-11-18 史記 r80） ----
 
 def test_steal_drop_only_harm_without_help():

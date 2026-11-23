@@ -678,6 +678,14 @@ def summary(rep: dict) -> str:
     return line
 
 
+def _partial_copy(ws_dir) -> bool:
+    """本机数据目录是按需拉的部分副本（``db pull --exclude``）。不是中心库工作区的算否。"""
+    from .._cv import central_marker
+    from ..datastore.workcopy import data_dir, read_state
+    ws = Path(ws_dir)
+    return bool(central_marker(ws) and (read_state(data_dir(ws)) or {}).get("exclude"))
+
+
 def auto_backfill(args, eng, steps: list[str]) -> None:
     """`hooks.finished`：整册跑完、`workspace.yaml` 没把 `glyph_lib.auto_backfill` 关掉 → 对这一册回库。
 
@@ -692,6 +700,11 @@ def auto_backfill(args, eng, steps: list[str]) -> None:
         from .._cv import workspace_root
         cfg = config(workspace_root())
         if cfg is None:
+            return
+        if _partial_copy(workspace_root()):
+            # 任务库执行方缺省按需拉（rerun_prep `GUJI_PULL_EXCLUDE=run`），回库推不上中心库：这是预期的，不报失败（GM2 11-23）
+            print(f"  ⓘ 放行格回库：本机是部分副本（任务库执行方缺省如此），这里不回库；这批结果要进字形库，"
+                  f"标 main 后在完整副本上 `guji db pull` 再 `guji glyph-db backfill --books {book} --apply`")
             return
         rep = run([book], apply=True, **cfg)
         print(f"  ✓ 放行格回库 {book}：{summary(rep)}"
