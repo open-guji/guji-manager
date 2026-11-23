@@ -227,3 +227,16 @@ def test_yield_to_newer_human_drops_older_votes():
     keep, stale = CVT._yield_to_newer_human("vol06", votes, human)
     assert [v["a"] for v in keep] == ["1:1:2", "1:1:3"]       # 1:1:1、1:1:4 让位
     assert [(s[0], s[1], s[3]) for s in stale] == [("1:1:1", "char=甲", "e1")]
+
+
+def test_split_old_sheet_hollow_cell_is_not_a_mismatch():
+    """总管 11-23：book-text 现格是 □（或读者看到的是 〓）时，显示字≠现字是正常的，不挡；两边实字不同才挡。"""
+    from guji_manager import cli_cellvotes as CVT
+    items = {k: {"state": "open", "cell": c} for k, c in (("a", "1:1:1"), ("b", "1:1:2"), ("c", "1:1:3"), ("d", "1:1:4"))}
+    raw = [{"item": "a", "a": "1:1:1", "vote_a": "1:1:1", "vote_rev": "r1", "choice": "char", "char": "逵", "shown": "陸"},
+           {"item": "b", "a": "1:1:2", "vote_a": "1:1:2", "vote_rev": "r1", "choice": "char", "char": "鉉", "shown": "〓"},
+           {"item": "c", "a": "1:1:3", "vote_a": "1:1:3", "vote_rev": "r1", "choice": "char", "char": "甲", "shown": "乙"},
+           {"item": "d", "a": "1:1:4", "vote_a": "1:1:4", "vote_rev": "r1", "choice": "char", "char": "本", "shown": ""}]
+    cur, old = CVT._split_old_sheet("vol20", "r2", raw, {}, items, {"1:1:1": "□", "1:1:2": "鉉", "1:1:3": "丙", "1:1:4": "□"})
+    assert [v["a"] for v in cur] == ["1:1:1", "1:1:2", "1:1:4"]      # 现格是 □：没记显示字也不挡
+    assert [o[0] for o in old] == ["1:1:3"]
