@@ -205,6 +205,8 @@ def test_split_old_sheet_lands_unchanged_items_blocks_changed():
     items["i5"] = {"state": "open", "cell": "6:6:6"}
     cur, old = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items, {"160:9:3": "壺", "6:6:6": "丁"})
     assert [(v["a"], v.get("_old_rev")) for v in cur] == [("160:9:3", "006-r9"), ("160:9:3", None)]
+    cur0, old0 = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items, None)       # 没给现字表：旧单票全挡
+    assert [v["a"] for v in cur0] == ["160:9:3"] and all("字表" in o[5] or "fp_changed" in o[5] or "撤下" in o[5] or "找不到" in o[5] or "格号变过" in o[5] for o in old0)
     assert [o[0] for o in old][-2:] == ["5:5:5", "6:6:6"] and "格号变过" in old[-2][5] and "格号对不上" in old[-1][5]
     assert [(o[0], o[5]) for o in old][:3] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
                                               ("1:1:1", "条目找不到")]

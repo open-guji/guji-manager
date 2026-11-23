@@ -608,11 +608,22 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     else:
         t = time.time()
         pack = a.pack or _pack_for(book, rev)
+        # 旧单条目票并入前要核「页面显示字＝book-text 现格字」：先取最新 dev 的 char（ZM 11-23 vol01 职名页改号后落邻格）
+        from .swap.booktext import _bt_dir, _worktree
+        from .online_lists import book_text_dir as _btd
+        _src = Path(a.book_text).resolve()
+        _wt = Path(a.worktree or (str(_src) + "-collect")).resolve()
+        _child = bool(getattr(a, "child", False))
+        _worktree(_src, _wt, branch="collect-booktext" + (f"-{book}" if _child else ""),
+                  sparse=(Path(_btd(".", text_id)).as_posix().lstrip("./"),), fetch=not _child)
+        _cj = _bt_dir(_wt, text_id) / "default" / f"{ch}.char.json"
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
                votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
         if getattr(a, "policy", None):
             cmd += ["--policy", a.policy]
+        if _cj.exists():
+            cmd += ["--char-json", _cj]
         if a.batch or not getattr(a, "no_ai", False):
             cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
         if _run(cmd, env, tries=3):
