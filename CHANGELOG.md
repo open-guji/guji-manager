@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.6.1] - 2026-11-23
+
+- 发版缘由：执行机跟 manager main，任务库切 D1（#811）要发版才生效。
+
 - **PATCH**（11-23，GM2 清理第二批：三层迭代到出 v0.1 的命令、人审页、文档）：`close-check`、`collate`、`progress` 帮助与 `tools/开书/出v01.py` 的「Step9」改称第五步产物（原 Step9），出v01 提示改写 `guji output export md`；`review-pages` 帮助与 `seg_cause` 页型说明里「A22 seg_causes」改指本仓 `review/seg_causes.py`。Wiki「人审页模板」：页型表补 `col_check`、编号去重，第七节版本列按 `registry.py` 更新并补 `ref_check`／`variant_compare`／`seg_cut`／`col_check` 四行，旧路径 `doc/01-粗校/…`、旧名改掉；另修 4 处指向旧路径的文档（无法识别字、exp_framework、切分代码结构、spreads.py）。页型版本不变，不动产物（L0）。
 - **PATCH**（11-23，CV2 收 cut-bench 第 4 轮）：审阅页存档 `_store.js` 修丢标注——后台正在写时新的 flush 直接返回、不再补写，快速翻页（每页 1–2 秒）时最后几页的「本页没问题」标注没进后台（全唐文 3 页、史記 1 页、殿本 1 页）；改成写时记一笔、写完再补一轮。本机 localStorage 里仍有，重开页面会补写。所有用 `makeStore` 的页型都受益。`col_check` 1.0.2：说明改为「这一轮只确认格数与大致切分，连接处切点、框线不用细看」。L0。
 - **PATCH**（11-23，Sheldon「清理照做」）：中心库删五张一直为空的表 `cv_versions`、`freeze_baselines`、`snapshots`、`glyph_pairs`、`glyph_events`（schema、`scope.py` 的表定义与行解析都去掉；`pairs.jsonl`、`events/*.jsonl` 若出现改当整文件进 `files`）。文档与发布标准里「三张登记表各一行」改为查 `feedback/lists/freeze/<册>.jsonl`。删前整库已备份。L0。
