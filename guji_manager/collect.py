@@ -1044,8 +1044,15 @@ def cmd_collect(a) -> int:
         res = run_parallel(a, ws, books, run_log)
     else:
         res = {}
+        print(f"== 本趟收 {len(books)} 册：{'、'.join(books)}")
         for b in books:
-            res[b] = collect_book(a, ws, b)
+            try:
+                res[b] = collect_book(a, ws, b)
+            except SystemExit as e:        # 某册的子步骤 SystemExit 不能把后面几册一起静默带走（GM2 11-23：--books 006,007,008 只跑了 006）
+                res[b] = {"status": "blocked", "why": f"{b} 中途退出：{str(e)[:300]}"}
+            except Exception as e:  # noqa: BLE001
+                res[b] = {"status": "blocked", "why": f"{b} 出错 {type(e).__name__}：{str(e)[:300]}"}
+                print(f"  ✗ {b} 出错 {type(e).__name__}: {e}")
             _save_run(run_log, res)
     ready = [b for b, v in res.items() if v["status"] == "to-publish"]
     if ready:

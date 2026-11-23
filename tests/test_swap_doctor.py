@@ -30,14 +30,27 @@ def test_tokens_missing(monkeypatch):
     r = D.Report()
     D.check_tokens(r)
     t = r.text()
-    assert r.failed and "CELLREVIEW_TOKEN" in t and "GUJI_ACTOR" in t and "gsecrets" in t
+    assert r.failed and "GUJI_ACTOR" in t and "gsecrets" in t
+    assert "⚠ 令牌 CELLREVIEW_TOKEN" in t        # 可选：只提示不算 ✗
     monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "x")
     monkeypatch.setenv("GH_TOKEN", "x")
-    monkeypatch.setenv("CELLREVIEW_TOKEN", "x")
     monkeypatch.setenv("GUJI_ACTOR", "a")
     r = D.Report()
     D.check_tokens(r)
-    assert not r.failed
+    assert not r.failed          # 没有 CELLREVIEW_TOKEN 也过（0.5.0 起缺省读收件箱）
+
+
+def test_versions_too_old_warn_not_fail():
+    r = D.Report()
+    D.check_versions(r, manager="0.4.35", cv="0.6.38")
+    t = r.text()
+    assert not r.failed and "⚠ manager 版本" in t and "⚠ cv 版本" in t and "0.4.35" in t
+    r = D.Report()
+    D.check_versions(r, manager="0.6.0", cv="0.9.1")
+    assert "⚠" not in r.text()
+    r = D.Report()
+    D.check_versions(r, manager="0.6.0", cv="dev")      # 读不出版本号不报
+    assert "cv 版本" not in r.text()
 
 
 def test_book_text_sparse_missing_book_dir(tmp_path, monkeypatch):
