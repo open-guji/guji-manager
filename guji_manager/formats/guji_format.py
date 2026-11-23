@@ -477,6 +477,72 @@ def dumps(obj: Any) -> str:
     return enc(obj, 0) + "\n"
 
 
+# ---- 伴生层（punct／entity）落盘与共享函数（guji-format 00 §4.2、§4.5、§4.6，v0.3，11-23 格式瘦身）----
+
+_LAYER_LISTS = ("punctuations", "entities")
+
+
+def dump_json(doc: dict) -> str:
+    """punct／entity 的统一落盘写法：顶层字段各一行、缩进 2；`punctuations`／`entities` 每条一行（缩进 4）；
+    分隔符 `", "`、`": "`；不转义汉字；末尾一个换行。其余层（char、cord）仍用 `dumps`。"""
+    def one(o):
+        return json.dumps(o, ensure_ascii=False, separators=(", ", ": "))
+    items = []
+    for k, v in doc.items():
+        if k in _LAYER_LISTS and isinstance(v, list) and v:
+            rows = ",\n".join("    " + one(x) for x in v)
+            items.append(f"  {json.dumps(k, ensure_ascii=False)}: [\n{rows}\n  ]")
+        else:
+            items.append(f"  {json.dumps(k, ensure_ascii=False)}: {one(v)}")
+    return "{\n" + ",\n".join(items) + "\n}\n"
+
+
+def effective_source(entry: dict, doc: dict) -> str | None:
+    """读：条目 `source`，没有就取文件 `default_source`；都没有＝未知（None）。"""
+    return entry.get("source", doc.get("default_source"))
+
+
+def entry_source(src: str | None, doc: dict) -> dict:
+    """写：返回要并进条目的字段（`{"source": src}` 或 `{}`）。与 `default_source` 相同不写；
+    文件没有 `default_source`（v0.1／v0.2）时有值就写（旧义）。"""
+    if src is None or src == doc.get("default_source"):
+        return {}
+    return {"source": src}
+
+
+def offset_of(anchor: str, char: dict) -> int:
+    """格位 key → 字下标（00 §4.2）：按 char 数组顺序（pages→columns→cells）排字流，从 0 起；
+    半格 a、b 各占一个下标，标点不计。查不到（缺格）报 KeyError，一章内撞号报 ValueError。"""
+    hit = None
+    i = 0
+    for pg in char.get("pages") or []:
+        for col in pg.get("columns") or []:
+            for c in col.get("cells") or []:
+                if c.get("a") == anchor:
+                    if hit is not None:
+                        raise ValueError(f"格位 key 重复: {anchor}")
+                    hit = i
+                i += 1
+    if hit is None:
+        raise KeyError(anchor)
+    return hit
+
+
+def offset_index(char: dict) -> dict[str, int]:
+    """整章 key→下标表；撞号报 ValueError。批量用，比逐个 `offset_of` 快。"""
+    out: dict[str, int] = {}
+    i = 0
+    for pg in char.get("pages") or []:
+        for col in pg.get("columns") or []:
+            for c in col.get("cells") or []:
+                a = c.get("a")
+                if a in out:
+                    raise ValueError(f"格位 key 重复: {a}")
+                out[a] = i
+                i += 1
+    return out
+
+
 def write_files(files: dict[str, Any], out_dir: Path | str) -> list[Path]:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
