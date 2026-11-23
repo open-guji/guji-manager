@@ -648,7 +648,17 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         same_ids = consistent_cells(draft)
         votes_now = vote_chars(draft)
         try:
-            hc = current_human(book, meta.get("products_root"))
+            try:
+                hc = current_human(book, meta.get("products_root"))
+            except RuntimeError as e:
+                if "字块图拿不到" not in str(e):
+                    raise
+                # 新机器没有原图／字块缓存：自己补拉再算一遍（11-22 实测 source pull 4 s＋cache warm 1 s），不再停下来等人跑
+                print(f"  缺字块图，自动 source pull＋cache warm {book} 后重算人裁")
+                env_ = dict(os.environ)
+                _run([*GUJI, "source", "pull", book, "-w", str(ws)], env_)
+                _run([*GUJI, "cache", "warm", "--book", book, "-w", str(ws)], env_)
+                hc = current_human(book, meta.get("products_root"))
         except Exception as e:  # noqa: BLE001
             return {"status": "blocked", "rev": rev,
                     "why": f"现行人裁（human_chars）算不出来，不落 book-text：{type(e).__name__}: {str(e)[:300]}"}
