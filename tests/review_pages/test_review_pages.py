@@ -715,6 +715,8 @@ def test_col_check_screens_and_labels(tmp_path):
     rows = cc.normalize([dict(id=f"v:{p}:{c}", vol="v", page=p, col=c, img=str(img), cells=[])
                          for p in (12, 3) for c in (1, 2)])
     assert [(r["id"], r["screen"]) for r in rows] == [("v:3:1", 0), ("v:3:2", 0), ("v:12:1", 1), ("v:12:2", 1)]
+    assert not any(r["focus"] for r in rows)
+    assert cc.normalize([dict(id="v:1:1", vol="v", page=1, col=1, img=str(img), cells=[], focus=True)])[0]["focus"]
     docs = [dict(page_type="col_check", cell="a", label="bad", bad=["a:1"], how="click", t=1),
             dict(page_type="col_check", cell="a", label="ok", how="page_ok", t=2),
             dict(page_type="col_check", cell="b", label="bad", bad=["b:3"], how="click", t=1),

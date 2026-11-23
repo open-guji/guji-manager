@@ -25,7 +25,8 @@ def png_size(path) -> tuple[int, int]:
 
 
 def normalize(items: list[dict], root=None) -> list[dict]:
-    """补图尺寸、按 (vol, page, -col) 排好，并给出每列所在的屏号。"""
+    """补图尺寸、按 (vol, page, -col) 排好，并给出每列所在的屏号。
+    `focus: true` 的列（确认页里刚修过的列）页面上加粗描边、标「请确认」，同页其余列照常显示作对照。"""
     out = []
     for r in items:
         p = Path(r["img"])
@@ -35,7 +36,7 @@ def normalize(items: list[dict], root=None) -> list[dict]:
             raise SystemExit(f"{r['id']}：列图找不到 {r['img']}")
         w, h = png_size(p)
         out.append({"id": r["id"], "vol": r.get("vol"), "page": r.get("page"), "col": r.get("col"),
-                    "img": str(p), "iw": w, "ih": h, "note": r.get("note"),
+                    "img": str(p), "iw": w, "ih": h, "note": r.get("note"), "focus": bool(r.get("focus")),
                     "cells": [{"key": c["key"], "kind": c.get("kind"), "box": [float(v) for v in c["box"]]}
                               for c in r.get("cells", [])]})
     out.sort(key=lambda r: (str(r["vol"]), _num(r["page"]), _num(r["col"])))   # 第 1 列在前，模板 row-reverse 排到最右
