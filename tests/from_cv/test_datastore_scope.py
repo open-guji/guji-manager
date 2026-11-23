@@ -45,7 +45,8 @@ def test_classify_routes_files_to_tables():
     assert classify("output/glyph_store/glyphs.jsonl") == "glyphs"
     assert classify("output/glyph_store/instances/v2.jsonl") == "glyph_instances"
     assert classify("output/glyph_store/patches/v2_a_1_2.png") == "patch"
-    assert classify("output/glyph_store/events/v2.jsonl") == "glyph_events"
+    assert classify("output/glyph_store/events/v2.jsonl") == "files"        # 11-23 删 glyph_events 空表
+    assert classify("output/glyph_store/pairs.jsonl") == "files"
     assert classify("output/glyph_store/_snapshot.json") == "files"
     assert file_kind("feedback/lists/x.txt") == "list"
     assert file_kind("review/batches/b.json") == "batch"
