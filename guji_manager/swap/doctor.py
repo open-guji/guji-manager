@@ -26,7 +26,7 @@ TOKENS = (("GUJI_DATA_TOKEN", "中心库读写（db pull/sync、取包）", ("GU
 OPTIONAL_TOKENS = (("CELLREVIEW_TOKEN", "应急读旧 KV、pending --kv 直写待审单", ("CELLREVIEW_TOKEN",)),)
 # 本机 manager／cv 低于这些版本时，换单与收单的行为与文档不符（见 COMPAT.md、CHANGELOG）
 MIN_MANAGER = ((0, 5, 0), "读票缺省读 web_inbox、collect 落格修复（≥0.4.68）、--books 区间写法")
-MIN_CV = ((0, 9, 0), "manager 0.6.0 起要 cv ≥ 0.9.0（COMPAT.md）")
+MIN_CV = ((0, 9, 0), "cv < 0.9.0 时 `guji pipeline <命令>` 前缀不可用，要写老写法 `guji <命令>`；其余照常（COMPAT.md）")
 MIN_FREE_GB = 8.0
 _MISSING_MODELS = ("import sys; from open_guji_cv.core import model_pack as mp; "
                    "print(len(mp.missing_repo_models()))")
