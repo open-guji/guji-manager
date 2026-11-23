@@ -19,6 +19,7 @@ def test_work_survives_connection_drops(monkeypatch, tmp_path):
     monkeypatch.setattr(R, "HOME", tmp_path)
     monkeypatch.setattr(R, "CONN_RETRY_S", 0)
     monkeypatch.setattr(S, "who", lambda: "worker-test")
+    monkeypatch.setattr(S, "backend", lambda: "pg")       # Postgres 写法：每轮单独 reap（D1 并进 claim）
     monkeypatch.setattr(R, "_runner_commit", lambda: None)
     monkeypatch.setattr(R, "_runner_outdated", lambda: False)
     monkeypatch.setattr(R, "_preflight", lambda: None)
@@ -51,3 +52,31 @@ def test_work_survives_connection_drops(monkeypatch, tmp_path):
     assert result.get("rc") == 0
     assert drops["left"] == 0
     assert any("连库断了" in s for s in said)
+
+
+def test_work_d1_one_request_per_idle_poll(monkeypatch, tmp_path):
+    """D1：空闲一轮只发一次领单（报到、收回并在里面），没有单独的 reap／worker_seen。"""
+    monkeypatch.setattr(R, "HOME", tmp_path)
+    monkeypatch.setattr(S, "who", lambda: "worker-test")
+    monkeypatch.setattr(S, "backend", lambda: "d1")
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.setattr(R, "_runner_commit", lambda: None)
+    monkeypatch.setattr(R, "_runner_outdated", lambda: False)
+    monkeypatch.setattr(R, "_preflight", lambda: None)
+    monkeypatch.setattr(R, "_disk_gate", lambda say=print: None)
+    monkeypatch.setattr(R, "_ml_env_gate", lambda say=print: None)
+    monkeypatch.setattr(R, "_last_book", lambda: None)
+    monkeypatch.setattr(R.BOARD, "publish", lambda *a, **kw: None)
+    monkeypatch.setattr(R, "notify_submitters", lambda db, say: 0)
+    calls: list = []
+
+    def fake_db(fn, *a, **kw):
+        calls.append((fn.__name__, kw.get("reap_too"), kw.get("seen")))
+        return None
+
+    monkeypatch.setattr(S, "DB", lambda: fake_db)
+    assert R.work(until_empty=True, say=lambda s: None) == 0
+    names = [c[0] for c in calls]
+    assert names.count("reap") == 0
+    claim = [c for c in calls if c[0] == "claim"]
+    assert len(claim) == 1 and claim[0][1] is True and claim[0][2]["done"] == 0

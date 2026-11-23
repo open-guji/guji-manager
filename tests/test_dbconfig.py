@@ -19,7 +19,8 @@ def test_defaults():
     assert c["driver"] == "d1-worker" and c["url"] == "https://data.open-guji.com" and c["db"] == "main"
     w = dbconfig.get("webinbox")
     assert w["driver"] == "d1-worker" and w["url"] == c["url"]          # inherit central
-    assert dbconfig.get("jobs")["driver"] == "pg-tunnel"
+    assert dbconfig.get("jobs")["driver"] == "d1-worker" and dbconfig.get("jobs")["env_url"] == "GUJI_JOBS_URL"
+    assert dbconfig.get("jobs_pg")["driver"] == "pg-tunnel"          # 旧库只读保留
 
 
 def test_user_file_and_env_override(monkeypatch, tmp_path):

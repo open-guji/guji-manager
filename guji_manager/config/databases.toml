@@ -24,7 +24,13 @@ env_path = "GUJI_DATA_SQLITE"   # 设了就改连本机 SQLite 文件
 inherit = "central"             # 现与中心库同库；以后拆库只改这里
 token = ["GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ"]
 
-[jobs]                          # 任务库：重跑／评测单、执行方、耗时统计
+[jobs]                          # 任务库：重跑／评测单、执行方、耗时统计（11-2? 起 D1 guji-jobs，经 guji-data Worker）
+driver = "d1-worker"
+url = "https://data.open-guji.com"
+token = ["JOBSDB_TOKEN"]        # Worker 认 JOBSDB_TOKEN_RW 指纹为 jobs（读写）、_RO 为 jobsread
+env_url = "GUJI_JOBS_URL"
+
+[jobs_pg]                       # 旧任务库（美国机 Postgres，搬 D1 后只读保留，搬家脚本与核对用）
 driver = "pg-tunnel"
 url = "wss://relay.open-guji.com/jobsdb"
 token = ["JOBSDB_TOKEN"]

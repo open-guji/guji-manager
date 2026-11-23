@@ -30,9 +30,15 @@ _port: int | None = None
 _thread: threading.Thread | None = None
 
 
+def _name() -> str:
+    """任务库还在 Postgres 时就是 ``[jobs]``；切到 D1 后旧库在 ``[jobs_pg]``（搬家脚本、核对用）。"""
+    from .. import dbconfig
+    return "jobs" if dbconfig.get("jobs")["driver"] == "pg-tunnel" else "jobs_pg"
+
+
 def _spec() -> dict:
     from .. import dbconfig
-    return dbconfig.get("jobs")
+    return dbconfig.get(_name())
 
 
 def _url() -> str:
@@ -41,7 +47,7 @@ def _url() -> str:
 
 def enabled() -> bool:
     from .. import dbconfig
-    return _spec().get("driver") == "pg-tunnel" and bool(dbconfig.tokens("jobs"))
+    return _spec().get("driver") == "pg-tunnel" and bool(dbconfig.tokens(_name()))
 
 
 def _pin() -> str | None:
@@ -152,13 +158,13 @@ def connect():
 
     import psycopg
     from .. import dbconfig
-    toks = dbconfig.tokens("jobs")
+    toks = dbconfig.tokens(_name())
     if not toks:
-        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names('jobs'))}（见 databases.toml [jobs]）")
+        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names(_name()))}（见 databases.toml [{_name()}]）")
     tok = toks[0]
-    pws = dbconfig.tokens("jobs", key="password")
+    pws = dbconfig.tokens(_name(), key="password")
     if not pws:
-        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names('jobs', key='password'))}"
+        raise SystemExit(f"要连任务库：设 {'／'.join(dbconfig.token_names(_name(), key='password'))}"
                          "（Postgres 口令，jobs_rw／jobs_ro 的）")
     pw = pws[0]
     port = _tunnel_port(tok)
