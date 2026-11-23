@@ -1,4 +1,4 @@
-"""收单快路：``guji collect``——用户在网站投完一张单，人裁直接落进 book-text、KV／中心库，不重放、不重出单。
+"""收单快路：``guji collect``——用户在网站投完一张单，人裁直接落进 book-text、中心库，不重放、不重出单。
 
 ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟，总耗时 20 分钟到 2 小时，大头是 3–5 次 pull/sync 和
 等任务库从 seed_admit 重放（人裁只有重放后才进产物，再导出才进 book-text）。可 book-text 只录首选字（sheldon 11-09），
@@ -6,7 +6,7 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
 
 1. ``db pull`` 一次（增量）。
 2. 读线上单：rev、出单版产物包（``rev-<rev>``，没有就退到 ★main 包）。
-3. ``cellvotes draft --from-kv --items --pack``（读票、出草稿；挂起照旧）→ ``cellvotes write``（写人裁事件、落了票的条目标已裁、
+3. ``cellvotes draft --items --pack``（缺省读中心库 web_inbox；读票、出草稿；挂起照旧）→ ``cellvotes write``（写人裁事件、落了票的条目标已裁、
    重导整张单）。批次名 ``H-web-<册>-<日期>-<rev>``，与 ``proof_cycle`` 同。
 4. **定字直接写 book-text**：本次写下的定字票（``v=confirm`` 带字），加上 ``--batch`` 点名的早先人裁批次（过绑定表），
    逐格对 book-text 现文（dev）：
@@ -867,8 +867,8 @@ def votes_from_flag() -> str:
 
 
 def auto_books(ws: Path, text_id: str) -> list[str]:
-    """``--books auto``：读一遍网站条目票（KV），挑出有票落在还开着的条目上的册（ZM 11-19：不知道哪些册有新票，
-    只能全拉自己比）。要 CELLREVIEW_TOKEN；先拉库，条目以库为准。"""
+    """``--books auto``：读一遍网站条目票（缺省 web_inbox，``GUJI_VOTES_FROM=kv`` 读旧 KV），挑出有票落在还开着的条目上的册（ZM 11-19：不知道哪些册有新票，
+    只能全拉自己比）。读 inbox 要中心库读令牌（读旧 KV 才要 CELLREVIEW_TOKEN）；先拉库，条目以库为准。"""
     from .cli_cellvotes import _fetch_kv_items
     from .datastore.workcopy import data_dir
     from .review import pending_items as P
@@ -1003,7 +1003,7 @@ def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("collect", help="收单快路：读票→写人裁→定字直接落 book-text（不重放）→KV 结案→pull/sync 各一次→发站核对（断点续跑）")
+    p = sub.add_parser("collect", help="收单快路：读票→写人裁→定字直接落 book-text（不重放）→条目结案→pull/sync 各一次→发站核对（断点续跑）")
     p.add_argument("--books", required=True, help="如 vol20 或 vol20-vol25（逐册做）；auto＝读网站条目票，挑有票落在开着的条目上的册")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True, help="book-text 检出（在它旁边建 <检出>-collect worktree，每册重置到 origin/dev）")

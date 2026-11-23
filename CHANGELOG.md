@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，A32 接手第四步，只改文档与说明文字，L0）：按 D1 现状改第四步文档——`收单`、`换线上人审单`、`反馈迭代-步骤`、`1.x册精校票处理`、`收单落票`、`命令速查`、`环境与令牌`、总纲里的「KV」口径（读票缺省读 `web_inbox`、令牌 `GUJI_DATA_TOKEN_READ`、「KV 结案」改「条目结案」）；`设计-待审单进KV`、`精校流程自动化方案` 加历史说明；`collect.py` 文件头与 `auto_books` 说明同改。不动代码行为。
 - **PATCH**（11-23，Sheldon「清理照做」）：中心库删五张一直为空的表 `cv_versions`、`freeze_baselines`、`snapshots`、`glyph_pairs`、`glyph_events`（schema、`scope.py` 的表定义与行解析都去掉；`pairs.jsonl`、`events/*.jsonl` 若出现改当整文件进 `files`）。文档与发布标准里「三张登记表各一行」改为查 `feedback/lists/freeze/<册>.jsonl`。删前整库已备份。L0。
 - **PATCH**（11-23，Sheldon「任务库也搬到 D1」「随时切」）：**任务库缺省改连 D1 `guji-jobs`**（`databases.toml` 的 `[jobs]` → `d1-worker`，`env_url` 改 `GUJI_JOBS_URL`）；旧美国机 Postgres 挪到 `[jobs_pg]`，`jobsdb` 在 `[jobs]` 不是 pg-tunnel 时读它（搬家脚本用）。执行方空闲时自更新即改连 D1；交接期 `scripts/jobs_pg_to_d1.py sync` 反复把 Postgres 的变动同步过来。`guji_jobs` 等提交端要更新到含此改动的 manager。L1（存放位置变，命令不变）。
 - **PATCH**（11-23，A31 查中心库迁 D1 后遗留）：`central-gc` 查「排队／在跑任务点名的包」原来在**中心库**连接上查 `jobs.job`，任务库 11-03 起就是单独的库，一直静默读不到、不按任务保留；改按 `databases.toml` 的 `[jobs]` 连任务库，读不了时 `--apply` 拒删。`central-gc`、`progress-sync` 读线上单／冻结清单时补上大文件（`files.body_r2=1`，原文在 R2）：原先这类行 raw／doc 为空被漏掉（北行日录 001 线上单）。`guji datastore` 入口指错模块（KeyError 'main'）修正。测试 `test_central_gc.py` 加两条。只读改动，不动产物（L0）。
