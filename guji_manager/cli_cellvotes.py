@@ -397,6 +397,31 @@ def _bound_only(book: str, human: dict, votes: list[dict]) -> tuple[dict, list[t
     return out, gone
 
 
+def _ts_s(x) -> float:
+    """票的 ts（网站毫秒时间戳）或事件的 ts（ISO 字符串）→ 秒。"""
+    if isinstance(x, (int, float)):
+        return x / 1000 if x > 1e11 else float(x)
+    try:
+        return dt.datetime.fromisoformat(str(x).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _yield_to_newer_human(book: str, votes: list[dict], human: dict) -> tuple[list[dict], list[tuple]]:
+    """「按新的判定结果走」（用户 11-23）：票比这格现行人裁**早**（票的时间 < 人裁事件时间），票让位，不写、不推翻，
+    只列进 ``stale_votes.tsv``（旧单上较早的票最常见）。票比人裁晚才照常走（一致跳过／推翻）。
+    返回 (留下的票, [(格, 票, 票时间, 人裁事件, 人裁时间)])。"""
+    keep, out = [], []
+    for v in votes:
+        e = human.get(f"{book}:{v['a']}")
+        if e is not None and _ts_s(v.get("ts") or 0) < _ts_s(getattr(e, "ts", 0)):
+            tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
+            out.append((v["a"], tag, str(v.get("ts")), getattr(e, "id", ""), str(getattr(e, "ts", ""))))
+        else:
+            keep.append(v)
+    return keep, out
+
+
 def cmd_draft(args) -> None:
     from ._cv import feedback_root
     from ._cv import EventLog
@@ -433,6 +458,9 @@ def cmd_draft(args) -> None:
         _print(f"落票策略 {policy.name}：{len(waiting)} 格没到门槛，不落（票留在收件箱，条目仍开着；见 waiting.tsv）")
     human = human_all
     human, unbound = _bound_only(args.book, human, votes) if not getattr(args, "no_bind_check", False) else (human, [])
+    votes, stale = _yield_to_newer_human(args.book, votes, human)
+    if stale:
+        _print(f"票比现行人裁早 {len(stale)} 格：按新的判定结果走，票让位不写（见 stale_votes.tsv）")
     if unbound:
         _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
                + "（" + "、".join(f"{a} {why}" for a, why in unbound[:8]) + ("…" if len(unbound) > 8 else "") + "）")
@@ -464,6 +492,10 @@ def cmd_draft(args) -> None:
         f.write("现格\t投票时格\t投票时单\t票\t当年人裁\t挡下原因\n")
         for row in old:
             f.write("\t".join(x or "" for x in row) + "\n")
+    with open(out / "stale_votes.tsv", "w", encoding="utf-8") as f:
+        f.write("格位\t票\t票时间\t现行人裁\t人裁时间\n")
+        for row in stale:
+            f.write("\t".join(row) + "\n")
     with open(out / "waiting.tsv", "w", encoding="utf-8") as f:
         f.write("格位\t原因\t票\n")
         for a_, why, vs in waiting:
@@ -479,7 +511,7 @@ def cmd_draft(args) -> None:
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
             "dropped": dropped, "old_sheet": len(old), "old_landed": n_old_in,
-            "policy": policy.name, "waiting": len(waiting), "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
+            "policy": policy.name, "waiting": len(waiting), "stale_votes": len(stale), "ready": len(t.ready), "held": len(t.held), "skipped": t.skipped,
             **({"empty_confirmed": empty_ok} if empty_ok else {})}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"# {args.book} 网页投票 → 事件草稿（{args.rev}）", "",
