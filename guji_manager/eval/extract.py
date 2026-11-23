@@ -107,6 +107,17 @@ def _advset(data: dict) -> list[Metric]:
     ]
 
 
+def _match_pool(data: dict) -> list[Metric]:
+    h = data.get("headline") or {}
+    res = (data.get("result") or {}).get(h.get("way"), {})
+    out = [_m("误放", h.get("false_same"), den=(res.get("全部") or {}).get("n"), note=f"判官 {h.get('way')}；护栏：不增")]
+    for k in ["全部"] + sorted(x for x in res if x != "全部"):
+        v = res[k]
+        out += [_m(f"{k} 首位", _pct(v.get("rank1_rate")), "%", den=v.get("n")),
+                _m(f"{k} 放行", _pct(v.get("accept_rate")), "%", den=v.get("n"))]
+    return out
+
+
 def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
     """返回 (指标, 错误)。指标为 None 表示这个评测器不归这里管，照通用解析。"""
     if not isinstance(data, dict):
@@ -119,12 +130,14 @@ def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
         return _sim_bench(data), ""
     if eval_id.startswith("advset"):
         return _advset(data), ""
+    if eval_id.startswith("match_pool"):
+        return _match_pool(data), ""
     if eval_id.startswith("rare_") and eval_id != "rare_char":
         return _rare(data)
     return None, ""
 
 
-READ_EVALS_PREFIX = ("advset", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
+READ_EVALS_PREFIX = ("advset", "match_pool", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
                      "oov", "degradation", "zero_shot")
 
 
@@ -149,7 +162,7 @@ def bench_lock(eval_id: str, cv_root: Path, dataset_root: Path) -> dict:
     if not eval_id.startswith(READ_EVALS_PREFIX):
         return {}
     lock = {"cv": _git_head(cv_root), "dataset": _git_head(dataset_root)}
-    if eval_id.startswith("advset"):
+    if eval_id.startswith(("advset", "match_pool")):
         return lock     # 分片自带图块，不碰字形库；模型随 cv 提交钉住
     db = os.environ.get("GUJI_GLYPH_DB") or ""
     if not db and os.environ.get("GUJI_WORKSPACE"):

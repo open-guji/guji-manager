@@ -57,3 +57,12 @@ def test_advset_headline():
     assert not err
     d = _names(ms)
     assert d["形近误认"] == 7 and d["异体下 same"] == 1 and d["形近误认率"] == 0.76
+
+
+def test_match_pool_headline():
+    data = {"headline": {"way": "cov", "false_same": 9},
+            "result": {"cov": {"全部": {"n": 554, "rank1_rate": 0.904, "accept_rate": 0.199},
+                               "残笔": {"n": 83, "rank1_rate": 0.699, "accept_rate": 0.024}}}}
+    ms, _ = extract("match_pool", data)
+    d = _names(ms)
+    assert d["误放"] == 9 and d["残笔 首位"] == 69.9 and d["全部 放行"] == 19.9

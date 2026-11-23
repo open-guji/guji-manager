@@ -224,6 +224,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                             ("advset_shiji", "shiji", "史記", (), ()),
                             ("advset_qtw", "qtw", "全唐文", ("--sim-model", "models/glyph_sim_qtw/model.pt"),
                              ("heavy",)))],
+    # 3a 子基准 A5 退化（A23，2026-11-23）：ai-team 残笔细笔真实残损集（字是人裁），冻结成带固定候选池的分片；
+    # 判官按生产配置（殿本、史記覆盖分）。头条＝误放（护栏，不增）＋各类别首位命中、放行。
+    *[EvalSpec(id=i, script="eval_match_pool.py", shard=f"glyph-match/damaged-{d}", pythonpath=True,
+               title=f"3a 退化·{t}真实残损", note="类别 残笔／细笔／对照 分报；不碰字形库")
+      for i, d, t in (("match_pool", "siku-v2", "殿本"), ("match_pool_shiji", "shiji", "史記"))],
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
