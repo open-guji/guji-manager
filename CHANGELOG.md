@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，GM4；格式瘦身 A＋B 读端补充，guji-format #33）：`revise.dump_like`（revise／revert 写盘共用）认 v0.3 punct／entity「每条一行」写法并原样写回，改一条只动一行；v0.1／v0.2 旧写法不变。用 GM3 三册样本（殿本050、全唐文010、史記003）验往返逐字节一致、旧新格式 `plan_fixes` 结果相同；加 3 条测试。swap 写盘仍走 book-text `original_version.dump_json`，其对 v0.3 的保排版需 GM3／CV0 另核。（来源判定与换单守卫已由 GM2 #878 做。）
 - **PATCH**（11-23，GM2，格式瘦身 punct／entity v0.3 读端）：`closeout` 写回（`fix-misplaced`）判人改改读 `effective_source`（条目省 source 时取 `default_source`），`char_offset` 有才更新、不新增；换单 `swap` 守卫按有效 source 比标点条目，v0.2→v0.3 迁移不误报。book-text 侧 `check_anchor_drift`／`remap_anchors`／`char_edits` 同口径（book-text #501）。L0。
 ## [0.6.5] - 2026-11-23
 
