@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- **PATCH**（11-23，GM4；格式瘦身 A＋B 读端，guji-format #33）：标点来源改走 `effective_source`（`closeout.writeback.plan_fixes`、`swap` 的标点条目核对），文件头 `default_source` 缺省条目照常识别人裁／机器；`revise.dump_like` 认 v0.3「每条一行」写法并原样写回，改一条只动一行。v0.1／v0.2 旧文件行为不变。用 GM3 三册样本（殿本050、全唐文010、史記003）验：punct／entity 往返逐字节一致，旧新格式 `plan_fixes` 结果相同。swap 写盘仍走 book-text `original_version.dump_json`，其对 v0.3 的保排版需 GM3／CV0 另核。
+
 ## [0.6.5] - 2026-11-23
 
 - **PATCH**（11-23，#848 直接进 main，随本版回到 dev）：runner 自更新循环修复——manager 切换（checkout）失败不再当成功；自更新后仍判过期就不再 exec，避免空闲 runner 反复「已拉新代码，重新 exec」不领单。L0。

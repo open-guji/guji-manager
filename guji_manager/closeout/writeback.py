@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import random
 
+from ..formats.guji_format import effective_source
+
 MANUAL_KEYS = ("human", "manual", "人裁", "手改")
 
 
@@ -36,16 +38,17 @@ def plan_fixes(punct: dict, char: dict, cellmap: dict[str, str],
     pos = {a: i for i, (a, _c) in enumerate(slots)}
     ok, skip = [], []
     for i, p in enumerate(punct.get("punctuations") or []):
+        src = effective_source(p, punct)             # v0.3：条目缺省取文件头 default_source
         a = p.get("anchor")
         pc = (old_pre or {}).get((a, p.get("mark", "")), p.get("pre_char"))
         n = cellmap.get(a) if a else None
         if not a or n is None or n == a:
             continue                                   # 表里没要挪的
-        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": p.get("source", ""), "old": a, "new": n,
+        rec = {"idx": i, "mark": p.get("mark", ""), "pre_char": pc, "source": src or "", "old": a, "new": n,
                "dev_pre_char": p.get("pre_char")}
         if pc is None:
             skip.append({**rec, "why": "无 pre_char，无从核对"})
-        elif is_manual(p.get("source")):
+        elif is_manual(src):
             skip.append({**rec, "why": "来源不是机器（人裁／手改）"})
         elif n not in pos:
             skip.append({**rec, "why": f"对照表位置 {n} 不在 char 里"})

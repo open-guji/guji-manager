@@ -332,3 +332,40 @@ def test_lib_disagree_scan_pack(tmp_path):
     pair.write_text("刺\t剌\n", encoding="utf-8")
     assert len(LD.scan_pack(tmp_path, declared=lambda a, b: False)) == 1
     assert LD.scan_pack(tmp_path, declared=LD.load_declared(pair)) == []
+
+
+# ---------- v0.3 读端兼容（格式瘦身 A＋B，guji-format #33）----------
+def _slim_cases():
+    c = char("甲乙丙丁")
+    old = {"punctuations": [
+        {"mark": "，", "kind": "point", "pos": "after", "anchor": "1:1:1", "pre_char": "甲", "source": "claude:A33"},
+        {"mark": "。", "kind": "point", "pos": "after", "anchor": "1:1:2", "pre_char": "乙", "source": "human"}]}
+    new = {"default_source": "claude:A33", "punctuations": [
+        {"mark": "，", "kind": "point", "pos": "after", "anchor": "1:1:1", "pre_char": "甲"},
+        {"mark": "。", "kind": "point", "pos": "after", "anchor": "1:1:2", "pre_char": "乙", "source": "human"}]}
+    return c, old, new
+
+
+def test_plan_fixes_same_old_and_v03():
+    c, old, new = _slim_cases()
+    m = {"1:1:1": "1:1:3", "1:1:2": "1:1:4"}
+    pre = {("1:1:1", "，"): "丙", ("1:1:2", "。"): "丁"}
+    assert writeback.plan_fixes(old, c, m, pre) == writeback.plan_fixes(new, c, m, pre)
+
+
+def test_plan_fixes_default_source_manual_is_skipped():
+    c, _o, new = _slim_cases()
+    new["default_source"] = "human"                     # 文件头就是人裁：缺省条目也算人工
+    m = {"1:1:1": "1:1:3"}
+    ok, skip = writeback.plan_fixes(new, c, m, {("1:1:1", "，"): "丙"})
+    assert ok == [] and skip[0]["why"].startswith("来源不是机器")
+
+
+def test_dump_like_keeps_v03_style():
+    from guji_manager.formats.guji_format import dump_json
+    from guji_manager.opinions.revise import dump_like
+    _c, _o, new = _slim_cases()
+    txt = dump_json(new)
+    new["punctuations"][0]["pre_char"] = "丁"
+    out = dump_like(txt, new, default="indent")
+    assert out == dump_json(new) and out.count("\n") == txt.count("\n")   # 仍每条一行，改一条只动一行

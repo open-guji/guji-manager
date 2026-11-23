@@ -28,6 +28,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..formats.guji_format import dump_json
 from .schema import norm_class
 from .textsrc import BookText, vol_key
 
@@ -70,8 +71,12 @@ def dump_like(original_text: str | None, obj, default: str = "compact") -> str:
         o = json.loads(original_text)
         if dumps_compact(o) + "\n" == original_text:
             style = "compact"
+        elif isinstance(o, dict) and dump_json(o) == original_text:
+            style = "slim"             # punct／entity v0.3：每条一行（guji-format #33）
         elif json.dumps(o, ensure_ascii=False, indent=2) + "\n" == original_text:
             style = "indent"
+    if style == "slim":
+        return dump_json(obj)
     if style == "compact":
         return dumps_compact(obj) + "\n"
     return json.dumps(obj, ensure_ascii=False, indent=2) + "\n"

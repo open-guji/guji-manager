@@ -40,6 +40,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from ..formats.guji_format import effective_source
 from .resolve import BLANK, detect_flaws, resolve
 
 #: 文本里的占位符（不是字、也不是阙文）：新包落了 □（定阙或图片格）就照新包，不当「现行有字」留着（ZM 11-19 vol20）
@@ -332,8 +333,10 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
         if short:
             bad.append(f"专名被切短 {len(short)} 条：{'；'.join(short[:8])}")
     if old_punct is not None and new_punct is not None:
-        k = lambda x: (x.get("mark"), x.get("kind"), x.get("source"), x.get("pos"))
-        if collections.Counter(map(k, old_punct.get("punctuations", []))) != collections.Counter(map(k, new_punct.get("punctuations", []))):
+        def kf(doc):
+            return lambda x: (x.get("mark"), x.get("kind"), effective_source(x, doc), x.get("pos"))   # v0.3 default_source
+        if (collections.Counter(map(kf(old_punct), old_punct.get("punctuations", [])))
+                != collections.Counter(map(kf(new_punct), new_punct.get("punctuations", [])))):
             bad.append("标点条目（按 mark／kind／source／pos 计）变了")
     return bad
 
