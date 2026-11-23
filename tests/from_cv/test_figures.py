@@ -6,9 +6,7 @@
 """
 from __future__ import annotations
 
-from cv_paths import CV_REPO  # cv 仓根（本测试从 cv tests/ 搬来）
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -29,7 +27,6 @@ from open_guji_cv.products.kinds.cells import CellRec
 from open_guji_cv.products.store import ProductStore
 from open_guji_cv.report.slots import _to_slot
 
-sys.path.insert(0, str(CV_REPO / "scripts"))
 
 FIG_ID = f"{BOOK}:{PAGE}:2:5"
 
@@ -231,7 +228,7 @@ def test_no_figures_byte_identical(tmp_path):
 
 
 def test_exporter_script_writes_fig(tmp_path, monkeypatch):
-    from export_guji_format import main
+    from guji_manager.output.guji_format_export import main
     _book_ws(tmp_path, monkeypatch)
     _store_with_figure(tmp_path)
     lst = tmp_path / "crop_exclusions.jsonl"

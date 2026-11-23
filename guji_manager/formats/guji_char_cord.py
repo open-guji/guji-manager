@@ -12,8 +12,8 @@
   逐字相同（只差阙文带推测字一处写法，见下）；
 - `check(char, cord)` 核两边格位、页号、列号；`validate(obj, "char"|"cord")` 过 schema。
 
-导出器（`scripts/export_guji_format.py --format char-cord`）先照旧出 pages.json，再走这里；纯转换入口是
-`scripts/convert_pages_to_char_cord.py`，旧 pages.json 直接转。
+导出器（`output/guji_format_export.py --format char-cord`）先照旧出 pages.json，再走这里；纯转换入口是
+`output/char_cord_report.py`，旧 pages.json 直接转。
 
 **格位口径**（`keys=`）：
 - `"cv"`（缺省，照 spec 02 §二）：= pages.json 的锚点 = CV 格 id 去册前缀。列是 Step3 物理列号，**空列也占号**；

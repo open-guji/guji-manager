@@ -1,12 +1,12 @@
 """`guji` 命令按「文本化一部书」的步骤分组：`guji <步> <命令> …`（用户 2026-11-22 定）。
 
-五步（第五步「排版输出」由 cv 原 Step9 移来，2026-11-22 定，命令随 cv 那边整理补齐）：
+五步（第五步「排版输出」由 cv 原 Step9 移来：2026-11-22 定，11-23 代码整个搬进本包 `output/`）：
 
     start     第一步 新书启动    元数据与资源、页面分析与参数、选页试运行
     pipeline  第二步 自动化流程  跑 CV 管线、切分检查、少见字入库与 OCR 候选、形近字处理
     text      第三步 文意与知识  AI 文意判字、标点、专名
     feedback  第四步 反馈迭代    网站人审、更新 book-text、版本迭代
-    output    第五步 排版输出    导出排版文本
+    output    第五步 排版输出    导出排版文本、对勘报告
 
 `guji start source pull …` 与 `guji source pull …` 完全等价：cv 解析参数之前经 `route` 钩子（`route()`）
 核对「这条命令属于这一步」，去掉前缀再解析（`-w` 校验、`--override`、钩子都照常走）。
@@ -45,8 +45,8 @@ STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "pending", "online-lists", "swap", "collect", "cellvotes", "closeout", "rekey-cells",
         "exit-check", "char-diff", "audit", "freeze", "opinions", "progress-sync",
     )),
-    "output": ("第五步 排版输出", "按 book-text 导出排版文本（cv 原 Step9 移来，命令待补）", (
-        "export",
+    "output": ("第五步 排版输出", "导出排版文本（md、lines.md／pages.json、维基文库、重排段落）与对勘报告", (
+        "export", "collation-report",
     )),
 }
 

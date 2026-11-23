@@ -66,7 +66,7 @@ SEED = [
 
 
 def body_pages(book: str, st: ProductStore) -> list[int]:
-    """**只取正文页**，与判据 B / 对勘报告同口径（`build_collation_report.body_pages`）。
+    """**只取正文页**，与判据 B / 对勘报告同口径（`report/run.py::body_pages`）。
 
     vol01 的产物有 116 页，其中 p89–95 是职名页、p184 是目录页——版式不同、人审天然高，
     混进来会让 0.11% 看着涨回 0.53%，误判成回退（2026-09-08 建台账时踩到）。

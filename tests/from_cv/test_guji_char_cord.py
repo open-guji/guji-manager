@@ -12,10 +12,8 @@ lines.md 逐字相同**（cv、lines 两种格位口径都是）；lines 口径�
 """
 from __future__ import annotations
 
-from cv_paths import CV_REPO  # cv 仓根（本测试从 cv tests/ 搬来）
 import copy
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -25,7 +23,6 @@ from test_guji_page_format import BOOK, META, PAGE, _book_ws, _write
 from guji_manager.formats import guji_char_cord as cc
 from guji_manager.formats import guji_format as gf
 
-sys.path.insert(0, str(CV_REPO / "scripts"))   # 两个入口脚本
 
 
 def _cells(char):
@@ -201,7 +198,7 @@ def test_guess_c_needs_char_v02():
 
 def test_report_roundtrip_with_guess_c():
     """导出器的往返核对：9.1 的 lines.md 写 □{guess=X}，char 里是 guess_c——要认作一致。"""
-    from convert_pages_to_char_cord import report
+    from guji_manager.output.char_cord_report import report
     files, _ = cc.from_pages_json(_pj(), version="1.0.0")
     assert report(files, LINES_MD) == 0
     assert report(files, LINES_MD.replace("□{guess=春}", "□{guess=夏}")) == 1
@@ -262,7 +259,7 @@ def test_dumps_one_cell_per_line(tmp_path):
 # ───────────────────────── 两个入口 ─────────────────────────
 
 def test_convert_script(tmp_path, legacy):
-    from convert_pages_to_char_cord import main
+    from guji_manager.output.char_cord_report import main
     paths = gf.write_files(legacy, tmp_path / "old")
     d = {p.name: p for p in paths}
     args = ["--pages-json", str(d["002.pages.json"]), "--zi", str(d["002.zi.json"]), "--norm", str(d["002.norm.json"]),
@@ -275,7 +272,7 @@ def test_convert_script(tmp_path, legacy):
 
 
 def test_exporter_char_cord(tmp_path, monkeypatch):
-    from export_guji_format import main
+    from guji_manager.output.guji_format_export import main
     gap = {"after_page": PAGE, "what": "卷一叶三", "kind": "原书缺"}
     _book_ws(tmp_path, monkeypatch, gaps=[gap])
 

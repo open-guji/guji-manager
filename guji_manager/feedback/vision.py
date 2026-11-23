@@ -256,7 +256,7 @@ def vision_pending(book: str, pages: list[int], store=None, log: VisionLog | Non
 def vision_pending_ids(book: str, pages: list[int], products_root=None) -> frozenset[str]:
     """导出用：这些页里「看图判错、人还没裁」的字位 id 集合（= `vision_pending` 的 id 列）。
 
-    `guji export format`／`export_guji_page.py` 把它传给 `formats.guji_page_cv.export_page(pending_ids=…)`，
+    `guji output export format`／`output/guji_page_export.py` 把它传给 `formats.guji_page_cv.export_page(pending_ids=…)`，
     让这些放行格导出时记 `review: pending`，与 close-check／控制台的待审同口径。没有看图记录 → 空集。"""
     from pathlib import Path
 

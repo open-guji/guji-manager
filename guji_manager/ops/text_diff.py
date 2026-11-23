@@ -4,7 +4,7 @@
 用户 10-20 定「不在 book-text 里直接改字」：1.0 的文本必须等于冻结快照导出。这里只比两份 char，
 不管 char 是怎么来的——冻结那份由导出器从冻结产物出：
 
-    python scripts/export_guji_format.py --products <冻结快照的 products 根> --book vol01 --chapter 001 \\
+    python -m guji_manager.output.guji_format_export --products <冻结快照的 products 根> --book vol01 --chapter 001 \\
         --meta <meta> --out <临时目录> --format char-cord --text-version <现行版本>
 
 然后 `guji char-diff <book-text>/…/001.char.json <临时目录>/001.char.json`，或在 `guji exit-check` 上给
