@@ -1,0 +1,111 @@
+<title>逐格切线审查</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+#list{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+.cc{flex:0 0 auto;display:flex;flex-direction:column;gap:3px;align-items:center}
+.cc .meta{font-size:11px;color:var(--muted);text-align:center}
+.win{position:relative;height:var(--th,220px);background:#fff;border:2px solid var(--line);border-radius:4px;cursor:pointer;touch-action:manipulation;overflow:hidden}
+.cc.ok .win{border-color:var(--ok)}
+.cc.bad .win{border-color:#d33}
+.cc.unsure .win{border-color:#5b5f8a}
+.win img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
+.win .ln{position:absolute;left:0;right:0;height:0;border-top:2px solid rgba(40,120,220,.9)}
+.win .ln.wrong{border-top:3px solid #d33}
+.win .half{position:absolute;left:0;right:0}
+.win .half.wrong{background:rgba(220,50,50,.16)}
+.qb{display:flex;flex-direction:column;gap:3px;width:100%}
+.qb button{padding:4px 6px;min-height:32px;font-size:12px}
+.qb button[aria-pressed="true"]{color:#fff}
+.qb button[data-v=ok][aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.qb button[data-v=unsure][aria-pressed="true"]{background:#5b5f8a;border-color:#5b5f8a}
+.legend{font-size:12px;color:var(--muted);margin:4px 0 8px}
+.legend b.b{color:#2878dc}.legend b.r{color:#d33}
+.zoom{font-size:12px;margin-left:8px}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*/
+/*STORE_JS*/
+// 一屏＝原书一列，一格一张小图（上下各带半个邻格），蓝线＝这格的上、下切线（列首、列尾与边框之间那条不画）。
+// 点图的上半＝上切线不准，下半＝下切线不准（标红），再点取消。整屏没问题翻页时没点的格记作全对（how=page_ok）。
+const MAJOR=D.tpl_version.split(".")[0];
+const screens=[];D.items.forEach(it=>{(screens[it.screen]=screens[it.screen]||[]).push(it)});
+const byId={};D.items.forEach(it=>byId[it.id]=it);
+const S=makeStore({key:"cut-check-"+D.book+"-v"+MAJOR,pageOf:k=>(byId[k]||{screen:0}).screen,
+  docOf:(k,raw)=>{const it=byId[k]||{};return {cell:k,vol:it.vol,label:raw.v||null,bad:raw.bad||[]}}});
+const st=S.st;
+const lab=it=>{const r=S.raw(it.id);return r&&r.v?r:null};
+function toggleSide(it,side){
+  const r=lab(it)||{};const bad=(r.v==="bad"?(r.bad||[]):[]).slice();
+  const j=bad.indexOf(side);if(j>=0)bad.splice(j,1);else bad.push(side);
+  if(bad.length)S.set(it.id,{v:"bad",bad});else S.clear(it.id);
+}
+function paint(box,it){
+  const r=lab(it)||{};box.className="cc "+(r.v||"");
+  const bad=new Set(r.v==="bad"?r.bad||[]:[]);
+  for(const e of box.querySelectorAll("[data-side]"))e.classList.toggle("wrong",bad.has(e.dataset.side));
+  for(const b of box.querySelectorAll(".qb button[data-v]"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
+}
+function card(it,i){
+  const box=document.createElement("div");box.className="cc";
+  const m=document.createElement("div");m.className="meta";m.textContent=(i+1)+(it.kind&&String(it.kind).startsWith("jiazhu")?" 夹注":"")+(it.note?" · "+it.note:"");box.appendChild(m);
+  const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;
+  const im=document.createElement("img");im.src=it.img;im.alt="第 "+(i+1)+" 格";win.appendChild(im);
+  const mid=(it.top!=null&&it.bottom!=null)?(it.top+it.bottom)/2:it.ih/2;
+  for(const [side,y] of [["top",it.top],["bottom",it.bottom]]){
+    if(y==null)continue;
+    const h=document.createElement("div");h.className="half";h.dataset.side=side;
+    if(side==="top"){h.style.top="0";h.style.height=(mid/it.ih*100)+"%"}else{h.style.top=(mid/it.ih*100)+"%";h.style.bottom="0"}
+    h.onclick=e=>{e.stopPropagation();toggleSide(it,side);paint(box,it);stat()};win.appendChild(h);
+    const l=document.createElement("div");l.className="ln";l.dataset.side=side;l.style.top=(y/it.ih*100)+"%";win.appendChild(l);
+  }
+  box.appendChild(win);
+  const qb=document.createElement("div");qb.className="qb";
+  for(const [v,t] of [["unsure","看不出"]]){const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
+    b.onclick=()=>{const r=lab(it);if(r&&r.v===v)S.clear(it.id);else S.set(it.id,{v});paint(box,it);stat()};qb.appendChild(b)}
+  box.appendChild(qb);paint(box,it);return box;
+}
+const NP=()=>Math.max(1,screens.length);
+function stat(){
+  const n={ok:0,bad:0,unsure:0};for(const it of D.items){const r=lab(it);if(r)n[r.v]++}
+  const got=n.ok+n.bad+n.unsure;
+  $("stat").textContent=`已审 ${st.seen}/${NP()} 屏 · 已定 ${got}/${D.items.length} 格（全对 ${n.ok}、有错 ${n.bad}、看不出 ${n.unsure}）`;
+  $("bar").style.width=(got/Math.max(1,D.items.length)*100)+"%";
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP()-1);
+  const L=$("list");L.textContent="";
+  const its=screens[st.page]||[];
+  its.forEach((it,i)=>L.appendChild(card(it,i)));
+  const f=its[0]||{};
+  $("pg").textContent=`第 ${st.page+1} / ${NP()} 屏（册 ${f.vol} 第 ${f.page} 页第 ${f.col} 列）`;
+  $("sub").textContent=`${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`;
+  $("hint").innerHTML="";const h=document.createElement("span");
+  h.textContent=D.hint||"一屏是原书一列，一格一张小图（上下各带半个邻格），蓝线是这格的上、下切线。只看字与字之间的切线准不准：切进了邻字的笔画、或把本字的笔画切掉了，就点图的上半（上切线）或下半（下切线）标红，再点取消。列首字与边框、列尾字与边框之间不画线不看，左右宽窄也不看。看不清点「看不出」。整屏都对不用点，点「本页没问题，下一页」时没点的格记作全对。每点一下就存后台。";
+  const lg=document.createElement("div");lg.className="legend";lg.innerHTML="<b class=b>蓝线</b>切线　<b class=r>红</b>＝你标的不准的切线";
+  $("hint").append(h,lg);
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页没问题，完成":"本页没问题，下一页";
+  stat();S.save();
+}
+function exportAll(){
+  const labels=[],unconfirmed=[];
+  for(const it of D.items){const r=lab(it);
+    if(r)labels.push({cell:it.id,label:r.v,bad:r.bad||[],how:S.how(it.id)});else unconfirmed.push(it.id)}
+  return {page_type:TPL.type,tpl_version:TPL.version,book:D.book,pages_seen:st.seen,labels,unconfirmed};
+}
+function next(){
+  const its=screens[st.page]||[];
+  for(const it of its)if(!lab(it))S.set(it.id,{v:"ok"},"page_ok");
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids:its.map(it=>it.id)});
+  st.seen=Math.max(st.seen,st.page+1);
+  if(st.page<NP()-1)st.page++;else{S.flush();showOut(exportAll())}
+  render();scrollTo(0,0);
+}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=()=>showOut(exportAll());
+wireDlg();render();
+initDB(async()=>{if(await S.restore())render()});
+</script>

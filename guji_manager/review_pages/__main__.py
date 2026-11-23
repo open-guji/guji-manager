@@ -24,6 +24,7 @@
   build seg_cut --items 人裁切线候选.jsonl --root <放列图的目录> ...   人裁切线页（小字并成一格，点图画切线）
   build col_check --items 列.jsonl ...                             整列切分抽查页（一页书一屏，点切错的格）
   colcheck-apply --results DIR --out F                             整列抽查结果 → jsonl（列号、全对/有错/看不出、错格）
+  cutcheck-apply --results DIR --out F                             逐格切线结果 → jsonl（格号、全对/有错/看不出、错的切线 top/bottom）
   segcut-apply --results DIR --out F                               人裁切线结果 → jsonl（格号、结论、列图/页图切线坐标）
   cold-items --cells 待审.tsv --pack-dir '<包>/{vol}' --crops-dir '<图>/{cell}.png' --out-dir D   冷启动快审：按 5b 领先/cov/库例数分高、低把握 items（见 cold_start.py）
   cold-pages --out-dir D --book B                                  出高/低把握两张页（高：带「本页其余都对」；低：一格一卡、没点不算对）
@@ -87,6 +88,7 @@ def main(argv=None):
     p.add_argument("--why", default="字块质量页（glyph_quality）人点")
     p = sub.add_parser("segcut-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p = sub.add_parser("colcheck-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
+    p = sub.add_parser("cutcheck-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p = sub.add_parser("ref-check-items"); p.add_argument("--cells", required=True)
     p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
     p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
@@ -240,6 +242,11 @@ def main(argv=None):
         rows = cc.label_rows(cc.labels_from_docs(_docs(a.results)))
         _write_jsonl(a.out, rows)
         print(f"{len(rows)} 列 → {a.out}")
+    elif a.cmd == "cutcheck-apply":
+        from . import cut_check as ct
+        rows = ct.label_rows(ct.labels_from_docs(_docs(a.results)))
+        _write_jsonl(a.out, rows)
+        print(f"{len(rows)} 格 → {a.out}")
     elif a.cmd == "segcut-apply":
         from . import seg_cut as sc
         rows = sc.label_rows(sc.labels_from_docs(_docs(a.results)))
