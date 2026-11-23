@@ -822,7 +822,15 @@ def ledger_of(book: str, rev: str, meta: dict, plan: dict | None = None, want: i
 def write_ledger(out: Path, book: str, rev: str, meta: dict, **kw) -> None:
     try:
         out.mkdir(parents=True, exist_ok=True)
-        (out / "ledger.json").write_text(json.dumps(ledger_of(book, rev, meta, **kw), ensure_ascii=False, indent=1), encoding="utf-8")
+        p = out / "ledger.json"
+        new = ledger_of(book, rev, meta, **kw)
+        if "apply" not in new and p.exists():          # 续跑跳过了落文本那步：保留上次已记的 book-text 各段
+            try:
+                old = json.loads(p.read_text(encoding="utf-8"))
+                new = {**{k: v for k, v in old.items() if k in ("want", "ai", "apply", "already", "layout", "fig", "missing")}, **new}
+            except (OSError, ValueError):
+                pass
+        p.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError:
         pass
 
