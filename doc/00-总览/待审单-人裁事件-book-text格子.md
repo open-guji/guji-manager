@@ -46,7 +46,7 @@
   放在同一张单的旁表 `anchor_cells[]`，不进网站、不进条目表、不让 book-text 钉住现字（11-13 起；老单里混在 `cells[]` 的，下次出单清掉）。
   `guji feedback closeout list／stats` 两处都读。
 - **住哪**：真源在**中心库** `feedback/lists/proofing/<书 id>/<章>.pending.json`（随 `guji db sync`）；
-  网站精校页读的是它发布出去的副本（proofing-sync → 网站存储／KV）。平时说「待审信息在 KV」指的就是这一路：中心库待审单 → 网站。
+  网站精校页读的是它发布出去的副本（proofing-sync 或 `pending --kv` → 网站读的 D1 `web_inbox` `kind=pending`，图在 COS；11-22 起网站不再用 KV）。平时说「待审信息在 KV」，现在指的就是这一路：中心库待审单 → 网站收件箱。
 - **关键信息**：
   - 单头：`rev`、`cv_version`／`cv_commit`（出单用的产物）、`source_rev`（页表版本）
   - 每格：`cell`（同 book-text 的 `a`）、`review`、`why`（待审原因码，`pending_reason` 枚举，真源 manager `review/pending_reasons.yaml`）、
@@ -59,7 +59,7 @@
 
 - **含义**：人对某一格（或切线、版框、列……）下的判断。**只追加、不改不删**；同一格多条按「后到覆盖」取最新。
 - **范围**：全工作区；定字类（`confirm` + `payload.v`：定字／切坏／不是字／阙／图片格）是和格子直接相关的那部分，
-  另有切分类、字形库体检（撤库、白名单）等。网站精校页的投票先进 KV，再落成事件（`cellvotes`，H-web 批次）才算人裁。
+  另有切分类、字形库体检（撤库、白名单）等。网站精校页的投票先进 D1 `web_inbox`（`kind=cellreview`），再落成事件（`cellvotes`，H-web 批次）才算人裁。
 - **住哪**：中心库 `events` 表（stream=`events`）；本机镜像 `feedback/events/<batch>.jsonl`。
   **不算人裁**的另有：看图结论（stream=`vision`）、大模型裁定（stream=`rulings`，键是前后文窗口，不是格号）、点校旁路笔记（`feedback/notes`）。
 - **关键信息**：`id`、`ts`、`kind`、`target.key`（`册:页:列:格`，**带册号**）、`target.anchor`（当时那块图的位置与指纹）、
@@ -146,7 +146,7 @@
 ## 五、常见问题
 
 - **待审格在 book-text 里看不出来，读者会不会被误导？** 会显示首选字，可能是错的（例：殿本一处标题曾因参校本首选变成「雜史類臣三弁」）。这正是待审单要人看的格；网站上「待审」的标记读的是待审单，不是 book-text。
-- **网站票算不算人裁？** 票在 KV 里只是意见；落成事件（`cellvotes` → `events`）之后才算，下一轮才进文本。
+- **网站票算不算人裁？** 票在网站收件箱里只是意见；落成事件（`cellvotes` → `events`）之后才算，下一轮才进文本。
 - **大模型裁定、点校放行算不算人裁？** 不算（`rulings`／`notes` 另存，不进人裁通道）。点校放行（两路同字 high、放行子集金标 0 错）写裁定库，下一轮由机器放行改字；它们改 book-text 走的是「机器放行」那一行。
 - **重切后格号变了怎么办？**（如殿本 vol01 锚点平移）**只走一条路**（11-10 sheldon 定）：[换包落book-text-增删格](../../wiki/反馈迭代/换包落book-text-增删格.md)（`swap/booktext.py`，swap run 遇增删格自动调）。先出新旧格对照表；人裁按锚重绑（平移到新格号），绑不上的回待审单复审；标点专名按对照表平移（`auto_remap --cell-map`，不单跑不带表的）；字形库键 rekey；book-text 只换变化页，按上表逐格判（人裁平移后的字＞机器新字）。待审条目先按图块指纹认（同一块图挪了格号只改 `cell`），认不出再按格号认（指纹变了标 `fp_changed`，怎么处理待定）。
 - **`decision.json`、char v0.4、`pending_reason` 写在 char 里？** 都已废弃（11-09）。

@@ -15,7 +15,7 @@
 | 小步 | 做什么 | 主文 | 主要命令 |
 |---|---|---|---|
 | [4a 出单上线](../../wiki/反馈迭代/出单上线.md) | 首发待审单、换单（以最新一轮为准，机器结果不覆盖人裁）；待审条目一格一条 | [换线上人审单](../../wiki/反馈迭代/换线上人审单.md) | `guji feedback pending`、`swap run`、`online-lists --audit` |
-| [4b 收单落票](../../wiki/反馈迭代/收单落票.md) | 读票→写人裁→定字直接落 book-text→KV 结案→推库→发站核对 | [收单](../../wiki/反馈迭代/收单.md) | `guji feedback collect`、`cellvotes draft／write`、`guji db sync` |
+| [4b 收单落票](../../wiki/反馈迭代/收单落票.md) | 读票→写人裁→定字直接落 book-text→条目结案→推库→发站核对 | [收单](../../wiki/反馈迭代/收单.md) | `guji feedback collect`、`cellvotes draft／write`、`guji db sync` |
 | [4c 更新 book-text](../../wiki/反馈迭代/更新book-text.md) | 换包落 book-text（格号变时走格级对照表）、标 main 后收尾、参校本对比查漏 | [换包落book-text-增删格](../../wiki/反馈迭代/换包落book-text-增删格.md) | `guji feedback swap book-text／finish-merged`、`closeout`、`rekey-cells` |
 | [4d 升 1.0、冻结](../../wiki/反馈迭代/升1.0与冻结.md) | 按 1.0 发布标准 G0–G8 检查、打 1.0、登记冻结基线 | [1.0 发布标准](1.0发布标准.md) | `guji feedback exit-check`、`char-diff`、`audit`、`freeze` |
 | [4e 1.0 之后的反馈](../../wiki/反馈迭代/1.0后的反馈.md) | 网站报错与机器反馈：意见→裁决事件→只经 `revise` 落地，一批一个 PR | [全流程与覆盖优先级](../../wiki/反馈迭代/全流程与覆盖优先级.md) | `guji feedback opinions` |
