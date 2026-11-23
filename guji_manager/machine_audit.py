@@ -142,7 +142,7 @@ def audit_book(ws: Path, book: str, book_text: Path, text_id: str) -> dict | Non
 def render(results: dict[str, dict], title: str = "机器改字抽检表") -> str:
     """多册合并成一张 markdown：先每册各档计数，再每档列格（过长截断，完整清单在同名 tsv）。"""
     L = [f"# {title}", "", "换单时机器无票改字（新字≠book-text 现文）已按最新结果进文本。下表把「新字≠整理本字」的格按风险分档，抽检用。"
-         "B 档要看图；A 档抽样看错率，<2% 不再单列；C 档多为异体表漏收，交 A24 补表；D 档看放行通道。", "",
+         "B 档要看图；A 档抽样看错率，<2% 不再单列；C 档多为异体表漏收，交 CV4 补表；D 档看放行通道。", "",
          "| 册 | 改字格 | 人裁定 | 同整理本(F) | 异体(E) | A | B | C | D |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     allrows: list[dict] = []
     tot = Counter()

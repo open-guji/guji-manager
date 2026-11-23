@@ -99,7 +99,7 @@
 ## 怎么处理（流程）
 
 1. 先跑切分归因（`python -m guji_manager.review.seg_causes <册…> --products <产物根>`，或 `seg_cause` 页），定是切错、对位错、参校本缺段，还是特殊页型。
-2. 切错：报 A22，按页修切分（版式钉、`vline_overrides`、格位表 `cuts`），从 border_detect／row_segment 起重跑这几页。
+2. 切错：报 CV2，按页修切分（版式钉、`vline_overrides`、格位表 `cuts`），从 border_detect／row_segment 起重跑这几页。
 3. 对位错、整理本错：查参校本对应段（缺段、错段、换源后页号），修 align_ref 或钉页（`page_map`／`page_pins`）。
 4. 特殊页型（职名、目录、满文字母、空白页）：册 yaml 标 `page_kinds`，整页人审。
 5. 修不了的页整页人审（`ui: page`），不要逐格派。

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
 from typing import Callable
 
 OPTIONS = ("切分错", "切对了不是切分", "特殊页型", "看不出")

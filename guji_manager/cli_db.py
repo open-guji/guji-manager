@@ -68,8 +68,7 @@ def _pg_conn(branch: str | None = None):
     if branch == "main":
         return connect()
     _check_write_branch(branch)
-    from ._cv import branch_endpoint
-    return connect(endpoint=branch_endpoint(branch))
+    return connect(endpoint=branch)
 
 
 def _bucket(branch: str) -> str:
@@ -337,7 +336,7 @@ def cmd_db(args) -> None:
         left = {c: r.get("left") for c, r in (res.get("glyph_admit") or {}).items() if isinstance(r, dict) and r.get("left")}
         if left:
             print(f"⚠️  还有人裁没落进字形库（多为本机没有那一页的产物和字块缓存）：{json.dumps(left, ensure_ascii=False)}"
-                  "——到有产物的机器上 guji db sync，或交 A23 扫尾", file=sys.stderr)
+                  "——到有产物的机器上 guji db sync，或交 CV3 扫尾", file=sys.stderr)
         warn = unconsumed_warning(ws_dir)
         if warn:
             print(warn, file=sys.stderr)

@@ -459,7 +459,6 @@ def page_bottom_cards(store: ProductStore, book: str, pages: list[int]) -> list[
         y_right = bottom.y_at_right          # 原图坐标，x_tl = w-1 处
         y_left = bottom.y_at_right + bottom.slope * (w - 1)  # x_tl = 0 处
         crop_top = max(0.0, min(y_left, y_right) - PAGE_BAND_MARGIN)
-        crop_bottom = min(float(h), max(y_left, y_right) + PAGE_BAND_MARGIN)
         # ⚠️ 坐标只能以**原图**为准，不能以裁剪带为准（用户 2026-09-13 定）。
         # 原先只发相对 crop_top 的坐标，而 crop_top 是算法输出算出来的——
         # 算法一改，历史金标的绝对位置就整体漂移。vol02/161 实测偏了 83.2px：

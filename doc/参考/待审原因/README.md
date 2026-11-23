@@ -21,7 +21,7 @@
 | enum 与全部配置 | guji-manager `guji_manager/review/pending_reasons.yaml`（唯一真源） |
 | 读取接口 | `guji_manager/review/pending_reason.py`（`PendingReason`、`specs()`） |
 | 判定代码 | `guji_manager/review/reasons.py`（`book_cells` → `classify` → `reasons_for_pending`） |
-| 设计原文 | cv `doc/design/待审原因PendingReason.md`；ai-team `domain/CV/质检/待审原因码/` |
+| 规范 | [规范-PendingReason](规范-PendingReason.md)（11-23 从 cv `doc/design/` 搬来）；早期设计稿 ai-team `domain/CV/质检/待审原因码/` |
 
 ## 在哪里产生
 

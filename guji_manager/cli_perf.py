@@ -9,7 +9,7 @@
     guji perf job <单号>                                 # 一条任务单的各步耗时
 
 记录在产物根旁边的 `perf/<册>/<run_id>.jsonl`（`GUJI_PERF_DIR` 可改）。设了 JOBSDB_TOKEN 时每次运行写完
-自动推一份汇总到美国机任务库 `jobs.perf_run`／`jobs.perf_step`（约 15 KB），**不推 Neon**。
+自动推一份汇总到任务库 `jobs.perf_run`／`jobs.perf_step`（约 15 KB），**不推中心库**。
 """
 from __future__ import annotations
 
@@ -175,7 +175,7 @@ def add_parser(sub) -> None:
     g.add_argument("step")
     g.add_argument("--slowest", type=int, default=20)
     g.add_argument("--run", default=None)
-    u = ps.add_parser("push", help="把还没推过的本机记录推到美国机任务库（只推美国机，不推 Neon）")
+    u = ps.add_parser("push", help="把还没推过的本机记录推到美国机任务库（只推任务库，不推中心库）")
     u.add_argument("--book", default=None)
     j = ps.add_parser("job", help="一条任务单的各步耗时（美国机任务库）")
     j.add_argument("job_id", type=int)

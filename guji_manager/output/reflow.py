@@ -22,11 +22,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 
-from ..render.reflow_text import PAGE_MARK, PROFILES, Para, reflow
+from ..render.reflow_text import PROFILES, reflow
 
 _MARK = re.compile(r"\x00p(\d+)\x00")
 

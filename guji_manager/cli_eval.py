@@ -166,7 +166,7 @@ def cmd_groups(args) -> None:
                               codepoints=Path(args.codepoints) if args.codepoints else None, tag=args.tag,
                               prev=Path(args.prev) if args.prev else None)
     print("写", pj, "\n写", pm)
-    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（Neon 正式库）
+    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（中心库正式库）
         import json
         from ._cv import eval_group_progress as group_progress
         prev = json.loads(Path(args.prev).read_text(encoding="utf-8")) if args.prev else None
@@ -287,7 +287,7 @@ def add_parser(sub) -> None:
     p.add_argument("--tag", default="", help="status：这一轮产物的标签，进文件名")
     p.add_argument("--prev", default="", help="status：上一份报告的 json，表里写送审增减")
     p.add_argument("--progress", default="", metavar="BOOK_ID",
-                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写 Neon 正式库）")
+                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写中心库正式库）")
     p = sub.add_parser("collate", help="[v2] Step9-9.3 与整理本对勘（出 JSON + HTML）")
     p.add_argument("book")
     p.add_argument("--pages", default="", help="页表达式；空 = 全部有 Step7 产物的页")

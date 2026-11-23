@@ -1,6 +1,6 @@
-# PendingReason：待审原因 enum 与配置（全项目唯一真源，A31 2026-11-03；读取接口 open_guji_cv/review/pending_reason.py）
+# PendingReason：待审原因 enum 与配置（全项目唯一真源，A31〔现 GM2〕2026-11-03；读取接口 guji_manager/review/pending_reason.py，2026-11-04 随审阅代码从 cv 搬来）
 #
-# 真源位置（sheldon 11-03 定）：open-guji-cv（pipeline 生成这个原因），enum 类名 PendingReason，字段名一律 pending_reason。
+# 真源位置（sheldon 11-03 定；11-04 拆分后在 guji-manager）：guji-manager `guji_manager/review/`，enum 类名 PendingReason，字段名一律 pending_reason。
 # 本 enum 只回答「这一格为什么还在待审」，不是判定依据。判定依据（证据）是另一回事：现在是 why[] 疑问码，将来可另立 enum，不并进这里。
 # 不确定的一律写 unknown（含历史数据回填、以后新增的数据），保证每一处都有值、口径一致。
 #
@@ -15,7 +15,7 @@
 #   route       去向 enum（见 routes）
 #   owner       负责修算法／数据的人（成员名；人审格的「审」由 reviewer 决定）
 #   reviewer    最终谁看：human（人）／llm_then_human（大模型先过，只收 high，其余回人）／none（算法放行或留后，不出单）
-#   priority    判定顺序（小的先判；open_guji_cv/review/reasons.py 按它逐条试，第一条命中的就是这格的原因）
+#   priority    判定顺序（小的先判；guji_manager/review/reasons.py 按它逐条试，第一条命中的就是这格的原因）
 #   label       网页、控制台显示的短名（大白话；对外一律说「参校本」，不说「整理本」）
 #   hint        网页卡片上的一句说明：为什么在这里、人该看什么
 #   ui          网页卡片形态：pick（点选，整理本字预选）／choose3（三选一）／free（自由录字）／page（整页看）／confirm（看一眼确认）
@@ -55,7 +55,7 @@ reasons:
     code: S01
     category: segmentation
     route: algo
-    owner: A22
+    owner: CV2
     reviewer: human
     priority: 20
     label: 整页对不上
@@ -67,7 +67,7 @@ reasons:
     code: S02
     category: segmentation
     route: algo
-    owner: A22
+    owner: CV2
     reviewer: human
     priority: 21
     label: 整列对不上
@@ -79,7 +79,7 @@ reasons:
     code: S03
     category: segmentation
     route: algo
-    owner: A22
+    owner: CV2
     reviewer: human
     priority: 22
     label: 列宽异常
@@ -91,7 +91,7 @@ reasons:
     code: S04
     category: segmentation
     route: human
-    owner: A22
+    owner: CV2
     reviewer: human
     priority: 10
     label: 切坏格
@@ -105,7 +105,7 @@ reasons:
     code: D01
     category: occlusion
     route: algo
-    owner: A32
+    owner: GM4
     reviewer: llm_then_human
     priority: 11
     label: 有遮挡
@@ -117,7 +117,7 @@ reasons:
     code: D02
     category: occlusion
     route: human
-    owner: A32
+    owner: GM4
     reviewer: human
     priority: 12
     label: 有遮挡且参校本缺
@@ -131,7 +131,7 @@ reasons:
     code: H01
     category: hard_pair
     route: deferred
-    owner: A24
+    owner: CV4
     reviewer: none
     priority: 30
     label: 极难形近
@@ -145,7 +145,7 @@ reasons:
     code: Z01
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 40
     label: 形近字·没把握
@@ -157,7 +157,7 @@ reasons:
     code: Z02
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 41
     label: 形近字·判法打架
@@ -169,7 +169,7 @@ reasons:
     code: Z03
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 42
     label: 形近字·复核推翻
@@ -181,7 +181,7 @@ reasons:
     code: Z04
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 43
     label: 形近字·与参校本不同
@@ -193,7 +193,7 @@ reasons:
     code: Z05
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 44
     label: 形近字·证据弱（已停用）
@@ -205,7 +205,7 @@ reasons:
     code: Z07
     category: group
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 46
     label: 形近字·差一路确认
@@ -218,7 +218,7 @@ reasons:
     code: N01
     category: near_form
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 56
     label: 形近字
@@ -232,7 +232,7 @@ reasons:
     code: V01
     category: variant
     route: human        # 待定：A24 说留人审；分流稿说算法后并 llm
-    owner: A24
+    owner: CV4
     reviewer: human
     priority: 55
     label: 异体字
@@ -245,7 +245,7 @@ reasons:
     code: V02
     category: variant
     route: algo
-    owner: A24
+    owner: CV4
     reviewer: human
     priority: 45
     label: 写法待定
@@ -259,7 +259,7 @@ reasons:
     code: L01
     category: glyph_lib
     route: human
-    owner: A24
+    owner: CV4
     reviewer: human
     priority: 51
     label: 少见的字
@@ -271,7 +271,7 @@ reasons:
     code: L02
     category: glyph_lib
     route: llm
-    owner: A23
+    owner: CV3
     reviewer: llm_then_human
     priority: 58
     label: 刻例太少
@@ -283,7 +283,7 @@ reasons:
     code: L03
     category: glyph_lib
     route: human
-    owner: A23
+    owner: CV3
     reviewer: human
     priority: 57
     label: 刻例太少（已停用）
@@ -295,7 +295,7 @@ reasons:
     code: L04
     category: glyph_lib
     route: algo
-    owner: A23
+    owner: CV3
     reviewer: llm_then_human
     priority: 61
     label: 库认不出
@@ -307,7 +307,7 @@ reasons:
     code: L05
     category: glyph_lib
     route: algo
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 52
     label: 像框线或墨点
@@ -321,7 +321,7 @@ reasons:
     code: R03
     category: reference
     route: deferred
-    owner: A24
+    owner: CV4
     reviewer: none
     priority: 49
     label: 待收字
@@ -333,7 +333,7 @@ reasons:
     code: R01
     category: reference
     route: algo
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 50
     label: 参校本缺字
@@ -345,7 +345,7 @@ reasons:
     code: R02
     category: reference
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 53
     label: 参校本这里没字
@@ -363,7 +363,7 @@ reasons:
     code: P01
     category: mismatch
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 60
     label: 识别字与参校本不同
@@ -375,7 +375,7 @@ reasons:
     code: P02
     category: mismatch
     route: llm
-    owner: A24
+    owner: CV4
     reviewer: llm_then_human
     priority: 62
     label: 定字与参校本不同
@@ -389,7 +389,7 @@ reasons:
     code: X01
     category: review
     route: human
-    owner: A24
+    owner: CV4
     reviewer: human
     priority: 5
     label: 裁定有冲突
@@ -401,7 +401,7 @@ reasons:
     code: X02
     category: review
     route: human
-    owner: A31
+    owner: GM2
     reviewer: human
     priority: 6
     label: 看图觉得不对
@@ -413,7 +413,7 @@ reasons:
     code: X03
     category: review
     route: human
-    owner: A32
+    owner: GM4
     reviewer: human
     priority: 7
     label: 机器改了字
@@ -425,7 +425,7 @@ reasons:
     code: X04
     category: review
     route: human
-    owner: A32
+    owner: GM4
     reviewer: human
     priority: 8
     label: 复审
@@ -441,7 +441,7 @@ reasons:
     code: A01
     category: anchor
     route: deferred
-    owner: A33
+    owner: GM3
     reviewer: none
     priority: 900
     label: 标点专名要重挂
@@ -453,7 +453,7 @@ reasons:
     code: A02
     category: anchor
     route: deferred
-    owner: A33
+    owner: GM3
     reviewer: none
     priority: 901
     label: 增删格处重挂
@@ -465,7 +465,7 @@ reasons:
     code: A03
     category: anchor
     route: deferred
-    owner: A33
+    owner: GM3
     reviewer: none
     priority: 902
     label: 标点位置存疑
@@ -477,7 +477,7 @@ reasons:
     code: X99
     category: review
     route: human
-    owner: A31
+    owner: GM2
     reviewer: human
     priority: 999
     label: 原因不明

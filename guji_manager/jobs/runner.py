@@ -767,7 +767,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                 got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only,
                          seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
-                    # 空闲时不碰 Neon（看板写在中心库，40 个执行方每 5 分钟写一次会让 Neon 永远不休眠，11-05 用户定）；
+                    # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
                         notify_submitters(db, say)  # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发

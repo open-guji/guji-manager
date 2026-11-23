@@ -28,7 +28,6 @@ from .. import _cv  # cv_repo()：本文件原在 cv 包里，按 __file__ 找 c
 import json
 import sqlite3
 import time
-from pathlib import Path
 
 from .._cv import page_key
 from .._cv import glyph_db_path

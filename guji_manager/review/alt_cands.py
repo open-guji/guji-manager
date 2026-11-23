@@ -138,7 +138,6 @@ def alt_for_image(book: str | None, img, pivots: list[str], *, k: int = ALT_K, z
     """一张字块图 ＋ 近似字 → alt 列表（控制台现场查一格用；出待审单批量走 `alt_for_cards`）。"""
     from .._cv import normalize_patch
     from .._cv import _book_norm_stroke
-    from .._cv import family_pool
 
     bank = bank or shared_bank()
     if img is None or not bank.available:
@@ -170,7 +169,6 @@ def alt_for_cards(book: str, cards: list[dict], *, k: int = ALT_K, zi=None, bank
     10-21 殿本 vol04–10 重发的待审单因此整批没有相似字。"""
     from .._cv import normalize_patch
     from .._cv import _book_norm_stroke, rare_patch
-    from .._cv import family_pool
 
     bank = bank or TemplateBank()
     if not bank.available:
