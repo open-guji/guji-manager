@@ -255,3 +255,13 @@ def test_window_ok():
     assert C._window_ok("甲乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]
     assert C._window_ok("某乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]      # 远处一字变
     assert not C._window_ok("甲乙丙丁戊己庚某", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]  # 紧邻字变
+
+
+def test_ledger_of_and_render():
+    from guji_manager import collect as C
+    meta = {"n_raw": 5, "n_votes": 4, "old_landed": 2, "old_sheet": 1, "waiting": 0, "ready": 3, "held": 1, "skipped": [("a", "x")]}
+    r = C.ledger_of("vol06", "006-r13", meta, plan={"apply": 2, "already": 1, "layout": 0}, want=3, n_ai=0)
+    assert (r["votes"], r["old_landed"], r["skipped"], r["apply"], r["already"]) == (5, 2, 1, 2, 1)
+    txt = C.render_ledger([r], {"vol06": "done"})
+    lines = txt.splitlines()
+    assert lines[0].startswith("册\t单版\t收件箱票") and lines[1].startswith("vol06\t006-r13\t5") and lines[-1].startswith("合计")
