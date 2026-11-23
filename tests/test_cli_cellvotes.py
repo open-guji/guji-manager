@@ -194,15 +194,20 @@ def test_split_old_sheet_lands_unchanged_items_blocks_changed():
     from guji_manager import cli_cellvotes as CVT
     items = {"i1": {"state": "open", "cell": "160:9:3"}, "i2": {"state": "resolved", "cell": "9:8:3", "fp_changed": True},
              "i3": {"state": "withdrawn", "cell": "10:8:21"}}
-    raw = [{"item": "i1", "a": "160:9:3", "vote_a": "160:9:2", "vote_rev": "006-r9", "choice": "char", "char": "壼"},
+    raw = [{"item": "i1", "a": "160:9:3", "vote_a": "160:9:3", "vote_rev": "006-r9", "choice": "char", "char": "壼", "shown": "壺"},
            {"item": "i2", "a": "9:8:3", "vote_a": "9:8:3", "vote_rev": "006-r9", "choice": "char", "char": "埸"},
            {"item": "i3", "a": "10:8:21", "vote_a": "10:8:21", "vote_rev": "006-r9", "choice": "char", "char": "奬"},
            {"item": "zz", "a": "1:1:1", "vote_a": "1:1:1", "vote_rev": "006-r9", "choice": "char", "char": "X"},
            {"item": "i1", "a": "160:9:3", "vote_rev": "006-r13", "choice": "char", "char": "壺"}]
-    cur, old = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items)
+    raw.append({"item": "i4", "a": "5:5:5", "vote_a": "5:5:4", "vote_rev": "006-r9", "choice": "char", "char": "甲"})    # 格号变过
+    raw.append({"item": "i5", "a": "6:6:6", "vote_a": "6:6:6", "vote_rev": "006-r9", "choice": "char", "char": "乙", "shown": "丙"})  # 现字对不上
+    items["i4"] = {"state": "open", "cell": "5:5:5"}
+    items["i5"] = {"state": "open", "cell": "6:6:6"}
+    cur, old = CVT._split_old_sheet("vol06", "006-r13", raw, {}, items, {"160:9:3": "壺", "6:6:6": "丁"})
     assert [(v["a"], v.get("_old_rev")) for v in cur] == [("160:9:3", "006-r9"), ("160:9:3", None)]
-    assert [(o[0], o[5]) for o in old] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
-                                          ("1:1:1", "条目找不到")]
+    assert [o[0] for o in old][-2:] == ["5:5:5", "6:6:6"] and "格号变过" in old[-2][5] and "格号对不上" in old[-1][5]
+    assert [(o[0], o[5]) for o in old][:3] == [("9:8:3", "条目 fp_changed（图块变了，需人看）"), ("10:8:21", "条目被人工撤下"),
+                                              ("1:1:1", "条目找不到")]
 
 
 

@@ -318,7 +318,7 @@ def _confirm_empty(args, where: str) -> dict:
     return {"by_rev": 0, "by_item": 0, "read_at": at, "site": SITE}
 
 
-def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: dict | None = None) -> tuple[list[dict], list[tuple]]:
+def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: dict | None = None, shown_now: dict | None = None) -> tuple[list[dict], list[tuple]]:
     """条目票里投在旧单上的（``vote_rev`` 不是现行单 ``rev``）拿出来，**图没变的**并回现行票，**图变了的**不写。
 
     ZM 11-19（v0.4.68）：vol01 r9／r15／r16 单上投的票，格号是当年的切分；拿现行包同号格的框建锚写成新事件，
@@ -343,6 +343,12 @@ def _split_old_sheet(book: str, rev: str, raw: list[dict], human: dict, items: d
             why = "条目 fp_changed（图块变了，需人看）"
         elif it.get("state") == "withdrawn":
             why = "条目被人工撤下"
+        elif v.get("vote_a") and v.get("vote_a") != it.get("cell"):
+            # ZM 11-23（vol01 职名页 11-20 改号后旧单条目票落到邻格）：条目现格≠投票时的格，说明这之间改过格号，
+            # 条目存的格号不一定是换好的；没有对照表换号就不落，列进报告
+            why = f"条目格号变过（投票时 {v.get('vote_a')}→现 {it.get('cell')}），要按对照表换号，不自动落"
+        elif shown_now is not None and v.get("shown") and shown_now.get(it.get("cell")) not in (None, v["shown"]):
+            why = f"页面显示字「{v['shown']}」≠现格现字「{shown_now[it['cell']]}」，格号对不上"
         if not why:
             cur.append({**v, "_old_rev": vr})
             continue
@@ -437,7 +443,11 @@ def cmd_draft(args) -> None:
     if getattr(args, "items", False):
         from .review import pending_items as P
         item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, args.rev.split("-r")[0]).items
-    raw, old = _split_old_sheet(args.book, args.rev, raw, human_all, item_tab)
+    shown_now = None
+    _sh = _sheet(args) if item_tab is not None else None
+    if _sh:
+        shown_now = {c["cell"]: (c.get("ref") or {}).get("c") for c in _sh.get("cells", []) if (c.get("ref") or {}).get("c")}
+    raw, old = _split_old_sheet(args.book, args.rev, raw, human_all, item_tab, shown_now)
     n_old_in = sum(1 for v in raw if v.get("_old_rev"))
     if n_old_in:
         _print(f"旧单上投的条目票 {n_old_in} 条：条目图没变，按条目现格并入（永远新结果覆盖旧的）")
