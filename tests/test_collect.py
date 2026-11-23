@@ -326,3 +326,26 @@ def test_write_handoff_tsv(tmp_path):
     assert rows[0] == C.HANDOFF_HEAD
     assert rows[1][:6] == ["旧单票挡下", "64:9:8", "char=逵", "陸", "□", "2026-11-19"]
     assert rows[2][1] == "43:5:17" and rows[2][5].startswith("2026-")
+
+
+def test_write_unconsumed_tsv(tmp_path):
+    rem = {("H-web-vol20-020-r13-2026-11-19b", "gold_add"): 52, ("ZM-vol01-roster-renum-rehuman-20261120", "crop_exclude"): 335}
+    p = C.write_unconsumed(tmp_path, rem)
+    rows = [r.split("\t") for r in p.read_text(encoding="utf-8").splitlines()]
+    assert rows[0][:3] == ["批次", "消费者", "条数"] and len(rows) == 3
+    assert rows[1][3] == "vol20" and "events route" in rows[1][4]
+    assert C.write_unconsumed(tmp_path, {}) is None and not p.exists()
+
+
+def test_sweep_unconsumed_routes_only_web_batches(monkeypatch, tmp_path):
+    import types
+    from guji_manager import cli_db
+    calls = []
+    reps = [{("H-web-vol20-r1", "gold_add"): 3, ("ZM-x", "gold_add"): 5}, {("ZM-x", "gold_add"): 5}]
+    monkeypatch.setattr(cli_db, "unconsumed_report", lambda ws: reps.pop(0))
+    monkeypatch.setattr(C, "_run", lambda cmd, env, tries=1: calls.append([str(c) for c in cmd]) and 0)
+    a = types.SimpleNamespace(dry_run=False, no_push=False)
+    out = C.sweep_unconsumed(tmp_path, a)
+    assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5}
+    assert any("route" in c and "H-web-vol20-r1" in c for c in calls) and any("sync" in c for c in calls)
+    assert not any("ZM-x" in c for c in calls)
