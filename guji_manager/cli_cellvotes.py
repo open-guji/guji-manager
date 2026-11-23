@@ -415,6 +415,8 @@ def _yield_to_newer_human(book: str, votes: list[dict], human: dict) -> tuple[li
     for v in votes:
         e = human.get(f"{book}:{v['a']}")
         if e is not None and _ts_s(v.get("ts") or 0) < _ts_s(getattr(e, "ts", 0)):
+            if v.get("choice") == "char" and v.get("char") and v["char"] == (getattr(e, "payload", None) or {}).get("shape"):
+                continue                                  # 票的字就是现行人裁的字（多半是这票自己落的）：不冲突，不报
             tag = v.get("choice", "") + (("=" + v["char"]) if v.get("char") else "")
             out.append((v["a"], tag, str(v.get("ts")), getattr(e, "id", ""), str(getattr(e, "ts", ""))))
         else:
