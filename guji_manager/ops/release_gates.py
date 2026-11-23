@@ -197,6 +197,17 @@ def resolve_pending(arg: str | Path | None, book: str, chapter: str | None = Non
     return target, f"待审单：{target}"
 
 
+def load_pending_blank_cells(path: Path) -> set[str]:
+    """待审单上「有首选字却还是 □」的格候选：review≠human、有首选字（`first_choice`）、不是锚点旁表格／图片格。
+    book-text 只录首选字，待审格不许写成阙文 □（总纲「待审≠阙文」）；这些格若导出里仍是 □，说明填首选字这步没做（2026-11-23：
+    史記 v0.1 首发单无候选，1,332 个待审格在网站显示成阙字）。"""
+    from ..formats.guji_char_cord import first_choice
+    d = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {c["cell"] for c in d.get("cells", [])
+            if c.get("cell") and c.get("review") != "human" and c.get("src") != "closeout_anchor"
+            and first_choice(c)[0] is not None}
+
+
 def load_pending_cells(path: Path) -> set[str]:
     """待审单 `NNN.pending.json`（中心库 `feedback/lists/proofing/<书>/`）→ 待审单上的格（`cell` 字段，形如 `9:7:17`、`90:1:3a`）。
 
@@ -231,17 +242,21 @@ def check_lacuna(book: str, export_dir: Path, chapter: str | None, pending: Path
     """第 2c 项的数：每个 □ 在待审单或重切清单上。"""
     lac = lacuna_cells(export_dir, chapter)
     on_page = load_pending_cells(pending) if pending else set()
+    fillable = load_pending_blank_cells(pending) if pending else set()
     recut = RecutList.load(book, lists_root)
-    in_pending, in_recut, loose = [], [], []
+    in_pending, in_recut, loose, pending_blank = [], [], [], []
     for x in lac:
         a = x["a"]
-        if a and a in on_page:
+        if a and a in fillable:
+            pending_blank.append(a)
+            in_pending.append(a)
+        elif a and a in on_page:
             in_pending.append(a)
         elif a and recut.covers_cell(a):
             in_recut.append(a)
         else:
             loose.append(a or f"偏移{x['o']}")
-    return {"lacuna": len(lac), "pending": in_pending, "recut": in_recut, "loose": loose,
+    return {"lacuna": len(lac), "pending": in_pending, "recut": in_recut, "loose": loose, "pending_blank": pending_blank,
             "recut_bad": recut.bad, "pending_file": str(pending) if pending else None}
 
 
