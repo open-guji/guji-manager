@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import calendar
 import argparse
 import json
 import os
@@ -187,6 +188,22 @@ def live_rev(text_id: str, n: int) -> str | None:
             return json.load(r).get("rev")
     except Exception:
         return None
+
+
+def last_publish_age_hours() -> float | None:
+    """最近一次 proofing-sync（任何触发方）离现在多少小时；查不到返回 None。
+    定时收单每半小时一趟，每趟都发站会耗尽腾讯云每日 CDN purge 配额（11-23 LimitExceeded.DailyQuota），
+    所以 collect 用它做节流（``GUJI_PUBLISH_MIN_HOURS``，缺省 3）。"""
+    r = subprocess.run(["gh", "run", "list", "-R", WEB_REPO, "--workflow", "proofing-sync.yml", "-L", "1",
+                        "--json", "createdAt", "-q", ".[0].createdAt"], capture_output=True, text=True)
+    ts = (r.stdout or "").strip()
+    if r.returncode or not ts:
+        return None
+    try:
+        t = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+    return max(0.0, (time.time() - t) / 3600)
 
 
 def publish_batch(books: list[str], text_id: str) -> str:

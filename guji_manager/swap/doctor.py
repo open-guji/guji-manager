@@ -20,7 +20,13 @@ from pathlib import Path
 ENGINES = Path(os.environ.get("GUJI_ENGINES_DIR") or Path.home() / ".guji-engines")
 TOKENS = (("GUJI_DATA_TOKEN", "中心库读写（db pull/sync、取包）", ("GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD")),
           ("GH_TOKEN", "触发网站发布 proofing-sync、推 book-text", ("GH_TOKEN", "GITHUB_TOKEN")),
-          ("CELLREVIEW_TOKEN", "plan 当场读网站票（--from-kv、零票核对）", ("CELLREVIEW_TOKEN",)))
+          )
+# 可选：缺了只提示（0.5.0 起网站票缺省读中心库收件箱，用 GUJI_DATA_TOKEN_READ；CELLREVIEW_TOKEN 只在应急读旧 KV、
+# `pending --kv` 直写待审单时用）
+OPTIONAL_TOKENS = (("CELLREVIEW_TOKEN", "应急读旧 KV、pending --kv 直写待审单", ("CELLREVIEW_TOKEN",)),)
+# 本机 manager／cv 低于这些版本时，换单与收单的行为与文档不符（见 COMPAT.md、CHANGELOG）
+MIN_MANAGER = ((0, 5, 0), "读票缺省读 web_inbox、collect 落格修复（≥0.4.68）、--books 区间写法")
+MIN_CV = ((0, 9, 0), "cv < 0.9.0 时 `guji pipeline <命令>` 前缀不可用，要写老写法 `guji <命令>`；其余照常（COMPAT.md）")
 MIN_FREE_GB = 8.0
 _MISSING_MODELS = ("import sys; from open_guji_cv.core import model_pack as mp; "
                    "print(len(mp.missing_repo_models()))")
@@ -83,6 +89,33 @@ def check_cv(cv_arg: str | None, r: Report) -> Path | None:
     return cv
 
 
+def _ver(s: str) -> tuple[int, ...] | None:
+    import re
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)", str(s or ""))
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def check_versions(r: Report, manager: str | None = None, cv: str | None = None) -> None:
+    """本机 manager、cv 版本太旧就提示（ZM 转 GM2 11-23：对方本机是 manager 0.4.35／cv 0.6.38，换单、收单的坑全踩一遍）。
+    只提示不挡（cv 版本读不出就不报）；``manager``／``cv`` 给了就用给的（测试用）。"""
+    if manager is None:
+        from .. import __version__ as manager
+    if cv is None:
+        try:
+            from importlib.metadata import version
+            cv = version("open-guji-cv")
+        except Exception:  # noqa: BLE001
+            cv = None
+    for name, got, (low, why) in (("manager 版本", manager, MIN_MANAGER), ("cv 版本", cv, MIN_CV)):
+        v = _ver(got)
+        if v is None:
+            continue
+        if v < low:
+            r.warn(name, f"{got} 低于 {'.'.join(map(str, low))}（{why}）：git pull 后 uv pip install --no-deps -e . 升级")
+        else:
+            r.ok(name, str(got))
+
+
 def check_cli(r: Report) -> None:
     g = shutil.which("guji")
     if g:
@@ -99,6 +132,9 @@ def check_tokens(r: Report) -> None:
             r.ok(f"令牌 {name}")
         else:
             r.bad(f"令牌 {name}", f"没有（{why}）：先 eval \"$(python3 <guji-dev-secret>/gsecrets.py export)\"")
+    for name, why, alts in OPTIONAL_TOKENS:
+        if not any(os.environ.get(a) for a in alts):
+            r.warn(f"令牌 {name}", f"没设（{why}；缺省读票不需要）")
     if not os.environ.get("GUJI_ACTOR"):
         r.bad("GUJI_ACTOR", "没设：推中心库要有操作人，export GUJI_ACTOR=<你的名字>")
 
@@ -234,6 +270,7 @@ def cmd_doctor(a, books: list[str]) -> int:
     ws = check_workspace(a.workspace, r)
     cv = check_cv(a.cv, r)
     check_cli(r)
+    check_versions(r)
     check_tokens(r)
     if ws:
         from . import data_problem

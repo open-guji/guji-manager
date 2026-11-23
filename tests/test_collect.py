@@ -265,3 +265,87 @@ def test_ledger_of_and_render():
     txt = C.render_ledger([r], {"vol06": "done"})
     lines = txt.splitlines()
     assert lines[0].startswith("册\t单版\t收件箱票") and lines[1].startswith("vol06\t006-r13\t5") and lines[-1].startswith("合计")
+
+
+def test_needs_review_of_collects_three_sources(tmp_path):
+    from guji_manager import collect as C
+    d = tmp_path / "reports" / "vol21" / "_collect" / "021-r12"
+    (d / "draft").mkdir(parents=True)
+    (d / "needs_review.tsv").write_text("说明\n143:9:4 新包「𣴭」≠人裁／手改「茫」\n", encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text("格位\t票\n1:1:1\tchar=甲\n", encoding="utf-8")
+    got = C.needs_review_of(tmp_path, {"vol21": {"rev": "021-r12"}, "vol22": {"rev": "022-r1"}})
+    assert list(got) == ["vol21"] and len(got["vol21"]) == 2
+
+
+def test_collect_book_allow_lost_human_only_for_listed_books(monkeypatch):
+    import os
+    from pathlib import Path
+    from guji_manager import collect
+    seen = {}
+
+    def fake(a, ws, book):
+        seen[book] = os.environ.get("GUJI_ALLOW_LOST_HUMAN")
+        return {"status": "done"}
+
+    monkeypatch.setattr(collect, "_collect_book", fake)
+    monkeypatch.delenv("GUJI_ALLOW_LOST_HUMAN", raising=False)
+    monkeypatch.setenv("GUJI_ALLOW_LOST_HUMAN_BOOKS", "vol01, vol20")
+    for b in ("vol01", "vol13", "vol20"):
+        collect.collect_book(type("A", (), {})(), Path("."), b)
+    assert seen == {"vol01": "1", "vol13": None, "vol20": "1"}
+    assert "GUJI_ALLOW_LOST_HUMAN" not in os.environ
+
+
+def test_publish_throttled_when_last_sync_recent(monkeypatch, tmp_path):
+    import types
+    from guji_manager import collect, swap
+    monkeypatch.setattr(swap, "last_publish_age_hours", lambda: 0.5)
+    monkeypatch.setattr(swap, "publish_batch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该发")))
+    R = types.SimpleNamespace(done=lambda k: False)
+    monkeypatch.setattr(collect, "_state_of", lambda ws, t, b: (tmp_path / "p.json", R, tmp_path))
+    a = types.SimpleNamespace(text_id="x")
+    out = collect.publish_and_verify(a, tmp_path, ["vol01"])
+    assert out["vol01"]["status"] == "synced" and "throttled" in out["vol01"]["publish"]
+    assert out["vol01"]["rev"] == tmp_path.name          # 带 rev，票账和交项目确认清单才找得到各册的账
+
+
+def test_write_handoff_tsv(tmp_path):
+    ws = tmp_path
+    d = ws / "reports" / "vol20" / "_collect" / "020-r15"
+    (d / "draft").mkdir(parents=True)
+    (d / "draft" / "old_sheet.tsv").write_text(
+        "现格\t投票时格\t投票时单\t票\t当年人裁\t挡下原因\n"
+        "64:9:8\t64:9:8\t020-r12\tchar=逵\tevt_H-web-vol20-020-r12-2026-11-19_000008\t页面显示字「陸」≠book-text 现格字「□」，格号对不上\n",
+        encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text(
+        "格位\t票\t票时间\t现行人裁\t人裁时间\n43:5:17\tfigure\t1794807512408\tevt_x\t2026-11-19T00:26:13Z\n", encoding="utf-8")
+    out = tmp_path / "out"
+    fs = C.write_handoff(ws, {"vol20": {"rev": "020-r15"}, "vol21": {}}, out)
+    assert [p.name for p in fs] == ["vol20-交项目确认.tsv"]
+    rows = [r.split("\t") for r in fs[0].read_text(encoding="utf-8").splitlines()]
+    assert rows[0] == C.HANDOFF_HEAD
+    assert rows[1][:6] == ["旧单票挡下", "64:9:8", "char=逵", "陸", "□", "2026-11-19"]
+    assert rows[2][1] == "43:5:17" and rows[2][5].startswith("2026-")
+
+
+def test_write_unconsumed_tsv(tmp_path):
+    rem = {("H-web-vol20-020-r13-2026-11-19b", "gold_add"): 52, ("ZM-vol01-roster-renum-rehuman-20261120", "crop_exclude"): 335}
+    p = C.write_unconsumed(tmp_path, rem)
+    rows = [r.split("\t") for r in p.read_text(encoding="utf-8").splitlines()]
+    assert rows[0][:3] == ["批次", "消费者", "条数"] and len(rows) == 3
+    assert rows[1][3] == "vol20" and "events route" in rows[1][4]
+    assert C.write_unconsumed(tmp_path, {}) is None and not p.exists()
+
+
+def test_sweep_unconsumed_routes_only_web_batches(monkeypatch, tmp_path):
+    import types
+    from guji_manager import cli_db
+    calls = []
+    reps = [{("H-web-vol20-r1", "gold_add"): 3, ("ZM-x", "gold_add"): 5}, {("ZM-x", "gold_add"): 5}]
+    monkeypatch.setattr(cli_db, "unconsumed_report", lambda ws: reps.pop(0))
+    monkeypatch.setattr(C, "_run", lambda cmd, env, tries=1: calls.append([str(c) for c in cmd]) and 0)
+    a = types.SimpleNamespace(dry_run=False, no_push=False)
+    out = C.sweep_unconsumed(tmp_path, a)
+    assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5}
+    assert any("route" in c and "H-web-vol20-r1" in c for c in calls) and any("sync" in c for c in calls)
+    assert not any("ZM-x" in c for c in calls)

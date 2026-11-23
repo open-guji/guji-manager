@@ -417,7 +417,8 @@ def declare_fig_file(vdir: Path, ch: str) -> bool:
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
-                  book: str | None = None, require_human: bool = False, ws: Path | None = None) -> dict:
+                  book: str | None = None, require_human: bool = False, ws: Path | None = None,
+                  soft_ledger: bool = False) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
@@ -497,6 +498,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
         problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
+    needs_review: list[str] = []
+    if ledger_probs and soft_ledger:
+        # 收单（merge=False）只改这次人裁定的格；别的格上本来就有的「落字≠人裁／手改」不拦整册，
+        # 列出来交项目看图／看前后文确认（用户 11-23：要看图或前后文的不由总管定，反馈给项目；按规则写程序）
+        needs_review, ledger_probs = ledger_probs, []
+        notes.append(f"人裁账不平 {len(needs_review)} 格，不拦本次收单，交项目确认")
     if ledger_probs:
         problems.append(f"人裁账不平 {len(ledger_probs)} 格：" + "；".join(ledger_probs[:8]))
     review = [r for r in res["report"] if r[0] == "entity-复核"]
@@ -515,7 +522,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             OV.dump_json(str(ef), res["entity"])
     (out_dir / f"left_vol{vol:02d}.tsv").write_text(
         "层\t条目\t旧锚\t新锚\t内容\t原因码｜说明\n" + "".join("\t".join(map(str, r)) + "\n" for r in left), encoding="utf-8")
-    return {"ok": not problems, "problems": problems, "counts": table_counts(rows), "breaks_moved": moved_breaks,
+    return {"ok": not problems, "problems": problems, "needs_review": needs_review, "counts": table_counts(rows), "breaks_moved": moved_breaks,
             "notes": notes, "human_pre": human_pre, "protected": len(prot_new),
             "chars": {k: len(v) for k, v in chars.items()}, "char_detail": chars,
             "remap": {"moved": res["moved"], "left": res["left"]}, "table": str(tsv),
@@ -807,7 +814,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 shutil.copyfile(f, t)
     one_x = str(tv).split(".")[0] not in ("0", "")
     r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws,
-                      merge=merge)
+                      merge=merge, soft_ledger=not merge)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")

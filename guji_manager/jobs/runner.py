@@ -762,7 +762,8 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     done = 0
     warned_loop = False
     idle_since = time.time()
-    rc = _runner_commit()
+    from .. import __version__ as mver
+    rc = f"{_runner_commit() or '?'} m{mver}"   # 带上本执行方 manager 版本：`guji job workers` 一眼看全执行机的版本（GM2 11-23 普查）
     warned = None
     env_streak = 0                       # 连续几单环境类失败：本会话自己的毛病（令牌、网络）会让它一路失败，到 3 就暂停
     db(S.worker_seen, worker, state="idle", session=session, runner=rc, done=0, started=True, note="")

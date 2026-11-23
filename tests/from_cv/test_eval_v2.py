@@ -58,6 +58,8 @@ NOT_REGISTRY_SHAPED = {
                     # 不是单一分片位置参数；结果见 ai-team 字形领域「字体族实测」
     "ref_verify",  # 5b 验证整理本字评测（A23，cv #1088）：--shard 可重复、--dataset 指 char-clustering，
                    # 靶子是三书人裁 5b 冻结集（rare.jsonl），不是单一分片位置参数；结果见 ai-team 字形领域
+    "frame_rules",  # 框型规则前后对比（CV1，cv #1813）：靶子是 layout-gold（FRAME_GOLD）＋标注包原图（FRAME_IMG_GLOB），
+                    # 环境变量指路径、没有分片位置参数，实验脚本
     "seg_health",  # 切分体检（回退监控）：靶子是 --root 指的某批产物（--books 必填）＋中心库
                    # daizhige 格位表与整理本，不是数据集分片；新一批和上一批比数
 }
