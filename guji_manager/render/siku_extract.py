@@ -739,8 +739,30 @@ def load_render_chars(lines_md: str) -> tuple[list[str], list[str | None]]:
     return chars, [slots[j].anchor if j is not None else None for j in smap.to_slot]
 
 
-def sample_punct(punct_json: dict, chars: list[str], n: int = 200, seed: int = 0) -> list[dict[str, Any]]:
-    pts = [p for p in punct_json["punctuations"] if p["kind"] == "point"]
+def _anchor_index(anchors: list[str | None] | None) -> dict[str, int]:
+    """render 坐标表（下标→格位）反查成 格位→render 下标。"""
+    return {a: i for i, a in enumerate(anchors or []) if a is not None}
+
+
+def _punct_offset(p: dict, idx: dict[str, int]) -> int:
+    """标点的 render 下标：有缓存 char_offset 用缓存（v0.2），没有（v0.3 停写）由 anchor 反查。"""
+    if "char_offset" in p:
+        return p["char_offset"]
+    return idx[p["anchor"]]
+
+
+def _entity_span(e: dict, idx: dict[str, int]) -> tuple[int, int]:
+    """实体的 render 区间（左闭右开）：有 span 缓存用缓存，没有由 anchor 反查。"""
+    if "span" in e:
+        return e["span"]["start_offset"], e["span"]["end_offset"]
+    return idx[e["anchor"]["start"]], idx[e["anchor"]["end"]] + 1
+
+
+def sample_punct(punct_json: dict, chars: list[str], n: int = 200, seed: int = 0,
+                 anchors: list[str | None] | None = None) -> list[dict[str, Any]]:
+    """anchors：load_render_chars 给的坐标表；v0.3 文件（不带 char_offset）必须传。"""
+    idx = _anchor_index(anchors)
+    pts = [dict(p, char_offset=_punct_offset(p, idx)) for p in punct_json["punctuations"] if p["kind"] == "point"]
     rng = random.Random(seed)
     pick = sorted(rng.sample(range(len(pts)), min(n, len(pts))), key=lambda i: pts[i]["char_offset"])
     rows = []
@@ -758,8 +780,11 @@ def sample_punct(punct_json: dict, chars: list[str], n: int = 200, seed: int = 0
 
 
 def sample_entities(entity_json: dict, chars: list[str], matcher: BookIndexMatcher | None,
-                    n: int = 50, seed: int = 0) -> list[dict[str, Any]]:
-    ents = [e for e in entity_json["entities"] if e["target"]["status"] == "matched"]
+                    n: int = 50, seed: int = 0, anchors: list[str | None] | None = None) -> list[dict[str, Any]]:
+    """anchors 同 sample_punct。"""
+    idx = _anchor_index(anchors)
+    ents = [e if "span" in e else dict(e, span=dict(zip(("start_offset", "end_offset"), _entity_span(e, idx))))
+            for e in entity_json["entities"] if e["target"]["status"] == "matched"]
     rng = random.Random(seed)
     pick = sorted(rng.sample(range(len(ents)), min(n, len(ents))), key=lambda i: ents[i]["span"]["start_offset"])
     rows = []
@@ -888,18 +913,21 @@ def boundary_marks(puncts: list[PunctAnnotation], lo: int, hi: int) -> dict[int,
     return out
 
 
-def puncts_from_json(pj: dict) -> list[PunctAnnotation]:
-    return [PunctAnnotation(mark=p["mark"], kind=p["kind"], pos=p["pos"], char_offset=p["char_offset"],
+def puncts_from_json(pj: dict, anchors: list[str | None] | None = None) -> list[PunctAnnotation]:
+    idx = _anchor_index(anchors)
+    return [PunctAnnotation(mark=p["mark"], kind=p["kind"], pos=p["pos"], char_offset=_punct_offset(p, idx),
                             pre_char=p.get("pre_char", ""), anchor=p.get("anchor")) for p in pj["punctuations"]]
 
 
-def spans_from_entities(ents: list[dict] | list[EntityAnnotation], lo: int, hi: int) -> set[tuple[str, int, int]]:
+def spans_from_entities(ents: list[dict] | list[EntityAnnotation], lo: int, hi: int,
+                        anchors: list[str | None] | None = None) -> set[tuple[str, int, int]]:
+    idx = _anchor_index(anchors)
     out = set()
     for e in ents:
         if isinstance(e, EntityAnnotation):
             t, s, x = e.type, e.start_offset, e.end_offset
         else:
-            t, s, x = e["type"], e["span"]["start_offset"], e["span"]["end_offset"]
+            t, (s, x) = e["type"], _entity_span(e, idx)
         if lo <= s and x <= hi:
             out.add((t, s, x))
     return out
