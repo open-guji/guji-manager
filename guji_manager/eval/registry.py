@@ -232,9 +232,10 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
-                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human"),
+                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human",
+                                     "--model", "models/glyph_sim_qtw/model.pt", "--name", "cnn_qtw"),
              title="5a 相似度基准·全唐文", needs=("heavy",),
-             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报"),
+             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报；cnn_qtw＝全唐文生产在用的 CNN（要 scikit-learn）"),
     *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
