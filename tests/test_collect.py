@@ -294,3 +294,15 @@ def test_collect_book_allow_lost_human_only_for_listed_books(monkeypatch):
         collect.collect_book(type("A", (), {})(), Path("."), b)
     assert seen == {"vol01": "1", "vol13": None, "vol20": "1"}
     assert "GUJI_ALLOW_LOST_HUMAN" not in os.environ
+
+
+def test_publish_throttled_when_last_sync_recent(monkeypatch, tmp_path):
+    import types
+    from guji_manager import collect, swap
+    monkeypatch.setattr(swap, "last_publish_age_hours", lambda: 0.5)
+    monkeypatch.setattr(swap, "publish_batch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该发")))
+    R = types.SimpleNamespace(done=lambda k: False)
+    monkeypatch.setattr(collect, "_state_of", lambda ws, t, b: (tmp_path / "p.json", R, tmp_path))
+    a = types.SimpleNamespace(text_id="x")
+    out = collect.publish_and_verify(a, tmp_path, ["vol01"])
+    assert out["vol01"]["status"] == "synced" and "throttled" in out["vol01"]["publish"]

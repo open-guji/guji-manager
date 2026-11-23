@@ -960,11 +960,17 @@ def verify_book(a, ws: Path, book: str, R: "Run", sheet_p: Path) -> dict:
 def publish_and_verify(a, ws: Path, books: list[str]) -> dict:
     """这些册一起触发一次 proofing-sync（``only=`` 多章；分开触发会互相取消），等跑完逐册核线上单。
     发布没成不算失败：单子已在中心库，每日定时发布兜底；云端 gh 没鉴权时 trigger-fail（ZM 11-19）。"""
-    from .swap import publish_batch
+    from .swap import last_publish_age_hours, publish_batch
     st = {b: _state_of(ws, a.text_id, b) for b in books}
     todo = [b for b in books if st[b] and not st[b][1].done("publish")]
     if todo:
         t = time.time()
+        minh = float(os.environ.get("GUJI_PUBLISH_MIN_HOURS", "3"))
+        age = last_publish_age_hours() if minh > 0 else None
+        if age is not None and age < minh:
+            print(f"  网站发布节流：上次 proofing-sync 在 {age:.1f} 小时前（不足 {minh:g} 小时，CDN purge 每日配额有限）；"
+                  f"本趟不发，已在中心库，下一趟有新写入时或每日定时发布会带上")
+            return {b: {"status": "synced", "publish": f"throttled({age:.1f}h)"} for b in books}
         concl = publish_batch(todo, a.text_id)
         if concl != "success":
             only = ",".join(f"{a.text_id}/{chapter_of(b)}" for b in todo)
