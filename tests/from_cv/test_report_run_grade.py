@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from open_guji_cv.report.collate import Diff
+from guji_manager.output.collate import Diff
 from guji_manager.report.run import _grade_by_witness
 from open_guji_cv.report.witness import Witness
 

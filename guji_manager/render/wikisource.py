@@ -3,7 +3,7 @@
 
 **只吃 9.1 的 md 文本**（`render/guji_markdown.py` 的输出，`#第N页` 分页、一列一行；
 导出时带 `keep_empty_cols`，版心与空列也各占一个空行），不回查产物——md 是可以
-手改的中间稿，改完一键转，改动不会被产物覆盖。命令行入口 `scripts/export_wikisource.py`。
+手改的中间稿，改完一键转，改动不会被产物覆盖。命令行入口 `guji output export wikisource`（`output/wikisource_export.py`）。
 
 ## 版式：一列一行，照刻本（用户 2026-09-24 定）
 
