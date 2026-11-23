@@ -40,7 +40,7 @@
 
 1. **准入**（`seed_admit`，整理本通道放行位）：整理本字在用字账（`variant_ledger`）的组里、组内写法 ≥2、库判不是 same → `decide_form` 三档：`fixed_lib`（库候选组内 top1 cov ≥ 0.95、对手不贴 0.01 内、该形本书人确认过）、`fixed_form`（三源一致、embedding 余弦差 ≥ 0.03、人确认过）、`open`。`open` → `form_open`（Z06）。例外：`relax_ref_agree` 时库 top1 就是组内一形则当 `guess` 放。
 2. **字组流程 `group_flow`**（补放没放行的格）：`blocked()` 用 `_GROUP_FLOW_HARD`，里面含 `form_open`。→ **form_open 格永远进不了字组流程**，li、sui、yi_560 的 SHAPE 解法（整字 HOG＋岭回归；彝三段 IDS）对它们不起作用。
-3. **本次改动**：新书级参数 `seed_admit.group_flow_form_open`（cv seed_admit 1.47，缺省关、关时不进参数 dump）。开：`blocked()` 不再把 `form_open` 当硬护栏，交字组解法定形；解法给字且与整理本字互证（`lift_ref_agree`，归一后同字）才补放，放行时 `doubts` 清空；弃权或与整理本不一致的格仍带 `form_open`、仍是 Z06，不会换成别的原因。
+3. **本次改动**：新书级参数 `seed_admit.group_flow_form_open`（cv seed_admit 1.47，缺省关、关时不进参数 dump）。**cv#1806（2026-11-23，CV4）起恒开、不再是参数**，册配置写 false 会报「参数已退役」；下文「开它」的建议已不用做。开：`blocked()` 不再把 `form_open` 当硬护栏，交字组解法定形；解法给字且与整理本字互证（`lift_ref_agree`，归一后同字）才补放，放行时 `doubts` 清空；弃权或与整理本不一致的格仍带 `form_open`、仍是 Z06，不会换成别的原因。
 4. **码位结局**：同义组写哪个码位由书级 `codepoints.yaml` 定（`li.md` 里 𨽾𨽻→隷 待 sheldon 定的老问题）；这 5 格不涉及，隸 格放行后字取整理本形 隸。
 
 相关参数：`group_flow`（点名哪些组，缺省开通用字组）、`group_flow_delta` 0.03／`min_cov` 0.85／`top1_cov` 0.97、`group_flow_lift_ref_guard`（缺省开）、各组解法的门槛在 `groups/ids_online.py SPECS`（sui、li `min_margin` 0.5、`min_class` 8；yi_560 三段 `min_margin` 0.04）。
@@ -68,7 +68,7 @@
 
 | 事 | 谁 | 备注 |
 |---|---|---|
-| cv PR：`group_flow_form_open`（1.47，缺省关） | A24 已开，合 dev | 见 PR |
+| cv PR：`group_flow_form_open`（1.47，缺省关） | A24 已开，合 dev；cv#1806 起恒开 | 见 PR |
 | 殿本（及三书）开 `group_flow_form_open` | **sheldon 点头**后 A31 在第 N 轮册配置里开 | 殿本 −4 |
 | vol56 47:2:5 人点 嵗 | 人审 | 1 格 |
 

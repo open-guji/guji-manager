@@ -60,6 +60,9 @@
 
 ## 四、能放行多少（`p_ref_coord`，cv#1208，seed_admit 1.48，缺省关）
 
+> `p_ref_coord`、`p_ref_coord_max_cov`、`p_ref_coord_adjacent` 已在 cv#1804（2026-11-23，CV4）退役：实际没有书开着，册配置写 `p_ref_coord: true` 会报「参数已退役」。本节和第五节第 5 步、参数表里的 `p_ref_coord` 只留作记录，**不要照写进册配置**；要恢复找 CV4。
+
+
 旧 `p_ref_admit` **碰不到 P02**：它的候选格要求文本对位 `amap` 里有整理本字，而 P02 的格恰恰没有。新旋钮 `p_ref_coord`（要同时开 `p_ref_admit`）让这类格退到坐标对位的整理本字（去掉 `coord_conflict_ids`、〓、空格位），cov 上限、相邻、夹注三个旋钮（P01 加的）同样管它们，放行通道仍是 `p_ref`，`evidence.p_ref.via = "coord"`。
 
 离线回放（`P02-scripts/p02_bench.py`，用 ★main 抽出的字段近似：相邻用「同列两侧邻格机器字都等于整理本字」近似；正式回放要等下一轮 dev 包）：
@@ -89,7 +92,7 @@
 2. **体检**：看 `align_op` 是不是全是 `coord`（是＝文本对位丢段，本报告的情形）；再看 cov 分布。
 3. **裁格图、看图**：`crops.py` 裁格（要先 `guji db pull -w <ws> --no-rebuild`，云端要 `.central.json`，见 P01 报告「云端坑」）、`sheet.py` 拼表，每张 18 格，逐格标 R／M／S／V／Q／N／?。
 4. **定 cov 上限**：取已标 M 的最小 cov 之下（殿本、史記都是 0.94）。**书不同要各标各的**，不要继承。
-5. **开旋钮**：册 yaml `seed_admit` params：`p_ref_admit: true`、`p_ref_coord: true`、`p_ref_max_cov: 0.94`、`p_ref_jiazhu: true`；`guji pipeline book show --effective` 核对。`p_ref_adjacent` 不开。
+5. **开旋钮**：册 yaml `seed_admit` params：`p_ref_admit: true`、~~`p_ref_coord: true`~~（已退役）、`p_ref_max_cov: 0.94`、`p_ref_jiazhu: true`；`guji pipeline book show --effective` 核对。`p_ref_adjacent` 不开。
 6. **回放**：`p02_bench.py` 比较放出数和看图精度；上线后用 benchmark 核。
 7. **留审的格**：文意终审在 {整理本字, 机器字} 里选；回人审的在网页 `pick` 卡。
 
@@ -98,7 +101,7 @@
 | 参数 | 位置 | 殿本 | 史記 | 全唐文 |
 |---|---|---|---|---|
 | `p_ref_admit` | cv seed_admit | 建议开（P01 同开） | 建议开 | 关 |
-| `p_ref_coord` | 同上（1.47） | 建议开 | 建议开 | 关 |
+| `p_ref_coord` | 同上（1.47）；**已退役**（cv#1804） | — | — | — |
 | `p_ref_max_cov` | 同上 | 0.94 | 0.94 | — |
 | `p_ref_adjacent` | 同上 | 不开 | 不开 | — |
 | `p_ref_jiazhu` | 同上 | 开 | 开 | — |
