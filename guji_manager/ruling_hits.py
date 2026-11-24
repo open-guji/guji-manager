@@ -32,6 +32,12 @@ def _rulings_by_cell(store) -> dict[str, dict]:
     return out
 
 
+def _hit(store, group: str, ver: str, left: str, right: str):
+    """seed_admit 会不会命中这条窗口键：先精确键，cv 带版本等价表（`RulingStore.get_equiv`，cv #1830，
+    `<feedback>/rulings/ver_equiv.yaml`）时再按等价版本查，不另写一套等价逻辑；旧 cv 没有 get_equiv 就只看精确键。"""
+    return getattr(store, "get_equiv", store.get)(group, ver, left, right)
+
+
 def check(products: Path, book: str, store) -> list[dict]:
     from ._cv import llm_questions_of_page, ruling_ctx_hash
     by_cell = _rulings_by_cell(store)
@@ -60,7 +66,7 @@ def check(products: Path, book: str, store) -> list[dict]:
                     cands[c["id"]] = ks
         for q in llm_questions_of_page(doc):
             r = by_cell.get(q["cell"])
-            if not r or store.get(q["group"], q["ver"], q["l"], q["r"]) is not None:
+            if not r or _hit(store, q["group"], q["ver"], q["l"], q["r"]) is not None:
                 continue
             same_ver = r.get("prompt_ver") == q["ver"]
             rows.append({"cell": q["cell"], "组": q["group"], "裁定字": r.get("char") or ("其他" if r.get("other") else ""),
