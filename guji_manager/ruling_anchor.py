@@ -91,18 +91,28 @@ def backfill(products: Path, book: str, store, batch: str, *, write: bool = Fals
                 continue
             ref = r.get("ref") if r.get("ref") is not None else amap.get(c, "")
             rows.append({**base, "结果": "回填" if write else "可回填", "原因": proof[c]})
-            if write:
-                pl = {**r, "cells_sha": sha, "ref": ref or amap.get(c) or ""}
-                evs.append((c, pl))
-    if write and evs:
-        log = store.log if root is None and hasattr(store, "log") else (RulingLog(root) if root else RulingLog())
-        seq = max((e.seq for e in log.read(batch, raw=True)), default=0)
-        out = []
-        for c, pl in evs:
+            evs.append((c, {**r, "cells_sha": sha, "ref": ref or amap.get(c) or ""}, rows[-1]))
+    if evs:      # 先按 cv 写前校验筛一遍（干跑也筛）：串组版本等过不了的标「不回填」，不拖垮整批
+        from .ruling_write import screen
+        seq = 0
+        built = []
+        for c, pl, row in evs:
             seq += 1
-            out.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=c, book=book),
-                                  pl, actor="model"))
-        append_rulings(log, out)
+            built.append((make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=c, book=book),
+                                     pl, actor="model"), row))
+        ok, bad = screen([e for e, _ in built])
+        why = {id(e): m for e, m in bad}
+        for e, row in built:
+            if id(e) in why:
+                row["结果"], row["原因"] = "不回填", "cv 写前校验不过：" + why[id(e)][:120]
+        if write and ok:
+            log = store.log if root is None and hasattr(store, "log") else (RulingLog(root) if root else RulingLog())
+            seq = max((e.seq for e in log.read(batch, raw=True)), default=0)
+            out = []
+            for e in ok:
+                seq += 1
+                out.append(make_event(batch, seq, RULING_KIND, e.target, e.payload, actor="model"))
+            append_rulings(log, out)
     return rows
 
 
