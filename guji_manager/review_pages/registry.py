@@ -48,11 +48,11 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "两套格网都切错、夹注小字被并成整字格；每格一段列图叠两套格界，点图画切线、或标不切/看不出；"
              "结果存列图与页图坐标，用 segcut-apply 导出交重切（见 seg_cut.py）",
              options=("cut", "keep", "unsure"), doc_prefix="review_segcut"),
-    PageType("col_check", "整列切分抽查（一页书一屏，点切错的格）", "col_check.tpl.html", "1.1.0",
+    PageType("col_check", "整列切分抽查（一页书一屏，点切错的格）", "col_check.tpl.html", "1.2.0",
              "切字 benchmark 银标抽查、整列验收；各列从右到左叠格框，点并字/劈字/框歪的格标红，整列没问题翻页记全对；"
              "结果用 colcheck-apply 导出（见 col_check.py）",
              options=("ok", "bad", "unsure"), doc_prefix="review_colcheck"),
-    PageType("cut_check", "逐格切线审查（一格一图带上下半格，点不准的切线）", "cut_check.tpl.html", "1.0.0",
+    PageType("cut_check", "逐格切线审查（一格一图带上下半格，点不准的切线）", "cut_check.tpl.html", "1.1.0",
              "切字 benchmark L2 层：字与字之间的切点；一屏原书一列，每格上下各带半个邻格、画上下切线，点图上半/下半标那条切线不准，"
              "列首尾与边框之间、左右宽窄不审；结果用 cutcheck-apply 导出（见 cut_check.py）",
              options=("ok", "bad", "unsure"), doc_prefix="review_cutcheck"),
