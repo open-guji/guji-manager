@@ -36,9 +36,10 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
         "旗由 row_segment 写进 cells，row_boundaries 已在 row_segment 指纹里，逻辑一变 cells 跟变、本闸按输入过期。"
         "补进本闸 code_deps 会让各册 row_segment_gate 整体过期（A31 11-19）",
     ("open_guji_cv.steps.seal_detect", "open_guji_cv.utils.image_io"): "只读图",
-    ("open_guji_cv.steps.seed_admit", "open_guji_cv.utils.image_io"): "只读图",
     ("open_guji_cv.gates.border_detect_gate", "open_guji_cv.utils.image_io"):
-        "只读图（cv#1821 no_frame_skip 读灰度判空白页，缺省关；GM2 11-24 登记）",
+        "只读图：no_frame_skip 开且册配 ink（墨层书 raw 是二值图）时另读原图灰度判纯色页（cv#1821，缺省关，参数缺省不进 dump）；"
+        "判纯色的阈值与 _no_frame 在本闸模块里，已进指纹",
+    ("open_guji_cv.steps.seed_admit", "open_guji_cv.utils.image_io"): "只读图",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.clustering.keben_counts"):
         "只在 solo_5b_cov 开时读刻例数（cv#1278，缺省关；参数进指纹，缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 solo_5b 之前要把本模块并入该册指纹（随 solo_5b 启用的 PR 补）",
