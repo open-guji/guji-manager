@@ -741,3 +741,15 @@ def test_cut_check_screens_and_labels(tmp_path):
             dict(page_type="col_check", cell="c", label="ok", how="click", t=1)]
     out = ct.label_rows(ct.labels_from_docs(docs))
     assert [(r["id"], r["label"], r["bad"]) for r in out] == [("a", "ok", []), ("b", "bad", ["bottom", "top"])]
+
+
+def test_col_check_custom_screen(tmp_path):
+    from guji_manager.review_pages import col_check as cc
+    img = tmp_path / "c.png"; img.write_bytes(PNG)
+    items = [dict(id=i, vol="053", page=p, col=c, img=str(img), cells=[], screen=s)
+             for i, p, c, s in [("x", 9, 2, "s0"), ("y", 3, 1, "s0"), ("z", 3, 5, "s1")]]
+    out = cc.normalize(items)
+    assert [r["id"] for r in out] == ["x", "y", "z"]          # 给了 screen 保持输入顺序
+    assert [r["screen"] for r in out] == [0, 0, 1] and all(r["mixed"] for r in out)
+    plain = cc.normalize([{k: v for k, v in r.items() if k != "screen"} for r in items])
+    assert [r["id"] for r in plain] == ["y", "z", "x"] and [r["screen"] for r in plain] == [0, 0, 1]
