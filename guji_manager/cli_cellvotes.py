@@ -396,7 +396,10 @@ def _bound_only(book: str, human: dict, votes: list[dict]) -> tuple[dict, list[t
         return human, []
     try:                                  # 定字人裁再按 seed_admit 的口径核（绑定之外还有撤库标记、被推翻、换图源 rev 不符）
         from ._cv import human_chars
-        hc = human_chars(book)
+        try:                              # 只重绑有票的几页（全书重绑 QTW 004 要 30 多分钟）；旧版 cv 没有 pages 参数就退回全书
+            hc = human_chars(book, pages=pages)
+        except TypeError:
+            hc = human_chars(book)
     except Exception as e:  # noqa: BLE001
         _print(f"⚠ human_chars 算不出来（{type(e).__name__}: {e}）：只按绑定表核")
         hc = None

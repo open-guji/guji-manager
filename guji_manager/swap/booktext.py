@@ -740,6 +740,8 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
             _git(wt, "sparse-checkout", "set", "--cone", "scripts", *sparse)
         _git(wt, "checkout", "-q", branch)
     else:
+        if sparse:              # 复用的 worktree 也要把稀疏范围换成这一本书（殿本、全唐文共用一个 worktree，GM4 11-24）
+            _git(wt, "sparse-checkout", "set", "--cone", "scripts", *sparse)
         _git(wt, "checkout", "-q", "-f", "-B", branch, "refs/remotes/origin/dev")
         _git(wt, "reset", "-q", "--hard", "refs/remotes/origin/dev")          # 上一册失败留下的改动不能带进来
         _git(wt, "clean", "-fdq", "--", "Book")
