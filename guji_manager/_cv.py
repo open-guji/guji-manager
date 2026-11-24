@@ -16,6 +16,7 @@ from typing import Any
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
     "pending_cells": ("feedback.pending_cells", "pending_cells"),   # 换包收尾：产物→待审格（cv #1835，GM4 11-24）
+    "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "groups_of": ("groups.registry", "groups_of"),
     # opinions（P2 搬来）
     "data_home": ("core.workspace", "data_home"),
