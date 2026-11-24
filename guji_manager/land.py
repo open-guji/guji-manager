@@ -107,7 +107,7 @@ def cv_pending_cells(ws: Path, book: str, out_dir: Path, extra: list[str] | None
     return pending_cells(products_of(ws), book, extra=extra or (), images=True, out_dir=out_dir)
 
 
-def db_only(ws: Path, verb: str, paths: list[str]) -> int:
+def db_only(ws: Path, verb: str, paths: list[str], force: bool = False) -> int:
     """``guji db pull|sync -w <ws> --only <路径>…``（CV0，manager #901）：只拉／推这些路径，范围外不动、不碰字形库、不重建 glyph.db。
     要先整体 pull 过一次（状态文件）；推时范围内文件被别人改报 StaleBase，用 sync（合并）不用 push；事件撞号需整体 sync。"""
     cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "db", verb, "-w", str(ws)]
@@ -115,6 +115,8 @@ def db_only(ws: Path, verb: str, paths: list[str]) -> int:
         cmd += ["--only", p]
     if verb != "pull":
         cmd += ["--no-glyph"]
+    elif force:
+        cmd += ["--force"]
     return subprocess.run(cmd, env={**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}).returncode
 
 
@@ -178,6 +180,18 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps({"rels": rels}), encoding="utf-8")      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
         out["synced"] = db_only(ws, "sync", rels) == 0
+        if not out["synced"]:
+            # 现行单（pending.json）是条目派生的文件：收单线等刚推过它，两边都改会 SyncConflict。以库为准重派生——
+            # 先拿库里的单（--force），条目文件按追加合并推上去，再用合并后的条目重新导出单、推回。
+            print(f"⚠ {book} 现行单与库里冲突，以库为准重派生（条目按追加合并）", file=sys.stderr)
+            if db_only(ws, "pull", [rels[1]], force=True) == 0 and db_only(ws, "sync", [rels[0]]) == 0:
+                merged = P.ItemStore.open(data, text_id, chapter)
+                head2 = json.loads(sheet_p.read_text(encoding="utf-8"))
+                sheet = P.export_sheet(merged, head2)
+                sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
+                out["cells"] = len(sheet["cells"])
+                out["synced"] = db_only(ws, "sync", rels) == 0
+                out["rederived"] = True
         if out["synced"]:
             marker.unlink(missing_ok=True)
         else:
