@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH：中心库收 `feedback/rulings/ver_equiv.yaml`（裁定版本等价登记表，GM4 方案②、CV4 实现，cv 读）：原先 `feedback/rulings/` 下只收 `.jsonl`，这张表推库时会被静默跳过、各机拿不到。
 ## [0.6.6] - 2026-11-23
 
 - **PATCH**（11-23，GM1，中心库第一步表精简）：`files` 里 kind=config 的 `.json` 不再解析进 `doc`（无读者；kind=list 等不变，`row_sha` 只由 raw 算，不触发重推）；`workcopy` 推库前的 corpus-pack／glyph-pack manifest 保护查询由 `LIKE … OR LIKE` 改成主键区间查询，不再扫整个 ws 的 files。生产库已把 config 的 doc 置空。L0。
