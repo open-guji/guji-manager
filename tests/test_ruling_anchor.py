@@ -40,3 +40,20 @@ def test_backfill_no_cells_sha(tmp_path, monkeypatch):
     _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "日"}])
     rows = RA.backfill(tmp_path / "p", "001", store, "b")
     assert rows[0]["结果"] == "不回填" and "切分戳" in rows[0]["原因"]
+
+
+def test_backfill_screens_cross_group_versions(tmp_path, monkeypatch):
+    """串组版本（cv 写前校验过不了）标「不回填」，不拖垮同批别的格。"""
+    monkeypatch.setattr(RA, "page_sha", lambda products, book, page: "SHA1+P1")
+    store = RulingStore(tmp_path / "fb")
+    store._batch = "llm-a"
+    store.put("ry", "ry-l2-2", "甲乙", "丙丁", char="曰", conf="high", why="", model="m", cell="001:1:1:1")
+    store.put("ry", "rm-l2-1", "子丑", "寅卯", char="日", conf="high", why="", model="m", cell="001:1:1:2")   # ry 写 rm 版本
+    ask = lambda v, l, r: {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": v, "l": l, "r": r}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "日", **ask("ry-l2-2", "甲乙", "丙丁")},
+                           {"id": "001:1:1:2", "char": "日", **ask("rm-l2-1", "子丑", "寅卯")}])
+    rows = {r["cell"]: r for r in RA.backfill(tmp_path / "p", "001", store, "llm-anchor", write=True)}
+    assert rows["001:1:1:1"]["结果"] == "回填"
+    assert rows["001:1:1:2"]["结果"] == "不回填" and "校验不过" in rows["001:1:1:2"]["原因"]
+    s2 = RulingStore(tmp_path / "fb")
+    assert s2.get("ry", "ry-l2-2", "甲乙", "丙丁")["cells_sha"] == "SHA1+P1"
