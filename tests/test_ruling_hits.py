@@ -150,3 +150,24 @@ def test_vis_unanchored_and_no_hash(tmp_path):
         {"id": "001:1:1:2", "align_char": "曰"}]}}, ensure_ascii=False), encoding="utf-8")
     row = RH.check_vis(q / "p", "001", RulingStore(tmp_path / "fb2"))[0]
     assert "没写 ctx.hash" in row["原因"] and row["_vis"]
+
+
+def test_accept_old_ver_rekey(tmp_path):
+    """旧版本裁定换键：只收 high 单字、窗口同、AI 字＝机器首选或整理本对位字（11-23 用户定）。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")   # AI＝机器字 → 收
+    store.put("ry", "v1", "丙", "丁", char="日", conf="high", why="", model="m", cell="001:1:1:2")   # AI≠机器字、≠整理本 → 不收
+    store.put("ry", "v1", "戊", "己", char="巳", conf="low", why="", model="m", cell="001:1:1:3")    # 非 high → 不收
+    store.put("ry", "v1", "庚", "辛", char="己", conf="high", why="", model="m", cell="001:1:1:4")   # 窗口也变 → 不收
+    ask = lambda l, r: {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": l, "r": r}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "曰", **ask("甲", "乙")},
+                           {"id": "001:1:1:2", "char": "已", **ask("丙", "丁")},
+                           {"id": "001:1:1:3", "char": "巳", **ask("戊", "己")},
+                           {"id": "001:1:1:4", "char": "己", **ask("庚x", "辛")}])
+    rows = RH.check(tmp_path / "p", "001", store)
+    assert len(rows) == 4
+    assert RH.rekey(rows, store) == 0                                  # 缺省不收旧版本
+    assert RH.rekey(rows, store, accept_old_ver=True) == 1             # 只收第一格
+    got = store.get("ry", "v2", "甲", "乙")
+    assert got is not None and got["char"] == "曰" and "rekey-ver v1→v2" in got["why"]
+    assert store.get("ry", "v2", "丙", "丁") is None
