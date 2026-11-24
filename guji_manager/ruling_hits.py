@@ -464,6 +464,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
     p.add_argument("--accept-old-ver", action="store_true",
                    help="--rekey 时旧提示词版本的裁定也换键（用户 11-24 定两档）：high 单字、窗口相同，且只差模型后缀，或裁定字仍在新候选里；其余不动。异体闸、抽样看图由执行方另做")
+    p.add_argument("--anchor-backfill", action="store_true",
+                   help="给存量裁定回填格锚点 cells_sha＋ref（裁定键方案③）：只回填能证明现产物就是当时问的那份的；默认只列清单，加 --write 才追加事件（要 --batch）")
+    p.add_argument("--write", action="store_true", help="--anchor-backfill 真写")
     p.add_argument("--replay", default=None, metavar="重放包根",
                    help="重放预演：--products 当基线（★main 包根），这里给重放包根，只对账有 AI 裁定的格（新放行／改字／仍待审／退回）；不写库")
     p.add_argument("--vis-subclasses", default=None,
@@ -483,6 +486,12 @@ def _cmd(a) -> None:
         os.environ["GUJI_WORKSPACE"] = str(Path(a.workspace).resolve())
     if a.replay:
         return replay_cmd(a)
+    if getattr(a, "anchor_backfill", False):
+        if a.write and not a.batch:
+            sys.exit("--anchor-backfill --write 要给 --batch <批次名>（如 llm-anchor-ZM-20261125）")
+        from . import ruling_anchor
+        a.batch = a.batch or "llm-anchor-dryrun"
+        return ruling_anchor.cmd(a)
     cmd(a)
 
 
