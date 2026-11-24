@@ -195,3 +195,32 @@ def test_resolved_reopen_on_image_change_marks_recheck(tmp_path):
     assert plan["重开"] == ["1:1:1"]
     d = plan["_store"].find("1:1:1")[0]["doc"]
     assert d["recheck"] is True
+
+
+def test_sheet_conflict_rederives_from_merged_items(tmp_path, monkeypatch):
+    """现行单两边都改（SyncConflict）：以库为准重派生——拉库里的单、推条目（追加合并）、用合并后的条目重导单再推。"""
+    data = tmp_path / "data"
+    items_p = P.items_path(data, "t", "001")
+    sheet_p = P.sheet_path(data, "t", "001")
+    sheet_p.parent.mkdir(parents=True)
+    sheet_p.write_text(json.dumps({"rev": "001-r1", "cells": []}), encoding="utf-8")
+    items_p.parent.mkdir(parents=True)
+    st = P.ItemStore(items_p, "t", "001")
+    P.reconcile(st, [_cell("1:1:1")], src="seed")
+    calls = []
+
+    def fake(ws, verb, paths, force=False):
+        calls.append((verb, tuple(p.rsplit("/", 1)[-1] for p in paths), force))
+        if verb == "sync" and len(paths) == 2 and calls.count(calls[-1]) == 1:
+            return 1                                    # 第一次整体推：现行单冲突
+        if verb == "sync" and len(paths) == 1:          # 条目文件合并推上去：库里同时多了一条新条目
+            extra = P.ItemStore(items_p, "t", "001")
+            P.reconcile(extra, [_cell("1:1:1"), _cell("7:7:7")], src="inbox", close_missing=False)
+            extra.save()
+        return 0
+    monkeypatch.setattr(land, "db_only", fake)
+    out = land.apply_changes(tmp_path, "vol01", data=data, text_id="t", chapter="001", work=st, sprites=[], files_dir=None)
+    assert out["synced"] and out["rederived"]
+    assert [c[0] for c in calls] == ["sync", "pull", "sync", "sync"] and calls[1][2] is True
+    cells = {c["cell"] for c in json.loads(sheet_p.read_text(encoding="utf-8"))["cells"]}
+    assert cells == {"1:1:1", "7:7:7"}
