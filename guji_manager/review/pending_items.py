@@ -273,6 +273,9 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             out["开"].append(cell)
             continue
         seen.add(r["id"])
+        if keep_src and str(r.get("src") or "").startswith(keep_src):
+            # 人工加的格（手加、点坏格等）：机器只能补不能改——已有的键（note、原因…）一律以人为准，只补缺的键
+            doc = {**doc, **(r.get("doc") or {})}
         upd: dict = {}
         ops = []
         if r["cell"] != cell:
@@ -304,6 +307,14 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             ops.append("reopen" if want == "open" else "state")
             if want == "open":
                 out["重开"].append(cell)
+                if st == "resolved" and not (r.get("doc") or {}).get("recheck") and not doc.get("recheck"):
+                    # 已裁的格因图真变重开：标复审、带上原人裁（不覆盖人裁，网站提示「这次提交会替代它」）
+                    d2 = dict(upd.get("doc") or doc)
+                    d2["recheck"] = True
+                    d2.setdefault("note", "格图变了，请复审（原人裁见 prior）")
+                    if r.get("event"):
+                        d2.setdefault("prior", {"id": r["event"]})
+                    upd["doc"] = d2
         if not upd:
             out["不变"] += 1
             continue

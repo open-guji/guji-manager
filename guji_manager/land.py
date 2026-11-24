@@ -65,6 +65,28 @@ def write_detail(ws: Path, book: str, rows: list[dict]) -> Path:
     return f
 
 
+def human_deduct(store: P.ItemStore, cells: list[dict], human: set[str]) -> tuple[list[dict], list[str]]:
+    """旧做法里 pending_route 把「已有人裁」的格从新单扣掉；对账后这件事归条目：条目里没有这一格（按格号）、而事件里已有人裁的，
+    不新开待审条目（否则「已定的格」被当新判开出来，QTW 11-24 的 61:1:7 就是这类嫌疑）。复审格（recheck）不扣。
+    ``human`` 是有人裁的格号集合（裸 id，不带册号）。返回 (留下的 cells, 被扣的格号)。"""
+    have = {r["cell"] for r in store.items.values()}
+    keep, drop = [], []
+    for c in cells:
+        cell = P.norm_cell(c.get("cell") or "")
+        if cell in human and cell not in have and not c.get("recheck"):
+            drop.append(cell)
+        else:
+            keep.append(c)
+    return keep, drop
+
+
+def human_cells(ws: Path, book: str) -> set[str]:
+    """事件日志里这一册有人裁的格号（cv ``human_chars``：后到覆盖、过绑定表）；读不了就抛，不当「没有」。"""
+    from ._cv import human_chars
+    os.environ["GUJI_WORKSPACE"] = str(ws)
+    return {P.norm_cell(k) for k in human_chars(book)}
+
+
 def summarize(res: dict) -> str:
     parts = [f"{k}{len(res[k])}" for k in CHANGE_KEYS if res[k]]
     return "没变（%d 格不动）" % res["不变"] if not res["changed"] else "，".join(parts) + f"，不动 {res['不变']}"
@@ -203,7 +225,8 @@ def move_guard(plan: dict, text_id: str, rev: str | None, fetch=None) -> dict | 
 
 
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
-         digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True) -> dict:
+         digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True,
+         human: set[str] | None = None) -> dict:
     """一册收尾。``res`` 是 cv ``pending_cells`` 的返回（或 ``{"cells": [...], "fps": {...}}``）。
     ``digest`` 与上次落定相同 → 整册跳过（不用对账）。"""
     from .datastore.workcopy import data_dir
@@ -218,13 +241,17 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
             raise SystemExit(f"✗ {book} 上次没推成的条目文件这次还是推不上（--only {rels}）")
         marker.unlink(missing_ok=True)
     sheet_rel = str(P.sheet_path(data, text_id, chapter).relative_to(data))
-    if pull and db_only(ws, "pull", [items_rel, sheet_rel]):
+    if pull and db_only(ws, "pull", [items_rel, sheet_rel, "feedback/events/"] if human is not None else [items_rel, sheet_rel]):
         print(f"⚠ {book} 条目文件／线上单没拉成（--only {items_rel} {sheet_rel}）：按本机现有的对账", file=sys.stderr)
     store = P.ItemStore.open(data, text_id, chapter)
+    deducted: list[str] = []
+    if human is not None and res and res.get("cells"):
+        kept, deducted = human_deduct(store, res["cells"], human)
+        res = {**res, "cells": kept}
     plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by)
     structural = [k for k in STRUCTURAL if plan[k]]
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel, "detail": str(detail),
+    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
            "needs_rev_bump_check": bool(plan["挪格"])}
@@ -308,6 +335,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--export-char", help="本次导出的 <章>.char.json（算锚点类待审原因 A01–A03 用）")
     p.add_argument("--text-vdir", help="book-text 版本目录（<章>.punct.json／entity.json；算锚点类待审原因用）")
     p.add_argument("--no-publish", action="store_true", help="--apply 后不发站（缺省只发有变的册，一次一批）")
+    p.add_argument("--no-human-deduct", action="store_true", help="不按事件日志里的人裁扣掉「条目里没有、但已有人裁」的新判格")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
@@ -338,9 +366,10 @@ def cmd_land(a) -> int:
         else:
             res, files_dir = prepare(ws, b, a)
         r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"),
-                 pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None)
+                 pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None,
+                 human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
-        print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
+        print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t按人裁扣掉 {len(r['deducted'])} 格 {r['deducted'][:5]}" if r.get("deducted") else "") + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
     for b, v in blocked.items():
         print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)

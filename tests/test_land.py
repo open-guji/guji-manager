@@ -161,3 +161,32 @@ def test_hand_added_cells_not_closed_and_detail(tmp_path):
     assert [r["cell"] for r in rows] == ["1:1:1"] and rows[0]["doc_keys"] == "why"
     f = land.write_detail(tmp_path / "ws", "vol01", rows)
     assert f.read_text(encoding="utf-8").splitlines()[0].startswith("cell\taction")
+
+
+def test_human_deduct_only_for_cells_without_item(tmp_path):
+    st = _store(tmp_path, [_cell("1:1:1")])
+    keep, drop = land.human_deduct(st, [_cell("1:1:1"), _cell("2:2:2"), {**_cell("3:3:3"), "recheck": True}], {"1:1:1", "2:2:2", "3:3:3"})
+    assert [c["cell"] for c in keep] == ["1:1:1", "3:3:3"] and drop == ["2:2:2"]
+
+
+def test_human_src_doc_not_overwritten_but_filled(tmp_path):
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    s.add("5:5:5", {"note": "人写的备注"}, by="u", src="human:qtw-web")
+    s.save()
+    st = P.ItemStore(s.path, "t", "001")
+    plan = land.plan_book(st, [{**_cell("5:5:5"), "note": "机器想改", "pending_reason": "R01"}], src="land")
+    doc = plan["_store"].find("5:5:5")[0]["doc"]
+    assert doc["note"] == "人写的备注" and doc["pending_reason"] == "R01"
+
+
+def test_resolved_reopen_on_image_change_marks_recheck(tmp_path):
+    st = _store(tmp_path, [{**_cell("1:1:1")}])
+    st2 = P.ItemStore(st.path, "t", "001")
+    P.reconcile(st2, [_cell("1:1:1")], src="x", fps={"1:1:1": "aaa"})
+    st2.resolve("1:1:1", by="h", event="ev9")
+    st2.save()
+    st3 = P.ItemStore(st.path, "t", "001")
+    plan = land.plan_book(st3, [_cell("1:1:1")], src="land", fps={"1:1:1": "bbb"})
+    assert plan["重开"] == ["1:1:1"]
+    d = plan["_store"].find("1:1:1")[0]["doc"]
+    assert d["recheck"] is True and d["prior"] == {"id": "ev9"}
