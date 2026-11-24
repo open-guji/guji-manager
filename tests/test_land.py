@@ -67,3 +67,23 @@ def test_apply_not_open_yet(tmp_path, monkeypatch):
     monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
     with pytest.raises(SystemExit):
         land.land(tmp_path / "ws", "vol05", text_id="t", chapter="005", res={"cells": [_cell("1:1:1")]}, apply=True, by="x")
+
+
+def test_merge_recheck_and_read_recheck(tmp_path):
+    from guji_manager import land_enrich as E
+    f = tmp_path / "rc.tsv"
+    f.write_text("格位\t说明\n# x\nvol05:1:1:1\t机器改判\tev1\t甲\t2026-11-01\n2:2:2\n", encoding="utf-8")
+    rc = E.read_recheck(f, "vol05")
+    assert rc["1:1:1"] == {"note": "机器改判", "prior": {"c": "甲", "id": "ev1", "ts": "2026-11-01"}}
+    assert rc["2:2:2"] == {}
+    out = E.merge_recheck([{"cell": "1:1:1"}, {"cell": "2:2:2"}, {"cell": "3:3:3"}], rc)
+    assert out[0]["recheck"] and out[0]["note"] == "机器改判" and out[1]["recheck"] and "recheck" not in out[2]
+
+
+def test_merge_cards_cv_keys_win():
+    import pytest
+    pytest.importorskip("cv2")
+    from guji_manager import land_enrich as E
+    out = E.merge_cards([{"cell": "1:1:1", "review": "pending", "img": {"s": "c1"}}],
+                        {"1:1:1": {"cell": "1:1:1", "ctx": {"char": "甲", "margin": 0.5, "source": "x"}}})
+    assert out[0]["img"] == {"s": "c1"} and out[0]["ctx"]["c"] == "甲"

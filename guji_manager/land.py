@@ -62,7 +62,8 @@ def last_digest(ws: Path, book: str) -> str | None:
 
 
 STRUCTURAL = ("开", "挪格", "图变", "重开", "关")        # 条目增减、挪格、图变：一定要动
-APPLY_READY = False   # 卡片字段（alt、原因、proof_fields）还没并进 doc 前，doc 级的「改」不可信，不开 --apply
+from . import land_enrich as _E
+APPLY_READY = not _E.PENDING_STEPS   # 卡片字段还有没并进 doc 的步（见 land_enrich.PENDING_STEPS）前，doc 级的「改」不可信，不开 --apply
 
 
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
@@ -95,6 +96,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--text-id", required=True, help="book-text 条目 id（全唐文 995ejelvk0、史記 988g3f0wsu、殿本 96mid1ogzk）")
     p.add_argument("--pending-json", help="直接给新待审格 json（{cells:[…]} 或数组）；只对一册用。缺省调 cv pending-cells")
+    p.add_argument("--recheck", help="复审格清单 tsv（格号<TAB>说明<TAB>旧人裁 id<TAB>旧字<TAB>时间），并进条目 doc")
+    p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
                    help="先跑 cv：其后的参数原样交 `guji-cv pipeline …`，跑完再收尾")
@@ -121,6 +124,9 @@ def cmd_land(a) -> int:
             res = doc if isinstance(doc, dict) else {"cells": doc}
         else:
             res = cv_pending_cells(ws, b, ws / "reports" / b / "_land")
+            if not a.no_enrich:
+                from ._cv import products_root
+                res = {**res, "cells": _E.enrich(res["cells"], ws=ws, book=b, products=products_root(), recheck=a.recheck)}
         r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"))
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
