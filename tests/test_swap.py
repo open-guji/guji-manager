@@ -162,3 +162,19 @@ def test_cv_supports_defer_sync(tmp_path):
     assert not _cv_supports_defer_sync(tmp_path)
     (z / "auto_cycle.py").write_text('ap.add_argument("--defer-sync")', encoding="utf-8")
     assert _cv_supports_defer_sync(tmp_path)
+
+
+def test_publish_failure_is_not_verified(tmp_path, monkeypatch):
+    """11-24 全唐文 011：proofing-sync 失败却记 verified。发站不是 success 一律 publish-mismatch。"""
+    import guji_manager.swap as S
+    monkeypatch.setattr(S, "audit_books", lambda *a, **k: None)
+    monkeypatch.setattr(S, "publish_batch", lambda books, text_id: "failure")
+    monkeypatch.setattr(S, "expected_rev", lambda ws, b, t: "011-r14")
+    monkeypatch.setattr(S, "live_rev", lambda t, n: "011-r14")          # 线上碰巧是想要的版本也不算
+    state = {"books": {"011": {"status": "done"}}}
+    S.publish_and_verify(tmp_path, ["011"], "t", state, tmp_path / "s.json", sync=False)
+    assert state["books"]["011"]["status"] == "publish-mismatch"
+    monkeypatch.setattr(S, "publish_batch", lambda books, text_id: "success")
+    monkeypatch.setattr(S, "wait_live_rev", lambda t, n, w, minutes=6.0: "011-r14")
+    S.publish_and_verify(tmp_path, ["011"], "t", state, tmp_path / "s.json", sync=False)
+    assert state["books"]["011"]["status"] == "verified"

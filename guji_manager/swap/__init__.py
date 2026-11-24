@@ -298,28 +298,73 @@ def last_publish_age_hours() -> float | None:
     return max(0.0, (time.time() - t) / 3600)
 
 
-def publish_batch(books: list[str], text_id: str) -> str:
-    """对这批册触发 proofing-sync（only=），等跑完，返回 conclusion。"""
+def _proofing_runs(limit: int = 10) -> list[dict]:
+    r = subprocess.run(["gh", "run", "list", "-R", WEB_REPO, "--workflow", "proofing-sync.yml", "-L", str(limit),
+                        "--json", "databaseId,createdAt,status,conclusion"], capture_output=True, text=True)
+    try:
+        return json.loads(r.stdout or "[]")
+    except ValueError:
+        return []
+
+
+def wait_idle(max_minutes: float = 60.0) -> bool:
+    """等网站 proofing-sync 没有排队／在跑的 run 再触发（并发的 run 会互相取消：11-24 全唐文 011 假 verified、008 手加格被冲掉）。
+    等到了返回 True，超时返回 False（照触发，由后面的 conclusion 判）。"""
+    end = time.time() + max_minutes * 60
+    while time.time() < end:
+        if not any(r.get("status") in ("in_progress", "queued", "waiting", "pending", "requested") for r in _proofing_runs()):
+            return True
+        time.sleep(30)
+    return False
+
+
+def publish_batch(books: list[str], text_id: str, retries: int = 2) -> str:
+    """对这批册触发**一次** proofing-sync（only=），等跑完，返回 conclusion（只有 ``success`` 才算发成）。
+
+    触发前先等别的 run 跑完（串行，不并发）；被取消（cancelled，多半被别的触发顶掉）就等空闲后重发，最多 ``retries`` 次。"""
     only = ",".join(f"{text_id}/{chapter_of(b)}" for b in books)
-    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    r = subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", WEB_REPO, "--ref", "main",
-                        "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={only}"],
-                       capture_output=True, text=True)
-    if r.returncode:
-        return "trigger-fail: " + r.stderr.strip()[-200:]
-    time.sleep(20)
-    q = f'[.[]|select(.createdAt>="{since}")][-1].databaseId'
-    rid = subprocess.run(["gh", "run", "list", "-R", WEB_REPO, "--workflow", "proofing-sync.yml", "-L", "5",
-                          "--json", "databaseId,createdAt", "-q", q], capture_output=True, text=True).stdout.strip()
-    if not rid:
-        return "no-run"
-    while True:
-        st = subprocess.run(["gh", "run", "view", rid, "-R", WEB_REPO, "--json", "status,conclusion"],
-                            capture_output=True, text=True)
-        d = json.loads(st.stdout or "{}")
-        if d.get("status") == "completed":
-            return d.get("conclusion") or "unknown"
-        time.sleep(45)
+    concl = "unknown"
+    for attempt in range(retries + 1):
+        wait_idle()
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        r = subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", WEB_REPO, "--ref", "main",
+                            "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={only}"],
+                           capture_output=True, text=True)
+        if r.returncode:
+            return "trigger-fail: " + r.stderr.strip()[-200:]
+        rid = ""
+        for _ in range(6):                               # 触发后 run 要几秒才出现
+            time.sleep(10)
+            runs = sorted((x for x in _proofing_runs() if x.get("createdAt", "") >= since), key=lambda x: x["createdAt"])
+            if runs:
+                rid = str(runs[0]["databaseId"])           # 我们是触发前才确认空闲的，这段时间里最早的一条就是我们的
+                break
+        if not rid:
+            return "no-run"
+        deadline = time.time() + 50 * 60
+        concl = "timeout"
+        while time.time() < deadline:
+            st = subprocess.run(["gh", "run", "view", rid, "-R", WEB_REPO, "--json", "status,conclusion"],
+                                capture_output=True, text=True)
+            d = json.loads(st.stdout or "{}")
+            if d.get("status") == "completed":
+                concl = d.get("conclusion") or "unknown"
+                break
+            time.sleep(45)
+        if concl != "cancelled":
+            return concl
+        print(f"⚠ proofing-sync {rid} 被取消（第 {attempt + 1} 次），等空闲后重发", file=sys.stderr)
+    return concl
+
+
+def wait_live_rev(text_id: str, n: int, want: str | None, minutes: float = 6.0) -> str | None:
+    """发布成功后线上文件可能还在 CDN 缓存里：核到想要的版本或超时为止，返回最后读到的 rev。"""
+    end = time.time() + minutes * 60
+    got = live_rev(text_id, n)
+    while want and got != want and time.time() < end:
+        time.sleep(20)
+        got = live_rev(text_id, n)
+    return got
 
 
 def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dict) -> None:
@@ -358,8 +403,11 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
         return
     concl = publish_batch(done, text_id)
     for b in done:
-        want, got = expected_rev(ws, b, text_id), live_rev(text_id, vol_no(b))
-        ok = want is not None and want == got
+        want = expected_rev(ws, b, text_id)
+        # 发站没成功（failure／cancelled／no-run／timeout）一律不算 verified，哪怕线上碰巧读到想要的版本：
+        # 11-24 011 状态 verified、实际 proofing-sync 失败，线上停在 011-r13
+        got = wait_live_rev(text_id, vol_no(b), want) if concl == "success" else live_rev(text_id, vol_no(b))
+        ok = concl == "success" and want is not None and want == got
         state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got, publish=concl)
         if ok:
             for p in (ws / "_packs").glob(f"*/{b}"):
