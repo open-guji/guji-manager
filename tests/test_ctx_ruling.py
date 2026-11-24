@@ -46,3 +46,15 @@ def test_bad_rows(tmp_path):
 def test_command_registered():
     from guji_manager.commands import COMMANDS
     assert "ctx-ruling" in COMMANDS
+
+
+def test_build_events_with_anchor():
+    """新写裁定带格锚点 cells_sha＋ref（裁定键方案③）。"""
+    from guji_manager import ctx_ruling as CR
+    rows = [{"id": "vol21:1:2:3", "char": "曰", "conf": "high", "why": ""}]
+    win = {"vol21:1:2:3": ("甲", "乙", "曰")}
+    evs, _ = CR.build_events(rows, win, batch="b", subclass="P", model="m",
+                             anchors={"vol21:1:2:3": {"cells_sha": "S+P", "ref": "曰"}})
+    assert evs[0].payload["cells_sha"] == "S+P" and evs[0].payload["ref"] == "曰"
+    evs, _ = CR.build_events(rows, win, batch="b", subclass="P", model="m")
+    assert "cells_sha" not in evs[0].payload
