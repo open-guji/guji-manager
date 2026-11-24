@@ -140,3 +140,25 @@ def test_new_main_voids_old_verdict(tmp_path, monkeypatch):
         swap.cmd_run(a)
     out = json.loads(buf.getvalue().strip().splitlines()[-1])
     assert out["todo"] == ["vol20"]          # 旧 main 的 verified 作废；同 main、没记 main 的照旧跳过
+
+
+def test_auto_clean_only_removes_finished_books(tmp_path):
+    from guji_manager.swap import auto_clean
+    for b in ("vol01", "vol02"):
+        d = tmp_path / "_packs" / "lbl" / b
+        d.mkdir(parents=True)
+        (d / "x").write_bytes(b"0" * 10)
+    state = {"books": {"vol01": {"status": "verified"}, "vol02": {"status": "done"}}}
+    auto_clean(tmp_path, state)
+    assert not (tmp_path / "_packs" / "lbl" / "vol01").exists()
+    assert (tmp_path / "_packs" / "lbl" / "vol02").exists()
+
+
+def test_cv_supports_defer_sync(tmp_path):
+    from guji_manager.swap import _cv_supports_defer_sync
+    z = tmp_path / "scripts" / "zhengli"
+    z.mkdir(parents=True)
+    (z / "auto_cycle.py").write_text("x", encoding="utf-8")
+    assert not _cv_supports_defer_sync(tmp_path)
+    (z / "auto_cycle.py").write_text('ap.add_argument("--defer-sync")', encoding="utf-8")
+    assert _cv_supports_defer_sync(tmp_path)
