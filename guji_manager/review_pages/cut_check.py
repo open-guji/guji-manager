@@ -3,7 +3,7 @@
 用途：切字 benchmark（CV2 cut-bench）L2 层——字与字之间的切点准不准（字连在一起处切进了邻字、切掉了本字笔画）。
 只看字与字之间：列首字的上切线、列尾字的下切线（字与边框之间）不画、不审；左右宽窄也不审。
 输入（一格一行）：{id(格号，如 qtw:053:76:3:5), vol, page, col, slot?, img(图，调用者裁好：上到上一格中线、下到下一格中线),
-  top:y|null, bottom:y|null(切线在图里的 y 像素；列首／列尾那条给 null), kind?, note?, screen?(分屏键，缺省按 vol/page/col)}
+  top:y|null, bottom:y|null(切线在图里的 y 像素；列首／列尾那条给 null), kind?, note?, noline?(true＝不画平均线，线已烧在图里，如折线；点图上／下半的点击区仍按 top/bottom 分；1.1.0), screen?(分屏键，缺省按 vol/page/col)}
 同一屏的格按输入顺序（列内从上到下）排开。
 结果文档：{page_type:"cut_check", cell(格号), label: ok|bad|unsure, bad:["top"|"bottom"…], how, t}。
 how=page_ok 是「本屏其余都对」一键补的。
@@ -31,7 +31,7 @@ def normalize(items: list[dict], root=None) -> list[dict]:
             continue      # 一列只有一格：没有字与字之间的切线
         key = r.get("screen") or f"{r.get('vol')}:{r.get('page')}:{r.get('col')}"
         out.append({"id": r["id"], "vol": r.get("vol"), "page": r.get("page"), "col": r.get("col"), "slot": r.get("slot"),
-                    "img": str(p), "iw": w, "ih": h, "top": top, "bottom": bottom, "kind": r.get("kind"),
+                    "img": str(p), "iw": w, "ih": h, "top": top, "bottom": bottom, "kind": r.get("kind"), "noline": bool(r.get("noline")),
                     "note": r.get("note"), "screen": screens.setdefault(key, len(screens))})
     return out
 

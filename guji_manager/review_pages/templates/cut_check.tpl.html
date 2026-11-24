@@ -10,6 +10,7 @@
 .cc.unsure .win{border-color:#5b5f8a}
 .win img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
 .win .ln{position:absolute;left:0;right:0;height:0;border-top:2px solid rgba(40,120,220,.9)}
+.win .ln.off{display:none}
 .win .ln.wrong{border-top:3px solid #d33}
 .win .half{position:absolute;left:0;right:0}
 .win .half.wrong{background:rgba(220,50,50,.16)}
@@ -58,7 +59,7 @@ function card(it,i){
     const h=document.createElement("div");h.className="half";h.dataset.side=side;
     if(side==="top"){h.style.top="0";h.style.height=(mid/it.ih*100)+"%"}else{h.style.top=(mid/it.ih*100)+"%";h.style.bottom="0"}
     h.onclick=e=>{e.stopPropagation();toggleSide(it,side);paint(box,it);stat()};win.appendChild(h);
-    const l=document.createElement("div");l.className="ln";l.dataset.side=side;l.style.top=(y/it.ih*100)+"%";win.appendChild(l);
+    const l=document.createElement("div");l.className="ln"+(it.noline?" off":"");l.dataset.side=side;l.style.top=(y/it.ih*100)+"%";win.appendChild(l);
   }
   box.appendChild(win);
   const qb=document.createElement("div");qb.className="qb";
@@ -83,7 +84,7 @@ function render(){
   $("sub").textContent=`${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`;
   $("hint").innerHTML="";const h=document.createElement("span");
   h.textContent=D.hint||"一屏是原书一列，一格一张小图（上下各带半个邻格），蓝线是这格的上、下切线。只看字与字之间的切线准不准：切进了邻字的笔画、或把本字的笔画切掉了，就点图的上半（上切线）或下半（下切线）标红，再点取消。列首字与边框、列尾字与边框之间不画线不看，左右宽窄也不看。看不清点「看不出」。整屏都对不用点，点「本页没问题，下一页」时没点的格记作全对。每点一下就存后台。";
-  const lg=document.createElement("div");lg.className="legend";lg.innerHTML="<b class=b>蓝线</b>切线　<b class=r>红</b>＝你标的不准的切线";
+  const lg=document.createElement("div");lg.className="legend";lg.innerHTML=D.items.every(x=>x.noline)?"图里的<b class=r>红线</b>＝切线（折线）　点不准的那半边会铺红底":"<b class=b>蓝线</b>切线　<b class=r>红</b>＝你标的不准的切线";
   $("hint").append(h,lg);
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
   for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页没问题，完成":"本页没问题，下一页";
