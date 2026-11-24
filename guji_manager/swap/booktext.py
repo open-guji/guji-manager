@@ -421,7 +421,7 @@ def declare_fig_file(vdir: Path, ch: str) -> bool:
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
                   book: str | None = None, require_human: bool = False, ws: Path | None = None,
-                  soft_ledger: bool = False) -> dict:
+                  soft_ledger: bool = False, migrate_rulings: dict | None = None) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
@@ -479,6 +479,14 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     out_dir = Path(out_dir or tempfile.mkdtemp(prefix="swap-bt-"))
     out_dir.mkdir(parents=True, exist_ok=True)
     vol = int(chapter)
+    rulings_migrated = None
+    if migrate_rulings:       # {"store": RulingStore, "products": 新产物根, "batch": 批次, "write": bool}：按对照表给裁定追加迁移事件
+        from .rulings_migrate import migrate
+        rulings_migrated = migrate(rows, book or f"vol{int(chapter):02d}", migrate_rulings["store"], migrate_rulings["batch"],
+                                   migrate_rulings["products"], write=bool(migrate_rulings.get("write")))
+        n_mig = sum(1 for x in rulings_migrated if x["结果"] == "迁")
+        if n_mig:
+            notes.append(f"裁定迁移 {n_mig} 条（{'已写' if migrate_rulings.get('write') else '干跑'}）；改完要显式 force 重放 seed_admit")
     tsv = out_dir / f"old_new_cells_vol{vol:02d}.tsv"
     tsv.write_text(table_tsv(rows, vol, old["punct"], old["entity"]), encoding="utf-8")
     ra = remap_lib.load_ra(repo)
@@ -529,7 +537,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             "notes": notes, "human_pre": human_pre, "protected": len(prot_new),
             "chars": {k: len(v) for k, v in chars.items()}, "char_detail": chars,
             "remap": {"moved": res["moved"], "left": res["left"]}, "table": str(tsv),
-            "left": left, "review": review, "retargeted": retargeted}
+            "left": left, "review": review, "retargeted": retargeted, "rulings_migrated": rulings_migrated}
 
 
 _LACUNA_RE = re.compile(r"□→(.)")
