@@ -61,7 +61,7 @@ def read_cells(path: Path) -> list[dict]:
 
 
 def build_events(rows: list[dict], win: dict, *, batch: str, subclass: str, model: str, seq0: int = 0,
-                 ts: str | None = None) -> tuple[list, list[str]]:
+                 ts: str | None = None, anchors: dict[str, dict] | None = None) -> tuple[list, list[str]]:
     """→ (事件, 提示)。取不到窗口的格不写。"""
     from ._cv import RULING_KIND, RULING_OTHER, RULING_SOURCE, EventTarget, make_event, ruling_ctx_hash
     evs, notes = [], []
@@ -80,6 +80,7 @@ def build_events(rows: list[dict], win: dict, *, batch: str, subclass: str, mode
                    "cell": r["id"], "tok": {}, "ctx": {"left": left, "right": right, "hash": ruling_ctx_hash(left, right)},
                    "subclass": subclass, "ref": ref or "", "admit_ok": r["conf"] == "high" and not other,
                    "gate": "by_cell"}
+        payload.update((anchors or {}).get(r["id"]) or {})      # 格锚点：cells_sha（写裁定这一刻的产物戳）＋ref（裁定键长期方案③）
         seq0 += 1
         evs.append(make_event(batch, seq0, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]),
                               payload, actor="model", ts=ts))
@@ -105,7 +106,18 @@ def cmd(a) -> int:
     rd = Path(a.ruling_dir) if a.ruling_dir else None
     log = RulingLog(rd.parent if rd is not None and rd.name == "rulings" else rd) if rd else RulingLog()
     seq0 = max((e.seq for e in log.read(a.batch, raw=True)), default=0)
-    evs, notes = build_events(rows, win, batch=a.batch, subclass=a.subclass, model=a.model, seq0=seq0)
+    anchors: dict[str, dict] = {}
+    try:
+        from .ruling_anchor import anchor_fields
+        for r in rows:
+            w = win.get(r["id"])
+            parts = r["id"].split(":")
+            if w is not None and len(parts) >= 3 and parts[1].isdigit():
+                anchors[r["id"]] = anchor_fields(Path(a.products), parts[0], int(parts[1]), w[2])
+    except BaseException as e:  # noqa: BLE001 —— 老 cv／取不到切分戳：照旧写，只是没有锚点
+        print(f"（没带格锚点：{type(e).__name__}: {str(e)[:100]}）", file=sys.stderr)
+        anchors = {}
+    evs, notes = build_events(rows, win, batch=a.batch, subclass=a.subclass, model=a.model, seq0=seq0, anchors=anchors)
     for n in notes:
         print("  " + n, file=sys.stderr)
     bad = check_events(evs, log)

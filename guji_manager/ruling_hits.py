@@ -362,16 +362,17 @@ def cmd(a) -> None:
 
 
 FETCH_STEPS = ("seed_admit", "align_ref")
+ANCHOR_FETCH_STEPS = FETCH_STEPS + ("row_segment", "row_segment_runs", "cell_shrink")   # page_cells_sha 要读的两份产物
 
 
-def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4) -> None:
+def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4, steps=FETCH_STEPS) -> None:
     """各册取产物包，只解 seed_admit／align_ref 到 `root`（已有就覆盖：这里是核对用的产物根，别指向本机正在跑的产物）。"""
     from concurrent.futures import ThreadPoolExecutor
     from .datastore import packs as PK
 
     def one(b):
         t = time.time()
-        info = PK.fetch_products(b, root, label=label, force=True, steps=list(FETCH_STEPS))
+        info = PK.fetch_products(b, root, label=label, force=True, steps=list(steps))
         return b, info["name"].rsplit("/", 1)[-1], time.time() - t
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
         for b, lab, dt in ex.map(one, books):
@@ -465,6 +466,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
     p.add_argument("--accept-old-ver", action="store_true",
                    help="--rekey 时旧提示词版本的裁定也换键（用户 11-24 定两档）：high 单字、窗口相同，且只差模型后缀，或裁定字仍在新候选里；其余不动。异体闸、抽样看图由执行方另做")
+    p.add_argument("--anchor-backfill", action="store_true",
+                   help="给存量裁定回填格锚点 cells_sha＋ref（裁定键方案③）：只回填能证明现产物就是当时问的那份的；默认只列清单，加 --write 才追加事件（要 --batch）")
+    p.add_argument("--write", action="store_true", help="--anchor-backfill 真写")
     p.add_argument("--replay", default=None, metavar="重放包根",
                    help="重放预演：--products 当基线（★main 包根），这里给重放包根，只对账有 AI 裁定的格（新放行／改字／仍待审／退回）；不写库")
     p.add_argument("--vis-subclasses", default=None,
@@ -484,6 +488,15 @@ def _cmd(a) -> None:
         os.environ["GUJI_WORKSPACE"] = str(Path(a.workspace).resolve())
     if a.replay:
         return replay_cmd(a)
+    if getattr(a, "anchor_backfill", False):
+        if a.write and not a.batch:
+            sys.exit("--anchor-backfill --write 要给 --batch <批次名>（如 llm-anchor-ZM-20261125）")
+        from . import ruling_anchor
+        if getattr(a, "fetch", False):
+            fetch_books([b.strip() for b in a.books.split(",") if b.strip()], Path(a.products), a.label, a.jobs,
+                        steps=ANCHOR_FETCH_STEPS)
+        a.batch = a.batch or "llm-anchor-dryrun"
+        return ruling_anchor.cmd(a)
     cmd(a)
 
 
