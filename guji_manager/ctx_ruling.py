@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from .ruling_write import append_rulings
+
 import argparse
 import sys
 import time
@@ -104,7 +106,7 @@ def cmd(a) -> int:
             print(f"{p['cell']}\t{p['char'] or '其他'}\t{p['conf']}\t{p['ref']}\t{p['ctx']['left']}｜{p['ctx']['right']}")
         print(f"（试跑）可写 {len(evs)}/{len(rows)} 条，批次 {a.batch}", file=sys.stderr)
         return 0
-    log.append(evs)
+    append_rulings(log, evs)
     print(f"写 {len(evs)}/{len(rows)} 条 → {log.batch_path(a.batch)}；推库前 guji db pull、设 GUJI_ACTOR，再 guji db sync；"
           "重放 seed_admit 后用 guji rulings-hits 核命中", file=sys.stderr)
     return 0

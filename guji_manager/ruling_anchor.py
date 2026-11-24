@@ -8,6 +8,8 @@ cv 的 `RulingStore.get_anchor` 在窗口键（含版本等价）都没命中时
 """
 from __future__ import annotations
 
+from .ruling_write import append_rulings
+
 import json
 import sys
 from pathlib import Path
@@ -100,7 +102,7 @@ def backfill(products: Path, book: str, store, batch: str, *, write: bool = Fals
             seq += 1
             out.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=c, book=book),
                                   pl, actor="model"))
-        log.append(out)
+        append_rulings(log, out)
     return rows
 
 
