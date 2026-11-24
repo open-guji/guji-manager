@@ -125,8 +125,8 @@ def classify(rel: str) -> str | None:
     if len(parts) == 2 and parts[0] == "books" and p.suffix == ".yaml":
         return "books"
     if parts[0] == "feedback":
-        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings") and p.suffix == ".jsonl":
-            return "events"
+        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid") and p.suffix == ".jsonl":
+            return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）
         if len(parts) == 3 and parts[1] == "consumed" and p.suffix == ".jsonl":
             return "consumed"
         if len(parts) == 3 and parts[1] == "anchors" and p.suffix == ".jsonl":

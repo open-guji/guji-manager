@@ -12,6 +12,7 @@ from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli
 from . import cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
+from .uid import cli as _uid_cli
 from .cli_cellvotes import cmd_cellvotes
 from .cli_freeze import add_parser as _add_freeze
 from .cli_freeze import cmd_freeze
@@ -46,6 +47,7 @@ COMMANDS: dict = {
     **swap.COMMANDS,           # swap（换单 driver，A32 11-05）
     **cli_pending.COMMANDS,    # pending（待审条目，一格一条，A31 11-10）
     **cli_seg.COMMANDS,        # seg pin（整列写定 manual-cells，A22 11-12）
+    **_uid_cli.COMMANDS,       # uid（字格身份账：字格永久编号 u，CV0 11-24）
     **collect.COMMANDS,        # collect（收单快路：人裁直接落 book-text，不重放，A31 11-19）
     **land.COMMANDS,           # land（出包后收尾：待审条目对账，GM4 11-24）
     **ctx_ruling.COMMANDS,     # ctx-ruling（按格号＋字写终审文意裁定，原 ZM 会话脚本，A31 11-21）

@@ -5,7 +5,8 @@
 - route：`guji <步> <命令> …` 去掉步骤前缀（`steps.route`，2026-11-22；cv 没有这个时点的旧版靠分组子命令兜底，`pipeline` 前缀除外）。
 - startup：注册去 R2 取派生缓存的取件器；跑批耗时推任务库；`step`／`pipeline` 装步内分段计时。
 - prepare：开跑前把册钉的字形库快照、模型、语料备好，跑 Step5-b 时预建生僻字模板索引（`ops/prep.py`）。
-- finished：整册跑完没有失败页就自动存包、放行格回库（`ops/lib_backfill.py`，书级开关）、库文一致核对（`ops/lib_text_check.py`）；提醒本机没存包的产物。
+- finished：整册跑完没有失败页就自动存包、放行格回库（`ops/lib_backfill.py`，书级开关）、库文一致核对（`ops/lib_text_check.py`）、
+  启用了 u 的册切分入字格身份账（`uid.advance`）；提醒本机没存包的产物。
 - status：收尾闸、裁放不一致、看图待审、没存包的产物四个报告项。
 """
 from __future__ import annotations
@@ -64,7 +65,22 @@ def finished(args, eng, steps: list[str], ok: bool) -> None:
         lib_backfill.auto_backfill(args, eng, steps)     # 存包之后：回库只改字形库，不动这一册的产物
         from .ops import lib_text_check
         lib_text_check.auto_check(args, eng, steps)      # 回库之后：库里每个刻例的字对这一册文本，缺省只报告
+    _uid_advance(eng)          # 启用了 u 的册：切分变了的页入字格身份账（有失败页也入：切出来的格下游照样要用）
     prep.print_unpacked(eng.book.id, eng.store)
+
+
+def _uid_advance(eng) -> None:
+    """该册有字格身份账（启用了 u）就把现行切分入账（`guji uid advance`，同一份切分不动）。没账的册不碰。
+    入账失败只报不拦：之后 `cell_ref()` 查不到会报错，`guji uid verify --check-products` 也会列出来。"""
+    try:
+        from . import uid
+        if not uid.enabled(eng.book.id):
+            return
+        r = uid.advance(eng.book.id, eng.store)
+        if r["entered"]:
+            print(f"字格身份账：{eng.book.id} 入账 {r['entered']} 页（u_max={r['u_max']}，{r['via']}）", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠ 字格身份账入账失败（{eng.book.id}）：{e}；手跑 guji uid advance {eng.book.id}", file=sys.stderr)
 
 
 def status(book: str, pages: list[int], store) -> list[tuple]:
