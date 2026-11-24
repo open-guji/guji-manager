@@ -404,6 +404,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "RULING_SOURCE": ("feedback.rulings", "SOURCE"),
     "RULING_OTHER": ("feedback.rulings", "OTHER"),
     "RulingStore": ("feedback.rulings", "RulingStore"),
+    "page_cells_sha": ("feedback.rulings", "page_cells_sha"),      # 格锚点用的本页产物戳（cv #1832，裁定键方案③）
+    "load_ver_equiv": ("feedback.rulings", "load_ver_equiv"),      # 版本等价表加载（cv #1830）
+    "pending_cells": ("feedback.pending_cells", "pending_cells"),
+    "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "llm_questions_of_page": ("feedback.llm_queue", "questions_of_page"),
     "FLOW_GROUPS": ("groups.registry", "FLOW_GROUPS"),
     "seed_admit_clf_ctx": ("steps.seed_admit", "_clf_ctx"),
