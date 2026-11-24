@@ -36,6 +36,8 @@ def check_events(evs, log) -> list[str]:
 def append_or_exit(log, evs) -> int:
     """`RulingLog.append`，cv 拒写（版本 seed_admit 不认）时不抛栈，打清楚原因并以退出码 2 结束；一条都没写。"""
     from ._cv import BadRequest
+    from .u_stamp import stamp_rulings
+    stamp_rulings(evs)                     # 册有字格身份账时盖 payload.u（T2）；没账不动
     try:
         return log.append(evs)
     except BadRequest as e:

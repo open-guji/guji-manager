@@ -31,11 +31,12 @@ HAND_SRC = ("human:", "script:")          # 人工加的格、手加格（swap-h
 CHANGE_KEYS = ("开", "改", "挪格", "图变", "重开", "关")
 
 
-def plan_book(store: P.ItemStore, cells: list[dict], *, src: str, fps: dict[str, str] | None = None, by: str = "") -> dict:
+def plan_book(store: P.ItemStore, cells: list[dict], *, src: str, fps: dict[str, str] | None = None, by: str = "",
+              us: dict[str, int] | None = None) -> dict:
     """对账（只在内存里算，不写文件）：返回 reconcile 的计数明细与 ``changed``。"""
     work = P.ItemStore(store.path, store.text_id, store.chapter)
     work.items = copy.deepcopy(store.items)
-    res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by, keep_src=HAND_SRC, fp_reopen=False)
+    res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by, keep_src=HAND_SRC, fp_reopen=False, us=us)
     res["changed"] = any(res[k] for k in CHANGE_KEYS)
     res["_store"] = work
     return res
@@ -262,7 +263,9 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     if human is not None and res and res.get("cells"):
         kept, deducted = human_deduct(store, res["cells"], human)
         res = {**res, "cells": kept}
-    plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by)
+    from .u_stamp import u_map
+    us = u_map(book, [c.get("cell") or c.get("a") or "" for c in res["cells"]])   # 册有字格身份账才有（T2），没账空
+    plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
     out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel, "detail": str(detail), "deducted": deducted,

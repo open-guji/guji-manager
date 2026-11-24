@@ -355,3 +355,51 @@ def test_first_choice_order():
     assert cc.first_choice({"alt": [{"c": "丁"}]}) == ("丁", "alt")
     assert cc.first_choice({"ctx": {"c": "戊"}}) == ("戊", "ctx")
     assert cc.first_choice({}) == (None, "none")
+
+
+# ── 字格永久编号 u（char v0.6、norm v0.3；T2 2026-11-24）──
+
+def test_uids_write_u_and_v06():
+    """给了身份账的 u：每格写 u（紧跟 a、c）、顶层 u_max／u_retired、$schema v0.6；过 v0.6 schema；分行稿不变。"""
+    pj = _pj(True)
+    base, _ = cc.from_pages_json(pj, version="1.0.0")
+    cv_as = [c["a"] for p in pj["pages"] for c in p["cells"]]
+    umap = {a: 10 + i for i, a in enumerate(cv_as)}
+    files, rep = cc.from_pages_json(pj, version="1.0.0", uids={"map": umap, "u_max": 99, "u_retired": [{"u": 5, "gone": True}]})
+    char = files["003.char.json"]
+    assert char["$schema"] == cc.CHAR_SCHEMA_URL_V06 and char["u_max"] == 99 and char["u_retired"] == [{"u": 5, "gone": True}]
+    assert cc.validate(char, "char") == []
+    cells = _cells(char)
+    assert [c["u"] for c in cells] == [umap[a] for a in cv_as]
+    assert all(list(c)[:3] == ["a", "c", "u"] for c in cells)
+    assert cc.char_to_lines_md(char) == cc.char_to_lines_md(base["003.char.json"])
+    assert files["003.cord.json"] == base["003.cord.json"]                   # cord 不存 u
+    assert rep.get("u_dropped") == []
+
+
+def test_uids_absent_is_byte_identical():
+    a, _ = cc.from_pages_json(_pj(True), version="1.0.0")
+    b, _ = cc.from_pages_json(_pj(True), version="1.0.0", uids=None)
+    assert cc.dumps(a["003.char.json"]) == cc.dumps(b["003.char.json"]) and "u_max" not in a["003.char.json"]
+    assert a["003.norm.json"] == b["003.norm.json"]
+
+
+def test_uids_missing_cell_refuses():
+    pj = _pj(True)
+    umap = {c["a"]: 1 + i for i, c in enumerate(pj["pages"][0]["cells"][1:])}
+    with pytest.raises(ValueError, match="没有 u"):
+        cc.from_pages_json(pj, version="1.0.0", uids={"map": umap, "u_max": 50})
+
+
+def test_uids_norm_v03(legacy):
+    pj = legacy["002.pages.json"]
+    cv_as = [c["a"] for p in pj["pages"] for c in p["cells"]]
+    umap = {a: 1 + i for i, a in enumerate(cv_as)}
+    files, _ = cc.from_pages_json(pj, zi=legacy["002.zi.json"], norm=legacy["002.norm.json"], keys="cv",
+                                  uids={"map": umap, "u_max": len(cv_as)})
+    norm = files["002.norm.json"]
+    assert norm["items"], "夹具要有规范层条目"
+    assert norm["$schema"] == cc.NORM_SCHEMA_URL_V03 and "schema" not in norm
+    by_a = {c["a"]: c["u"] for c in _cells(files["002.char.json"])}
+    assert all(n["u"] == by_a[n["a"]] for n in norm["items"])
+    assert cc.validate(norm, "norm") == []
