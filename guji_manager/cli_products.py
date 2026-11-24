@@ -210,7 +210,8 @@ def cmd_pack(args) -> None:
             _warn_impure(args.book, info["label"])
             _note_main(args.book, info["label"], args.note or "")
     else:
-        info = PK.fetch_products(args.book, _root(args.to or args.root), label=args.label, force=args.force)
+        info = PK.fetch_products(args.book, _root(args.to or args.root), label=args.label, force=args.force,
+                                 steps=[x.strip() for x in args.steps.split(",") if x.strip()] if args.steps else None)
         print(f"已取：{info['name']} → {info['dest']}（{info['files']} 个文件）")
 
 
@@ -350,7 +351,7 @@ def add_parser(sub) -> None:
     p.add_argument("--images", type=int, default=0, help="diff：前 N 个变了的列出看图页（要原图）")
     p.add_argument("--pipeline", default="keben_body_v2")
     p.add_argument("--label", default=None, help="pack：整个标签（ASCII）；push 缺省按版本三段拼（见 --change）；fetch 缺省取 main")
-    p.add_argument("--steps", default=None, help="pack push：只打这几步，逗号分隔；缺省全部")
+    p.add_argument("--steps", default=None, help="pack push：只打这几步；pack fetch：只解这几步（仍整包下载），逗号分隔；缺省全部")
     p.add_argument("--root", default=None, help="pack：产物根，缺省本机产物根")
     p.add_argument("--to", default=None, help="pack fetch：解到哪个产物根")
     p.add_argument("--force", action="store_true", help="pack fetch：目标已有该册产物也覆盖")

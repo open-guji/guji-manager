@@ -295,8 +295,10 @@ def promote(book: str, label: str, note: str = "", src=None, why: str | None = N
     return f"{pre}/{label}"
 
 
-def fetch_products(book: str, dest_root: Path, label: str | None = None, force: bool = False, src=None) -> dict:
-    """取回并解到 `<dest_root>/<册>/`。目标已有该册产物时，除非 `force`，拒绝（不覆盖本机正在用的产物）。"""
+def fetch_products(book: str, dest_root: Path, label: str | None = None, force: bool = False, src=None,
+                   steps: list[str] | None = None) -> dict:
+    """取回并解到 `<dest_root>/<册>/`。目标已有该册产物时，除非 `force`，拒绝（不覆盖本机正在用的产物）。
+    `steps`：只解这几步（包是整册一个 tar.gz，仍整包下载，只省解包和落盘；ZM 11-21 rulings-hits 只要 seed_admit／align_ref）。"""
     src = src or _client()
     if not label:
         label = main_label(book, src)
@@ -319,7 +321,14 @@ def fetch_products(book: str, dest_root: Path, label: str | None = None, force: 
         for m in tf.getmembers():
             if not m.isfile() or m.name.startswith("/") or ".." in Path(m.name).parts or not m.name.startswith(f"{book}/"):
                 raise ValueError(f"包里有不合规的路径：{m.name}")
-        tf.extractall(dest_root, filter="data") if hasattr(tarfile, "data_filter") else tf.extractall(dest_root)
+        mem = None
+        if steps:
+            want = set(steps)
+            mem = [m for m in tf.getmembers() if len(Path(m.name).parts) == 2 or Path(m.name).parts[1] in want]
+        if hasattr(tarfile, "data_filter"):
+            tf.extractall(dest_root, members=mem, filter="data")
+        else:
+            tf.extractall(dest_root, members=mem)
     write_mark(dest_root, book, name.rsplit("/", 1)[-1], "fetch")
     return {"name": name, "dest": str(dest), "files": man["files"], "cv_version": man.get("cv_version")}
 
