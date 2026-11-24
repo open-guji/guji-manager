@@ -191,3 +191,37 @@ def test_fetch_steps_filter(tmp_path):
         PK._call, PK._parts_in_order, PK._ws_name, PK.write_mark = orig
     got = sorted(str(p.relative_to(tmp_path / "r")) for p in (tmp_path / "r").rglob("*.json"))
     assert got == ["001/_raw_index.json", "001/align_ref/p0001.json", "001/seed_admit/p0001.json"]
+
+
+def test_accept_old_ver_rekey(tmp_path):
+    """旧版本裁定换键两档（11-24 用户定）：只差模型后缀直接换；真换版要 high 单字、窗口同、字在新候选里。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1#m:high", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")   # 只差后缀 → 收（即使不是机器字）
+    store.put("ry", "v1", "丙", "丁", char="日", conf="high", why="", model="m", cell="001:1:1:2")          # 换版、字在候选 → 收
+    store.put("ry", "v1", "戊", "己", char="巳", conf="low", why="", model="m", cell="001:1:1:3")           # 非 high → 不收
+    store.put("ry", "v1", "庚", "辛", char="己", conf="high", why="", model="m", cell="001:1:1:4")          # 窗口也变 → 不收
+    store.put("ry", "v1", "壬", "癸", char="午", conf="high", why="", model="m", cell="001:1:1:5")          # 换版、字不在候选 → 不收
+    ask = lambda l, r, ver="v2": {"evidence": {"group": {"id": "ry", "solvers": [
+        {"why": PENDING, "ask": {"ver": ver, "l": l, "r": r}, "probs": {"日": 0.6, "已": 0.4}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "已", **ask("甲", "乙", "v1")},
+                           {"id": "001:1:1:2", "char": "已", **ask("丙", "丁")},
+                           {"id": "001:1:1:3", "char": "巳", **ask("戊", "己")},
+                           {"id": "001:1:1:4", "char": "己", **ask("庚x", "辛")},
+                           {"id": "001:1:1:5", "char": "未", **ask("壬", "癸")}])
+    rows = RH.check(tmp_path / "p", "001", store)
+    assert len(rows) == 5
+    assert RH.rekey(rows, store) == 0                                  # 缺省不收旧版本
+    assert RH.rekey(rows, store, accept_old_ver=True) == 2             # 只收 1、2 两格
+    assert store.get("ry", "v2", "丙", "丁")["char"] == "日"
+    assert store.get("ry", "v2", "壬", "癸") is None
+
+
+def test_check_uses_get_equiv_when_available(tmp_path):
+    """cv 带版本等价表（get_equiv）时，等价命中的裁定不算「未命中」（11-24，不另写等价逻辑）。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")
+    ask = {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": "甲", "r": "乙"}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "日", **ask}])
+    assert len(RH.check(tmp_path / "p", "001", store)) == 1                       # 精确键没中 → 未命中
+    store.get_equiv = lambda g, v, l, r: store.get(g, "v1", l, r)                 # 模拟登记了 v1→v2
+    assert RH.check(tmp_path / "p", "001", store) == []
