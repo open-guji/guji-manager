@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 from .review import pending_items as P
+from .swap import current_main
 
 CHANGE_KEYS = ("开", "改", "挪格", "图变", "重开", "关")
 
@@ -104,7 +105,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
             out["synced"] = db_only(ws, "sync", [items_rel]) == 0       # 只推这一册的条目文件
         f = landed_path(ws, book)
         f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"digest": digest, "pack": (res or {}).get("source_rev"), "at": P.now()}), encoding="utf-8")
+        f.write_text(json.dumps({"digest": digest, "pack": current_main(ws, book), "at": P.now()}), encoding="utf-8")
     return out
 
 
