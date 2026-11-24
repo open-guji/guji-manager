@@ -173,3 +173,14 @@ def test_accept_old_ver_rekey(tmp_path):
     assert RH.rekey(rows, store, accept_old_ver=True) == 2             # 只收 1、2 两格
     assert store.get("ry", "v2", "丙", "丁")["char"] == "日"
     assert store.get("ry", "v2", "壬", "癸") is None
+
+
+def test_check_uses_get_equiv_when_available(tmp_path):
+    """cv 带版本等价表（get_equiv）时，等价命中的裁定不算「未命中」（11-24，不另写等价逻辑）。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")
+    ask = {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": "甲", "r": "乙"}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "日", **ask}])
+    assert len(RH.check(tmp_path / "p", "001", store)) == 1                       # 精确键没中 → 未命中
+    store.get_equiv = lambda g, v, l, r: store.get(g, "v1", l, r)                 # 模拟登记了 v1→v2
+    assert RH.check(tmp_path / "p", "001", store) == []
