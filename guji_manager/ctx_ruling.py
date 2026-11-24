@@ -21,6 +21,28 @@ GROUP = "O"
 CONF = ("high", "mid", "low")
 
 
+
+def check_events(evs, log) -> list[str]:
+    """写前预检（cv #1837 `rulings.validate`，同 `RulingLog.append` 的拒写口径）→ 错误行；旧 cv 没有校验就返回空。"""
+    from . import _cv
+    try:
+        validate = _cv.ruling_validate
+        equiv = _cv.load_ver_equiv(Path(log.events_dir) / "ver_equiv.yaml")
+    except (AttributeError, ImportError):
+        return []
+    return [f"{e.payload.get('cell') or e.id}: {m}" for e in evs for m in validate(e.payload or {}, equiv)[0]]
+
+
+def append_or_exit(log, evs) -> int:
+    """`RulingLog.append`，cv 拒写（版本 seed_admit 不认）时不抛栈，打清楚原因并以退出码 2 结束；一条都没写。"""
+    from ._cv import BadRequest
+    try:
+        return log.append(evs)
+    except BadRequest as e:
+        print(f"✗ {e}\n  一条都没写。核对 --model／提示词版本；换了版本要先在 <feedback>/rulings/ver_equiv.yaml 登记（cv #1830）。",
+              file=sys.stderr)
+        raise SystemExit(2) from None
+
 def read_cells(path: Path) -> list[dict]:
     rows = []
     for n, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
@@ -86,13 +108,17 @@ def cmd(a) -> int:
     evs, notes = build_events(rows, win, batch=a.batch, subclass=a.subclass, model=a.model, seq0=seq0)
     for n in notes:
         print("  " + n, file=sys.stderr)
+    bad = check_events(evs, log)
+    for m in bad[:20]:
+        print(f"  ✗ 拒写（seed_admit 不认）{m}", file=sys.stderr)
     if a.dry_run:
         for e in evs:
             p = e.payload
             print(f"{p['cell']}\t{p['char'] or '其他'}\t{p['conf']}\t{p['ref']}\t{p['ctx']['left']}｜{p['ctx']['right']}")
-        print(f"（试跑）可写 {len(evs)}/{len(rows)} 条，批次 {a.batch}", file=sys.stderr)
-        return 0
-    log.append(evs)
+        print(f"（试跑）可写 {len(evs)}/{len(rows)} 条，批次 {a.batch}"
+              + (f"；但有 {len(bad)} 条会被 cv 拒写，真写时整批不落" if bad else ""), file=sys.stderr)
+        return 2 if bad else 0
+    append_or_exit(log, evs)
     print(f"写 {len(evs)}/{len(rows)} 条 → {log.batch_path(a.batch)}；推库前 guji db pull、设 GUJI_ACTOR，再 guji db sync；"
           "重放 seed_admit 后用 guji rulings-hits 核命中", file=sys.stderr)
     return 0
