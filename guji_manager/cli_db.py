@@ -128,6 +128,27 @@ def push_workspace(ws_dir: Path, *, dry_run: bool = False, allow_delete: bool = 
                     **_glyph_args(ws_dir, no_glyph_wanted(no_glyph) or not with_glyph_wanted(with_glyph)))
 
 
+def only_workspace(action: str, ws_dir: Path, only, *, dry_run: bool = False, force: bool = False,
+                   allow_delete: bool = False, bucket: str = "main", src=None) -> dict:
+    """``guji db pull|push|sync --only <路径>…``：只碰这些路径（``datastore/workcopy_only.py``），不碰字形库、不落库、
+    不重建 glyph.db（换包按条目对账，GM4 11-24）。"""
+    from ._cv import BlobCache, WorkerSource, upload_files
+    from .datastore import workcopy_only as wo
+    branch = _branch()
+    if action == "pull":
+        return wo.pull_only(src or WorkerSource(branch=branch), ws_dir, only, cache=BlobCache(), bucket=bucket,
+                            force=force)
+    actor = require_actor(dry_run)
+    _check_write_branch(branch)
+    up = lambda imgs, ext="png": upload_files(imgs, bucket=_bucket(branch), ext=ext)  # noqa: E731
+    with _pg_conn(branch) as conn:
+        if action == "push":
+            return wo.push_only(conn, ws_dir, only, actor=actor, dry_run=dry_run, allow_delete=allow_delete,
+                                uploader=up)
+        return wo.sync_only(src or WorkerSource(branch=branch), conn, ws_dir, only, actor=actor, cache=BlobCache(),
+                            bucket=bucket, uploader=up, dry_run=dry_run)
+
+
 def _ensure_glyph_pins(ws_dir: Path, res: dict) -> None:
     """拉完以后，各册钉的字形库版本（有快照的）本机没建库就建（GUJI-727）。建不成只记一行，不让拉取失败。"""
     from ._cv import ensure_pins
@@ -321,6 +342,13 @@ def cmd_db(args) -> None:
         # --branch 等于设 GUJI_DATA_BRANCH：数据目录、glyph.db、products、连库都跟着换（core.workspace.central_marker）
         os.environ["GUJI_DATA_BRANCH"] = args.branch
 
+    if args.only and args.action in ("pull", "push", "sync"):
+        _print(only_workspace(args.action, ws_dir, args.only, dry_run=args.dry_run, force=args.force,
+                              allow_delete=args.allow_delete, bucket=args.bucket))
+        return
+    if args.only:
+        raise SystemExit("--only 只用于 pull／push／sync")
+
     if args.action == "push":
         _print(push_workspace(ws_dir, dry_run=args.dry_run, allow_delete=args.allow_delete,
                                    no_glyph=args.no_glyph, with_glyph=args.with_glyph))
@@ -443,6 +471,9 @@ def add_parser(sub) -> None:
     p.add_argument("--repair-gaps", action="store_true",
                    help="pull：库里某逐行文件缺了几行（旧 push 把同主键重复行覆盖丢了）、还原后 sha 对不上时，按库里现有的行还原并列在 "
                         "repaired；之后 db push 会把修好的文件推回去（史記 anchors/04.jsonl，2026-11-10）")
+    p.add_argument("--only", action="append", default=None, metavar="路径",
+                   help="pull/push/sync：只碰这些路径（可多次；目录以 / 结尾，否则是单个文件），范围外库里本机都不动，"
+                        "不碰字形库、不重建 glyph.db（例 feedback/lists/pending/<书>/001.items.jsonl）")
     p.add_argument("--no-rebuild", action="store_true", help="pull：不重建 glyph.db")
     p.add_argument("--force", action="store_true", help="pull：丢掉本地没推的改动")
     p.add_argument("--exclude", action="append", default=None, metavar="前缀",
