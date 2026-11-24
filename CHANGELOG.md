@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- MINOR（11-24，CV0「字格永久编号 u」T1）：字格身份账 `guji_manager/uid/`＋命令 `guji uid advance|init|show|verify`：每册 `feedback/uid/<册>.jsonl`（只追加，进中心库 events 表 stream=uid），切字后按框 IoU→中心距→拆→并→字序列对照继承 u；`guji pipeline` 跑完、该册有账时自动入账；`cell_ref()` 对有账的册返回 u（查不到报 `UidMissing`，不回退格号），没账的册照旧恒等。格式见 `doc/参考/字格身份账.md`。没账的册行为不变，cv 产物不动，L0。
 - PATCH（11-24，GM4 整理第四步数据库表）：中心库 `files.doc`、`anchors.doc` 与 `raw` 同内容，importer 不再写（files 写 NULL、anchors 写空串，因该列 NOT NULL 且 D1 删不掉列）；`central_gc._file_rows` 改从 `raw` 解析。配套 cv#1845、workspace-data#35。旧版 manager 照写不报错，只是库里多存一份。L0。
 - MINOR：页型 `col_check` 1.2.0：items 可带 `compact: true`＋`show_w`，列图是压缩过的矮条时按原宽显示、一屏自动换行排多列（上下压缩看左右切线用；Sheldon 11-24）。
 - MINOR：页型 `cut_check` 1.1.0：items 可带 `noline: true`，不画蓝色平均切线（折线已烧在图里时只留红折线；Sheldon 11-24）。

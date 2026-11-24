@@ -33,7 +33,7 @@ STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "pipeline", "step", "status", "book", "binarize", "preclean", "split", "locate-gutter", "survey",
         "calibrate", "calibrate-font", "witness-align", "witness-align-stream", "seed-witness",
         "job", "rerun", "cache", "products", "product", "snapshot",
-        "seg", "round-check", "close-check", "progress", "iterate", "exp", "perf", "pending-stats",
+        "seg", "uid", "round-check", "close-check", "progress", "iterate", "exp", "perf", "pending-stats",
         "eval", "check", "gold", "events", "collate",
         "glyph-db", "recheck", "triage", "review-pages", "rare", "variants", "pua-table",
         "groups", "promote", "pair-attr", "model", "font",

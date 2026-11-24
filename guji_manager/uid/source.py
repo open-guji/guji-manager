@@ -1,0 +1,96 @@
+"""一页「这份切分」从哪来：cv 产物（切字后入账）或 book-text 的 char＋cord（从现行文本重建账）。
+
+两边的框都折成 cord 空间（左上原点 ``[x, y, w, h]``），口径同 book-text 导出
+（``formats/guji_page_cv``：``tr_bbox_to_xywh(quad_bounds(quad_page), W)``），所以从 book-text 建的账与之后从产物入账的
+行可以直接按框对照。
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from .match import Cell, xywh_to_box
+
+
+@dataclass
+class PageCut:
+    page: int
+    cells_sha: str | None
+    cells: list[Cell]            # 读序
+    boxes: dict[str, list]       # 格号 → [x, y, w, h]（cord 空间）
+
+
+# ───────────────────────── cv 产物 ─────────────────────────
+
+def product_pages(store, book: str) -> list[int]:
+    """有 Step3 切分产物的页（升序）。"""
+    from .._cv import cells_step
+    return sorted(int(k[1:]) for k in store.keys(book, cells_step(book)) if k[1:].isdigit())
+
+
+def cells_sha(store, book: str, page: int) -> str | None:
+    from .._cv import page_cells_sha
+    return page_cells_sha(book, page, store)
+
+
+def from_products(store, book: str, page: int, *, with_chars: bool = True) -> PageCut | None:
+    """读现行产物里这一页的切分；没有 Step3 产物 → None。"""
+    from .._cv import Borders, cells_step, page_key, read_view
+    from ..formats.guji_page import quad_bounds, tr_bbox_to_xywh
+    key = page_key(page)
+    cells = read_view(store, book, cells_step(book), key, "cells")
+    if cells is None:
+        return None
+    sha = cells_sha(store, book, page)
+    bd = store.read_raw(book, "border_detect", key)
+    W = Borders.model_validate(bd["borders"]).width if bd else None
+    chars: dict[str, str | None] = {}
+    if with_chars:
+        try:
+            from .._cv import page_slots
+            chars = {s.id: s.char for s in page_slots(store, book, page, [])}
+        except Exception:  # noqa: BLE001 —— 没跑到 seed_admit：不带字，只按框对照
+            chars = {}
+    out: list[Cell] = []
+    boxes: dict[str, list] = {}
+    for col in sorted(cells.columns, key=lambda c: c.col):
+        for c in sorted(col.cells, key=lambda c: c.order):
+            cid = f"{book}:{page}:{col.col}:{c.slot}{c.sub or ''}"
+            b = tr_bbox_to_xywh(quad_bounds(c.quad_page), W) if (c.quad_page and W) else None
+            if b:
+                boxes[cid] = b
+            out.append(Cell(cid, xywh_to_box(b), chars.get(cid)))
+    return PageCut(page, sha, out, boxes)
+
+
+# ───────────────────────── book-text ─────────────────────────
+
+def load_json(p: Path | str) -> dict:
+    return json.loads(Path(p).read_text(encoding="utf-8"))
+
+
+def from_book_text(book: str, char: dict, cord: dict | None) -> tuple[list[PageCut], dict[str, int]]:
+    """char＋cord → 每页一份切分（cells_sha 为 null），以及 char 里已有的 u（v0.6；没有就是空表）。
+    格号＝``册:`` + char 的 ``a``（book-text 的 a 是 CV 格 id 去册前缀）。"""
+    box_of: dict[str, list] = {}
+    for pg in (cord or {}).get("pages") or []:
+        for x in pg.get("cells") or []:
+            if x.get("box"):
+                box_of[x["a"]] = list(x["box"])
+    pages: list[PageCut] = []
+    have_u: dict[str, int] = {}
+    for pg in char.get("pages") or []:
+        cells: list[Cell] = []
+        boxes: dict[str, list] = {}
+        for col in pg.get("columns") or []:
+            for x in col.get("cells") or []:
+                cid = f"{book}:{x['a']}"
+                b = box_of.get(x["a"])
+                if b:
+                    boxes[cid] = b
+                cells.append(Cell(cid, xywh_to_box(b), x.get("c")))
+                if isinstance(x.get("u"), int):
+                    have_u[cid] = x["u"]
+        pages.append(PageCut(int(pg["page"]), None, cells, boxes))
+    return pages, have_u
