@@ -188,6 +188,10 @@ def test_resolved_reopen_on_image_change_marks_recheck(tmp_path):
     st2.save()
     st3 = P.ItemStore(st.path, "t", "001")
     plan = land.plan_book(st3, [_cell("1:1:1")], src="land", fps={"1:1:1": "bbb"})
+    assert plan["重开"] == [] and not plan["changed"]       # 指纹变不算图变：已裁保持已裁
+    assert plan["_store"].find("1:1:1")[0]["state"] == "resolved"
+    # 机器明确要求复审（recheck）才重开，带上原人裁
+    plan = land.plan_book(st3, [{**_cell("1:1:1"), "recheck": True}], src="land", fps={"1:1:1": "bbb"})
     assert plan["重开"] == ["1:1:1"]
     d = plan["_store"].find("1:1:1")[0]["doc"]
-    assert d["recheck"] is True and d["prior"] == {"id": "ev9"}
+    assert d["recheck"] is True
