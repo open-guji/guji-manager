@@ -265,7 +265,8 @@ def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
         evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=cell,
                                                                     book=cell.split(":")[0] if cell.count(":") == 3 else None),
                               v, actor="model"))
-    log.append(evs)
+    from .ctx_ruling import append_or_exit
+    append_or_exit(log, evs)
     return len(evs)
 
 

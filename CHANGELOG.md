@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：`ctx-ruling write`／`rulings-hits --rekey-vis` 对齐 cv #1837 写前校验：试跑就预检（版本 seed_admit 不认的逐条列出，退出码 2）；真写遇 cv 拒写不抛栈，打原因、提示登记 `ver_equiv.yaml`，退出码 2、一条不落。`_cv` 加 `ruling_validate`（旧 cv 没有则跳过预检）。
+
 ## [0.6.8] - 2026-11-24
 
 - PATCH：`guji db pull|push|sync --only <路径>`（可多次；目录以 / 结尾）：只拉、只推、只合这些路径，范围外库里本机都不动；不扫整个数据目录、不整表读 source_files（Worker `prefix=`，旧 Worker 自动退回整表筛）、不碰字形库、不重建 glyph.db。新鲜度按路径记在状态文件 `only_revs`；不加 `--only` 行为不变（换包按条目对账，GM4 11-24）。
