@@ -43,5 +43,27 @@ def test_resolved_not_reopened(tmp_path):
 
 def test_land_argv_routes_text_id_only_to_land():
     out = land_argv(["main-pipe", "vol05", "-w", "/ws", "--text-id", "tid", "--land", "--force"])
-    assert out[:8] == ["land", "vol05", "-w", "/ws", "--text-id", "tid", "--apply", "--run"]
-    assert out[8:] == ["main-pipe", "vol05", "-w", "/ws", "--force"]
+    assert out[:7] == ["land", "vol05", "-w", "/ws", "--text-id", "tid", "--run"]
+    assert out[7:] == ["main-pipe", "vol05", "-w", "/ws", "--force"]
+
+
+def test_land_skips_on_same_digest_and_flags_structural(tmp_path, monkeypatch):
+    import guji_manager.datastore.workcopy as W
+    monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
+    ws = tmp_path / "ws"
+    res = {"cells": [_cell("1:1:1")], "fps": {}, "digest": "d1"}
+    r = land.land(ws, "vol05", text_id="t", chapter="005", res=res, apply=False, by="x", digest="d1")
+    assert r["changed"] and "开" in r["summary"]                  # 条目是空的 → 新开
+    f = land.landed_path(ws, "vol05")
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps({"digest": "d1"}), encoding="utf-8")
+    r = land.land(ws, "vol05", text_id="t", chapter="005", res=res, apply=False, by="x", digest="d1")
+    assert r["skipped"] == "digest" and not r["changed"]
+
+
+def test_apply_not_open_yet(tmp_path, monkeypatch):
+    import pytest
+    import guji_manager.datastore.workcopy as W
+    monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
+    with pytest.raises(SystemExit):
+        land.land(tmp_path / "ws", "vol05", text_id="t", chapter="005", res={"cells": [_cell("1:1:1")]}, apply=True, by="x")

@@ -107,7 +107,7 @@ def land_argv(rest: list[str]) -> list[str]:
     if len(args) < 2 or not ws or not tid:
         print("✗ guji pipeline <管线> <册> -w <工作区> --text-id <书 ID> --land：缺册、-w 或 --text-id", file=sys.stderr)
         raise SystemExit(2)
-    return ["land", args[1], "-w", ws, "--text-id", tid, "--apply", "--run", *cv_args]
+    return ["land", args[1], "-w", ws, "--text-id", tid, "--run", *cv_args]
 
 
 def route(argv: list[str]) -> list[str] | None:

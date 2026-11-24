@@ -41,29 +41,51 @@ def summarize(res: dict) -> str:
     return "没变（%d 格不动）" % res["不变"] if not res["changed"] else "，".join(parts) + f"，不动 {res['不变']}"
 
 
-def cv_pending_cells(ws: Path, book: str, out: Path) -> list[dict]:
-    """cv 入口 ``guji-cv pending-cells <册> -w <ws> --out <json>``（CV4 提供：从本机 products 算新待审格，
-    纯函数、不碰中心库／R2／网站／book-text）。没有这个命令就明说，不静默。"""
-    from .pipeline import cv_bin
-    r = subprocess.run([cv_bin(), "pending-cells", book, "-w", str(ws), "--out", str(out)], capture_output=True, text=True)
-    if r.returncode or not out.exists():
-        raise SystemExit(f"✗ cv 没有可用的 pending-cells（{(r.stdout + r.stderr).strip()[-200:]}）；"
-                         f"要 CV4 提供，或先用 --pending-json <文件> 直接给新待审格")
-    doc = json.loads(out.read_text(encoding="utf-8"))
-    return doc["cells"] if isinstance(doc, dict) else doc
+def cv_pending_cells(ws: Path, book: str, out_dir: Path) -> dict:
+    """cv 的纯函数入口（cv #1835，经门面）：本机现成 products → 新待审格。只读，不碰中心库／R2／网站／book-text。
+    返回 ``{cells, fps, sprites, digest, …}``；每格一张按内容寻址的单格图（雪碧图坐标会挪，不能用）。"""
+    from ._cv import pending_cells, products_root
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return pending_cells(products_root(), book, images=True, out_dir=out_dir)
 
 
-def land(ws: Path, book: str, *, text_id: str, chapter: str, cells: list[dict], fps: dict | None, apply: bool,
-         by: str) -> dict:
+def landed_path(ws: Path, book: str) -> Path:
+    return ws / "reports" / book / "_land" / "landed.json"
+
+
+def last_digest(ws: Path, book: str) -> str | None:
+    f = landed_path(ws, book)
+    try:
+        return json.loads(f.read_text(encoding="utf-8")).get("digest")
+    except (OSError, ValueError):
+        return None
+
+
+STRUCTURAL = ("开", "挪格", "图变", "重开", "关")        # 条目增减、挪格、图变：一定要动
+APPLY_READY = False   # 卡片字段（alt、原因、proof_fields）还没并进 doc 前，doc 级的「改」不可信，不开 --apply
+
+
+def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
+         digest: str | None = None) -> dict:
+    """一册收尾。``res`` 是 cv ``pending_cells`` 的返回（或 ``{"cells": [...], "fps": {...}}``）。
+    ``digest`` 与上次落定相同 → 整册跳过（不用对账）。"""
     from .datastore.workcopy import data_dir
     data = data_dir(ws)
+    items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
+    if digest and digest == last_digest(ws, book):
+        return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     store = P.ItemStore.open(data, text_id, chapter)
-    res = plan_book(store, cells, src=f"land:{book}", fps=fps, by=by)
-    out = {"book": book, "changed": res["changed"], "summary": summarize(res),
-           "items_path": str(P.items_path(data, text_id, chapter).relative_to(data))}
-    if apply and res["changed"]:
-        work = res["_store"]
-        out["written"] = work.save()
+    plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by)
+    structural = [k for k in STRUCTURAL if plan[k]]
+    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel,
+           "doc_only": [] if structural else plan["改"],
+           # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
+           "needs_rev_bump_check": bool(plan["挪格"])}
+    if apply:
+        if not APPLY_READY:
+            raise SystemExit("✗ --apply 暂不开放：卡片字段（alt、待审原因、proof_fields）还没并进条目 doc，直接写会把没变的格全判成「改」。"
+                             "现在只出计划；并入后开放")
+        out["written"] = plan["_store"].save()
     return out
 
 
@@ -96,10 +118,10 @@ def cmd_land(a) -> int:
     for b in books:
         if a.pending_json:
             doc = json.loads(Path(a.pending_json).read_text(encoding="utf-8"))
-            cells = doc["cells"] if isinstance(doc, dict) else doc
+            res = doc if isinstance(doc, dict) else {"cells": doc}
         else:
-            cells = cv_pending_cells(ws, b, ws / "reports" / b / "_land" / "pending-cells.json")
-        r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), cells=cells, fps=None, apply=a.apply, by=by)
+            res = cv_pending_cells(ws, b, ws / "reports" / b / "_land")
+        r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"))
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     changed = [r["book"] for r in results if r["changed"]]

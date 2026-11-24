@@ -15,6 +15,7 @@ from typing import Any
 #: 名字 → (cv 内模块, 属性名；None 表示模块本身)；与 cv `manager_api._EXPORTS` 同步，只给旧 cv 兜底用。
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
+    "pending_cells": ("feedback.pending_cells", "pending_cells"),   # 换包收尾：产物→待审格（cv #1835，GM4 11-24）
     "groups_of": ("groups.registry", "groups_of"),
     # opinions（P2 搬来）
     "data_home": ("core.workspace", "data_home"),
