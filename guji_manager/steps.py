@@ -87,8 +87,9 @@ def _raw_parser(sub, name: str, help_: str):
 
 def land_argv(rest: list[str]) -> list[str]:
     """``<管线> <册> -w <ws> --text-id <id> --land [cv 参数…]`` → ``land <册> -w <ws> --text-id <id> --apply --run <管线> <册> [cv 参数…]``。
-    ``--text-id`` 只给 land 用，不转给 cv。"""
-    args = [x for x in rest if x != "--land"]
+    ``--text-id`` 只给 land 用，不转给 cv。``--land`` 只出收尾计划，``--land-apply`` 才真写条目、推库、发站。"""
+    apply = "--land-apply" in rest
+    args = [x for x in rest if x not in ("--land", "--land-apply")]
     ws = tid = None
     cv_args: list[str] = []
     i = 0
@@ -107,7 +108,7 @@ def land_argv(rest: list[str]) -> list[str]:
     if len(args) < 2 or not ws or not tid:
         print("✗ guji pipeline <管线> <册> -w <工作区> --text-id <书 ID> --land：缺册、-w 或 --text-id", file=sys.stderr)
         raise SystemExit(2)
-    return ["land", args[1], "-w", ws, "--text-id", tid, "--run", *cv_args]
+    return ["land", args[1], "-w", ws, "--text-id", tid, *(["--apply"] if apply else []), "--run", *cv_args]
 
 
 def route(argv: list[str]) -> list[str] | None:
@@ -117,7 +118,7 @@ def route(argv: list[str]) -> list[str] | None:
     step, rest = argv[0], argv[1:]
     helpish = ("-h", "--help", "help", "commands")
     if step == "pipeline" and (not rest or (rest[0] not in STEP_OF and rest[0] not in ("help", "commands"))):
-        if "--land" in rest:             # 先调 cv 跑管线，再由 manager 收尾（待审条目对账；sheldon 11-23 定：对外交互都归 manager）
+        if "--land" in rest or "--land-apply" in rest:             # 先调 cv 跑管线，再由 manager 收尾（待审条目对账；sheldon 11-23 定：对外交互都归 manager）
             return land_argv(rest)
         return None                      # 真的跑管线：guji pipeline <管线> <册> …（-h 也给 cv 的帮助）
     if not rest or rest[0] in helpish:

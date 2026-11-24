@@ -4,10 +4,10 @@
 
 1. ``proof_fields.pending_fields(card)``：why、c、candidates、alt、prior…（卡来自 ``guji audit alt``，复审格走 ``--extra``）
 2. 复审格：``recheck: true`` ＋ 说明／旧人投票 id／旧字（``read_recheck``）
-3. 同字对照自检 ``seg_kind``／``seg_feature``，``why`` 与 ``seg_defect`` 合并（**还没接**，见 ``PENDING_STEPS``）
+3. 同字对照自检 ``seg_kind``／``seg_feature``，``why`` 与 ``seg_defect`` 合并（``read_seg_flags``／``apply_seg``）
 4. ``add_causes``：``pending_reason``、``pending_reason_cause(_detail)``、``grp``、``refc``
-5. 锚点原因 ``pending_reason_also``（A01–A03，book-text 定稿后算，**还没接**）
-6. ``alt[].g`` 字形图改按内容寻址（**还没接**）
+5. 锚点原因 ``pending_reason_also``（A01–A03，book-text 定稿后算；``anchor_reasons``，要 ``--export-char`` 与 ``--text-vdir``）
+6. ``alt[].g`` 字形图改按内容寻址（``alt_glyph_images``：一字一张 ``a<sha256 前 16 位>.webp``，不用按章雪碧图）
 
 ``PENDING_STEPS`` 非空时 ``guji land --apply`` 不开放（见 ``land.APPLY_READY``）。
 """
@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-PENDING_STEPS = ("seg_selfcheck", "anchor_reasons", "alt_glyph_content_addressed")
+PENDING_STEPS: tuple[str, ...] = ()      # 三项都接上了（11-24）；真产物验收归 QTW，见 land.APPLY_READY
 
 
 def read_recheck(path: Path, book: str) -> dict[str, dict]:
@@ -97,3 +97,133 @@ def enrich(cells: list[dict], *, ws: Path, book: str, products: Path, recheck: P
     if recheck and Path(recheck).exists():
         out = merge_recheck(out, read_recheck(recheck, book))
     return add_causes(out, products, book, glyph_db)
+
+
+# ---- 3. 同字对照自检 ----
+SELFCHECK_SRC = "seg_selfcheck"
+
+
+def read_seg_flags(path: Path, products: Path, book: str) -> tuple[list[dict], list[str]]:
+    """旗表（``seg_defect --gate`` 出的 tsv）→ (行, 送审类别)。要同名 ``.meta.json``，产物指纹对不上就判过期、报错（同 cv pending_list）。"""
+    import csv
+    from ._cv import ProductStore
+    from .review.seg_defect import meta_fresh
+    path = Path(path)
+    meta_p = path.with_name(path.name + ".meta.json")
+    if not meta_p.exists():
+        raise SystemExit(f"旗表 {path} 旁边没有 {meta_p.name}：核不了产物指纹，重跑 seg_defect --gate")
+    meta = json.loads(meta_p.read_text(encoding="utf-8"))
+    if not meta_fresh(meta, ProductStore(products), book):
+        raise SystemExit(f"旗表 {path} 过期：产物指纹和现行产物对不上，重跑 seg_defect --gate")
+    rows = list(csv.DictReader(path.open(encoding="utf-8"), delimiter="\t"))
+    for r in rows:
+        r["格号"] = r["格号"].removeprefix(f"{book}:")
+    return rows, list(meta.get("review_kinds") or ["clipped"])
+
+
+def seg_added_cells(rows: list[dict], kinds: list[str], have: set[str]) -> list[str]:
+    """旗表里要新放上单的格：已放行、通道不是 human、类别在送审类别里、且还不在单上。要把它们交给 cv ``pending_cells(extra=…)`` 出图。"""
+    out: list[str] = []
+    for r in rows:
+        cell = r["格号"]
+        if cell in have or cell in out:
+            continue
+        if r.get("放行") == "是" and r.get("通道") != "human" and r["seg_kind"] in kinds:
+            out.append(cell)
+    return out
+
+
+def apply_seg(cells: list[dict], rows: list[dict], kinds: list[str], added: set[str]) -> tuple[list[dict], int]:
+    """已在单上的格命中只加 ``selfcheck_kind``／``seg_feature`` 当证据；新放上单的格加 ``seg_kind``／``seg_feature``／``src``，``why`` 并上 ``seg_defect``。
+    返回 (新 cells, 已在单上加旗的格数)。"""
+    by_row: dict[str, dict] = {}
+    for r in rows:
+        by_row.setdefault(r["格号"], r)
+    out, tagged = [], 0
+    for c in cells:
+        c = dict(c)
+        r = by_row.get(c["cell"])
+        if r is not None:
+            if c["cell"] in added:
+                c.update({"seg_kind": r["seg_kind"], "seg_feature": r.get("特征") or "", "src": SELFCHECK_SRC})
+                why = list(c.get("why") or [])
+                c["why"] = why if "seg_defect" in why else why + ["seg_defect"]
+            elif not c.get("selfcheck_kind"):
+                c.update({"selfcheck_kind": r["seg_kind"], "seg_feature": r.get("特征") or ""})
+                tagged += 1
+        out.append(c)
+    return out, tagged
+
+
+# ---- 5. 锚点原因 ----
+def anchor_reasons(cells: list[dict], export_char: Path, text_vdir: Path, chapter: str) -> tuple[list[dict], dict]:
+    """A01–A03 按当前 book-text 现算（``closeout.plan.stamp_pending``，它只认文件，这里借临时单走一遍）。
+    没有标点也没有专名文件时什么都不写。返回 (新 cells, 计数)。"""
+    import tempfile
+    from .closeout.plan import stamp_pending
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / f"{chapter}.pending.json"
+        f.write_text(json.dumps({"cells": cells}, ensure_ascii=False), encoding="utf-8")
+        n = stamp_pending(f, Path(export_char), Path(text_vdir), chapter)
+        return json.loads(f.read_text(encoding="utf-8"))["cells"], n
+
+
+# ---- 6. alt 字形图按内容寻址 ----
+TILE, INK = 96, 0.80
+
+
+def _glyph_tile(img):
+    from PIL import Image
+    im = Image.fromarray(img).convert("L")
+    bbox = Image.eval(im, lambda v: 255 - v).getbbox()
+    if bbox:
+        im = im.crop(bbox)
+    k = TILE * INK / max(im.width, im.height)
+    im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+    t = Image.new("L", (TILE, TILE), 255)
+    t.paste(im, ((TILE - im.width) // 2, (TILE - im.height) // 2))
+    return t
+
+
+def alt_glyph_images(cells: list[dict], out_dir: Path, render=None) -> tuple[list[dict], list[dict]]:
+    """每个相似字一张字体字形图（96×96 webp），文件名按内容寻址 ``a<sha256 前 16 位>.webp``；``alt[].g={s,x:0,y:0,w,h}``。
+    两套字体都没有的字不出图、去掉旧 ``g``。``render(ch)`` → 256² 灰度数组或 None（缺省用 cv 字体渲染，iming 优先、jigmo 兜底）。
+    返回 (新 cells, sprites[{name,sha256,md5,bytes}])。同一字只出一张。"""
+    import hashlib
+    import io
+    if render is None:
+        from ._cv import clustering_glyph_selfcheck as GS
+        rs = [r for r in (GS.font_renderer(f) for f in ("iming", "jigmo")) if r]
+        if not rs:
+            raise SystemExit("找不到 iming／jigmo 字体，出不了相似字字形图")
+
+        def render(ch, _rs=rs):
+            return next((im for im in (r.render(ch) for r in _rs) if im is not None), None)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    made: dict[str, dict] = {}
+    sprites: dict[str, dict] = {}
+    for c in cells:
+        for x in c.get("alt") or ():
+            ch = x["c"]
+            if ch in made:
+                continue
+            img = render(ch)
+            if img is None:
+                made[ch] = None
+                continue
+            buf = io.BytesIO()
+            _glyph_tile(img).save(buf, "WEBP", quality=80)
+            raw = buf.getvalue()
+            sha = hashlib.sha256(raw).hexdigest()
+            name = f"a{sha[:16]}.webp"
+            (out_dir / name).write_bytes(raw)
+            made[ch] = {"s": name, "x": 0, "y": 0, "w": TILE, "h": TILE}
+            sprites[name] = {"name": name, "sha256": sha, "md5": hashlib.md5(raw).hexdigest(), "bytes": len(raw)}
+    new = []
+    for c in cells:
+        if c.get("alt"):
+            c = dict(c, alt=[{**x, "g": made[x["c"]]} if made.get(x["c"]) else {k: v for k, v in x.items() if k != "g"}
+                             for x in c["alt"]])
+        new.append(c)
+    return new, list(sprites.values())

@@ -87,3 +87,44 @@ def test_merge_cards_cv_keys_win():
     out = E.merge_cards([{"cell": "1:1:1", "review": "pending", "img": {"s": "c1"}}],
                         {"1:1:1": {"cell": "1:1:1", "ctx": {"char": "甲", "margin": 0.5, "source": "x"}}})
     assert out[0]["img"] == {"s": "c1"} and out[0]["ctx"]["c"] == "甲"
+
+
+def test_land_apply_route_flag():
+    out = land_argv(["p", "vol05", "-w", "/ws", "--text-id", "t", "--land-apply"])
+    assert "--apply" in out and out.index("--apply") < out.index("--run")
+
+
+def test_apply_seg_and_added_cells():
+    from guji_manager import land_enrich as E
+    rows = [{"格号": "1:1:1", "seg_kind": "clipped", "特征": "f1", "放行": "是", "通道": "machine"},
+            {"格号": "2:2:2", "seg_kind": "clipped", "特征": "f2", "放行": "是", "通道": "human"},
+            {"格号": "3:3:3", "seg_kind": "other", "特征": "", "放行": "是", "通道": "machine"},
+            {"格号": "9:9:9", "seg_kind": "clipped", "特征": "f9", "放行": "否", "通道": "machine"}]
+    kinds = ["clipped"]
+    assert E.seg_added_cells(rows, kinds, {"9:9:9"}) == ["1:1:1"]
+    out, tagged = E.apply_seg([{"cell": "1:1:1", "why": ["x"]}, {"cell": "9:9:9"}], rows, kinds, {"1:1:1"})
+    assert out[0]["why"] == ["x", "seg_defect"] and out[0]["seg_kind"] == "clipped" and out[0]["src"] == "seg_selfcheck"
+    assert out[1]["selfcheck_kind"] == "clipped" and tagged == 1
+
+
+def test_alt_glyph_images_content_addressed(tmp_path):
+    import numpy as np
+    from guji_manager import land_enrich as E
+    def render(ch):
+        a = np.full((256, 256), 255, dtype="uint8")
+        a[60:200, 60:200] = 0 if ch == "甲" else 128
+        return a
+    cells = [{"cell": "1:1:1", "alt": [{"c": "甲"}, {"c": "乙"}, {"c": "丙"}]}, {"cell": "2:2:2", "alt": [{"c": "甲", "g": {"s": "old"}}]}]
+    out, sprites = E.alt_glyph_images(cells, tmp_path, render=lambda ch: None if ch == "丙" else render(ch))
+    assert len(sprites) == 2 and all(s["name"].startswith("a") and (tmp_path / s["name"]).exists() for s in sprites)
+    assert out[0]["alt"][0]["g"]["s"] == out[1]["alt"][0]["g"]["s"]        # 同字同图
+    assert "g" not in out[0]["alt"][2]                                         # 没字形的不出图
+
+
+def test_attach_sprites_and_sheet_rev_unchanged(tmp_path):
+    st = _store(tmp_path, [{**_cell("1:1:1"), "img": {"s": "c1.webp"}}])
+    n = land.attach_sprites(st, [{"name": "c1.webp", "sha256": "ab", "md5": "cd", "bytes": 1}])
+    assert n == 1
+    head = {"rev": "001-r3", "cv_version": "0.9.0"}
+    sheet = P.export_sheet(st, head)
+    assert sheet["rev"] == "001-r3" and sheet["sprites"][0]["name"] == "c1.webp" and len(sheet["cells"]) == 1
