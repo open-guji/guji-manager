@@ -29,6 +29,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "EventLog": ("feedback.events", "EventLog"),
     "load_ver_equiv": ("feedback.rulings", "load_ver_equiv"),
     "page_cells_sha": ("feedback.rulings", "page_cells_sha"),
+    "ruling_validate": ("feedback.rulings", "validate_payload"),   # cv #1837 起；旧 cv 没有，调用方要兜底
     "pending_cells": ("feedback.pending_cells", "pending_cells"),
     "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "batches_root": ("core.workspace", "batches_root"),
