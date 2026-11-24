@@ -20,6 +20,8 @@ seed_admit 只收 `_VIS_RULING_SUBCLASSES` 里的子类（cv #1184 起含 L04）
 """
 from __future__ import annotations
 
+from ..ruling_write import append_rulings
+
 import argparse
 import csv
 import json
@@ -184,7 +186,7 @@ def main(argv=None) -> int:
         rows = [json.loads(x) for x in a.answers.read_text(encoding="utf-8").splitlines() if x.strip()]
         evs = answers_to_events(rows, batch=a.batch, subclass=a.subclass, model=a.model)
         log = _cv.RulingLog(str(a.ruling_dir.parent if a.ruling_dir.name == "rulings" else a.ruling_dir))
-        log.append(evs)
+        append_rulings(log, evs)
         ok = sum(1 for e in evs if e.payload["admit_ok"])
         print(f"写 {len(evs)} 条（可放 {ok}）→ {log.batch_path(a.batch)}；推库前 guji db pull，设 GUJI_ACTOR")
     return 0

@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from .ruling_write import append_rulings
+
 import argparse
 import json
 import sys
@@ -265,7 +267,7 @@ def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
         evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=cell,
                                                                     book=cell.split(":")[0] if cell.count(":") == 3 else None),
                               v, actor="model"))
-    log.append(evs)
+    append_rulings(log, evs)
     return len(evs)
 
 
