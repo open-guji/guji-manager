@@ -16,8 +16,8 @@ from pathlib import Path
 def page_sha(products: Path, book: str, page: int) -> str | None:
     """本页产物戳（cv `page_cells_sha`）；取不到（没有 Step3 切分产物）→ None。要先设工作区（读册配置）。"""
     try:
-        from open_guji_cv.feedback.rulings import page_cells_sha
-    except ImportError as e:   # cv 太旧，没有 #1832
+        from ._cv import page_cells_sha
+    except (ImportError, AttributeError) as e:   # cv 太旧，没有 #1832
         raise SystemExit("cv 版本太旧：没有 feedback.rulings.page_cells_sha（要 open-guji-cv #1832 之后）") from e
     from ._cv import ProductStore
     return page_cells_sha(book, page, ProductStore(Path(products)))
