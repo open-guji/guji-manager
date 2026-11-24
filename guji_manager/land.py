@@ -70,12 +70,19 @@ def summarize(res: dict) -> str:
     return "没变（%d 格不动）" % res["不变"] if not res["changed"] else "，".join(parts) + f"，不动 {res['不变']}"
 
 
+def products_of(ws: Path) -> Path:
+    """cv 的 ``products_root()`` 不收参数、按 ``GUJI_WORKSPACE`` 找（旧签名；新版也兼容无参）：先设环境变量再无参调用。"""
+    from ._cv import products_root
+    os.environ["GUJI_WORKSPACE"] = str(ws)
+    return Path(products_root())
+
+
 def cv_pending_cells(ws: Path, book: str, out_dir: Path, extra: list[str] | None = None) -> dict:
     """cv 的纯函数入口（cv #1835，经门面）：本机现成 products → 新待审格。只读，不碰中心库／R2／网站／book-text。
     返回 ``{cells, fps, sprites, digest, …}``；每格一张按内容寻址的单格图（雪碧图坐标会挪，不能用）。"""
-    from ._cv import pending_cells, products_root
+    from ._cv import pending_cells
     out_dir.mkdir(parents=True, exist_ok=True)
-    return pending_cells(products_root(ws), book, extra=extra or (), images=True, out_dir=out_dir)
+    return pending_cells(products_of(ws), book, extra=extra or (), images=True, out_dir=out_dir)
 
 
 def db_only(ws: Path, verb: str, paths: list[str]) -> int:
@@ -266,10 +273,9 @@ def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     """取新待审格并按 CV4 的次序并成完整条目 doc：pending_cells（带复审格、自检要放上单的格）→ 卡片字段 → 复审 → 自检
     → 待审原因 → 锚点原因 → 相似字字形图（按内容寻址）。返回 (res, 单图所在目录)。"""
-    from ._cv import products_root
     from .swap import chapter_of
     out_dir = ws / "reports" / book / "_land"
-    products = products_root(ws)
+    products = products_of(ws)
     rc = _E.read_recheck(Path(a.recheck), book) if a.recheck else {}
     rows, kinds = _E.read_seg_flags(Path(a.seg_flags), products, book) if a.seg_flags else ([], [])
     res = cv_pending_cells(ws, book, out_dir, extra=list(rc))
