@@ -55,7 +55,7 @@ def test_land_skips_on_same_digest_and_flags_structural(tmp_path, monkeypatch):
     r = land.land(ws, "vol05", text_id="t", chapter="005", res=res, apply=False, by="x", digest="d1")
     assert r["changed"] and "开" in r["summary"]                  # 条目是空的 → 新开
     f = land.landed_path(ws, "vol05")
-    f.parent.mkdir(parents=True)
+    f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"digest": "d1"}), encoding="utf-8")
     r = land.land(ws, "vol05", text_id="t", chapter="005", res=res, apply=False, by="x", digest="d1")
     assert r["skipped"] == "digest" and not r["changed"]
