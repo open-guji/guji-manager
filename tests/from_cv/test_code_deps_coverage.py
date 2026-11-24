@@ -37,6 +37,8 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
         "补进本闸 code_deps 会让各册 row_segment_gate 整体过期（A31 11-19）",
     ("open_guji_cv.steps.seal_detect", "open_guji_cv.utils.image_io"): "只读图",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.utils.image_io"): "只读图",
+    ("open_guji_cv.gates.border_detect_gate", "open_guji_cv.utils.image_io"):
+        "只读图（cv#1821 no_frame_skip 读灰度判空白页，缺省关；GM2 11-24 登记）",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.clustering.keben_counts"):
         "只在 solo_5b_cov 开时读刻例数（cv#1278，缺省关；参数进指纹，缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 solo_5b 之前要把本模块并入该册指纹（随 solo_5b 启用的 PR 补）",
