@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-24，GM4 整理第四步数据库表）：中心库 `files.doc`、`anchors.doc` 与 `raw` 同内容，importer 不再写（files 写 NULL、anchors 写空串，因该列 NOT NULL 且 D1 删不掉列）；`central_gc._file_rows` 改从 `raw` 解析。配套 cv#1845、workspace-data#35。旧版 manager 照写不报错，只是库里多存一份。L0。
 - MINOR：页型 `col_check` 1.1.0：items 可带 `screen`（分屏键），给了就按它分屏、保持输入顺序，一屏可混放不同页的列（每列标「册·页·列」）；不给照旧一页书一屏（Sheldon 11-23：全唐文这类分得清的书整列看、一屏多放几列）。
 - PATCH：`ctx-ruling write`／`rulings-hits --rekey-vis` 对齐 cv #1837 写前校验：试跑就预检（版本 seed_admit 不认的逐条列出，退出码 2）；真写遇 cv 拒写不抛栈，打原因、提示登记 `ver_equiv.yaml`，退出码 2、一条不落。`_cv` 加 `ruling_validate`（旧 cv 没有则跳过预检）。
 
