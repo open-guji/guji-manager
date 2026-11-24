@@ -150,3 +150,34 @@ def test_by_prefix_reads_without_book(monkeypatch):
     monkeypatch.setattr(WI, "fetch", fake_fetch)
     assert [v["n"] for v in WI.by_prefix("thread", "th:x:")] == [1, 2]
     assert got["args"] == ("thread", "")
+
+
+def test_kv_retry_unions_partial_reads(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    a, b, c = vote("1:1:1", "char", "甲"), vote("1:1:2", "none"), vote("1:1:3", "none")
+    seq = iter([RuntimeError("500"), [a, b], [a, c], [b, c]])
+
+    def fn():
+        x = next(seq)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    got = C._kv_retry(fn)
+    assert sorted(WI.vote_id(v) for v in got) == sorted(WI.vote_id(v) for v in (a, b, c))
+    with pytest.raises(SystemExit, match="KV 管理读失败"):
+        C._kv_retry(lambda: (_ for _ in ()).throw(RuntimeError("x")), tries=1, reads=1)
+
+
+def test_votes_default_is_inbox(monkeypatch):
+    import argparse
+    from guji_manager import cli_cellvotes as CV, collect as C
+    monkeypatch.delenv("GUJI_VOTES_FROM", raising=False)
+    assert C.votes_from_flag() == "--from-inbox"
+    a = argparse.Namespace(from_kv=False, from_inbox=False, from_file=None)
+    assert CV._live(a) and a.from_inbox
+    b = argparse.Namespace(from_kv=False, from_inbox=False, from_file="x.jsonl")
+    assert not CV._live(b)
+    monkeypatch.setenv("GUJI_VOTES_FROM", "kv")
+    assert C.votes_from_flag() == "--from-kv"
+    c = argparse.Namespace(from_kv=False, from_inbox=False, from_file=None)
+    assert not CV._live(c)

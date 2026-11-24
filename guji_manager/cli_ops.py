@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""运维命令：snap（快照导入）、archive（归档包）、release／deploy（发版与部署检查）。
+"""运维命令：snap（快照导入）、archive（归档包）。release／deploy 已于 2026-11-22 删除（K 道发版与 production 部署早已不用）。
 
 拆分 P2（2026-11-02）从 open-guji-cv 原样搬来；cv 内部一律经 `._cv` 取。
 """
@@ -9,62 +9,6 @@ from . import _cv  # cv_repo()：本文件原在 cv 包里，按 __file__ 找 cv
 import json
 import sys
 from pathlib import Path
-
-
-def cmd_release(args) -> None:
-    """`guji release check`：候选提交跟上一个 `cv-*` tag 比（K 道，2026-09-26）。
-    见 `open_guji_cv/ops/release_check.py` 模块头。"""
-    from ._cv import ops_release_check as rc
-    if args.action != "check":
-        print(f"未知 action: {args.action}", file=sys.stderr)
-        sys.exit(1)
-    repo = Path(args.repo).resolve() if args.repo else _cv.cv_repo()
-    res = rc.release_check(repo, args.candidate, against=args.against, version=args.version,
-                           run_tests=not args.no_tests)
-    if args.json:
-        print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
-    else:
-        print(res.draft)
-    if args.write_baseline:
-        import json as _json
-        baseline_path = repo / rc.BASELINE_REL
-        baseline_path.parent.mkdir(parents=True, exist_ok=True)
-        baseline_path.write_text(_json.dumps({"failed": res.test_result["failed"],
-                                              "skipped": res.test_result["skipped"],
-                                              "version": res.version},
-                                             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"已写基线：{baseline_path}", file=sys.stderr)
-    if res.test_diff["regressed"]:
-        print("✗ 全量测试比上一版多了失败/跳过——这是发布前唯一的硬门槛，见上面「全量测试」一节",
-              file=sys.stderr)
-        sys.exit(1)
-
-
-def cmd_deploy(args) -> None:
-    """`guji deploy check`：服务器定时器跑，拉模式部署 `production` 分支（K 道，2026-09-26）。
-    见 `open_guji_cv/ops/deploy_check.py` 模块头。"""
-    from ._cv import ops_deploy_check as dc
-    if args.action != "check":
-        print(f"未知 action: {args.action}", file=sys.stderr)
-        sys.exit(1)
-    repo = Path(args.repo).resolve() if args.repo else _cv.cv_repo()
-    products_root = Path(args.products).resolve() if args.products else None
-    result = dc.deploy_check(repo, branch=args.branch, service=args.service, base_url=args.base_url,
-                             products_root=products_root, dry_run=args.dry_run,
-                             state_path=repo / "runs" / "deploy_state.json")
-    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
-    stale = None
-    if result.status == dc.DEPLOYED and args.workspace:
-        stale = dc.collect_stale_summary(Path(args.workspace).resolve())
-        if stale:
-            print("过期步（排进夜间重算队列，只写清单不自动起跑批）：", file=sys.stderr)
-            for book, steps in sorted(stale.items()):
-                print(f"  {book}: {', '.join(steps)}", file=sys.stderr)
-    if args.overview and not args.dry_run and result.status != dc.NO_UPDATE:
-        path = dc.write_deploy_record(Path(args.overview).resolve(), result, stale_summary=stale)
-        print(f"部署记录：{path}", file=sys.stderr)
-    if result.status in (dc.FETCH_FAILED, dc.RESOLVE_FAILED, dc.MERGE_FAILED, dc.ROLLED_BACK):
-        sys.exit(1)
 
 
 def cmd_archive(args) -> None:
@@ -263,26 +207,6 @@ def _snap_index_files(args, ws_dir: Path, cv_repo: Path, ws_repo: Path | None) -
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("release", help="[v2] 发版前检查：release check <commit>（K 道，2026-09-26）")
-    p.add_argument("action", choices=["check"])
-    p.add_argument("candidate", nargs="?", default="HEAD", help="候选提交，默认当前 HEAD")
-    p.add_argument("--against", default=None, help="对比的旧提交/tag，默认上一个 cv-* tag")
-    p.add_argument("--version", default=None, help="版本号，默认 cv-YYYY.MM.DD（当天已有就加 -2/-3）")
-    p.add_argument("--repo", default=None, help="cv 仓根，默认本模块所在的仓")
-    p.add_argument("--no-tests", action="store_true", help="跳过全量测试（只看指纹影响清单，调试用）")
-    p.add_argument("--write-baseline", action="store_true",
-                   help="把这次的失败/跳过写成新基线（ops/baseline_tests.json），发布通过后再加")
-    p.add_argument("--json", action="store_true")
-    p = sub.add_parser("deploy", help="[v2] 服务器部署检查：deploy check（K 道，2026-09-26）")
-    p.add_argument("action", choices=["check"])
-    p.add_argument("--repo", default=None, help="cv 仓（服务器上跟 production 分支的那个 checkout），默认本模块所在的仓")
-    p.add_argument("--branch", default="production")
-    p.add_argument("--service", default="guji-cv-console", help="systemd --user 服务名")
-    p.add_argument("--base-url", default="http://127.0.0.1:8640", help="健康检查打的地址")
-    p.add_argument("--products", default=None, help="products 根目录，探测跑批锁用；不给就不查锁")
-    p.add_argument("--workspace", default=None, help="部署成功后 guji status 各书要用的工作区")
-    p.add_argument("--overview", default=None, help="overview 仓路径，成功/失败都写一张部署记录并推")
-    p.add_argument("--dry-run", action="store_true", help="只打印会做什么，不改任何东西")
     p = sub.add_parser("archive", help="[v2] 归档包：fetch 取回 open-guji-dataset Release 上的归档 tar，核 sha256 后解到空目录")
     p.add_argument("action", choices=["fetch"])
     p.add_argument("tag", help="Release tag，如 archive-96mid1ogzk-vol03-0.1.0-1")
@@ -340,6 +264,4 @@ def add_parser(sub) -> None:
 COMMANDS = {
     "snap": (add_parser, cmd_snap),
     "archive": (add_parser, cmd_archive),
-    "release": (add_parser, cmd_release),
-    "deploy": (add_parser, cmd_deploy),
 }

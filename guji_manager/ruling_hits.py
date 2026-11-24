@@ -133,7 +133,7 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
     vc = ev.get("vis_ctx")
     if isinstance(vc, dict):
         return ("按 cv 当场记的 5c 窗口也对得上、manager 能核的条件都满足，仍没放：" + when
-                + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 A31") + note, False
+                + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 GM2") + note, False
     hit = sorted({ch for ch in (left or "")[-20:] + (right or "")[:20] if ch in cp_targets})
     if hit:
         return ("多半是码位归一：产物窗口里有码位表目标字 " + "、".join(hit) + "，seed_admit 最后一步才把邻格放行字改成它们，"
@@ -323,6 +323,83 @@ def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: in
             print(f"  取 {b} 包 {lab}（只解 seed_admit、align_ref）{dt:.0f} 秒", file=sys.stderr)
 
 
+# ---- 重放预演：重放包 vs ★main 基线，只看有 AI 裁定的格（2026-11-23，GM4）----
+# 做法：先用 `guji job submit --from seed_admit`（缺省只跑有新裁定的页）出一个**不标 main** 的重放包，取回后
+# `guji rulings-hits --books vol21 --products <基线包根> --replay <重放包根>`：对比这些格放行了没有、字变没变。
+# 规则与正式重放同一套（就是 seed_admit 本身的结果），本命令不判规则，只对账。
+
+def _ctx_ruling(rec: dict):
+    """格记录里 ctx 那一路的 AI 裁定：(字, 把握) 或 None。"""
+    g = ((rec.get("evidence") or {}).get("group") or {})
+    for sv in g.get("solvers") or []:
+        if str(sv.get("via") or sv.get("solver") or "").startswith("ctx") and sv.get("char"):
+            return sv["char"], sv.get("llm_conf") or ""
+    return None
+
+
+def _cells_of(root: Path, book: str) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for f in sorted((Path(root) / book / "seed_admit").glob("p*.json")):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for col in doc.get("seed_admit", doc).get("columns") or []:
+            for c in col.get("chars") or []:
+                if c.get("id"):
+                    out[c["id"]] = c
+    return out
+
+
+def replay_diff(base_root: Path, new_root: Path, book: str) -> list[dict]:
+    """重放包相对基线的变化；只列重放包里 ctx 那路有 AI 裁定的格（重放包没有的页不比，按页重放时只比重放过的页）。
+    类别：新放行（基线待审→放行）、新放行且改字、仍待审、放行改字、放行退回待审、没变；重放包里放行后证据不留 ctx 字的格，AI字列空，看「通道」列（human 通道可能是人裁事件，也可能是已落地的 AI 裁定，GM2 评估里 vol21 的一致格就是这样）。"""
+    base, new = _cells_of(base_root, book), _cells_of(new_root, book)
+    rows = []
+    for cid, n in new.items():
+        b = base.get(cid)
+        if b is None:
+            continue
+        ai = _ctx_ruling(n) or _ctx_ruling(b)
+        bad, nad = bool(b.get("admit")), bool(n.get("admit"))
+        bch, nch = b.get("char") or "", n.get("char") or ""
+        changed = (bad != nad) or (nch != bch)
+        if ai is None and not changed:
+            continue          # 没裁定、也没变：不列
+        if ai is None:
+            ai = ("", "")     # 变了但看不出裁定（放行后证据里不留 ctx 字）：裁定字留空，通道列可看来路
+        if not bad and nad:
+            k = "新放行·改字" if nch != bch else "新放行·字同机器首选"
+        elif not bad and not nad:
+            k = "仍待审"
+        elif bad and not nad:
+            k = "放行退回待审"
+        else:
+            k = "放行·改字" if nch != bch else "没变"
+        rows.append({"cell": cid, "类别": k, "基线": ("放行" if bad else "待审") + f"·{bch}", "重放": ("放行" if nad else "待审") + f"·{nch}",
+                     "通道": n.get("channel") or "", "AI字": ai[0], "AI把握": ai[1],
+                     "AI＝机器首选": ("" if not ai[0] else ("是" if ai[0] == bch else "否")), "疑问码": ";".join(n.get("doubts") or [])[:120]})
+    return rows
+
+
+def replay_cmd(a) -> None:
+    from collections import Counter
+    books = [b.strip() for b in a.books.split(",") if b.strip()]
+    allrows = []
+    for b in books:
+        rows = replay_diff(Path(a.products), Path(a.replay), b)
+        allrows += rows
+        cnt = Counter(r["类别"] for r in rows)
+        print(f"{b}：对账格（有 AI 裁定或有变化）{len(rows)}；" + "、".join(f"{k} {v}" for k, v in cnt.most_common()), file=sys.stderr)
+    cols = ["cell", "类别", "基线", "重放", "通道", "AI字", "AI把握", "AI＝机器首选", "疑问码"]
+    text = "\t".join(cols) + "\n" + "".join("\t".join(str(r.get(c) or "") for c in cols) + "\n" for r in allrows)
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+        print(f"清单：{a.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+
+
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("rulings-hits", help="AI 文意裁定命中核对：产物里仍在问、却有裁定没命中的格（窗口变了）；--rekey 按产物窗口补写")
     p.add_argument("--books", required=True, help="册，逗号分隔（如 001,002 或 vol20）")
@@ -331,6 +408,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--out", default=None, help="清单 tsv（缺省打到标准输出）")
     p.add_argument("--rekey", action="store_true", help="按产物里的窗口另写一条裁定（同提示词版本的才写）")
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
+    p.add_argument("--replay", default=None, metavar="重放包根",
+                   help="重放预演：--products 当基线（★main 包根），这里给重放包根，只对账有 AI 裁定的格（新放行／改字／仍待审／退回）；不写库")
     p.add_argument("--vis-subclasses", default=None,
                    help="书级 seed_admit.vis_ruling_ctx_subclasses（如殿本 P,D）：判「子类不收」时一并算收（缺省只算 Z,N）")
     p.add_argument("--fetch", action="store_true",
@@ -346,6 +425,8 @@ def _cmd(a) -> None:
     import os
     if a.workspace:
         os.environ["GUJI_WORKSPACE"] = str(Path(a.workspace).resolve())
+    if a.replay:
+        return replay_cmd(a)
     cmd(a)
 
 

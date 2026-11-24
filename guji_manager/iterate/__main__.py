@@ -8,8 +8,9 @@ SUB = {"round-report": "round_report", "gold": "gold", "audit": "audit", "levera
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] not in SUB:
-        print("用法：guji-manager iterate {" + "|".join(SUB) + "} …（-h 看各自参数）", file=sys.stderr)
-        return 2
+        asked = bool(argv) and argv[0] in ("-h", "--help")
+        print("用法：guji-manager iterate {" + "|".join(SUB) + "} …（-h 看各自参数）", file=sys.stdout if asked else sys.stderr)
+        return 0 if asked else 2
     import importlib
     mod, _, fn = SUB[argv[0]].partition(":")
     return getattr(importlib.import_module(f"guji_manager.iterate.{mod}"), fn or "main")(argv[1:])

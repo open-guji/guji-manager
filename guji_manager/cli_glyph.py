@@ -1,43 +1,15 @@
 # -*- coding: utf-8 -*-
-"""字形库与语料命令：store（推中心库）、recheck、glyphlib、rekey-cells、promote、corpus。
+"""字形库与语料命令：recheck、glyphlib、rekey-cells、promote、corpus。
 
 拆分 P1（`doc/design/拆分-pipeline与manager.md`）从 `cli_v2` 原样搬出；经 `cli_v2.MANAGER_CLI_MODULES` 登记。
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
 
 from ._cv import cli_v2   # 共用辅助现取（测试 monkeypatch cli_v2 照样生效）
-
-
-def cmd_store(args) -> None:
-    """`guji store check|commit -w <工作区>`：glyph.db 导出成字形库账本、推进中心库（GUJI-608/611）。
-
-    等同 `guji db push`（check = `--dry-run`）。字形库与人裁不再提交进工作区 git；没迁的工作区先
-    `guji db migrate`。"""
-    import os
-    from ._cv import central_marker, workspace_root
-    if not args.workspace:
-        print("✗ 要 -w <工作区>", file=sys.stderr); sys.exit(2)
-    os.environ["GUJI_WORKSPACE"] = str(Path(args.workspace).expanduser().resolve())
-    ws = workspace_root()
-    if not central_marker(ws):
-        print(f"✗ 工作区 {ws} 还没迁进中心库：字形库与人裁不再提交进工作区 git，"
-              f"先 `guji db migrate -w {ws}`", file=sys.stderr)
-        sys.exit(2)
-    from .cli_db import push_workspace
-    res = push_workspace(ws, dry_run=args.action != "commit", allow_delete=args.allow_deletions,
-                         with_glyph=True)    # store commit 就是「导出 glyph.db 并推」
-    if args.json:
-        print(json.dumps(res, ensure_ascii=False, indent=1, default=str))
-    n = sum(v.get("changes", 0) for v in (res.get("per_ws") or {}).values())
-    if args.action == "commit":
-        print(f"已推进中心库：{n} 处变更，rev {res.get('rev_from')} → {res.get('rev_to')}" if n else "没有改动")
-    else:
-        print(f"检查通过：推送会写 {n} 处变更（check 不写；要推用 `guji store commit` 或 `guji db push`）")
 
 
 def cmd_recheck(args) -> None:
@@ -398,12 +370,6 @@ def cmd_promote(args) -> None:
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("store", help="[v2] glyph.db 导出并推进中心库（= guji db push；check = 只看不写）")
-    p.add_argument("action", choices=["check", "commit"])
-    p.add_argument("-w", "--workspace", default=None, help="书的工作区目录")
-    p.add_argument("--push", action="store_true", help=argparse.SUPPRESS)        # 旧参数，已无作用（总是推进中心库）
-    p.add_argument("--allow-deletions", action="store_true", help="确认过删整个文件是对的，放行")
-    p.add_argument("--json", action="store_true")
     p = sub.add_parser("recheck",
                        help="[v2] Step5-a 点名重算：库变了不自动重跑，要吃新库就在这里点名格")
     p.add_argument("book")
@@ -482,7 +448,6 @@ def add_parser(sub) -> None:
 
 #: 并进 `guji` 的子命令（同插件接口 `guji.commands`）
 COMMANDS = {
-    "store": (add_parser, cmd_store),
     "recheck": (add_parser, cmd_recheck),
     "glyphlib": (add_parser, cmd_glyphlib),
     "pua-table": (add_parser, cmd_pua_table),

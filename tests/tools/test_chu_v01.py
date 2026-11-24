@@ -25,3 +25,44 @@ def test_chapter_from_book_digits(tmp_path, monkeypatch):
     assert m.chapter_for("vol12", tmp_path) == "012"
     with pytest.raises(SystemExit):
         m.chapter_for("abc", tmp_path)
+
+
+def _bt(tmp_path):
+    """最小 book-text 条目 + 一章导出（char/cord/norm）。"""
+    import json
+    tid = "abc123"
+    d = tmp_path / "bt" / "Book" / "1" / "2" / "3" / tid
+    (d / "default").mkdir(parents=True)
+    (d / "default" / "index.json").write_text(json.dumps({"chapters": []}), encoding="utf-8")
+    (d / "manifest.json").write_text(json.dumps({"versions": [{"key": "default"}]}), encoding="utf-8")
+    ex = tmp_path / "export"
+    ex.mkdir()
+    (ex / "009.char.json").write_text(json.dumps({"version": "0.1.0"}), encoding="utf-8")
+    (ex / "009.cord.json").write_text(json.dumps({"pages": [{"page": 3}, {"page": 5}]}), encoding="utf-8")
+    (ex / "009.norm.json").write_text("{}", encoding="utf-8")
+    return tmp_path / "bt", tid, d / "default", ex
+
+
+def _entry(dd):
+    import json
+    return json.loads((dd / "index.json").read_text(encoding="utf-8"))["chapters"][0]
+
+
+def test_bt_add_chapter_copies_gaps(tmp_path):
+    """Web 11-23：章有 NNN.gaps.json 就拷进版本目录、条目写 gaps_file。"""
+    bt, tid, dd, ex = _bt(tmp_path)
+    body = '{"schema": "guji-gaps/0.1", "gaps": []}'
+    (ex / "009.gaps.json").write_text(body, encoding="utf-8")
+    _mod().bt_add_chapter(bt, tid, "009", ex, "卷九", "t")
+    ent = _entry(dd)
+    assert ent["gaps_file"] == "009.gaps.json" and ent["cord_file"] == "009.cord.json"
+    assert (dd / "009.gaps.json").read_text(encoding="utf-8") == body
+
+
+def test_bt_add_chapter_no_gaps(tmp_path):
+    """没有缺页文件就不写 gaps_file；重出时缺页已撤，旧文件删掉。"""
+    bt, tid, dd, ex = _bt(tmp_path)
+    (dd / "009.gaps.json").write_text("{}", encoding="utf-8")        # 上一次出的旧文件
+    _mod().bt_add_chapter(bt, tid, "009", ex, "卷九", "t")
+    assert "gaps_file" not in _entry(dd)
+    assert not (dd / "009.gaps.json").exists()

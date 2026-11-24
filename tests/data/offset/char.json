@@ -1,0 +1,22 @@
+{
+  "$schema": "https://open-guji.org/schema/char/v0.2.json",
+  "version": "1.0.0",
+  "book_id": "fixture",
+  "volume": 1,
+  "pages": [
+    {"page": 1, "columns": []},
+    {"page": 3, "columns": [
+      {"col": 1, "cells": [{"a": "3:1:1", "c": "欽"}, {"a": "3:1:2", "c": "定"}]},
+      {"col": 4, "raised": 1, "cells": [
+        {"a": "3:4:-1", "c": "讀"}, {"a": "3:4:1", "c": "易"},
+        {"a": "3:4:6a", "c": "兩"}, {"a": "3:4:7a", "c": "江"},
+        {"a": "3:4:6b", "c": "採"}, {"a": "3:4:7b", "c": "進"},
+        {"a": "3:4:8", "c": "□", "lacuna": true}
+      ]},
+      {"col": 9, "kind": "blank", "cells": []}
+    ]},
+    {"page": 4, "columns": [
+      {"col": 1, "cells": [{"a": "4:1:1", "c": "春"}]}
+    ]}
+  ]
+}

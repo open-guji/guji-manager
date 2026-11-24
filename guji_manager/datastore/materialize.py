@@ -6,7 +6,7 @@
 ``patches/<实例 id，':' 换成 '_'>.png``；锚图（``anchor_patches_meta``）、整理本（``corpus_files``）
 按表里的 ``src_path`` 落回原路径（``scope.BLOB_TABLES``）。
 
-**省流量**（Neon 免费档按公网流量计，每月 5 GiB；10-19 一次 siku-zongmu 整拉约 120 MB）：
+**省流量**（当初为 Neon 免费档公网流量而设，10-19 一次 siku-zongmu 整拉约 120 MB；2026-11-18 迁 D1 后按读行数计费，少读行同样省钱）：
 给了 ``reuse``（本机已有的同路径文件）时，整文件 sha 与库里一致的直接用本机字节，只向库要变了的文件；
 向库要行时只取还原要用的列（``src_path``、``src_line``、``raw``），不取导入时拆出来的列。
 """
@@ -20,7 +20,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-from .scope import BLOB_TABLES, GS, sha256
+from .scope import BLOB_TABLES, GS, TABLES, sha256
 
 WHOLE_TABLES = ("workspaces", "books", "files")
 LINE_COLS = ("src_path", "src_line", "raw")
@@ -165,7 +165,7 @@ def materialize(src, ws: str, dest: str | Path, prefixes: tuple[str, ...] = (GS,
 
 #: 整文件表（files 等）按路径分批取，每批原文合计不超过这么多字节、不超过这么多个文件（2026-11-02）。
 #: files 表一行就是一整个文件：殿本线上单每份约 1.1 MB、字形库清单每份 3.4 MB，整表 512 行 180 MB。原先要的文件
-#: 超过 BY_PATH_MAX 就整表按 2000 行一页取，Worker 读挂（500）再减半重试——每试一次 Neon 都要把整页送一遍，
+#: 超过 BY_PATH_MAX 就整表按 2000 行一页取，Worker 读挂（500）再减半重试——每试一次库都要把整页送一遍，
 #: 10-31 起一天出流量 48 GB 的大头就在这里。按路径、按字节分批，只取要的，也不会读挂。
 WHOLE_BATCH_BYTES = 8 * 1024 * 1024
 WHOLE_BATCH_FILES = 100
@@ -229,7 +229,9 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
             continue
         fetched += len(need)
         want = set(need)
-        cols = WHOLE_COLS if tbl in WHOLE_TABLES else LINE_COLS
+        spec = TABLES.get(tbl)
+        kcols = spec.key if spec is not None and spec.key_ordered else ()
+        cols = WHOLE_COLS if tbl in WHOLE_TABLES else LINE_COLS + tuple(c for c in kcols if c not in LINE_COLS)
         if tbl in WHOLE_TABLES:
             rows = _whole_rows(src, tbl, ws, cols, need, files)
         else:
@@ -241,13 +243,23 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
                     texts[r["src_path"]] = r["raw"].encode("utf-8")
             continue
         lines: dict[str, dict[int, str]] = defaultdict(dict)
+        by_key: dict[str, list[tuple[tuple, str]]] = defaultdict(list)
         for r in rows:
             if r["src_path"] in want:
                 lines[r["src_path"]][int(r["src_line"])] = r["raw"]
+                if kcols:
+                    by_key[r["src_path"]].append((tuple(str(r[c]) for c in kcols), r["raw"]))
         for p in need:
             f = files[p]
             have = lines.get(p, {})
             n = int(f["n_lines"])
+            if kcols:
+                # 按主键排的文件：导入不推「只是行号变了」，库里行号可能过时，先按主键排回，sha 对上就用
+                keyed = [raw for _, raw in sorted(by_key.get(p, []))]
+                b = ("\n".join(keyed) + ("\n" if f["final_newline"] and keyed else "")).encode("utf-8")
+                if len(b) == int(f["bytes"]) and sha256(b) == f["sha256"]:
+                    texts[p] = b
+                    continue
             extra = [i for i in have if i >= n]
             if extra:
                 raise MaterializeError(f"{p}: 库里有超出 n_lines 的行 {sorted(extra)[:5]}")

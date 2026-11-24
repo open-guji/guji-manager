@@ -136,9 +136,9 @@ class Job:
             try:
                 # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
                 # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
-                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress)
+                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress,
+                         seen={"name": S.who(), "state": "busy", "job_id": self.id})   # 续租＋报到（D1 上一次请求）
                 if why != "lost":
-                    db(S.worker_seen, S.who(), state="busy", job_id=self.id)
                     BOARD.publish(db)
                 if REAP_EVERY > 0 and n % REAP_EVERY == 0 and why != "lost":
                     try:
@@ -353,7 +353,7 @@ class Job:
         self.ev(f"人裁 {got} 格，对上")
 
     def glyph_recheck(self) -> None:
-        """改钉字形库后只点名受影响的格（`guji recheck --glyph-diff <旧号>`，见 doc/受控重跑.md 第五节）；
+        """改钉字形库后只点名受影响的格（`guji recheck --glyph-diff <旧号>`，见 cv doc/参考/受控重跑.md 第五节）；
         接着的 pipeline 不加 --force，只重算点名的格和它们的下游。"""
         sp = self.spec
         out = self.guji("recheck", sp["book"], "--glyph-diff", str(sp["glyph_diff"]), "-w", self.ws or "")
@@ -537,6 +537,10 @@ class Job:
             freed = _clean_book_artifacts(self.ws, sp["book"])      # 包已进中心库，本机该册缓存和产物副本可重建
             if freed:
                 _say_clean(f"单 #{self.id} 已存包，清本机 {sp['book']} 的缓存、产物副本和原图，释放 {freed / 2**20:.0f} MB")
+        if getattr(self, "pushed", False):                          # 只在 pack push 成功后才清（失败、没推到的不清）
+            freed = _clean_blob_cache()
+            if freed:
+                _say_clean(f"单 #{self.id} 已存包，清本机图缓存 guji-data，释放 {freed / 2**20:.0f} MB（可从中心库重取）")
         return outcome
 
 
@@ -630,18 +634,49 @@ def _manager_outdated() -> bool:
     return r.returncode == 0 and len(ids) == 2 and ids[0] != ids[1]
 
 
-def _refresh_manager() -> None:
-    """把本包检出切到 origin/main（同 cv `scripts/ensure_manager.sh`）。可编辑安装，exec 之后就是新代码。"""
+#: 自更新 exec 时传给新进程的目标（runner HEAD + manager HEAD），新进程发现仍过期就不再 exec（见 work）
+REEXEC_KEY_ENV = "GUJI_JOBS_REEXEC_KEY"
+
+
+def _update_key() -> str | None:
+    """当前两个检出的 HEAD 组成的标识：自更新前后比对用。读不出来返回 None。"""
+    def head(root: Path, rev: str = "HEAD") -> str | None:
+        try:
+            r = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=12", rev], capture_output=True,
+                               text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout.strip() or None if r.returncode == 0 else None
+    rh = head(RUNNER_ROOT)
+    mh = head(MANAGER_ROOT) if _managed() else "-"
+    return f"{rh}+{mh}" if rh and mh else None
+
+
+def _refresh_manager() -> bool:
+    """把本包检出切到 origin/main（同 cv `scripts/ensure_manager.sh`）。可编辑安装，exec 之后就是新代码。
+
+    返回是否真的切到了：checkout 失败（如本地有改动）或切完 guji_manager 目录的树仍不等于 FETCH_HEAD 都算没成。
+    旧版本忽略了 checkout 的失败，于是「已拉新代码」照常 exec，而代码没换，下一个进程又判过期，一直循环。"""
     if not _managed():
-        return
+        return True
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         subprocess.run(["git", "-C", str(MANAGER_ROOT), "fetch", "-q", "--depth", "1", "origin", "main"],
                        capture_output=True, timeout=120, env=env, check=True)
-        subprocess.run(["git", "-C", str(MANAGER_ROOT), "checkout", "-q", "--detach", "FETCH_HEAD"],
-                       capture_output=True, timeout=60, env=env)
-    except (OSError, subprocess.SubprocessError):
-        pass
+        r = subprocess.run(["git", "-C", str(MANAGER_ROOT), "checkout", "-q", "--detach", "FETCH_HEAD"],
+                           capture_output=True, text=True, timeout=60, env=env)
+        if r.returncode != 0:
+            print(f"[runner 自更新] manager 检出切到 origin/main 失败：{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+            return False
+        ids = subprocess.run(["git", "-C", str(MANAGER_ROOT), "rev-parse", "HEAD:guji_manager", "FETCH_HEAD:guji_manager"],
+                             capture_output=True, text=True, timeout=30).stdout.split()
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[runner 自更新] manager 检出：{type(e).__name__}: {str(e)[:300]}", flush=True)
+        return False
+    if len(ids) != 2 or ids[0] != ids[1]:
+        print("[runner 自更新] manager 切换后 guji_manager 目录仍和 origin/main 不一样", flush=True)
+        return False
+    return True
 
 
 #: 自更新 merge 的超时（秒）。落后几百个提交时 checkout 慢，原来 120 秒偏紧
@@ -654,7 +689,8 @@ def _refresh_runner() -> bool:
     失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
     当时看不出是超时还是 merge 报错。"""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    _refresh_manager()
+    if not _refresh_manager():
+        return False
     try:
         r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
                            text=True, timeout=REFRESH_TIMEOUT_S, env=env)
@@ -698,12 +734,15 @@ def _runner_commit() -> str | None:
         return None
 
 
-def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 0, poll_s: int = 30,
+def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 0, poll_s: int | None = None,
          only: int | None = None, kinds: list[str] | None = None, dry: bool = False, say=print) -> int:
     """领单跑单。缺省跑到队列空就退出；`idle_minutes` 给了就空闲这么久才退（常驻执行方用，见 doc 第「执行方」节）。
 
     每个执行方一个名字（GUJI_JOBS_WHO），在 jobs.worker 登记：空闲时每次轮询报到一次，领到单记 busy 和单号，
     退出记 stopped。同一台机只许一个执行方（本机锁），多开执行方就多开会话。
+
+    空闲轮询：缺省每 `poll_s` 秒（Postgres 30、D1 60）一次领单请求，报到并在同一次里（`claim(seen=…)`）；
+    D1 上收回过期领单与通知提交人每 `IDLE_EVERY` 轮才做一次（D1 按请求计费，40 个执行方空闲时每天约 6 万次）。
     """
     HOME.mkdir(parents=True, exist_ok=True)
     lock = (HOME / "worker.lock").open("w")
@@ -716,9 +755,15 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     worker = S.who()
     session = os.environ.get("CLAUDE_CODE_SESSION_ID")
     db = S.DB()
+    d1 = S.backend() == "d1"
+    if poll_s is None:
+        poll_s = 60 if d1 else 30
+    loops = 0
     done = 0
+    warned_loop = False
     idle_since = time.time()
-    rc = _runner_commit()
+    from .. import __version__ as mver
+    rc = f"{_runner_commit() or '?'} m{mver}"   # 带上本执行方 manager 版本：`guji job workers` 一眼看全执行机的版本（GM2 11-23 普查）
     warned = None
     env_streak = 0                       # 连续几单环境类失败：本会话自己的毛病（令牌、网络）会让它一路失败，到 3 就暂停
     db(S.worker_seen, worker, state="idle", session=session, runner=rc, done=0, started=True, note="")
@@ -727,20 +772,34 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     try:
         while True:
             try:
-                for jid, st in db(S.reap):
-                    say(f"收回 #{jid} → {st}")
+                loops += 1
+                slow_tick = not d1 or loops % IDLE_EVERY == 1     # D1：收回、通知每几轮一次
+                if not d1:
+                    for jid, st in db(S.reap):
+                        say(f"收回 #{jid} → {st}")
                 if not (once or only or dry) and _runner_outdated():
                     # 走到这里手上没单（上一张单已收尾，这一张还没领）：可以换代码了。
                     # 拉新代码后用原命令行自己 exec 一次，不退出等人重起；拉不动才照旧退出。
-                    (HOME / "runner_fresh").unlink(missing_ok=True)     # 让下一次 start 一定刷新，不受 10 分钟节流
-                    if _refresh_runner():
-                        say("执行方代码在 dev 上有更新，空闲中，已拉新代码，用原参数重新 exec 自己")
-                        db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
-                        lock.close()                                    # 释放本机锁，新进程自己拿
-                        sys.stdout.flush()
-                        os.execv(sys.executable, _reexec_argv())
-                    say("执行方代码在 dev 上有更新，但拉不动（本地有改动或分叉），退出让执行方线程重新 start")
-                    return done
+                    key = _update_key()
+                    if key and os.environ.get(REEXEC_KEY_ENV) == key:
+                        # 循环保护：本进程就是按同一目标（runner HEAD + manager HEAD）自更新出来的，却还判过期，
+                        # 说明拉新没有真正生效。不再 exec（否则每次都回到同一份代码，无限循环），用现在载入的代码继续跑。
+                        if not warned_loop:
+                            say(f"执行方代码仍判为过期（目标 {key}），但本进程已是按它自更新的，不再 exec，继续用现有代码跑")
+                            warned_loop = True
+                    else:
+                        (HOME / "runner_fresh").unlink(missing_ok=True)     # 让下一次 start 一定刷新，不受 10 分钟节流
+                        if _refresh_runner():
+                            new_key = _update_key()
+                            say("执行方代码在 dev 上有更新，空闲中，已拉新代码，用原参数重新 exec 自己")
+                            db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
+                            lock.close()                                    # 释放本机锁，新进程自己拿
+                            sys.stdout.flush()
+                            if new_key:
+                                os.environ[REEXEC_KEY_ENV] = new_key       # 新进程据此识别「自更新后仍过期」的循环
+                            os.execv(sys.executable, _reexec_argv())
+                        say("执行方代码在 dev 上有更新，但拉不动（本地有改动或分叉），退出让执行方线程重新 start")
+                        return done
                 bad = _preflight() or _ml_env_gate(say) or _disk_gate(say)
                 if bad:
                     # 本会话缺东西（多半是没挂 guji-workspace 私仓）：不领单，免得把每条单的重试次数在几秒内耗光
@@ -754,19 +813,19 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                     say("自检通过，开始领单")
                     warned = None
                     db(S.worker_seen, worker, state="idle", session=session, done=done, note="")
-                got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only)
+                got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only,
+                         seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
-                    # 空闲时不碰 Neon（看板写在中心库，40 个执行方每 5 分钟写一次会让 Neon 永远不休眠，11-05 用户定）；
+                    # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
-                    notify_submitters(db, say)      # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发
+                    if slow_tick:
+                        notify_submitters(db, say)  # 最后一条是被依赖拦下的（reap 标的），没有执行方收尾，在这里补发
                     if (until_empty and not idle_minutes) or time.time() - idle_since > idle_minutes * 60:
                         say(f"没有可跑的单，退出（本轮跑了 {done} 条）")
                         return done
-                    db(S.worker_seen, worker, state="idle", session=session, done=done)
                     time.sleep(poll_s)
                     continue
-                job, att = got
-                db(S.worker_seen, worker, state="busy", session=session, job_id=job["id"], done=done)
+                job, att = got                  # 领单那次已报到 busy＋单号
                 say(f"领到 #{job['id']} {job['kind']} {job['book'] or ''}：{SP.summary(job['spec'])}")
                 BOARD.publish(db, force=True)
                 jobrun = Job(job, att, db, dry=dry)
@@ -812,6 +871,8 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
 
 
 ENV_STREAK_PAUSE = 3
+#: D1 上空闲时每几轮领单才顺手收回过期领单、通知提交人
+IDLE_EVERY = int(os.environ.get("GUJI_JOBS_IDLE_EVERY", "5"))
 #: 连库全断时，执行方整体重试前等这么久（秒）
 CONN_RETRY_S = int(os.environ.get("GUJI_JOBS_CONN_RETRY_S") or 60)
 ENV_PAUSE_MIN = 30
@@ -837,6 +898,21 @@ def _retire_dir(d: Path, outcome: str, job_id: int, n: int) -> None:
         for old in kept[FAILED_LOGS_KEEP:]:
             old.unlink(missing_ok=True)
     shutil.rmtree(d, ignore_errors=True)
+
+
+def _clean_blob_cache() -> int:
+    """存包成功后清本机图缓存（``$GUJI_DATA_CACHE``，缺省 ``~/.cache/guji-data``：按 sha 去重的图副本），返回释放的字节数。
+
+    这是跨册共享的 sha 缓存，清掉后下一单按需从 R2 重取（核 sha），代价只是重下。人裁、工作区数据在 ``$GUJI_DATA_HOME``（缺省 ``~/.guji-data``），
+    不碰。调用方只在 pack push 成功后调用；设 GUJI_JOBS_KEEP_ARTIFACTS=1 可关掉（调试用）。"""
+    if os.environ.get("GUJI_JOBS_KEEP_ARTIFACTS") == "1":
+        return 0
+    root = Path(os.environ.get("GUJI_DATA_CACHE") or (Path.home() / ".cache" / "guji-data"))
+    if not root.is_dir() or root.is_symlink():
+        return 0
+    size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file() and not f.is_symlink())
+    shutil.rmtree(root, ignore_errors=True)
+    return size
 
 
 def _say_clean(msg: str) -> None:

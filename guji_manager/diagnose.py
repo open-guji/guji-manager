@@ -1,7 +1,7 @@
 """新书体检：按待审原因的分布给出「往哪努力」的信号（A24，2026-11-04，sheldon 定长期计划 G1）。
 
 框架见 ai-team `domain/CV/规划/形近字领域-长期计划与总览-草稿-2026-11-04.md` 第三节「新书诊断表」：
-每类原因分 A 易（开开关、看图核字对，书项目自己做）／B 中期（新算法、本书标注，报 A24 排期）／C 暂不看（定人审或留后）。
+每类原因分 A 易（开开关、看图核字对，书项目自己做）／B 中期（新算法、本书标注，报 CV4 排期）／C 暂不看（定人审或留后）。
 
 纯函数：只看 `pending_stats.analyse` 给的每格一行（含 pending_reason、conc、ref、top、tok），不连库。
 阈值是经验值（殿本 r4、史記／全唐文 11-02 三份单子定的），信号只是方向提示，动手前仍要抽样看图。
@@ -56,7 +56,7 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
         pages = Counter(f"{r['vol']}p{str(r['cell']).split(':')[0]}" for r in seg)
         whole = sum(1 for r in seg if r.get("conc") == "整页")
         add("版式／切分为主", len(seg), f"整页成片 {whole} 格；最多的页：{_top(pages, 6)}",
-            "不是识字问题：先和 A22 定页型（表页、书衣、考證页），整页走人审或跳过；形近字线先不动", "A–B", "A22＋书项目")
+            "不是识字问题：先和 CV2 定页型（表页、书衣、考證页），整页走人审或跳过；形近字线先不动", "A–B", "CV2＋书项目")
 
     lm = [r for r in rows if r.get("pending_reason") == "lib_missing"]
     if len(lm) / n >= LIB_SHARE:
@@ -69,7 +69,7 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
             hit, why = rep / max(len(lm), 1) >= LIB_COMMON_SHARE, f"反复出现 ≥{LIB_REPEAT_N} 次的整理本字占 {rep / max(len(lm), 1):.0%}（没给 --glyph-db，按重复度估）"
         if hit:
             add("借来的字形不像这本书", len(lm), f"{why}；{_top(refs)}",
-                "常用字也认不出，说明刻风不同：本书刻例点选补库；该字体族没有就建族（cv#897）", "B", "书项目＋A23／A24")
+                "常用字也认不出，说明刻风不同：本书刻例点选补库；该字体族没有就建族（cv#897）", "B", "书项目＋CV3／CV4")
         else:
             add("真生僻字多（第一次进库）", len(lm), f"{why}；{_top(refs)}",
                 "第一次进库原则上人裁：走成批审页，审完即入库", "C", "人审")
@@ -82,7 +82,7 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
         ctx = sum(k for t, k in toks.items() if any(s in t.lower() for s in _CTX_TOK))
         add("字组弃权／打架多", len(gr), f"组：{_top(groups)}；疑问码字形类 {shape}、文意类 {ctx}",
             "字形组（门 辶 xjz 于千子干）→ 本书标注、重训模板（B）；文意组 → 先开 group_flow_llm，再进只读文意终审（A→B）",
-            "A→B", "A24＋书项目")
+            "A→B", "CV4＋书项目")
 
     pr = [r for r in rows if r.get("pending_reason") in PAIR]
     if len(pr) / n >= PAIR_SHARE:
@@ -101,20 +101,20 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
     if len(occ) / n >= OCC_SHARE:
         pages = Counter(f"{r['vol']}p{str(r['cell']).split(':')[0]}" for r in occ)
         add("遮挡多", len(occ), f"{len(pages)} 页；最多的页：{_top(pages, 6)}",
-            "先看是不是真印章：纸面噪点当成大印的书，配 seal_detect.stain_pages（真印页才列），从 seal_detect 重跑", "A", "书项目＋A32")
+            "先看是不是真印章：纸面噪点当成大印的书，配 seal_detect.stain_pages（真印页才列），从 seal_detect 重跑", "A", "书项目＋GM4")
 
     # 11-05 用户定：己已巳、日曰折叠（图上匹配组内任一字都算对），不再单列「留到标点阶段」；其他极难形近照旧要分开
     hp = [r for r in rows if r.get("pending_reason") == "hard_pair"]
     fold = [r for r in hp if _folded(r.get("ref"), r.get("top"))]
     if fold:
         add("折叠组（己已巳、日曰）", len(fold), "`hard_pair`，整理本字与机器首选同在折叠组",
-            "按 11-05 折叠口径，整理本字在组内就放行（管线侧待 A24 实现）", "A", "A24")
+            "按 11-05 折叠口径，整理本字在组内就放行（管线侧待 CV4 实现）", "A", "CV4")
     if len(hp) > len(fold):
-        add("其他极难形近", len(hp) - len(fold), "`hard_pair`", "近形决胜 near_shape 等（A24 定开不开）", "B", "A24")
+        add("其他极难形近", len(hp) - len(fold), "`hard_pair`", "近形决胜 near_shape 等（CV4 定开不开）", "B", "CV4")
 
     for reason, sig, todo, tier, who in (
         ("variant_form_open", "同义写法待定", "出码位看图页请 sheldon 定码位结局（暂归一／照录／按参校本取字）", "A", "书项目"),
-        ("ref_lacuna", "整理本缺字（〓／私用码）", "新图源文本层取字、私用码统一码表；剩下的人审", "A–B", "A24"),
+        ("ref_lacuna", "整理本缺字（〓／私用码）", "新图源文本层取字、私用码统一码表；剩下的人审", "A–B", "CV4"),
         ("lib_sparse_agree", "刻例太少但与整理本一致（本书库 1～2 例）", "人裁：同字全书一卡，走成批审页；放行规则待 L03 benchmark", "C", "人审"),
     ):
         if by.get(reason):
@@ -135,7 +135,7 @@ def render(rows: list[dict], lib_n=None) -> list[str]:
     sg = signals(rows, lib_n)
     out = ["## 零·二、诊断信号（往哪努力）", "",
            "按 ai-team `domain/CV/规划/形近字领域-长期计划与总览-草稿-2026-11-04.md` 第三节自动判。"
-           "档：A 易（书项目先做）／B 中期（报 A24 排期）／C 暂不看。信号只是方向，动手前先抽样看图。", ""]
+           "档：A 易（书项目先做）／B 中期（报 CV4 排期）／C 暂不看。信号只是方向，动手前先抽样看图。", ""]
     if not sg:
         return out + ["没有命中的信号。", ""]
     out += ["| 信号 | 格数 | 占比 | 依据 | 往哪努力 | 档 | 谁 |", "|---|---|---|---|---|---|---|"]

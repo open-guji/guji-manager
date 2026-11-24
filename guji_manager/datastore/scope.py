@@ -61,6 +61,9 @@ class TableSpec:
     key: tuple[str, ...]        # 主键列（不含 ws）
     append_only: bool = False   # 只追加的台账：导入发现要删行时默认中止
     has_doc: bool = True
+    #: 文件里的行本来就按主键排（cv glyph_db 导出 ORDER BY 主键）：中间插几行时后面的行号全变，
+    #: 导入不再逐行推「只是行号变了」（GUJI-776：新机首推 moved 6 万行），还原时按主键排回（见 materialize）
+    key_ordered: bool = False
 
 
 #: 表 → 主键。顺序就是写入顺序（workspaces 先写，别的表外键引用它）。
@@ -76,16 +79,14 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("verdicts", ("src_path", "id")),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
-    TableSpec("glyph_instances", ("instance_id",), has_doc=False),
+    TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
     TableSpec("glyphs", ("edition_tag", "char"), has_doc=False),
     TableSpec("glyph_exemplars", ("edition_tag", "char", "instance_id"), has_doc=False),
     TableSpec("glyph_admissions", ("instance_id",), has_doc=False),
     TableSpec("glyph_evictions", ("instance_id", "at"), has_doc=False),
     TableSpec("glyph_approx_labels", ("instance_id",), has_doc=False),
     TableSpec("glyph_approx_clears", ("instance_id", "at"), has_doc=False),
-    TableSpec("glyph_pairs", ("inst_a", "inst_b", "relation"), has_doc=False),
     TableSpec("glyph_meta", ("key",), has_doc=False),
-    TableSpec("glyph_events", ("src_path", "src_line"), has_doc=False),
 )}
 
 #: 不进库的文件（备份、占位）。匹配工作区内相对路径。
@@ -101,9 +102,10 @@ GLYPH_FILES = {
     "sources.jsonl": "glyph_sources", "glyphs.jsonl": "glyphs",
     "exemplars.jsonl": "glyph_exemplars", "admissions.jsonl": "glyph_admissions",
     "evictions.jsonl": "glyph_evictions", "approx_labels.jsonl": "glyph_approx_labels",
-    "approx_clears.jsonl": "glyph_approx_clears", "pairs.jsonl": "glyph_pairs",
-    "meta.jsonl": "glyph_meta",
+    "approx_clears.jsonl": "glyph_approx_clears", "meta.jsonl": "glyph_meta",
 }
+# pairs.jsonl、events/*.jsonl（cv glyph_db 导出的形近字对与改动流水）从没有过内容，11-23 删了 glyph_pairs、glyph_events
+# 两张空表，这两类文件改当整文件进 files（kind=glyph_misc）
 
 GS = "output/glyph_store/"
 
@@ -157,8 +159,6 @@ def classify(rel: str) -> str | None:
             return "glyph_instances"
         if len(sp) == 2 and sp[0] == "patches" and sub.endswith(".png"):
             return "patch"                 # 不是表：给 glyph_instances.patch_sha 用
-        if len(sp) == 2 and sp[0] == "events" and sub.endswith(".jsonl"):
-            return "glyph_events"
         return "files"                     # README、_snapshot.json、rescued/…
     return None
 
@@ -272,12 +272,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "glyph_approx_labels": _glyph(
         ("instance_id", "label", "ids", "note", "reviewer", "created_at"), ("instance_id",)),
     "glyph_approx_clears": _glyph(("instance_id", "label", "at"), ("instance_id", "at")),
-    "glyph_pairs": _glyph(
-        ("inst_a", "inst_b", "relation", "origin", "source_id", "created_at"),
-        ("inst_a", "inst_b", "relation")),
     "glyph_meta": _glyph(("key", "value"), ("key",)),
-    "glyph_events": lambda rec, rel, line: (
-        (rel, line), _pick(rec, ("source_id", "batch", "seq", "ts", "op", "payload"), _INT)),
 }
 
 
@@ -341,7 +336,7 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
                 res.problems.append(f"{rel}: 不是 UTF-8 文本，未入库")
                 continue
             doc = None
-            if rel.endswith(".json"):
+            if rel.endswith(".json") and file_kind(rel) != "config":   # config 的 doc 没有读者，不存（GUJI GM1 11-23）
                 try:
                     doc = json.loads(text)
                 except ValueError:

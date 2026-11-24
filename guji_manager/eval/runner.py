@@ -128,16 +128,33 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
     # 反过来也有脚本把指标印完了才在收尾处崩（left_cut 的除零）。
     # 所以判据是「有没有解析出指标」，退出码只作参考。
     rep.metrics = parse_metrics(out)
+    structured_err = ""
+    data = None
     if out_path and out_path.exists():
         try:
-            rep.metrics = _merge_json_metrics(rep.metrics, json.loads(out_path.read_text(encoding="utf-8")))
+            data = json.loads(out_path.read_text(encoding="utf-8"))
+            from .extract import extract
+            ms, structured_err = extract(spec.id, data)
+            if ms is not None:
+                # 识字评测器按 id 读 JSON（stdout 抠出来的数不全、头条取错路，见 extract 模块头）
+                rep.metrics = ms
+            else:
+                rep.metrics = _merge_json_metrics(rep.metrics, data)
         except Exception:   # noqa: BLE001
             pass
+    try:
+        from .extract import bench_lock
+        rep.lock = bench_lock(spec.id, repo_root(), ds, data if isinstance(data, dict) else None)
+    except Exception:   # noqa: BLE001
+        pass
 
     gate = _gate_verdict(out)
     if gate:
         rep.gate = gate
-    if rep.metrics or gate:
+    if structured_err:
+        # 数是假的（如 rare_* 缺向量包全 0%）：判失败，别报 ok
+        rep.status, rep.error = "failed", structured_err
+    elif rep.metrics or gate:
         # **回归门的结论本身就是结果**：印了「回归门：通过」而没有别的数字，
         # 也是跑成功了（这类闸的产出就是过没过）。失败同理——门拦住了东西，
         # 跟门本身坏掉是两回事，混报会让人分不清该看算法还是该修评测。
@@ -160,8 +177,25 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
                      f"猜测（未证实，别当结论）：产物已经在跑之前查过（见上面 needs 检查），"
                      f"多半是 parse_metrics 认不出这个脚本的输出格式")
 
+    _apply_guards(rep, ds)
     _fill_gold(rep, store, spec)
     return rep
+
+
+def _apply_guards(rep: EvalReport, ds: Path) -> None:
+    """dataset guards/*.yaml 里有这个评测器的护栏就逐条比；越线 → regressed（回归门失败）。"""
+    try:
+        from .guards import check_report, guards_for, load_guards
+        gs = guards_for(load_guards(ds), rep.eval_id)
+    except Exception as e:   # noqa: BLE001 —— 护栏表坏了要让人看见，但别吞掉评测结果
+        rep.error = (rep.error + "；" if rep.error else "") + f"护栏表读不了：{e}"
+        return
+    if not gs:
+        return
+    res = check_report(rep, gs)
+    rep.guards = [r.to_dict() for r in res]
+    if rep.status == "ok" and any(r.verdict == "fail" for r in res):
+        rep.status, rep.gate = "regressed", "失败"
 
 
 def _missing_pages_by_book(spec: EvalSpec, store) -> dict[str, list[int]]:

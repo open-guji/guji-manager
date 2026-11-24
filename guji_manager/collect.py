@@ -29,6 +29,13 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
 断点续跑：状态在 ``<工作区>/reports/<册>/_collect/<rev>/state.json``，每步做完记一笔；中途停了原命令再跑，做过的跳过
 （``write`` 本身也有幂等键）。``--fresh`` 从头。
 
+**一条命令落网站人审（GM4 11-23，用户定）**：``guji feedback collect -w <工作区> --book-text <检出>``（``--books`` 缺省 auto：读收件箱，
+挑有票落在开着条目上的册）。全自动，除「特殊需要分析」「待定」的票（挂起、切分类、推翻旧裁、格位变了、条目 fp_changed／撤下的旧单票、
+策略要多人而没到的格）——这些留在 held／old_sheet／waiting 里不落。旧单（vote_rev≠现行 rev）上投的条目票，条目图没变就按条目现格落，
+永远新结果覆盖旧的。落票策略 ``--policy``（缺省 auto；quorum:N 按审阅人会员身份分流，接口见 feedback/landing_policy.py）。
+命令末尾打票账（每册：收件箱票→有效→旧单→等多人→写人裁→挂起→book-text 写／已一致／等重放），同存 ``reports/_collect/runs/<本趟>.ledger.tsv``。
+批量落：每册一趟只做一个 book-text 提交；建议每半小时跑一次（没新票的册 auto 自动跳过）。
+
 ``guji collect --books vol20 -w <工作区> --book-text <book-text 检出> [--reviewer sheldon] [--batch <早先人裁批次> …]``
 """
 from __future__ import annotations
@@ -43,7 +50,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books, vol_no
+from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books
 
 PLACEHOLDERS = ("□", "〓", "▣")
 GUJI = [sys.executable, "-m", "open_guji_cv.cli_v2"]
@@ -189,16 +196,19 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
                     pending.add(c["id"])
         asks += [q for q in llm_questions_of_page(doc) if q.get("cell") and mine(q["cell"])]
     by_cell: dict[str, dict] = {}
-    if rekey is not None and asks:
+    if store.log.events_dir.exists():
         from .ruling_hits import _rulings_by_cell
         from ._cv import ruling_ctx_hash
-        by_cell = {k: v for k, v in _rulings_by_cell(store).items() if v.get("group") != "O"}
+        by_cell = {k: v for k, v in _rulings_by_cell(store).items() if v.get("group") != "O" and mine(k)}
+    asked: set[str] = set()
     for q in asks:
         if q["cell"] not in pending:
             continue
         v = store.get(q["group"], q["ver"], q["l"], q["r"])
         cross = False
-        if v is None and q["cell"] in by_cell:
+        if v is not None:
+            asked.add(q["cell"])
+        if v is None and rekey is not None and q["cell"] in by_cell:
             r0 = by_cell[q["cell"]]
             c0 = r0.get("ctx") or {}
             if ruling_ctx_hash(c0.get("left", ""), c0.get("right", "")) == ruling_ctx_hash(q["l"], q["r"]):
@@ -215,11 +225,23 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
             if bare(q["cell"]) in out:
                 continue
             rekey.append((q, v))
+            asked.add(q["cell"])
             out[bare(q["cell"])] = (v["char"], f"AI文意/{q['group']}/改版重键")
         else:
             out.setdefault(bare(q["cell"]), (v["char"], f"AI文意/{q['group']}"))
     if not store.log.events_dir.exists():
         return out, notes
+    # 按格写的文意裁定（ZM write_ctx_ruling_by_cell：「格号＋字」、自算窗口）：这格 seed_admit 没记 ask
+    # （字组没进：分差内有组外字，如 兩雨 格候选里的 而／南），或 ask 窗口与裁定窗口不完全一样 → 上面按窗口键取不到，
+    # 以前静默跳过（ZM 11-21 vol28/36/98 兩雨、vol55 閔 landed 0）。现在按格号取最新一条，核对窗口大体一致再落。
+    # 有 ask 但组／提示词版本不同的格归上面的改版重键路（rekey），这里不管
+    ask_of: dict[str, dict] = {}
+    for q in asks:
+        ask_of.setdefault(q["cell"], {})[(q["group"], q["ver"])] = q
+    rest = {k: v for k, v in by_cell.items() if k in pending and k not in asked and bare(k) not in out
+            and (k not in ask_of or (v.get("group"), v.get("prompt_ver")) in ask_of[k])}
+    if rest:
+        _cell_rulings(root, rest, asks, members, out, notes)
     from ._cv import RULING_KIND, replay_key
     vis: dict[str, dict] = {}
     for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
@@ -238,9 +260,10 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
         except (OSError, ValueError):
             continue
     for k, v in sorted(vis.items()):
-        if not (v.get("conf") == "high" and v.get("admit_ok") and v.get("char") and not v.get("other")):
+        if not (v.get("char") and not v.get("other")) or v["char"] in PLACEHOLDERS:
             continue
-        if v["char"] in PLACEHOLDERS:
+        if v.get("conf") != "high" or not v.get("admit_ok"):
+            notes.append(f"{bare(k)} 终审裁定「{v['char']}」{v.get('prompt_ver')} 把握 {v.get('conf')}、admit_ok={v.get('admit_ok')}，不直接落")
             continue
         if re.search(r"[ab]$", k):
             notes.append(f"{bare(k)} 看图裁定「{v['char']}」是夹注半格，不直接落")
@@ -250,6 +273,97 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
             continue
         out[bare(k)] = (v["char"], f"AI看图/{v.get('prompt_ver')}")
     return out, notes
+
+
+#: 按格写的文意裁定：裁定窗口与包里这格现在的窗口，格两边各这么多字必须一样，整体相似度不低于下面的比例
+CELL_RULING_NEAR = 2
+CELL_RULING_RATIO = 0.8
+
+
+def _window_ok(rl: str, rr: str, pl: str, pr: str) -> tuple[bool, str]:
+    """裁定窗口 (rl, rr) 与产物窗口 (pl, pr) 大体一致：紧邻格的字一样、整体相似度够（邻格放行字小变不算换了地方）。"""
+    import difflib
+    rl, rr, pl, pr = (rl or "")[-20:], (rr or "")[:20], (pl or "")[-20:], (pr or "")[:20]
+    n = CELL_RULING_NEAR
+    if rl[-n:] != pl[-n:] or rr[:n] != pr[:n]:
+        return False, f"紧邻字不同（裁定 {rl[-n:]}｜{rr[:n]}，现 {pl[-n:]}｜{pr[:n]}）"
+    ratio = difflib.SequenceMatcher(None, rl + "|" + rr, pl + "|" + pr, autojunk=False).ratio()
+    if ratio < CELL_RULING_RATIO:
+        return False, f"窗口相似度 {ratio:.2f} < {CELL_RULING_RATIO}"
+    return True, ""
+
+
+def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, notes: list) -> None:
+    """``ai_ruling_chars`` 的第三路：按格号取的文意裁定（非 group=O）。条件：``conf=high``、有字、不是「其他」；
+    裁定字是这格整理本字、库候选或裁定组的组员之一；裁定窗口与包里这格的窗口大体一致（`_window_ok`；有 ask 用 ask 窗口，
+    没有按 5c 口径现算）。落了也不会让下一次重放命中（seed_admit 不按格取裁定），所以照样记 AI 来源、单上条目不结案。"""
+    from .ruling_hits import _vis_window
+    by_page: dict[str, list[str]] = {}
+    for k in rest:
+        parts = k.split(":")
+        if len(parts) == 4:
+            by_page.setdefault(f"p{int(parts[1]):04d}.json", []).append(k)
+    win = {q["cell"]: (q["l"], q["r"]) for q in asks
+           if q["cell"] in rest and (q["group"], q["ver"]) == (rest[q["cell"]].get("group"), rest[q["cell"]].get("prompt_ver"))}
+    refs: dict[str, str] = {}
+    cands: dict[str, set] = {}
+    for fn, ks in by_page.items():
+        amap: dict[str, str] = {}
+        try:
+            ar = json.loads((root / "align_ref" / fn).read_text(encoding="utf-8")).get("align_ref", {})
+            anchored = ar.get("anchored", True) is not False
+            for c in ar.get("chars") or []:
+                if c.get("id"):
+                    if anchored:
+                        amap[c["id"]] = c.get("align_char") or ""
+                    if c["id"] in rest:
+                        refs[c["id"]] = c.get("align_char") or ""
+        except (OSError, ValueError):
+            pass
+        try:
+            gm = json.loads((root / "glyph_match" / fn).read_text(encoding="utf-8"))
+            stack = [gm]
+            while stack:
+                o = stack.pop()
+                if isinstance(o, dict):
+                    if o.get("id") in rest and isinstance(o.get("candidates"), list):
+                        cands[o["id"]] = {c[0] for c in o["candidates"][:5] if c}
+                    stack += [x for x in o.values() if isinstance(x, (dict, list))]
+                elif isinstance(o, list):
+                    stack += [x for x in o if isinstance(x, (dict, list))]
+        except (OSError, ValueError):
+            pass
+        need = [k for k in ks if k not in win]
+        if need:
+            try:
+                doc = json.loads((root / "seed_admit" / fn).read_text(encoding="utf-8"))
+                w = _vis_window(doc, amap)
+                for k in need:
+                    if k in w:
+                        win[k] = (w[k][1], w[k][2])
+            except Exception:  # noqa: BLE001
+                pass
+    for k, v in sorted(rest.items()):
+        ch, g = v.get("char"), v.get("group")
+        if not ch or v.get("other") or ch in PLACEHOLDERS:
+            continue
+        tag = f"{bare(k)} 按格文意裁定「{ch}」（{g}/{v.get('prompt_ver')}）"
+        if v.get("conf") != "high":
+            notes.append(f"{tag}把握 {v.get('conf')}，不直接落")
+            continue
+        ok_chars = {refs.get(k) or ""} | cands.get(k, set()) | set(members.get(g) or ())
+        if ch not in ok_chars:
+            notes.append(f"{tag}不是整理本字、库前五或组员，不落")
+            continue
+        if k not in win:
+            notes.append(f"{tag}：算不出包里这格的窗口，不落")
+            continue
+        c0 = v.get("ctx") or {}
+        ok, why = _window_ok(c0.get("left", ""), c0.get("right", ""), *win[k])
+        if not ok:
+            notes.append(f"{tag}与包里窗口对不上（{why}），不落")
+            continue
+        out[bare(k)] = (ch, f"AI文意/{g}/按格")
 
 
 def write_rekeys(book: str, rk: list, batch: str | None = None) -> int:
@@ -434,7 +548,25 @@ def live_sheet(text_id: str, chapter: str) -> dict | None:
 
 def collect_book(a, ws: Path, book: str) -> dict:
     """收一册；收完（不论要不要发站）把这册的出单版包解出来的目录删掉腾盘（``--keep-pack`` 留着），
-    省得每册前手工 ``rm -rf _packs/*``（ZM 11-21）。"""
+    省得每册前手工 ``rm -rf _packs/*``（ZM 11-21）。
+
+    ``GUJI_ALLOW_LOST_HUMAN_BOOKS=vol01,vol20``：只对列出的册放行「丢人裁超上限」（等于这几册设
+    ``GUJI_ALLOW_LOST_HUMAN=1``，用户 11-23 定 vol01／vol20 可以），别的册不受影响；定时任务用它。"""
+    allow = {x.strip() for x in os.environ.get("GUJI_ALLOW_LOST_HUMAN_BOOKS", "").split(",") if x.strip()}
+    had = os.environ.get("GUJI_ALLOW_LOST_HUMAN")
+    if book in allow:
+        os.environ["GUJI_ALLOW_LOST_HUMAN"] = "1"
+    try:
+        return _collect_book_guarded(a, ws, book)
+    finally:
+        if book in allow:
+            if had is None:
+                os.environ.pop("GUJI_ALLOW_LOST_HUMAN", None)
+            else:
+                os.environ["GUJI_ALLOW_LOST_HUMAN"] = had
+
+
+def _collect_book_guarded(a, ws: Path, book: str) -> dict:
     try:
         res = _collect_book(a, ws, book)
     except Exception as e:  # noqa: BLE001 —— 并行时一册出错不拖垮别的册；原因落进结果
@@ -494,9 +626,22 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     else:
         t = time.time()
         pack = a.pack or _pack_for(book, rev)
+        # 旧单条目票并入前要核「页面显示字＝book-text 现格字」：先取最新 dev 的 char（ZM 11-23 vol01 职名页改号后落邻格）
+        from .swap.booktext import _bt_dir, _worktree
+        from .online_lists import book_text_dir as _btd
+        _src = Path(a.book_text).resolve()
+        _wt = Path(a.worktree or (str(_src) + "-collect")).resolve()
+        _child = bool(getattr(a, "child", False))
+        _worktree(_src, _wt, branch="collect-booktext" + (f"-{book}" if _child else ""),
+                  sparse=(Path(_btd(".", text_id)).as_posix().lstrip("./"),), fetch=not _child)
+        _cj = _bt_dir(_wt, text_id) / "default" / f"{ch}.char.json"
         cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
                votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
+        if getattr(a, "policy", None):
+            cmd += ["--policy", a.policy]
+        if _cj.exists():
+            cmd += ["--char-json", _cj]
         if a.batch or not getattr(a, "no_ai", False):
             cmd += ["--allow-empty"]          # 只落早先批次／AI 裁定时单上可能 0 票
         if _run(cmd, env, tries=3):
@@ -506,6 +651,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     if not hasattr(a, "_pack_roots"):
         a._pack_roots = {}
     a._pack_roots[book] = meta.get("products_root")
+    write_ledger(out, book, rev, meta)
     if a.dry_run:
         print(f"  --dry-run：不写人裁（可写 {meta.get('ready', 0)}、挂起 {meta.get('held', 0)}，见 {draft / 'report.md'}）")
     elif R.done("write"):
@@ -541,7 +687,17 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         same_ids = consistent_cells(draft)
         votes_now = vote_chars(draft)
         try:
-            hc = current_human(book, meta.get("products_root"))
+            try:
+                hc = current_human(book, meta.get("products_root"))
+            except RuntimeError as e:
+                if "字块图拿不到" not in str(e):
+                    raise
+                # 新机器没有原图／字块缓存：自己补拉再算一遍（11-22 实测 source pull 4 s＋cache warm 1 s），不再停下来等人跑
+                print(f"  缺字块图，自动 source pull＋cache warm {book} 后重算人裁")
+                env_ = dict(os.environ)
+                _run([*GUJI, "source", "pull", book, "-w", str(ws)], env_)
+                _run([*GUJI, "cache", "warm", "--book", book, "-w", str(ws)], env_)
+                hc = current_human(book, meta.get("products_root"))
         except Exception as e:  # noqa: BLE001
             return {"status": "blocked", "rev": rev,
                     "why": f"现行人裁（human_chars）算不出来，不落 book-text：{type(e).__name__}: {str(e)[:300]}"}
@@ -599,6 +755,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         for m in notes[:8]:
             print(f"    {m}")
         info = {"landed": {}, "plan": {k: len(v) for k, v in plan.items()}}
+        write_ledger(out, book, rev, meta, plan={k: len(v) for k, v in plan.items()}, want=len(want), n_ai=n_ai)
         if plan["apply"]:
             new_char = apply_edits(char, plan["apply"])
             exp = out / "export"
@@ -624,6 +781,9 @@ def _collect_book(a, ws: Path, book: str) -> dict:
                 (out / "book-text-问题.txt").write_text(str(r.get("why")) + "\n" + "\n".join(r.get("problems") or []), encoding="utf-8")
                 return {"status": "book-text-" + r["status"], "why": r.get("why"), "rev": rev}
             info.update(status=r["status"], commit=r.get("commit"), pr=r.get("pr"), branch=r.get("branch"))
+            if r.get("needs_review"):
+                info["needs_review"] = r["needs_review"]
+                (out / "needs_review.tsv").write_text("说明\n" + "\n".join(r["needs_review"]) + "\n", encoding="utf-8")
             info["landed"] = {x[0]: x[2] for x in plan["apply"]}
             info["ai_landed"] = {x[0]: x[3] for x in plan["apply"] if x[3].startswith("AI")}
         landed = info["landed"]
@@ -672,6 +832,226 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     return publish_and_verify(a, ws, [book])[book]
 
 
+# ───────────────────────── 对账表（票 → 事件 → book-text） ─────────────────────────
+
+LEDGER_COLS = (("votes", "收件箱票"), ("valid", "有效票"), ("old_landed", "旧单并入"), ("old_blocked", "旧单挡下"),
+               ("stale_votes", "票早于人裁"), ("waiting", "等多人"), ("ready", "写人裁"), ("held", "挂起"), ("skipped", "跳过"),
+               ("apply", "写book-text"), ("already", "已一致"), ("layout", "等重放"), ("fig", "以图代字"), ("missing", "无此格"))
+
+
+def ledger_of(book: str, rev: str, meta: dict, plan: dict | None = None, want: int | None = None, n_ai: int | None = None) -> dict:
+    """一册一趟的票账：收件箱票 → 有效 → 策略（等多人）→ 分流（写人裁／挂起／跳过）→ book-text（写／已一致／等重放…）。
+    票按「人×格」计，之后按格计；两段口径不同，不强求相加，但每一段都有数。"""
+    sk = meta.get("skipped")
+    return {"book": book, "rev": rev, "votes": meta.get("n_raw", 0), "valid": meta.get("n_votes", 0),
+            "old_landed": meta.get("old_landed", 0), "old_blocked": meta.get("old_sheet", 0),
+            "waiting": meta.get("waiting", 0), "stale_votes": meta.get("stale_votes", 0), "ready": meta.get("ready", 0), "held": meta.get("held", 0),
+            "skipped": len(sk) if isinstance(sk, list) else (sk or 0), "policy": meta.get("policy", "auto"),
+            **({"want": want, "ai": n_ai, **{k: (plan or {}).get(k, 0) for k in ("apply", "already", "layout", "fig", "missing")}}
+               if plan is not None else {})}
+
+
+def write_ledger(out: Path, book: str, rev: str, meta: dict, **kw) -> None:
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        p = out / "ledger.json"
+        new = ledger_of(book, rev, meta, **kw)
+        if "apply" not in new and p.exists():          # 续跑跳过了落文本那步：保留上次已记的 book-text 各段
+            try:
+                old = json.loads(p.read_text(encoding="utf-8"))
+                new = {**{k: v for k, v in old.items() if k in ("want", "ai", "apply", "already", "layout", "fig", "missing")}, **new}
+            except (OSError, ValueError):
+                pass
+        p.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def render_ledger(rows: list[dict], status: dict[str, str] | None = None) -> str:
+    """每册一行的 TSV（也直接打印）。``status`` 是各册本趟结果。"""
+    head = ["册", "单版", *[t for _, t in LEDGER_COLS], "状态"]
+    L = ["\t".join(head)]
+    tot = {k: 0 for k, _ in LEDGER_COLS}
+    for r in rows:
+        L.append("\t".join([r["book"], str(r["rev"]), *[str(r.get(k, "-")) for k, _ in LEDGER_COLS], (status or {}).get(r["book"], "")]))
+        for k in tot:
+            tot[k] += int(r.get(k) or 0)
+    L.append("\t".join(["合计", "", *[str(tot[k]) for k, _ in LEDGER_COLS], ""]))
+    return "\n".join(L)
+
+
+def print_ledger(ws: Path, res: dict, run_log: Path) -> None:
+    rows = []
+    for b, v in res.items():
+        p = ws / "reports" / b / "_collect" / str(v.get("rev") or "") / "ledger.json"
+        if v.get("rev") and p.exists():
+            rows.append(json.loads(p.read_text(encoding="utf-8")))
+    if not rows:
+        return
+    txt = render_ledger(rows, {b: v.get("status", "") for b, v in res.items()})
+    print("\n== 票账（每册：票→事件→book-text 各段数量；票按人×格、后段按格）\n" + txt)
+    try:
+        run_log.with_suffix(".ledger.tsv").write_text(txt + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def needs_review_of(ws: Path, res: dict) -> dict[str, list[str]]:
+    """各册本趟要交项目确认的格（要看图或前后文的，总管不定）：落文本时账不平的格（``needs_review.tsv``）、
+    旧单被挡的票（``old_sheet.tsv``：图变了／撤下）、被人裁让位的旧票（``stale_votes.tsv``）。"""
+    out: dict[str, list[str]] = {}
+    for b, v in res.items():
+        d = ws / "reports" / b / "_collect" / str(v.get("rev") or "")
+        if not v.get("rev"):
+            continue
+        rows: list[str] = []
+        for fn, tag in (("needs_review.tsv", "落字≠人裁／手改"), ("draft/old_sheet.tsv", "旧单票挡下"), ("draft/stale_votes.tsv", "票早于人裁，让位")):
+            p = d / fn
+            if p.exists():
+                rows += [f"{tag}：" + ln.replace("\t", " | ") for ln in p.read_text(encoding="utf-8").splitlines()[1:] if ln.strip()]
+        if rows:
+            out[b] = rows
+    return out
+
+
+HANDOFF_HEAD = ["类别", "格号", "票", "读者当时看到的字", "book-text 现字", "票时间", "说明"]
+
+
+def handoff_rows(ws: Path, book: str, rev: str) -> list[list[str]]:
+    """一册的「交项目确认」清单转成 tsv 行（列见 ``HANDOFF_HEAD``），项目拿到就能按格看图，不用去执行机找文件。"""
+    import re
+    d = ws / "reports" / book / "_collect" / rev
+    rows: list[list[str]] = []
+
+    def lines(fn):
+        p = d / fn
+        return [ln.split("\t") for ln in p.read_text(encoding="utf-8").splitlines()[1:] if ln.strip()] if p.exists() else []
+    for c in lines("needs_review.tsv"):
+        rows.append(["落字≠人裁／手改", c[0], "", "", "", "", " | ".join(c[1:])])
+    for c in lines("draft/old_sheet.tsv"):          # 现格 投票时格 投票时单 票 当年人裁 挡下原因
+        c += [""] * (6 - len(c))
+        m = re.search(r"页面显示字「(.*?)」.*?现格字「(.*?)」", c[5])
+        day = re.search(r"(\d{4}-\d\d-\d\d)", c[4])
+        rows.append(["旧单票挡下", c[0], c[3], m.group(1) if m else "", m.group(2) if m else "", day.group(1) if day else "",
+                     f"{c[5]}（投票时格 {c[1]}，单 {c[2]}，批次事件 {c[4]}）"])
+    for c in lines("draft/stale_votes.tsv"):        # 格位 票 票时间(ms) 现行人裁 人裁时间
+        c += [""] * (5 - len(c))
+        try:
+            ts = dt.datetime.fromtimestamp(int(c[2]) / 1000, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            ts = c[2]
+        rows.append(["票早于人裁，让位", c[0], c[1], "", "", ts, f"现行人裁 {c[3]}（{c[4]}），按新的判定走，票未写"])
+    return rows
+
+
+def write_handoff(ws: Path, res: dict, outdir: Path) -> list[Path]:
+    """每册写 ``<册>-交项目确认.tsv``（覆盖更新）到 outdir；返回写了的文件。没有待确认项的册，已有的旧文件删掉。"""
+    outdir.mkdir(parents=True, exist_ok=True)
+    out = []
+    for b, v in res.items():
+        if not v.get("rev"):
+            continue
+        rows = handoff_rows(ws, b, str(v["rev"]))
+        p = outdir / f"{b}-交项目确认.tsv"
+        if not rows:
+            p.unlink(missing_ok=True)
+            continue
+        p.write_text("\n".join("\t".join(r) for r in [HANDOFF_HEAD, *rows]) + "\n", encoding="utf-8")
+        out.append(p)
+    return out
+
+
+def push_handoff(outdir: Path, files: list[Path]) -> str:
+    """outdir 在一个 git 检出（ai-team）里：提交、rebase、推 main。失败只报不拦。"""
+    def g(*args):
+        return subprocess.run(["git", "-C", str(outdir), *args], capture_output=True, text=True)
+    g("add", "-A", ".")
+    if not g("status", "--porcelain", "--", ".").stdout.strip():
+        return "无变化"
+    g("commit", "-q", "-m", "交项目确认清单更新（收单自动）：" + "、".join(p.stem.split("-")[0] for p in files))
+    for i in range(4):
+        g("pull", "-q", "--rebase", "origin", "main")
+        r = g("push", "-q", "origin", "HEAD:main")
+        if r.returncode == 0:
+            return "已推 main"
+        time.sleep(2 ** i)
+    return "推送失败：" + r.stderr.strip()[-200:]
+
+
+def sweep_unconsumed(ws: Path, a) -> dict:
+    """端到端票账的最后一段：人裁事件已写、路由表要它去消费者、却还没记账的（漏 route，或缺产物包）。
+    GM4 管线写的批次（``H-web-*``）自动补 ``guji events route <批次>``，补完 ``guji db sync`` 推库；
+    别的线的批次（ZM-、H-ZM-、H-quick- 等）不替他们跑，只列清单交书线。返回 {"routed": [批次], "remaining": {(批次, 消费者): 条数}}。"""
+    from .cli_db import unconsumed_report
+    out = {"routed": [], "remaining": {}, "errors": []}
+    try:
+        rep = unconsumed_report(ws)
+    except Exception as e:  # noqa: BLE001
+        out["errors"].append(f"读不了消费账：{type(e).__name__}: {e}")
+        return out
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    # glyphdb_admit 要原图字块缓存，云端没有，route 了也消费不掉（每趟白跑）：只补有别的消费者没记账的批次，
+    # glyphdb_admit 留给有产物的机器 db sync／CV3 扫尾，列进「事件未消费.tsv」
+    mine = sorted({b for (b, c) in rep if b.startswith("H-web-") and c != "glyphdb_admit"})
+    if mine and not a.dry_run:
+        for b in mine:
+            if _run([*GUJI, "events", "route", b, "-w", ws], env, tries=1):
+                out["errors"].append(f"events route {b} 失败")
+            else:
+                out["routed"].append(b)
+        if out["routed"] and not a.no_push:
+            if _run([*GUJI, "db", "sync", "-w", ws], env, tries=3):
+                out["errors"].append("补 route 后 guji db sync 失败，原命令再跑会续推")
+        try:
+            rep = unconsumed_report(ws)
+        except Exception:  # noqa: BLE001
+            pass
+    out["remaining"] = rep
+    if out["routed"] or rep or out["errors"]:
+        print(f"\n== 事件未消费：本趟补 route {len(out['routed'])} 批（H-web-*）；仍未消费 {len(rep)} 组"
+              f"（多为缺产物包或别的线手写批次，见交项目确认 tsv「事件未消费.tsv」）" + "".join(f"\n  ⚠ {e}" for e in out["errors"]))
+    return out
+
+
+def write_unconsumed(outdir: Path, remaining: dict) -> Path | None:
+    import re
+    p = outdir / "事件未消费.tsv"
+    if not remaining:
+        p.unlink(missing_ok=True)
+        return None
+    rows = ["\t".join(["批次", "消费者", "条数", "册", "怎么补"])]
+    for (b, c), n in sorted(remaining.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        m = re.search(r"vol(\d+)", b)
+        vol = f"vol{m.group(1)}" if m else ""
+        rows.append("\t".join([b, c, str(n), vol, ("缺原图字块缓存，云端消费不了：到有产物包的机器 guji db sync，或交 CV3 扫尾" if c == "glyphdb_admit" else
+                                          f"缺产物包先 guji products pack fetch {vol or '<册>'}，再 guji events route {b}；手写批次请对应书线补 route")]))
+    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return p
+
+
+def print_needs_review(ws: Path, res: dict, unc: dict | None = None) -> None:
+    nr = needs_review_of(ws, res)
+    hd = os.environ.get("GUJI_HANDOFF_DIR")
+    if hd:
+        try:
+            files = write_handoff(ws, res, Path(hd))
+            if unc is not None:
+                uf = write_unconsumed(Path(hd), unc.get("remaining") or {})
+                if uf:
+                    files.append(uf)
+            print(f"\n== 交项目确认清单已写 tsv：{'、'.join(p.name for p in files) or '（无）'}（{push_handoff(Path(hd), files)}）；"
+                  f"发给项目的消息只带 {hd} 下的路径")
+        except Exception as e:  # noqa: BLE001 —— 写清单失败不拦收单
+            print(f"⚠ 交项目确认 tsv 没写成：{type(e).__name__}: {e}")
+    if not nr:
+        return
+    print("\n== 交项目确认（要看图或前后文；总管不逐个定，反馈给该书项目）")
+    for b, rows in nr.items():
+        print(f"  {b}：{len(rows)} 项")
+        for r in rows[:30]:
+            print(f"    {r}")
+
+
 def _state_of(ws: Path, text_id: str, book: str) -> tuple[Path, "Run", Path] | None:
     from .datastore.workcopy import data_dir
     sheet_p = data_dir(ws) / "feedback" / "lists" / "proofing" / text_id / f"{chapter_of(book)}.pending.json"
@@ -706,17 +1086,23 @@ def verify_book(a, ws: Path, book: str, R: "Run", sheet_p: Path) -> dict:
 def publish_and_verify(a, ws: Path, books: list[str]) -> dict:
     """这些册一起触发一次 proofing-sync（``only=`` 多章；分开触发会互相取消），等跑完逐册核线上单。
     发布没成不算失败：单子已在中心库，每日定时发布兜底；云端 gh 没鉴权时 trigger-fail（ZM 11-19）。"""
-    from .swap import publish_batch
+    from .swap import last_publish_age_hours, publish_batch
     st = {b: _state_of(ws, a.text_id, b) for b in books}
     todo = [b for b in books if st[b] and not st[b][1].done("publish")]
     if todo:
         t = time.time()
+        minh = float(os.environ.get("GUJI_PUBLISH_MIN_HOURS", "3"))
+        age = last_publish_age_hours() if minh > 0 else None
+        if age is not None and age < minh:
+            print(f"  网站发布节流：上次 proofing-sync 在 {age:.1f} 小时前（不足 {minh:g} 小时，CDN purge 每日配额有限）；"
+                  f"本趟不发，已在中心库，下一趟有新写入时或每日定时发布会带上")
+            return {b: {"status": "synced", "publish": f"throttled({age:.1f}h)", "rev": st[b][2].name if st[b] else None} for b in books}
         concl = publish_batch(todo, a.text_id)
         if concl != "success":
             only = ",".join(f"{a.text_id}/{chapter_of(b)}" for b in todo)
             print(f"⚠ 网站发布没成（{concl}）：手动触发 kaiyuanguji-web proofing-sync.yml（target=production、parts=publish、"
                   f"only={only}），再原命令跑一次核线上；不管它，每日定时发布也会带上")
-            return {b: {"status": "synced", "publish": str(concl)} for b in books}
+            return {b: {"status": "synced", "publish": str(concl), "rev": st[b][2].name if st[b] else None} for b in books}
         for b in todo:
             st[b][1].mark("publish", {"conclusion": concl}, t)
     out = {}
@@ -741,9 +1127,9 @@ def books_with_votes(votes: list[dict], open_of) -> list[str]:
 
 
 def votes_from_flag() -> str:
-    """收单读网站票的来源：缺省网站 KV（``--from-kv``）；``GUJI_VOTES_FROM=inbox`` 改读中心库 web_inbox
-    （A20 11-21 网站票直写 D1；双写对账通过前缺省不变）。"""
-    v = (os.environ.get("GUJI_VOTES_FROM") or "kv").strip().lower()
+    """收单读网站票的来源：缺省中心库 web_inbox（``--from-inbox``，A20 11-22 起 D1 为网站票真源）；
+    ``GUJI_VOTES_FROM=kv`` 应急改读网站 KV（KV 已不再写入，只是旧数据）。"""
+    v = (os.environ.get("GUJI_VOTES_FROM") or "inbox").strip().lower()
     if v not in ("kv", "inbox"):
         raise SystemExit(f"GUJI_VOTES_FROM 只能是 kv 或 inbox：{v}")
     return "--from-inbox" if v == "inbox" else "--from-kv"
@@ -769,6 +1155,9 @@ def auto_books(ws: Path, text_id: str) -> list[str]:
         st = P.ItemStore.open(data, text_id, ch)
         return {r["id"] for r in st.by_state("open", "withdrawn")}
     books = books_with_votes(votes, open_of)
+    # 册 id 以工作区实有的 books/<册>.yaml 为准（史记叫 01 不叫 vol01；殿本叫 vol01）：不改名会白跑一趟 draft 报「没有 books/vol01.yaml」
+    have = {q.stem for q in (data / "books").glob("*.yaml")}
+    books = [b if b in have else (b[3:] if b.startswith("vol") and b[3:] in have else b) for b in books]
     print(f"网站条目票 {len(votes)} 条；有票落在开着的条目上的册：{'、'.join(books) or '没有'}")
     return books
 
@@ -784,6 +1173,14 @@ def cmd_collect(a) -> int:
         books = auto_books(ws, a.text_id)
     else:
         books = parse_books(a.books)
+        if len(books) > 1 and not a.no_pull and not getattr(a, "child", False):
+            # 多册只拉一次库（GM4 11-23：原先每册各拉一次，8 册拉 8 次）
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            if _run([*GUJI, "db", "pull", "-w", ws], env, tries=2):
+                # 上一趟被打断、本地有没推的改动：拉不了，交各册自己判（续跑的册跳过拉库），不在这里整趟停下
+                print("⚠ 整趟拉库没成，各册按各自进度处理（续跑的册不用再拉；不然先 guji db sync）")
+            else:
+                a.no_pull = True
     a._defer_publish = len(books) > 1 and not a.dry_run
     run_log = ws / "reports" / "_collect" / "runs" / f"{time.strftime('%Y%m%dT%H%M%S')}.json"
     if getattr(a, "child", False):
@@ -797,15 +1194,26 @@ def cmd_collect(a) -> int:
         res = run_parallel(a, ws, books, run_log)
     else:
         res = {}
+        print(f"== 本趟收 {len(books)} 册：{'、'.join(books)}")
         for b in books:
-            res[b] = collect_book(a, ws, b)
+            try:
+                res[b] = collect_book(a, ws, b)
+            except SystemExit as e:        # 某册的子步骤 SystemExit 不能把后面几册一起静默带走（GM2 11-23：--books 006,007,008 只跑了 006）
+                res[b] = {"status": "blocked", "why": f"{b} 中途退出：{str(e)[:300]}"}
+            except Exception as e:  # noqa: BLE001
+                res[b] = {"status": "blocked", "why": f"{b} 出错 {type(e).__name__}：{str(e)[:300]}"}
+                print(f"  ✗ {b} 出错 {type(e).__name__}: {e}")
             _save_run(run_log, res)
     ready = [b for b, v in res.items() if v["status"] == "to-publish"]
     if ready:
         print(f"\n== 发站：{'、'.join(ready)} 一起发一次，再逐册核线上单")
-        res.update(publish_and_verify(a, ws, ready))
+        for b, nv in publish_and_verify(a, ws, ready).items():
+            res[b] = {**res[b], **nv}              # 保留 rev 等：票账、交项目确认清单要靠 rev 找各册的账
     _save_run(run_log, res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
+    unc = sweep_unconsumed(ws, a)
+    print_ledger(ws, res, run_log)
+    print_needs_review(ws, res, unc)
     bad = {b: v for b, v in res.items() if v["status"] not in ("done", "synced", "dry-run")}
     if bad:
         print(f"\n没收完 {len(bad)} 册（原命令再跑，做过的步跳过）：")
@@ -845,6 +1253,8 @@ def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
                "--text-id", a.text_id, "--reviewer", a.reviewer, "--no-pull", "--child"]
         for x in a.batch or []:
             cmd += ["--batch", x]
+        if getattr(a, "policy", None):
+            cmd += ["--policy", a.policy]
         cmd += [f for f, on in (("--no-push", a.no_push), ("--no-ai", getattr(a, "no_ai", False)), ("--fresh", a.fresh),
                                 ("--keep-pack", getattr(a, "keep_pack", False))) if on]
         rp = logs / f"{b}.result.json"
@@ -884,7 +1294,7 @@ def run_parallel(a, ws: Path, books: list[str], run_log: Path) -> dict:
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("collect", help="收单快路：读票→写人裁→定字直接落 book-text（不重放）→KV 结案→pull/sync 各一次→发站核对（断点续跑）")
-    p.add_argument("--books", required=True, help="如 vol20 或 vol20-vol25（逐册做）；auto＝读网站条目票，挑有票落在开着的条目上的册")
+    p.add_argument("--books", default="auto", help="如 vol20 或 vol20-vol25（逐册做）；auto（缺省）＝读网站条目票，挑有票落在开着的条目上的册")
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True, help="book-text 检出（在它旁边建 <检出>-collect worktree，每册重置到 origin/dev）")
     p.add_argument("--worktree", default=None, help="book-text worktree 路径（缺省 <book-text>-collect）")
@@ -893,6 +1303,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--batch", action="append", default=None,
                    help="另把早先写进库、还没进 book-text 的人裁批次也落了（可重复；只认人裁，过绑定表、每格取最新）")
     p.add_argument("--pack", default=None, help="出单版产物包标签（缺省 rev-<rev>，没有就 ★main）")
+    p.add_argument("--policy", default=None,
+                   help="落票策略：auto（缺省，有票就落；用户 11-23 定，现只有本人在审）｜quorum:N（高等级审阅人一票即定，其余要 N 人同一结论；"
+                        "没到门槛的格不落、不结案，等多人）；也读 GUJI_LANDING_POLICY。详见 feedback/landing_policy.py")
     p.add_argument("--no-pull", action="store_true", help="不先拉库（刚拉过）")
     p.add_argument("--no-push", action="store_true", help="book-text 只提交在 worktree，不推")
     p.add_argument("--no-publish", action="store_true", help="推库后不触发网站发布、不核线上")

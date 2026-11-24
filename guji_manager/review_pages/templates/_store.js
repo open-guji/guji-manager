@@ -7,19 +7,21 @@ function makeStore(o){
   if(!st){for(const [k,cv] of (o.legacy||[])){const old=lsRaw(k);if(old){try{st=cv(old)}catch(e){st=null}if(st)break}}}
   st=Object.assign({v:{},seen:0,page:0,f:""},st||{});
   const saved={}, S={st};
-  let timer=null,inflight=false;
+  let timer=null,inflight=false,again=false;
   const persist=()=>lsSet(o.key,st);
   const ref=id=>DB.doc(D.coll+"/i_"+safeId(id));
   function queue(){if(!DB){setSync("未联网存档（只存在本浏览器）");return}clearTimeout(timer);timer=setTimeout(flush,1000)}
   async function flush(){
-    if(!DB||inflight)return;inflight=true;
+    if(!DB)return;
+    if(inflight){again=true;return}   // 正在写：记下，写完再补一轮（快速翻页时最后几页的标注曾丢，2026-11-23）
+    inflight=true;
     try{
       for(const id in st.v){const x=st.v[id];
         if(x.t!==saved[id]){await ref(id).set(Object.assign({page_type:TPL.type,tpl_version:TPL.version,book:D.book},o.docOf(id,x.raw),{id,page:o.pageOf?o.pageOf(id):null,how:x.how,t:x.t,_v:x.raw}));saved[id]=x.t}}
       for(const id in saved)if(!st.v[id]){await ref(id).delete();delete saved[id]}
       setSync("已存后台");
     }catch(e){setSync("后台存档失败，重试中："+(e.code||e.message));timer=setTimeout(flush,8000)}
-    finally{inflight=false}
+    finally{inflight=false;if(again){again=false;flush()}}
   }
   S.set=(id,raw,how)=>{st.v[id]={raw,how:how||"click",t:Date.now()};persist();queue()};
   S.clear=id=>{delete st.v[id];persist();queue()};

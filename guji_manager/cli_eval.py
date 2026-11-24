@@ -21,6 +21,11 @@ def cmd_eval(args) -> None:
             ok, why = runnable(s)
             print(f"  {s.id:18s} {s.shard:40s} {'可跑' if ok else why:22s} {s.title}")
         return
+    if args.action == "guard":
+        return _cmd_guard(args)
+    from .eval.registry import expand_suites
+    args.evals = expand_suites(args.evals or [])
+    save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
     keys = args.evals or [k for k, s in EVALS.items()
                           if not ({"heavy", "engine", "corpus", "dump", "intermediate"} & set(s.needs))]
     # 以前 run_eval 只放行 products，点名跑 match_pairs / oov 这类 heavy 的也一律 skipped，
@@ -29,7 +34,12 @@ def cmd_eval(args) -> None:
                                   if x.strip())
     reports = []
     for k in sorted(keys):
-        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow)
+        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow,
+                     **({"report_dir": save} if save else {}))
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            (save / f"{k}.report.json").write_text(json.dumps(r.to_dict(), ensure_ascii=False, indent=1),
+                                                    encoding="utf-8")
         reports.append(r)
         mark = {"ok": "✓", "regressed": "⚠", "failed": "✗", "skipped": "–"}[r.status]
         print(f"{mark} {r.summary_line()}")
@@ -37,12 +47,85 @@ def cmd_eval(args) -> None:
             print(f"    ⚠ {w}")
         if r.status == "failed":
             print(f"    {r.error[:160]}")
+        lock = getattr(r, "lock", None)
+        if lock:
+            print("    钉版 " + " ".join(f"{k}={v}" for k, v in lock.items()))
+        for g in getattr(r, "guards", None) or []:
+            if g["verdict"] != "pass":
+                op = "≤" if g["dir"] == "max" else "≥"
+                print(f"    护栏{'越线' if g['verdict'] == 'fail' else '未验证'}：{g['book']} {g['metric']} "
+                      f"{g['value']}（门 {op} {g['limit']}）")
+    if getattr(args, "against", ""):
+        from .eval.compare import compare_dirs
+        print()
+        print(compare_dirs(Path(args.against), reports, save))
     if args.json:
         print(json.dumps([r.to_dict() for r in reports], ensure_ascii=False))
     n_bad = sum(1 for r in reports if r.status == "failed")
     n_reg = sum(1 for r in reports if r.status == "regressed")
     print(f"\n通过 {sum(1 for r in reports if r.status=='ok')} / 回归门失败 {n_reg} / 跑不起来 {n_bad}")
     sys.exit(1 if n_bad and args.strict else 0)
+
+
+def _cmd_guard(args) -> None:
+    """跑 dataset guards/*.yaml 里的全部评测器，逐条比护栏，出总表；有越线／未验证就以 1 退出（发版用）。"""
+    import os
+    from ._cv import GoldStore, run_eval
+    from .eval.guards import GuardResult, GuardSummary, check_report, guards_for, load_guards
+    ds = GoldStore(None).root
+    guards = load_guards(ds)
+    if not guards:
+        print(f"数据集 {ds} 下没有 guards/*.yaml")
+        sys.exit(1)
+    libs = {}
+    for x in getattr(args, "lib", None) or []:
+        k, _, v = x.partition("=")
+        libs[k.strip()] = v.strip()
+    want = set(args.evals or [])
+    ids = sorted({g.eval for g in guards if not want or g.eval in want})
+    save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
+    allow = ("products", "heavy") + tuple(x.strip() for x in (getattr(args, "allow", "") or "").split(",")
+                                          if x.strip())
+    summary = GuardSummary()
+    for k in ids:
+        gs = guards_for(guards, k)
+        need = {g.lib for g in gs if g.lib}
+        if len(need) > 1:
+            raise SystemExit(f"{k} 的护栏要了不同书的库 {need}，护栏表写错了")
+        lib = next(iter(need), "")
+        if lib and lib not in libs:
+            print(f"– {k}：要书 {lib} 的字形库，没给 --lib {lib}=<glyph.db>，记未验证")
+            summary.results += [GuardResult(g, None, "unverified")
+                                for g in gs]
+            continue
+        old = os.environ.get("GUJI_GLYPH_DB")
+        if lib:
+            os.environ["GUJI_GLYPH_DB"] = libs[lib]
+        try:
+            r = run_eval(k, timeout=args.timeout, allow=allow, **({"report_dir": save} if save else {}))
+        finally:
+            if lib:
+                if old is None:
+                    os.environ.pop("GUJI_GLYPH_DB", None)
+                else:
+                    os.environ["GUJI_GLYPH_DB"] = old
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            (save / f"{k}.report.json").write_text(json.dumps(r.to_dict(), ensure_ascii=False, indent=1),
+                                                    encoding="utf-8")
+        res = check_report(r, gs)
+        summary.results += res
+        mark = "✓" if all(x.verdict == "pass" for x in res) else "✗"
+        print(f"{mark} {k}（{r.status}，{r.elapsed:.0f}s）" + (f"：{r.error[:120]}" if r.status == "failed" else ""))
+        lock = getattr(r, "lock", None)
+        if lock:
+            print("    钉版 " + " ".join(f"{a}={b}" for a, b in lock.items()))
+    print()
+    print(summary.table())
+    if save:
+        (save / "guards.json").write_text(json.dumps([x.to_dict() for x in summary.results], ensure_ascii=False,
+                                                     indent=1), encoding="utf-8")
+    sys.exit(0 if summary.ok else 1)
 
 
 def cmd_check(args) -> None:
@@ -139,7 +222,7 @@ def cmd_check(args) -> None:
 
 
 def cmd_groups(args) -> None:
-    """字组：table 由注册表重生成 doc/字组/字组总表.md（--check 只比对）；status 一轮产物 × 人工数据 → 每组状态报告。"""
+    """字组：table 由注册表重生成 cv doc/4-定字/字组/字组总表.md（--check 只比对）；status 一轮产物 × 人工数据 → 每组状态报告。"""
     if args.action == "table":
         from ._cv import groups_catalog as catalog
         raise SystemExit(catalog.main(["--check"] if args.check else []))
@@ -151,52 +234,12 @@ def cmd_groups(args) -> None:
                               codepoints=Path(args.codepoints) if args.codepoints else None, tag=args.tag,
                               prev=Path(args.prev) if args.prev else None)
     print("写", pj, "\n写", pm)
-    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（Neon 正式库）
+    if args.progress:                  # 网站后台「文本整理 · 形近字」栏（中心库正式库）
         import json
         from ._cv import eval_group_progress as group_progress
         prev = json.loads(Path(args.prev).read_text(encoding="utf-8")) if args.prev else None
         rs = group_progress.rows(json.loads(pj.read_text(encoding="utf-8")), args.progress, prev)
         print("写后台", group_progress.write(rs), "行")
-
-
-def cmd_cards(args) -> None:
-    """待审卡片的数据：dingzi | cutline | jiazhu | groups，一律出 JSON。
-
-    对应控制台第六类。**这不是给人看卡片用的**——是给云端道用来
-    「统计还剩多少待审、抽查自动放行那批、量一刀改动前后的待审率变化」
-    （方案 §二 第六类：需要人在场的是浏览器里那个页面，不是这些接口）。
-    """
-    from ._cv import EventLog
-    from ._cv import ProductStore
-
-    st = ProductStore()
-    if args.action == "dingzi":
-        from ._cv import cards
-        _cv.out(cards(args.book, args.pages, args.limit, args.only, st))
-    elif args.action == "jiazhu":
-        from ._cv import jiazhu_segments
-        _cv.out(jiazhu_segments(args.book, args.pages, args.only, args.batch, st, EventLog()))
-    elif args.action == "groups":
-        from ._cv import group_view
-        _cv.out(group_view(args.book, args.pages, args.edition, args.limit, st))
-    elif args.action == "cutline":
-        from ._cv import eval_touching as T
-        from ._cv import load_book
-        pg = (T.body_pages(args.book) if args.pages == "body"
-              else load_book(args.book).resolve_pages(args.pages))
-        if args.kind == "split_char":
-            cases = T.split_char_boundaries(args.book, pg, st)
-        elif args.kind == "all":
-            cases = T.r2s_boundaries(args.book, pg, st) + T.split_char_boundaries(args.book, pg, st)
-        else:
-            cases = T.r2s_boundaries(args.book, pg, st)
-        n_all = len(cases)
-        done = T.gold_ids() if args.skip_done else set()
-        if args.batch:
-            done |= {e.target.key for e in EventLog().read(args.batch) if e.kind == "cutline"}
-        cases = [c for c in cases if c["id"] not in done]
-        _cv.out({"book": args.book, "n_r2s": n_all, "n_done": len(done),
-              "n": len(cases), "cases": T.pick_cases(cases, args.limit, seed=args.seed)})
 
 
 def cmd_collate(args) -> None:
@@ -267,8 +310,10 @@ def cmd_progress(args) -> None:
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("eval", help="[v2] 评测：list | run")
-    p.add_argument("action", choices=["list", "run"])
+    p = sub.add_parser("eval", help="[v2] 评测：list | run | guard（按 dataset guards/*.yaml 验护栏，发版必跑）")
+    p.add_argument("action", choices=["list", "run", "guard"])
+    p.add_argument("--lib", action="append", default=[], metavar="书id=glyph.db",
+                   help="guard：护栏要字形库的书给库路径（可重复）；没给的记未验证")
     p.add_argument("evals", nargs="*", help="评测器 id；留空跑全部轻量的")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json", action="store_true")
@@ -279,6 +324,11 @@ def add_parser(sub) -> None:
     p.add_argument("--from-raw", action="store_true",
                    help="缺产物时从原图现跑 Step1-3 补齐（云端 clone 无 products/ 时用，"
                         "同 seg_harness.py 的同名开关）")
+    p.add_argument("--save-dir", default="",
+                   help="每个评测器的脚本 JSON 与报告存到这个目录（下次拿来 --against）；"
+                        "评测器 id 可写 @read／@read-3a／@read-3b 一次跑一套")
+    p.add_argument("--against", default="",
+                   help="上一次 --save-dir 的目录：逐项比指标、列误认／错例清单的新增与消失")
     p = sub.add_parser("check", help="[v2] 判据与体检：quality | rulers | round | rate | throughput | ledger")
     p.add_argument("action", choices=["quality", "rulers", "round", "rate", "throughput", "ledger"])
     p.add_argument("book", nargs="?", default="vol01")
@@ -307,22 +357,8 @@ def add_parser(sub) -> None:
     p.add_argument("--tag", default="", help="status：这一轮产物的标签，进文件名")
     p.add_argument("--prev", default="", help="status：上一份报告的 json，表里写送审增减")
     p.add_argument("--progress", default="", metavar="BOOK_ID",
-                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写 Neon 正式库）")
-    p = sub.add_parser("cards", help="[v2] 待审卡片数据：dingzi | cutline | jiazhu | groups")
-    p.add_argument("action", choices=["dingzi", "cutline", "jiazhu", "groups"])
-    p.add_argument("book")
-    p.add_argument("--pages", default="dev_set")
-    p.add_argument("--only", default="review", choices=["review", "auto", "all"],
-                   help="dingzi 默认 review；jiazhu 默认 all")
-    p.add_argument("--limit", type=int, default=400)
-    p.add_argument("--edition", default="", help="groups：用字账版本")
-    p.add_argument("--batch", default=None, help="cutline / jiazhu：跳过这批已裁的")
-    p.add_argument("--kind", default="r2s", choices=["r2s", "split_char", "all"],
-                   help="cutline：用例类型")
-    p.add_argument("--seed", type=int, default=0, help="cutline：抽样种子")
-    p.add_argument("--no-skip-done", dest="skip_done", action="store_false",
-                   help="cutline：连已进金标的也出")
-    p = sub.add_parser("collate", help="[v2] Step9-9.3 与整理本对勘（出 JSON + HTML）")
+                   help="status：顺手写网站后台「文本整理」yiti／xingjin 两栏（给套书 id，如 96mid1ogzk；写中心库正式库）")
+    p = sub.add_parser("collate", help="[v2] 与整理本对勘（出 JSON + HTML；原 Step9-9.3，close-check 第 12 项要它）")
     p.add_argument("book")
     p.add_argument("--pages", default="", help="页表达式；空 = 全部有 Step7 产物的页")
     p.add_argument("--out", default=None,
@@ -336,7 +372,7 @@ def add_parser(sub) -> None:
     p.add_argument("--strip-radius", type=int, default=2, help="截条图目标格前后各几格（横排）")
     p.add_argument("--strip-h", type=int, default=44, help="截条图每格缩放到多高（px）")
     p.add_argument("--limit-strips", type=int, default=1500, help="--strips 最多出多少条截图（控体积）")
-    p = sub.add_parser("progress", help="[v2] Step9-9.0 进度复查：页范围内每页还挂着哪些待办（看板，不拦 9.1/9.2）")
+    p = sub.add_parser("progress", help="[v2] 进度复查：页范围内每页还挂着哪些待办（看板，不拦导出；原 Step9-9.0）")
     p.add_argument("book")
     p.add_argument("--pages", default="all", help="页表达式；默认全书")
     p.add_argument("--json", action="store_true", help="出 JSON（与控制台 /api/step9/progress 同形）")
@@ -347,7 +383,6 @@ COMMANDS = {
     "eval": (add_parser, cmd_eval),
     "check": (add_parser, cmd_check),
     "groups": (add_parser, cmd_groups),
-    "cards": (add_parser, cmd_cards),
     "progress": (add_parser, cmd_progress),
     "collate": (add_parser, cmd_collate),
 }

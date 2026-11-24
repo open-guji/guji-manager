@@ -9,7 +9,7 @@
     guji products pack  push-index | fetch-index                           # 生僻字 embedding 索引（models/*/emb_*.npz）；push-index 另推训好的语言模型
 
 产物根就是含 `<册>/<步>/p0001.json` 的那一层（`products/`、`guji snapshot make` 出的目录、实验变体目录）。
-细则见 doc/受控重跑.md。
+细则见 cv doc/参考/受控重跑.md。
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def book_versions(book: str, root: Path | None = None) -> dict:
     钉了有快照的字形库版本时另记 `glyph_digest`（快照内容）与 `glyph_rev`（出快照时的中心库 rev）。
     旧做法的 `glyph_pin` 只钉指纹、不钉字形库内容，所以另记中心库 rev：`db_rev` 是存包时本机数据对应的版本，
     `db_revs` 是 seed_admit 各页跑时记下的版本及页数（产物 manifest 的 `db_rev`，老产物没有）。
-    要精确复现某份包读的库，从那个 rev 开 Neon 实验分支。"""
+    要精确复现某份包读的库，用每周备份或 D1 Time Travel 把那个 rev 恢复成新库（见 wiki「中心库字形账本恢复」）。"""
     from ._cv import core_cv_version as CV
     from ._cv import central_rev
     ver, commit = CV.describe()

@@ -9,7 +9,7 @@
     guji perf job <单号>                                 # 一条任务单的各步耗时
 
 记录在产物根旁边的 `perf/<册>/<run_id>.jsonl`（`GUJI_PERF_DIR` 可改）。设了 JOBSDB_TOKEN 时每次运行写完
-自动推一份汇总到美国机任务库 `jobs.perf_run`／`jobs.perf_step`（约 15 KB），**不推 Neon**。
+自动推一份汇总到任务库 `jobs.perf_run`／`jobs.perf_step`（约 15 KB），**不推中心库**。
 """
 from __future__ import annotations
 
@@ -175,7 +175,7 @@ def add_parser(sub) -> None:
     g.add_argument("step")
     g.add_argument("--slowest", type=int, default=20)
     g.add_argument("--run", default=None)
-    u = ps.add_parser("push", help="把还没推过的本机记录推到美国机任务库（只推美国机，不推 Neon）")
+    u = ps.add_parser("push", help="把还没推过的本机记录推到美国机任务库（只推任务库，不推中心库）")
     u.add_argument("--book", default=None)
     j = ps.add_parser("job", help="一条任务单的各步耗时（美国机任务库）")
     j.add_argument("job_id", type=int)
@@ -217,8 +217,8 @@ PERF_HOOKS: dict[str, dict] = {
                   "_approx_index", "_approx_hit", "_book_knn_pass", "_context_guard", "_context_lib_dissent",
                   "_context_variant_tie", "_coord_refs", "_edge_pair_pass", "_follow_ref_pass", "_garble_guard",
                   "_group_flow_pass", "_header_formula_pass", "_human_unbound_pass", "_iron_confusable_witness",
-                  "_iron_coord_dissent", "_iron_ctx_dissent", "_lane_witnesses", "_lib_near_tie", "_near_knn_pass",
-                  "_pair_shape_pass", "_pick_char", "_pua_rule_pass", "_rare_ref_pass", "_rare_run_ids",
+                  "_iron_coord_dissent", "_iron_ctx_dissent", "_lane_witnesses", "_near_knn_pass",
+                  "_pair_shape_pass", "_pick_char", "_pua_rule_pass", "_rare_ref_pass",
                   "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass", "_rr_shape_pass",
                   "_seal_blank_flip", "_shadow_veto_pass", "_solo_ctx_vetoed", "_symbol_ref_blank_pass",
                   "_symbol_review_pass", "_vis_ruling_pass", "_keben_counts", "_doubts",

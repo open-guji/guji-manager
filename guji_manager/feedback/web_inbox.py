@@ -28,24 +28,26 @@ import urllib.parse
 import urllib.request
 
 KINDS = ("cellreview", "charfix", "thread", "feedback")
-TOKEN_ENVS = ("GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ")
+TOKEN_ENVS = ("GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ")   # 缺省；实际以 databases.toml [webinbox] 为准
 PAGE = 500
 _UA = {"User-Agent": "open-guji-manager/web-inbox"}
 
 
 def base_url() -> str:
-    return os.environ.get("GUJI_DATA_URL", "https://data.open-guji.com").rstrip("/")
+    from .. import dbconfig
+    return dbconfig.url("webinbox") or "https://data.open-guji.com"
 
 
 def _tokens(token_env: str | None = None) -> list[str]:
-    names = [token_env] if token_env else list(TOKEN_ENVS)
+    from .. import dbconfig
+    names = [token_env] if token_env else (dbconfig.token_names("webinbox") or list(TOKEN_ENVS))
     out = []
     for n in names:
         t = os.environ.get(n or "")
         if t and t not in out:
             out.append(t)
     if not out:
-        raise SystemExit(f"读网站收件箱要中心库读令牌（{token_env or '、'.join(TOKEN_ENVS)}）")
+        raise SystemExit(f"读网站收件箱要中心库读令牌（{'、'.join(names)}）")
     return out
 
 

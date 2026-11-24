@@ -9,7 +9,77 @@
 - PATCH：`rulings-hits --fetch`：各册并行取产物包、只解 seed_admit／align_ref；`products pack fetch --steps` 同（整包仍要下载，省解包落盘）（ZM 11-21）。
 - PATCH：`rulings-hits` 开了码位表的书、产物没有 `vis_ctx` 时，窗口里有码位目标字的格原因直接写「多半是码位归一」（QTW 11-21，全唐文 陜／戸／勲）；`--data-dir` 指定读码位表的数据目录。
 
-- PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#PR）。
+## [0.6.6] - 2026-11-23
+
+- **PATCH**（11-23，GM1，中心库第一步表精简）：`files` 里 kind=config 的 `.json` 不再解析进 `doc`（无读者；kind=list 等不变，`row_sha` 只由 raw 算，不触发重推）；`workcopy` 推库前的 corpus-pack／glyph-pack manifest 保护查询由 `LIKE … OR LIKE` 改成主键区间查询，不再扫整个 ws 的 files。生产库已把 config 的 doc 置空。L0。
+- **PATCH**（11-23，Sheldon「写中心库不用我同意，可以改 manager 文档」）：文档里「写中心库、推库、传 R2 要用户点头／先报条数等点头」改为：推前 `db pull`＋`push --dry-run`，常规推库不用问用户（与 ai-team 项目管理指南 11-20 白名单一致）；删数据、批量撤除、换正式库、字形账本缩水等仍先停下问。只改文档（L0）。
+
+- **PATCH**（11-23，GM4；格式瘦身 A＋B 读端补充，guji-format #33）：`revise.dump_like`（revise／revert 写盘共用）认 v0.3 punct／entity「每条一行」写法并原样写回，改一条只动一行；v0.1／v0.2 旧写法不变。用 GM3 三册样本（殿本050、全唐文010、史記003）验往返逐字节一致、旧新格式 `plan_fixes` 结果相同；加 3 条测试。swap 写盘仍走 book-text `original_version.dump_json`，其对 v0.3 的保排版需 GM3／CV0 另核。（来源判定与换单守卫已由 GM2 #878 做。）
+- **PATCH**（11-23，GM2，格式瘦身 punct／entity v0.3 读端）：`closeout` 写回（`fix-misplaced`）判人改改读 `effective_source`（条目省 source 时取 `default_source`），`char_offset` 有才更新、不新增；换单 `swap` 守卫按有效 source 比标点条目，v0.2→v0.3 迁移不误报。book-text 侧 `check_anchor_drift`／`remap_anchors`／`char_edits` 同口径（book-text #501）。L0。
+## [0.6.5] - 2026-11-23
+
+- **PATCH**（11-23，#848 直接进 main，随本版回到 dev）：runner 自更新循环修复——manager 切换（checkout）失败不再当成功；自更新后仍判过期就不再 exec，避免空闲 runner 反复「已拉新代码，重新 exec」不领单。L0。
+- **PATCH**（11-23，GM2 版本普查）：执行方上线时 worker 表的 `runner` 一栏带上本机 manager 版本（如 `36f1e242 m0.6.4`），`guji job workers` 直接看全部执行机版本，不用逐台问。L0。
+- **PATCH**（11-23，CV0 转用户数据库分工：字形库归 GM2）：`guji db push`／`sync` 核「库里已有哪些图」不再按工作区整表读 `glyph_instances.patch_sha`（殿本 18 万行，中心库读量大户）：要推的图 ≤2000 张时按 sha 问（`= ANY`），多了才整表读；锚图、整理本表同理。增量 pull 本来就按改动的实例取 patch_sha，全量 pull 要还原全部刻例图、仍整表读。L0。
+
+- **PATCH**（11-23，CV3，Sheldon 定护栏按书按集、放 dataset）：新增 `guji eval guard`，读 open-guji-dataset `guards/*.yaml`（每条＝评测器＋指标＋max/min＋放宽后的门，要库的写 `lib: <书id>`、用 `--lib 书id=glyph.db` 给），逐条比、出总表，越线或未验证以 1 退出；`guji eval run` 跑到有护栏的评测器也自动比，越线记 regressed。`doc/版本号规矩.md` rc 步骤加「护栏必须全过」。新增 `eval/guards.py`、测试 `test_eval_guards.py`。
+- **PATCH**（11-23，SJ／CV0 问）：COMPAT.md 写明 manager 0.6 只硬核契约 v1，cv 0.7.x／0.8.x 也能用，只是 `pipeline` 步骤前缀要 cv ≥ 0.9.0（旧 cv 写 `guji job …` 等老写法）；`swap doctor` 的 cv 版本提示改成同一口径。L0。
+- **MINOR**（11-23，CV2 cut-bench L2）：新页型 `cut_check`（逐格切线审查）1.0.0——一屏原书一列，一格一张小图（上下各带半个邻格）画上、下切线，点图上半／下半标那条切线不准；列首尾与边框之间不画不审。结果 `guji review-pages cutcheck-apply`。L0。
+- **PATCH**（11-23，GM4／A32，GM2 转全唐文 006–008 实测；L0）：①`guji collect` 多册串行时某册 `SystemExit`／异常不再把后面几册一起带走：记成该册 blocked 并继续，开头打印「本趟收 N 册：…」，结尾照旧列没收完的册（`--books 006,007,008`、`007-008` 本就能展开，`parse_books` 已有测试）。②`swap doctor` 加版本检查：manager < 0.5.0、cv < 0.9.0 只提示不挡；`CELLREVIEW_TOKEN` 由必需改为可选（0.5.0 起缺省读收件箱，用 `GUJI_DATA_TOKEN_READ`）。未动落票口径。
+
+## [0.6.4] - 2026-11-23
+
+- 发版说明：0.6.2、0.6.3 号已被别的发版占用（tag v0.6.2 在 f96528b），本版号 0.6.4。
+
+- **PATCH**（11-23，GUJI-776 新机首次 db sync 168 秒、moved 61,251）：`glyph_instances` 标为按主键排的表（`TableSpec.key_ordered`）。cv 导出 `instances/*.jsonl` 按 instance_id 排，中间新增几行后面的行号全变；导入时文件严格按主键升序就不再逐行推「只是行号变了」（`importer.key_sorted_paths`），还原时按主键排回、整文件 sha 核对（`materialize`）。没按主键排的文件照旧。测试 `test_glyph_key_order.py`。L0。
+- **PATCH**（11-23，ZM #16511／#16520 报）：任务库执行方缺省按需拉（部分副本），整册跑完的自动回库每单都报「⚠ 放行格回库失败」。部分副本推不上中心库本是预期，改成一行 ⓘ 说明（这里不回库；结果要进库，标 main 后在完整副本上 `guji db pull` 再 `guji glyph-db backfill --books … --apply`），不再去跑回库、不报失败；整拉的机器照旧回库。L0。
+
+## [0.6.2] - 2026-11-23
+
+- **PATCH**（11-23，QTW 报：v0.6.1 标 main 必挂）：#818 用 ruff 删「未用 import」时误删 `ops/pack_purity.py` 末尾的再导出 `describe`，`guji products pack promote`（标 main）与存包打印纯净性时 `ImportError`／`AttributeError`。补回（标 `noqa: F401`）。新测试 `tests/test_import_names.py`：静态列出本包全部相对导入（含函数里的），逐条核对目标模块真有这个名字；另把 `_warn_impure`、`_purity` 两条路径真跑一遍。#818 其余删掉的 import 逐个查过，没有别的被外部引用。L0。
+- **PATCH**（11-23，CV2 修格确认页）：`col_check` 1.0.3——item 带 `focus: true` 的列加橙色粗描边、标「请确认」，同页其余列照常显示作对照（修完错格后出确认页用：整页看、刚修的列突出）。L0。
+
+## [0.6.1] - 2026-11-23
+
+- 发版缘由：执行机跟 manager main，任务库切 D1（#811）要发版才生效。
+
+- **PATCH**（11-23，GM2 清理第二批：三层迭代到出 v0.1 的命令、人审页、文档）：`close-check`、`collate`、`progress` 帮助与 `tools/开书/出v01.py` 的「Step9」改称第五步产物（原 Step9），出v01 提示改写 `guji output export md`；`review-pages` 帮助与 `seg_cause` 页型说明里「A22 seg_causes」改指本仓 `review/seg_causes.py`。Wiki「人审页模板」：页型表补 `col_check`、编号去重，第七节版本列按 `registry.py` 更新并补 `ref_check`／`variant_compare`／`seg_cut`／`col_check` 四行，旧路径 `doc/01-粗校/…`、旧名改掉；另修 4 处指向旧路径的文档（无法识别字、exp_framework、切分代码结构、spreads.py）。页型版本不变，不动产物（L0）。
+- **PATCH**（11-23，CV2 收 cut-bench 第 4 轮）：审阅页存档 `_store.js` 修丢标注——后台正在写时新的 flush 直接返回、不再补写，快速翻页（每页 1–2 秒）时最后几页的「本页没问题」标注没进后台（全唐文 3 页、史記 1 页、殿本 1 页）；改成写时记一笔、写完再补一轮。本机 localStorage 里仍有，重开页面会补写。所有用 `makeStore` 的页型都受益。`col_check` 1.0.2：说明改为「这一轮只确认格数与大致切分，连接处切点、框线不用细看」。L0。
+- **PATCH**（11-23，Sheldon「清理照做」）：中心库删五张一直为空的表 `cv_versions`、`freeze_baselines`、`snapshots`、`glyph_pairs`、`glyph_events`（schema、`scope.py` 的表定义与行解析都去掉；`pairs.jsonl`、`events/*.jsonl` 若出现改当整文件进 `files`）。文档与发布标准里「三张登记表各一行」改为查 `feedback/lists/freeze/<册>.jsonl`。删前整库已备份。L0。
+- **PATCH**（11-23，GM2 全面清理）：去掉中心库迁 D1 后的 Neon 残留——删 `datastore/neonapi.py` 空壳（`cli_db`、任务库看板直接按分支名连），`jobs.store.connect_neon` 改名 `connect_central`（旧名留别名），各命令帮助与注释里的「写 Neon 正式库」等改成中心库；`pending-stats` 报告里码表、分类规则、跟进方的出处从 cv／ai-team 旧路径改成本仓路径；待审原因 yaml 的 `owner`、`taxonomy` 的跟进方、`diagnose`／`machine_audit`／`seg_causes` 等输出里给人看的去向、`iterate freeze` 的通知名单换成 11-23 新 Project 名（CV0–CV4、GM2–GM4；进度看板的写入人 `WHO` 不动）；`guji iterate --help` 返回 0。删未用的 import 与变量、`_cv` 里三个重复键。文档：待审原因规范从 cv `doc/design/` 搬来成 `doc/参考/待审原因/规范-PendingReason.md`（补 11-09「book-text 只录首选字」后的写法）；`环境与令牌` 去掉 Neon／KV 令牌、补密钥仓取法与任务库令牌；`待审分类规范`、`按码现算.py`、两篇 Wiki 的 Neon 连法改成 D1；doc／Wiki 里「报／交／找 A2x／A3x」一类去向换新名；修 `doc/参考` 两处指向 `中心库.md` 的断链。不动产物（L0）。
+- **PATCH**（11-23，Sheldon「任务库也搬到 D1」「随时切」）：**任务库缺省改连 D1 `guji-jobs`**（`databases.toml` 的 `[jobs]` → `d1-worker`，`env_url` 改 `GUJI_JOBS_URL`）；旧美国机 Postgres 挪到 `[jobs_pg]`，`jobsdb` 在 `[jobs]` 不是 pg-tunnel 时读它（搬家脚本用）。执行方空闲时自更新即改连 D1；交接期 `scripts/jobs_pg_to_d1.py sync` 反复把 Postgres 的变动同步过来。`guji_jobs` 等提交端要更新到含此改动的 manager。L1（存放位置变，命令不变）。
+- **PATCH**（11-23，A31 查中心库迁 D1 后遗留）：`central-gc` 查「排队／在跑任务点名的包」原来在**中心库**连接上查 `jobs.job`，任务库 11-03 起就是单独的库，一直静默读不到、不按任务保留；改按 `databases.toml` 的 `[jobs]` 连任务库，读不了时 `--apply` 拒删。`central-gc`、`progress-sync` 读线上单／冻结清单时补上大文件（`files.body_r2=1`，原文在 R2）：原先这类行 raw／doc 为空被漏掉（北行日录 001 线上单）。`guji datastore` 入口指错模块（KeyError 'main'）修正。测试 `test_central_gc.py` 加两条。只读改动，不动产物（L0）。
+- **PATCH**（11-23，Sheldon 11-22「任务库也搬到 D1」）：任务库支持 Cloudflare D1（独立库 `guji-jobs`，经 guji-data Worker `/v1/sql?db=jobs`），按 `databases.toml` 的 `[jobs].driver` 选，**缺省仍是美国机 Postgres**，数据搬完再发版改缺省。新 `jobs/schema_d1.sql`、`jobs/d1.py`（连接：一批一事务、结果按列名还原类型；`sqlite` 驱动连本机文件）、`jobs/store_d1.py`（D1 写法：一次请求一批语句，`mark` 标记找刚改的行，条件分支用 `UPDATE … RETURNING`），`store` 各函数按连接分派。执行方空闲轮询在 D1 上 60 秒一次、领单与报到并成一次请求，收回过期与通知每 5 轮一次（`GUJI_JOBS_IDLE_EVERY`）；心跳续租与报到并成一次（`heartbeat(seen=…)`）。看板、耗时推送/汇总有 D1 分支。搬家脚本 `scripts/jobs_pg_to_d1.py`（dump／check）。文档 `doc/数据库/任务库.md` 加 D1 连法、写法要点、搬家步骤。测试 `tests/test_jobs_d1.py`。Postgres 路径行为不变（L0）。
+- **PATCH**（11-22，Sheldon「所有数据库尽量抽象，可随时通过配置文件改链接方式」）：连库配置 `databases.toml`（包内 `guji_manager/config/databases.toml` → `~/.config/guji/databases.toml` → `GUJI_DB_CONFIG` → 老环境变量），`guji_manager/dbconfig.py` 按库名（`central`、`webinbox`、`jobs`、`catalog`）取连法；中心库连接、网站收件箱读、R2 上传、任务库隧道改从配置取，缺省值与原来一致，老环境变量照旧能盖。新命令 `guji db where` 列各库解析出的连法（不打印令牌）。装载时若 `GUJI_DATA_URL` 没设，按配置给 cv 设上。文档 `doc/数据库/`：README（四库一览＋配置说明）、中心库（原 `doc/参考/中心库.md` 移来并按 D1 改写，含全部表）、网站收件箱、任务库、目录库。测试 `tests/test_dbconfig.py`。不动产物（L0）。
+- **PATCH**（11-23，A23 识字 benchmark 第 2 期 d）：`guji eval run @read`（另有 `@read-3a`／`@read-3b`）一次跑齐识字子基准；`--save-dir` 存各评测器 JSON 与报告，`--against <旧目录>` 逐项比指标、列误认／错例清单的新增与消失，钉版不同先提示（`eval/compare.py`）；rare_* 的钉版记字表与模型而不是 glyph.db。测试 `test_eval_compare_read.py`。L0。
+- **PATCH**（11-23，A23 识字 benchmark 第 2 期）：`guji eval run` 的识字评测器按 `--out` JSON 取数（`eval/extract.py`）——match_pairs*／sim_bench 不再报「跑不起来」，match_bench 报 same 精度／覆盖／novel 误放／rank1／auroc，rare_* 头条改为生产用的 emb 路与 unseen top10，**emb top10 为 0（缺向量包）判失败**不再静默报 ok；报告加 `lock`（cv、dataset 提交、glyph.db sha16），命令行打「钉版」一行。测试 `test_eval_extract_read.py`。另登记 3a 库外拒识 `advset`／`advset_shiji`／`advset_qtw`（cv `eval_advset.py`，dataset `glyph-match/advset-*`）与 3a 退化 `match_pool`／`match_pool_shiji`（cv `eval_match_pool.py`，dataset `glyph-match/damaged-*`）、3b 首次字头格 `rare_qtw_firstseen`（dataset `007-qtw-firstseen`）。只动评测，不动产物（L0）。
+- **PATCH**（11-23，Sheldon 点抽查页反馈）：`col_check` 1.0.1——第 1 列排到最右（原先反了），页面说明补「格框带框线不算错，这一轮只看字间切点」。
+- **PATCH**（11-23，A22 切字 benchmark 银标抽查）：审阅页加页型 `col_check`「整列切分抽查」——一页书一屏、各列从右到左叠格框，点并字／劈字／框歪的格标红，整列没问题翻页记全对；结果 `review-pages colcheck-apply` 导出（`review_pages/col_check.py`）。测试 `test_col_check_screens_and_labels`。只加页型，不动产物（L0）。
+- **PATCH**（11-23，史记 2 册 8:2:13b 待审格在网站显示成阙字）：`close-check` 2c「□ 有去向」加一条——待审单上、非人裁、有首选字（`first_choice`）的格，导出里若仍是 □ 就报错（`pending_blank`）。原先「在待审单上」即算有去向，v0.1 首发单没带候选，1,332 个待审格落成 □＋lacuna 也过了关。`release_gates.load_pending_blank_cells`，测试 `test_pending_blank_with_first_choice_flagged`。L0。
+
+## [0.6.0] - 2026-11-22
+
+- 要求 open-guji-cv ≥ 0.9.0（cv 那边删了原 Step9 代码与 `guji export`，由本版 `guji output` 接手）。Wiki 已按 v0.6 重改。
+
+- **MINOR**（删命令，用户 11-22 定）：`guji` 命令按五步加前缀 `guji <步> <命令>`，步为 `start` 新书启动／`pipeline` 自动化流程／`text` 文意与知识／`feedback` 反馈迭代／`output` 排版输出（`guji_manager/steps.py`）；不带前缀的老写法照旧能用，`guji <步> commands` 列本步命令。前缀经 cv 新钩子时点 `route` 去掉（cv #1786）；cv 旧版没有该时点时 `start`／`text`／`feedback`／`output` 靠同名子命令兜底，`pipeline` 前缀不可用。原只能 `guji-manager <命令>`／`python -m` 调的 `pending-stats`、`central-gc`、`triage`、`review-pages`、`progress-sync`、`iterate`、`suggest`、`pair-attr`、`final-review`、`online-lists`、`datastore` 并进 `guji`。**删除** `guji release`、`deploy`、`batch`、`label-batch`、`cards`、`store`（及 `ops/release_check.py`）。
+- **MINOR**（用户 11-23 定「cv 原第 9 步的代码整个搬进 manager」）：第五步排版输出的代码从 cv 搬进 `guji_manager/output/`：cv `report/` 的 collate、collation_grade、same_char、absent、tiers、strips 六个模块，`scripts/` 的 render_guji_markdown、export_guji_format、export_guji_page、convert_pages_to_char_cord、reflow_md、export_wikisource、build_collation_report 七个脚本改成模块（`python -m guji_manager.output.<模块>`）。命令 `guji output export md／format／wikisource／reflow`（原 cv `guji export md／format`，改为同进程调用，口径不变）、新增 `guji output collation-report`。cv 的 `report/slots.py`、`report/witness.py` 管线要用，留在 cv。只读产物，不动产物与指纹（L0）。要求 cv ≥ 0.9.0（cv 那边删掉这些代码）。
+- 文档：doc 只留规格与事实，教程、做法、坑搬进 Wiki（`wiki/<步名>/`）；四步改名新书启动／自动化流程／文意与知识／反馈迭代，加第五步排版输出（cv 原 Step9 移来）。
+
+## [0.5.0] - 2026-11-21
+
+- **MINOR**：网站票、改字意见缺省改读中心库 `web_inbox`（D1 为真源，网站 KV 已淘汰，A20 11-22；缺省变了所以升 MINOR）：`cellvotes draft`、`opinions ingest`、收单 `votes_from_flag()` 不带参数即读收件箱；`--from`/`--from-dir` 文件离线读不变；应急读旧 KV 用 `--from-kv` 或 `GUJI_VOTES_FROM=kv`（网站已不再写 KV）。
+
+- PATCH：`cellvotes reconcile` 的 KV 管理读改为读 3 遍取并集（按票身份）：两次读条数相同、缺的却是不同的票（995ejelvk0 条目票 372／373），只比条数会误报「只在收件箱」。
+
+- PATCH：`cellvotes reconcile` 加 `--rev all`（收件箱里出现过的每张单都比）；KV 管理读失败重试，并再读一遍取条数多的那次（11-21 殿本首轮对账 3 票「只在收件箱」、2 张单 500，都是 KV 管理读不稳，重读即一致）。
+
+## [0.4.82] - 2026-11-20
+
+- PATCH：`guji collect` 落按格写的文意裁定（ZM 11-21 batch5 兩/雨 3 格、閔 1 格 landed 0 且无提示）：`ai_ruling_chars` 加第三路，seed_admit 没有 ask（字组没进）或 ask 同组同版本但窗口小变的格，按格号取最新一条非 O 文意裁定，conf=high、字是整理本字／库前五／组员、窗口紧邻 2 字相同且相似度 ≥0.8 才落，来源 `AI文意/<组>/按格`；对不上、终审裁定把握不够／admit_ok 假的都写进 notes，不再静默跳过。待审分类 V01 不再把 兩雨 味未 玉王 傅傳 箸著 住往 奕弈 寥𡚶 算异体（字典边实为形近，`review.reasons.NOT_VARIANT_PAIRS`）（#778）。
+
+## [0.4.81] - 2026-11-20
+
+- PATCH：`guji collect` 提速（ZM 11-21 性能反馈）：`--jobs N` 多册并行（子进程各用 `<检出>-collect-<册>` worktree，拉库／推库／发站各一次，推 dev 被抢先 rebase 重推）；产物包分段并发取，每册收完删解出的包（`--keep-pack` 留）；开头显式更新 origin/dev（单分支检出 `local_check --dev` 不再因旧引用整册不过）；提示词版本／字组改名、窗口没变的文意裁定照落并按现行版本补键；失败原因带出报错行（含格号），每趟结果记 `reports/_collect/runs/`（#769）。
 - PATCH：网站票、改字意见可改读中心库网站收件箱 `web_inbox`（A20 11-21：网站 KV 与 D1 双写，之后淘汰 KV）。`cellvotes draft --from-inbox`（按单版、按条目两种键都认，按键名排序，产出与 `--from-kv` 逐字节相同；`--allow-empty` 也认它）、`opinions ingest --from-inbox`（改字意见与按单版精校票读收件箱，hidden.txt 照读中心库）、`guji collect` 设 `GUJI_VOTES_FROM=inbox` 改读收件箱、新增 `cellvotes reconcile` 双写对账（KV vs 收件箱逐票比）。缺省仍读 KV，对账通过后再改。忽略 `probe:` 探测条目；墓碑（`value.deleted: true`，网站删了 KV 键）读到跳过、对账算一致；`web_inbox.by_prefix` 按键前缀不按书读（thread 等无 book 的）。
 
 ## [0.4.80] - 2026-11-20

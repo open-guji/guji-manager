@@ -1,6 +1,6 @@
 """`guji seg`：切分的人定与检查（A22，2026-11-12）。
 
-- `guji seg pin <册:页:列> [编辑…]`：整列写定（manual-cells），见 `seg_pin.py` 模块头与 cv `doc/切分覆盖.md` 第四节。
+- `guji seg pin <册:页:列> [编辑…]`：整列写定（manual-cells），见 `seg_pin.py` 模块头与 cv `doc/2-切字/切分覆盖.md` 第四节。
 - `guji seg check <册…>`：切分核查（并了 SJ 史記快筛、cv seg_screen、待审原因码），见 `seg_check.py` 模块头。
 - `guji seg ruler`：人修过的列（召回尺子），给 `seg check --recall`。
 """

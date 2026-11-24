@@ -81,6 +81,49 @@ def _config(j: dict) -> str:
 def build(conn) -> dict:
     """读任务库，整理成 `detail.table`（列定义＋行）。"""
     from .._cv import jobs_store as S
+    if getattr(conn, "is_d1", False):
+        jobs, done_rows, now = _read_d1(conn)
+    else:
+        jobs, done_rows, now = _read_pg(conn, S)
+    return _table(conn, S, jobs, done_rows, now)
+
+
+def _read_d1(conn):
+    """D1 写法：没有 LATERAL，最近一次领单用相关子查询；时长用 julianday 差。"""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    last = "(SELECT max(n) FROM attempt x WHERE x.job_id = j.id)"
+    jobs = conn.q(
+        "SELECT j.*, a.worker AS a_worker, a.started_at AS a_start, a.heartbeat_at AS a_beat, a.finished_at AS a_end"
+        f" FROM job j LEFT JOIN attempt a ON a.job_id = j.id AND a.n = {last}"
+        " WHERE j.status IN ('running', 'queued')"
+        "    OR j.id IN (SELECT id FROM job WHERE status IN ('succeeded', 'failed', 'blocked', 'cancelled')"
+        "         ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT ?)"
+        " ORDER BY CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,"
+        "          CASE WHEN j.status = 'queued' THEN j.priority END, CASE WHEN j.status = 'queued' THEN j.created_at END,"
+        "          j.finished_at DESC NULLS LAST, j.id DESC", [RECENT])
+    for j in jobs:      # a_* 列名不在 d1.TIME_COLS 里
+        for k in ("a_start", "a_beat", "a_end"):
+            if isinstance(j.get(k), str):
+                j[k] = _dt.datetime.fromisoformat(j[k].replace("Z", "+00:00"))
+    done = conn.q(
+        "SELECT j.kind, json_extract(j.spec, '$.steps') AS steps, json_extract(j.spec, '$.pages') AS pages,"
+        " (julianday(a.finished_at) - julianday(a.started_at)) * 86400 AS secs FROM job j"
+        " JOIN attempt a ON a.job_id = j.id AND a.outcome = 'succeeded'"
+        " WHERE j.status = 'succeeded' ORDER BY a.finished_at DESC LIMIT 200")
+    for d in done:
+        if isinstance(d.get("steps"), str):
+            try:
+                d["steps"] = json.loads(d["steps"])
+            except ValueError:
+                pass
+        if d.get("pages") is not None and not isinstance(d["pages"], str):
+            d["pages"] = json.dumps(d["pages"], ensure_ascii=False) if isinstance(d["pages"], (list, dict)) \
+                else str(d["pages"])
+    return jobs, done, now
+
+
+def _read_pg(conn, S):
     now = conn.execute("SELECT now()").fetchone()[0]
     jobs = S._rows(conn.execute(
         "SELECT j.*, a.worker AS a_worker, a.started_at AS a_start, a.heartbeat_at AS a_beat, a.finished_at AS a_end"
@@ -95,12 +138,17 @@ def build(conn) -> dict:
         "          j.finished_at DESC NULLS LAST, j.id DESC", (RECENT,)))
     # 同类已成功任务的耗时（该任务成功那次领单的起止）
     # 只取 _kind 要的两项（整份 spec 每条约 0.7 KB，看板每次领单、心跳都重算，2026-11-02 中心库流量排查）
+    done = S._rows(conn.execute(
+        "SELECT j.kind, j.spec->'steps' AS steps, j.spec->>'pages' AS pages,"
+        " extract(epoch FROM a.finished_at - a.started_at) AS secs FROM jobs.job j"
+        " JOIN jobs.attempt a ON a.job_id = j.id AND a.outcome = 'succeeded'"
+        " WHERE j.status = 'succeeded' ORDER BY a.finished_at DESC LIMIT 200"))
+    return jobs, done, now
+
+
+def _table(conn, S, jobs, done_rows, now) -> dict:
     done = [{"kind": d["kind"], "spec": {"steps": d["steps"], "pages": d["pages"]}, "secs": d["secs"]}
-            for d in S._rows(conn.execute(
-                "SELECT j.kind, j.spec->'steps' AS steps, j.spec->>'pages' AS pages,"
-                " extract(epoch FROM a.finished_at - a.started_at) AS secs FROM jobs.job j"
-                " JOIN jobs.attempt a ON a.job_id = j.id AND a.outcome = 'succeeded'"
-                " WHERE j.status = 'succeeded' ORDER BY a.finished_at DESC LIMIT 200"))]
+            for d in done_rows]
     hist: dict[tuple, list[float]] = {}
     for d in done:
         k = _kind(d)
@@ -174,11 +222,11 @@ def publish(db, *, force: bool = False, dry: bool = False, min_gap: float | None
         queued = sum(1 for r in table["rows"] if r["status"] == "排队")
         if dry:
             return table
-        # 看板写进中心库 progress（仍是 Neon），与任务库（jobs，可能已切到新机）分开连
+        # 看板写进中心库 progress（D1），与任务库（jobs，美国机 Postgres 或 D1 guji-jobs）分开连
         global _central
         if _central is None:
             from .._cv import jobs_store as S
-            _central = S.DB(S.connect_neon)
+            _central = S.DB(S.connect_central)
         _central(_put, table, f"在跑 {running}、排队 {queued}")
         return table
     except Exception as e:      # noqa: BLE001 —— 看板写不上不能拖垮执行方；进展以任务库为准，但原因要留下来

@@ -123,7 +123,7 @@ def main(argv=None) -> int:
             p.add_argument("--released", type=Path, required=True); p.add_argument("--n", type=int, default=30)
             p.add_argument("--seed", type=int, default=1); p.add_argument("--out", type=Path, required=True)
         if name == "add":
-            p.add_argument("--results", type=Path, required=True); p.add_argument("--checker", default="A31")
+            p.add_argument("--results", type=Path, required=True); p.add_argument("--checker", default="GM2")
         if name == "summary":
             p.add_argument("--out", type=Path)
     a = ap.parse_args(argv)

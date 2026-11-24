@@ -3,7 +3,7 @@
   list                                      页型、版本、用途
   preselect  --cells cells.jsonl --out DIR  预选：三方一致的格归 auto（不上页），其余出 page.jsonl 与统计
   build      TYPE --items items.jsonl --book B --out page.html   出页（一字一卡同时写 page.cards.json）
-  seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   A22 seg_causes → 切分归因卡片
+  seg-cards  --per-page 逐页.tsv --per-cell 逐格.tsv --out items.json   review/seg_causes.py 的输出 → 切分归因卡片
   build ... --exclude landed.json            撤掉已录入的格（点过即录入、不再上页；可给多个文件）
   expand     --cards page.cards.json --results DIR  把卡片页结果展开成逐格决定（ok/pick/seg/unclear/bad/follow/audit）
   crop       --cells ids.txt --shrink-dir D --pages-dir D --out DIR   按 cell_shrink 字框裁审页图
@@ -22,6 +22,9 @@
   cp-apply   --results DIR [--who 名] [--items items.jsonl]         码位定夺页结果 → codepoints.yaml 片段＋follow_ref＋分开/未定清单
   build glyph_quality --items <分片>/items.jsonl --root <分片> ...   字块质量页；可直接吃 dataset 金标信封（--all-crops 连已标的也上）
   build seg_cut --items 人裁切线候选.jsonl --root <放列图的目录> ...   人裁切线页（小字并成一格，点图画切线）
+  build col_check --items 列.jsonl ...                             整列切分抽查页（一页书一屏，点切错的格）
+  colcheck-apply --results DIR --out F                             整列抽查结果 → jsonl（列号、全对/有错/看不出、错格）
+  cutcheck-apply --results DIR --out F                             逐格切线结果 → jsonl（格号、全对/有错/看不出、错的切线 top/bottom）
   segcut-apply --results DIR --out F                               人裁切线结果 → jsonl（格号、结论、列图/页图切线坐标）
   cold-items --cells 待审.tsv --pack-dir '<包>/{vol}' --crops-dir '<图>/{cell}.png' --out-dir D   冷启动快审：按 5b 领先/cov/库例数分高、低把握 items（见 cold_start.py）
   cold-pages --out-dir D --book B                                  出高/低把握两张页（高：带「本页其余都对」；低：一格一卡、没点不算对）
@@ -84,6 +87,8 @@ def main(argv=None):
     p.add_argument("--shard", help="dataset 金标信封 items.jsonl；给了就回写成同样格式")
     p.add_argument("--why", default="字块质量页（glyph_quality）人点")
     p = sub.add_parser("segcut-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
+    p = sub.add_parser("colcheck-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
+    p = sub.add_parser("cutcheck-apply"); p.add_argument("--results", required=True); p.add_argument("--out", required=True)
     p = sub.add_parser("ref-check-items"); p.add_argument("--cells", required=True)
     p.add_argument("--shrink-dir", required=True); p.add_argument("--pages-dir", required=True)
     p.add_argument("--page-name", default="{page}.png"); p.add_argument("--out", required=True)
@@ -232,6 +237,16 @@ def main(argv=None):
         its = cp.items_from_groups(json.loads(Path(a.groups).read_text(encoding="utf-8")), a.cache)
         _write_jsonl(a.out, its)
         print(f"{len(its)} 组，{sum(len(r['tiles']) for g in its for r in g['rows'].values())} 格图 → {a.out}")
+    elif a.cmd == "colcheck-apply":
+        from . import col_check as cc
+        rows = cc.label_rows(cc.labels_from_docs(_docs(a.results)))
+        _write_jsonl(a.out, rows)
+        print(f"{len(rows)} 列 → {a.out}")
+    elif a.cmd == "cutcheck-apply":
+        from . import cut_check as ct
+        rows = ct.label_rows(ct.labels_from_docs(_docs(a.results)))
+        _write_jsonl(a.out, rows)
+        print(f"{len(rows)} 格 → {a.out}")
     elif a.cmd == "segcut-apply":
         from . import seg_cut as sc
         rows = sc.label_rows(sc.labels_from_docs(_docs(a.results)))

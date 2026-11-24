@@ -314,7 +314,7 @@ def _local(ws_dir: Path, data: Path):
     return f
 
 
-# ---- 工作区快照（Neon 免费档按公网流量计；新机器整拉殿本走 Neon 约 50 MB，快照包约 6–7 MB 走 R2 不收费）----
+# ---- 工作区快照（新机器整拉殿本走中心库约 50 MB、读行多；快照包约 6–7 MB 走 R2，不计 D1 读行）----
 
 SNAPSHOT_ENV = "GUJI_DATA_SNAPSHOT"      # 设 0 关掉快照（不下也不传）
 SNAPSHOT_SKIP_EXT = (".png",)            # 图另有 R2 缓存，不进快照
@@ -1069,6 +1069,9 @@ def glyph_pack_blobs(ws_dir: Path, data: Path, base: dict[str, str], rows) -> di
     return out
 
 
+#: push 核「库里已有哪些图」时，要推的图不超过这么多张就按 sha 问（``= ANY``），多了才按工作区整表读
+KNOWN_BY_ID_MAX = 2000
+
 def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_delete: bool = False,
          uploader=None, glyph: GlyphHooks | None = None, shared_writer: bool = False,
          skip_prefixes: tuple[str, ...] = ()) -> dict:
@@ -1147,10 +1150,13 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
                                  f"旧页号的裁决请用 `guji cellvotes migrate` 按格级对照表迁移后再推，"
                                  f"或从本地事件文件里删掉这几条")
         if not creating and not shared_writer:                 # 已发布的语料库、字形库版本不可改（用户 10-20；GUJI-727）
-            cur.execute("SELECT src_path, sha256 FROM files WHERE ws = %s "
-                        "AND (src_path LIKE 'config/corpus-pack/v%%/manifest.json' "
-                        "OR src_path LIKE 'config/glyph-pack/g%%/manifest.json')", (sc.ws,))
-            db_sha = dict(cur.fetchall())
+            # 区间查询走主键 (ws, src_path)；LIKE＋OR 会扫该 ws 的全部 files 行
+            db_sha = {}
+            for lo, hi, pat in (("config/corpus-pack/v", "config/corpus-pack/w", "config/corpus-pack/v%%/manifest.json"),
+                                ("config/glyph-pack/g", "config/glyph-pack/h", "config/glyph-pack/g%%/manifest.json")):
+                cur.execute("SELECT src_path, sha256 FROM files WHERE ws = %s AND src_path >= %s AND src_path < %s "
+                            "AND src_path LIKE %s", (sc.ws, lo, hi, pat))
+                db_sha.update(cur.fetchall())
             changed = sorted(r.src_path for r in sc.rows if r.tbl == "files" and r.src_path in db_sha
                              and r.cols.get("sha256", db_sha[r.src_path]) != db_sha[r.src_path])
             if changed:
@@ -1182,16 +1188,26 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     if images and uploader is not None and not dry_run:
         # 库里已有的图（导入或之前推过时已进桶）不再逐张签名核对：每次推都核两万张要十几分钟，
         # 连接闲置被断，事务一开就死（10-19 D 推 vol01 裁决两次失败）
+        # 要推的图不多（增量推通常几张到几百张）就只问这几张在不在，不再按工作区整表读 patch_sha
+        # （殿本 18 万行，中心库读量大户；GM2 11-23）；全量扫描、图多时照旧整表读一次
         known: dict[str, set[str]] = {}
         with conn.cursor() as cur:
-            cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha IS NOT NULL",
-                        (sc.ws,))
+            png = sorted(images.get("png", {}))
+            if png and len(png) <= KNOWN_BY_ID_MAX:
+                cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha = ANY(%s)", (sc.ws, png))
+            else:
+                cur.execute("SELECT patch_sha FROM glyph_instances WHERE ws = %s AND patch_sha IS NOT NULL",
+                            (sc.ws,))
             known["png"] = {r[0] for r in cur.fetchall()}
             for t, ext in BLOB_TABLES.items():
                 cur.execute("SELECT to_regclass(%s)", (t,))
                 if cur.fetchone()[0] is None:          # 新表还没建（导入时 apply_schema 才建）
                     continue
-                cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s", (sc.ws,))
+                want = sorted(images.get(ext, {}))
+                if want and len(want) <= KNOWN_BY_ID_MAX:
+                    cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s AND sha256 = ANY(%s)", (sc.ws, want))
+                else:
+                    cur.execute(f"SELECT sha256 FROM {t} WHERE ws = %s", (sc.ws,))
                 known.setdefault(ext, set()).update(r[0] for r in cur.fetchall())
         conn.commit()
         images = {ext: {sha: p for sha, p in g.items() if sha not in known.get(ext, ())}

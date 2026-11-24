@@ -159,21 +159,15 @@ class HttpBackend:
 
     def __init__(self, branch: str = "main", base: str | None = None, token: str | None = None):
         self.branch = branch
-        self.base = (base or os.environ.get("GUJI_DATA_URL", "https://data.open-guji.com")).rstrip("/")
-        # 令牌：先 GUJI_DATA_TOKEN（调用方/执行器按读写给的），再按团队惯例 GUJI_DATA_TOKEN_PROD（实验分支先
-        # GUJI_DATA_TOKEN_EXP）、GUJI_DATA_TOKEN_READ。某把回 401（令牌无效）就换下一把——有的环境 GUJI_DATA_TOKEN 是占位值。
-        if token:
-            self.tokens = [token]
-        else:
-            names = ["GUJI_DATA_TOKEN"] + ([] if branch == "main" else ["GUJI_DATA_TOKEN_EXP"]) + \
-                ["GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ"]
-            self.tokens = []
-            for n in names:
-                v = (os.environ.get(n) or "").strip()
-                if v and v not in self.tokens:
-                    self.tokens.append(v)
+        from .. import dbconfig
+        # 地址与令牌顺序都在 databases.toml 的 [central]（GUJI_DATA_URL 等老环境变量照旧能盖）。
+        # 令牌缺省依次：GUJI_DATA_TOKEN（调用方/执行器按读写给的）→（实验分支）GUJI_DATA_TOKEN_EXP → _PROD → _READ；
+        # 某把回 401（令牌无效）就换下一把——有的环境 GUJI_DATA_TOKEN 是占位值。
+        self.base = (base or dbconfig.url("central") or "https://data.open-guji.com").rstrip("/")
+        self.tokens = [token] if token else dbconfig.tokens("central", branch=branch)
         if not self.tokens:
-            raise SystemExit("连中心库要 GUJI_DATA_TOKEN_PROD／GUJI_DATA_TOKEN（中心库已迁到 Cloudflare D1，只能经 Worker）")
+            names = "／".join(dbconfig.token_names("central", branch=branch))
+            raise SystemExit(f"连中心库要令牌（{names}；见 databases.toml [central]），中心库在 Cloudflare D1，只能经 Worker")
         self.token = self.tokens[0]
         import ssl
         ca = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
@@ -531,8 +525,14 @@ def insert_rows(conn: Conn, tbl: str, cols: list[str], rows: list, *, conflict: 
 
 
 def connect(branch: str = "main", **kw) -> Conn:
-    """连中心库 ``branch``（D1，经 Worker）。``GUJI_DATA_SQLITE=<文件>`` 改连本机 SQLite（测试、核对用）。"""
-    path = os.environ.get("GUJI_DATA_SQLITE")
+    """连中心库 ``branch``（D1，经 Worker）。连法见 databases.toml 的 [central]；
+    ``driver = "sqlite"``（或环境变量 ``GUJI_DATA_SQLITE=<文件>``）改连本机 SQLite（测试、核对用）。"""
+    from .. import dbconfig
+    spec = dbconfig.get("central")
+    path = spec.get("path") if spec["driver"] == "sqlite" else None
+    if spec["driver"] not in ("d1-worker", "sqlite"):
+        raise SystemExit(f"中心库 driver 只支持 d1-worker／sqlite，配置里是 {spec['driver']}")
     if path:
+        path = os.path.expanduser(str(path))
         return Conn(SqliteBackend(path, schema=not os.path.exists(path) or os.path.getsize(path) == 0), branch)
     return Conn(HttpBackend(branch, **kw), branch)

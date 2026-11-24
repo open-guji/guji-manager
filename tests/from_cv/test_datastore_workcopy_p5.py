@@ -367,11 +367,15 @@ def test_push_refuses_dropping_anchor_patches(repo, conn, tmp_path):  # noqa: F8
     assert [r["src_path"] for r in src.rows("anchor_patches_meta", "tws")] == ["feedback/anchor_patches/vol03/ab/ab12.png"]
 
 
-def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path):  # noqa: F811
-    """库里已有的图不再交给 uploader（每次推都核两万张会拖到连接被断）；只传新图。"""
+@pytest.mark.parametrize("by_id_max", [2000, 0])
+def test_push_uploads_only_images_new_to_db(repo, conn, tmp_path, monkeypatch, by_id_max):  # noqa: F811
+    """库里已有的图不再交给 uploader（每次推都核两万张会拖到连接被断）；只传新图。
+    图少按 sha 问（= ANY）、图多整表读（KNOWN_BY_ID_MAX=0 强制走整表），两条路结果一样（GM2 11-23）。"""
+    from guji_manager.datastore import workcopy as WC
     from guji_manager.datastore.sqlsource import SqlSource as PgSource
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.workcopy import data_dir, migrate, push
+    monkeypatch.setattr(WC, "KNOWN_BY_ID_MAX", by_id_max)
     files = _workspace(tmp_path)
     files["W/feedback/anchor_patches/vol03/ab/ab12.png"] = b"\\x89PNG anchor"
     import_commit(conn, repo, _commit(repo, files, "c1"))

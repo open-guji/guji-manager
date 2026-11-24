@@ -1,7 +1,7 @@
 """换包落 book-text：格号变了（增删格、改号）也一条命令走完，不再报 need-A33。
 
 总纲：guji-manager `doc/00-总览/待审单-人裁事件-book-text格子.md`；格号变动的整体整理见
-`doc/02-精校/换包落book-text-增删格.md`。要点：
+`wiki/反馈迭代/换包落book-text-增删格.md`。要点：
 
 * **格的身份认图块，不认格号**：新旧两版 cord 在同一张图上，按框 IoU≥0.5 一对一配（配不上的同页按中心距再配一次），
   出「旧格→新格」对照表（与 A31 回放脚本 `bt_celltable.py`、book-text `remap_anchors.py` 同格式）。
@@ -29,7 +29,6 @@ def _chapter(book: str) -> str:
     return chapter_of(book)
 
 import collections
-import copy
 import json
 import os
 import random
@@ -41,6 +40,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from ..formats.guji_format import effective_source
 from .resolve import BLANK, detect_flaws, resolve
 
 #: 文本里的占位符（不是字、也不是阙文）：新包落了 □（定阙或图片格）就照新包，不当「现行有字」留着（ZM 11-19 vol20）
@@ -333,8 +333,10 @@ def guard(old_punct: dict | None, new_punct: dict | None, old_entity: dict | Non
         if short:
             bad.append(f"专名被切短 {len(short)} 条：{'；'.join(short[:8])}")
     if old_punct is not None and new_punct is not None:
-        k = lambda x: (x.get("mark"), x.get("kind"), x.get("source"), x.get("pos"))
-        if collections.Counter(map(k, old_punct.get("punctuations", []))) != collections.Counter(map(k, new_punct.get("punctuations", []))):
+        def k(doc):                                     # source 按有效值比：v0.3 条目可省，取文件头 default_source
+            return collections.Counter((x.get("mark"), x.get("kind"), effective_source(x, doc), x.get("pos"))
+                                       for x in doc.get("punctuations", []))
+        if k(old_punct) != k(new_punct):
             bad.append("标点条目（按 mark／kind／source／pos 计）变了")
     return bad
 
@@ -418,7 +420,8 @@ def declare_fig_file(vdir: Path, ch: str) -> bool:
 
 def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", pending: set[str] | frozenset[str] = frozenset(),
                   out_dir: Path | None = None, merge: bool = True, human: dict[str, str] | None = None,
-                  book: str | None = None, require_human: bool = False, ws: Path | None = None) -> dict:
+                  book: str | None = None, require_human: bool = False, ws: Path | None = None,
+                  soft_ledger: bool = False) -> dict:
     """book-text 工作树里，NNN.char/cord 已换成新包的（未提交）；对照 ``base`` 提交里的旧版：
     出对照表 → 逐块图判字（写回 char）→ 按表挪标点专名 → 守卫。通过才写 punct／entity。不升版、不提交。
 
@@ -498,6 +501,12 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
     problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
         problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
+    needs_review: list[str] = []
+    if ledger_probs and soft_ledger:
+        # 收单（merge=False）只改这次人裁定的格；别的格上本来就有的「落字≠人裁／手改」不拦整册，
+        # 列出来交项目看图／看前后文确认（用户 11-23：要看图或前后文的不由总管定，反馈给项目；按规则写程序）
+        needs_review, ledger_probs = ledger_probs, []
+        notes.append(f"人裁账不平 {len(needs_review)} 格，不拦本次收单，交项目确认")
     if ledger_probs:
         problems.append(f"人裁账不平 {len(ledger_probs)} 格：" + "；".join(ledger_probs[:8]))
     review = [r for r in res["report"] if r[0] == "entity-复核"]
@@ -516,7 +525,7 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
             OV.dump_json(str(ef), res["entity"])
     (out_dir / f"left_vol{vol:02d}.tsv").write_text(
         "层\t条目\t旧锚\t新锚\t内容\t原因码｜说明\n" + "".join("\t".join(map(str, r)) + "\n" for r in left), encoding="utf-8")
-    return {"ok": not problems, "problems": problems, "counts": table_counts(rows), "breaks_moved": moved_breaks,
+    return {"ok": not problems, "problems": problems, "needs_review": needs_review, "counts": table_counts(rows), "breaks_moved": moved_breaks,
             "notes": notes, "human_pre": human_pre, "protected": len(prot_new),
             "chars": {k: len(v) for k, v in chars.items()}, "char_detail": chars,
             "remap": {"moved": res["moved"], "left": res["left"]}, "table": str(tsv),
@@ -808,7 +817,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
                 shutil.copyfile(f, t)
     one_x = str(tv).split(".")[0] not in ("0", "")
     r = remap_in_repo(wt, vdir, ch, base=base, pending=pending, out_dir=out_dir, require_human=one_x, book=book, ws=ws,
-                      merge=merge)
+                      merge=merge, soft_ledger=not merge)
     if not r["ok"]:
         _git(wt, "checkout", "-q", "--", ".")
         _git(wt, "clean", "-fdq", "--", "Book")

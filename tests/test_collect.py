@@ -209,3 +209,144 @@ def test_run_parallel_one_sync(tmp_path, monkeypatch):
     assert {b: v["status"] for b, v in res.items()} == {"vol01": "to-publish", "vol02": "to-publish", "vol03": "blocked"}
     assert sum(1 for c in calls if "sync" in c) == 1 and sum(1 for c in calls if "pull" in c) == 1
     assert sorted(marked) == [("vol01", "sync"), ("vol02", "sync")]
+
+
+def test_ai_ruling_chars_by_cell(tmp_path):
+    """按格写的文意裁定（ZM 11-21 兩雨 3 格、閔 1 格 landed 0）：seed_admit 没 ask，或 ask 同组同版本但窗口小变，
+    按格号取、窗口大体一致（紧邻字一样、相似度够）且字是整理本字／库前五／组员才落；对不上的写进 notes。"""
+    from guji_manager._cv import RulingStore
+    from open_guji_cv.feedback.llm_queue import PENDING
+    L, R = "江南江北之地凡十有二", "淮之鹽皆屬焉其後又分"
+    store = RulingStore(tmp_path / "fb")
+    store._batch = "llm-wenyi-b5"
+    store.put("liang", "liang-l2-1", L, R, char="兩", conf="high", why="", model="m", cell="001:1:1:2")      # 无 ask，窗口一致
+    store.put("men", "men-l2-1", "統冠□□□冠燕居冠顔", R, char="閔", conf="high", why="", model="m", cell="001:1:1:5")  # ask 窗口远处一字不同
+    store.put("liang", "liang-l2-1", "完全不同的上文內容", R, char="兩", conf="high", why="", model="m", cell="001:1:1:7")  # 窗口对不上
+    store.put("liang", "liang-l2-1", "其他上文", "其他下文", char="木", conf="high", why="", model="m", cell="001:1:1:9")       # 字不沾边
+    ask = lambda g, v, l, r: {"evidence": {"group": {"id": g, "solvers": [{"why": PENDING, "ask": {"ver": v, "l": l, "r": r}}]}}}  # noqa: E731
+    root = tmp_path / "p"
+    for d in ("seed_admit", "align_ref", "glyph_match"):
+        (root / "001" / d).mkdir(parents=True)
+    seq = list(L) + ["X"] + list(R)
+    cells = [{"id": f"001:1:1:{100 + i}", "char": c, "admit": True, "slot": i + 1} for i, c in enumerate(seq)]
+    cells[len(L)]["id"] = "001:1:1:2"
+    cells[len(L)]["admit"] = False
+    cells[len(L)]["char"] = "雨"
+    cells += [{"id": "001:1:1:5", "char": "閑", "slot": 90, **ask("men", "men-l2-1", "載冠□□□冠燕居冠顔", R)},
+              {"id": "001:1:1:7", "char": "雨", "slot": 91, **ask("liang", "liang-l2-1", "另一段文字甲乙丙", R)},
+              {"id": "001:1:1:9", "char": "雨", "slot": 92, **ask("liang", "liang-l2-1", "其他上文", "其他下文又")}]
+    (root / "001" / "seed_admit" / "p0001.json").write_text(json.dumps({"seed_admit": {"page": 1, "columns": [{"col": 1, "chars": cells}]}}),
+                                                           encoding="utf-8")
+    (root / "001" / "align_ref" / "p0001.json").write_text(json.dumps({"align_ref": {"chars": [
+        {"id": "001:1:1:2", "align_char": "兩"}]}}), encoding="utf-8")
+    (root / "001" / "glyph_match" / "p0001.json").write_text(json.dumps({"glyph_match": {"columns": [{"chars": [
+        {"id": "001:1:1:2", "candidates": [["雨", 0.98], ["兩", 0.97], ["而", 0.96]]}]}]}}), encoding="utf-8")
+    got, notes = C.ai_ruling_chars(root, "001", RulingStore(tmp_path / "fb"),
+                                   members={"liang": {"兩", "雨"}, "men": {"閔", "閑"}}, rekey=[])
+    assert got.get("1:1:5") == ("閔", "AI文意/men/按格")
+    joined = "\n".join(notes)
+    assert "1:1:7" not in got and "1:1:7 按格文意裁定" in joined and "对不上" in joined
+    assert "1:1:9" not in got and "不是整理本字" in joined
+    # 无 ask 的格：窗口按 5c 口径从 seed_admit 现算
+    assert got.get("1:1:2") == ("兩", "AI文意/liang/按格"), notes
+
+
+def test_window_ok():
+    assert C._window_ok("甲乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]
+    assert C._window_ok("某乙丙丁戊己庚辛", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]      # 远处一字变
+    assert not C._window_ok("甲乙丙丁戊己庚某", "壬癸子丑", "甲乙丙丁戊己庚辛", "壬癸子丑")[0]  # 紧邻字变
+
+
+def test_ledger_of_and_render():
+    from guji_manager import collect as C
+    meta = {"n_raw": 5, "n_votes": 4, "old_landed": 2, "old_sheet": 1, "waiting": 0, "ready": 3, "held": 1, "skipped": [("a", "x")]}
+    r = C.ledger_of("vol06", "006-r13", meta, plan={"apply": 2, "already": 1, "layout": 0}, want=3, n_ai=0)
+    assert (r["votes"], r["old_landed"], r["skipped"], r["apply"], r["already"]) == (5, 2, 1, 2, 1)
+    txt = C.render_ledger([r], {"vol06": "done"})
+    lines = txt.splitlines()
+    assert lines[0].startswith("册\t单版\t收件箱票") and lines[1].startswith("vol06\t006-r13\t5") and lines[-1].startswith("合计")
+
+
+def test_needs_review_of_collects_three_sources(tmp_path):
+    from guji_manager import collect as C
+    d = tmp_path / "reports" / "vol21" / "_collect" / "021-r12"
+    (d / "draft").mkdir(parents=True)
+    (d / "needs_review.tsv").write_text("说明\n143:9:4 新包「𣴭」≠人裁／手改「茫」\n", encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text("格位\t票\n1:1:1\tchar=甲\n", encoding="utf-8")
+    got = C.needs_review_of(tmp_path, {"vol21": {"rev": "021-r12"}, "vol22": {"rev": "022-r1"}})
+    assert list(got) == ["vol21"] and len(got["vol21"]) == 2
+
+
+def test_collect_book_allow_lost_human_only_for_listed_books(monkeypatch):
+    import os
+    from pathlib import Path
+    from guji_manager import collect
+    seen = {}
+
+    def fake(a, ws, book):
+        seen[book] = os.environ.get("GUJI_ALLOW_LOST_HUMAN")
+        return {"status": "done"}
+
+    monkeypatch.setattr(collect, "_collect_book", fake)
+    monkeypatch.delenv("GUJI_ALLOW_LOST_HUMAN", raising=False)
+    monkeypatch.setenv("GUJI_ALLOW_LOST_HUMAN_BOOKS", "vol01, vol20")
+    for b in ("vol01", "vol13", "vol20"):
+        collect.collect_book(type("A", (), {})(), Path("."), b)
+    assert seen == {"vol01": "1", "vol13": None, "vol20": "1"}
+    assert "GUJI_ALLOW_LOST_HUMAN" not in os.environ
+
+
+def test_publish_throttled_when_last_sync_recent(monkeypatch, tmp_path):
+    import types
+    from guji_manager import collect, swap
+    monkeypatch.setattr(swap, "last_publish_age_hours", lambda: 0.5)
+    monkeypatch.setattr(swap, "publish_batch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该发")))
+    R = types.SimpleNamespace(done=lambda k: False)
+    monkeypatch.setattr(collect, "_state_of", lambda ws, t, b: (tmp_path / "p.json", R, tmp_path))
+    a = types.SimpleNamespace(text_id="x")
+    out = collect.publish_and_verify(a, tmp_path, ["vol01"])
+    assert out["vol01"]["status"] == "synced" and "throttled" in out["vol01"]["publish"]
+    assert out["vol01"]["rev"] == tmp_path.name          # 带 rev，票账和交项目确认清单才找得到各册的账
+
+
+def test_write_handoff_tsv(tmp_path):
+    ws = tmp_path
+    d = ws / "reports" / "vol20" / "_collect" / "020-r15"
+    (d / "draft").mkdir(parents=True)
+    (d / "draft" / "old_sheet.tsv").write_text(
+        "现格\t投票时格\t投票时单\t票\t当年人裁\t挡下原因\n"
+        "64:9:8\t64:9:8\t020-r12\tchar=逵\tevt_H-web-vol20-020-r12-2026-11-19_000008\t页面显示字「陸」≠book-text 现格字「□」，格号对不上\n",
+        encoding="utf-8")
+    (d / "draft" / "stale_votes.tsv").write_text(
+        "格位\t票\t票时间\t现行人裁\t人裁时间\n43:5:17\tfigure\t1794807512408\tevt_x\t2026-11-19T00:26:13Z\n", encoding="utf-8")
+    out = tmp_path / "out"
+    fs = C.write_handoff(ws, {"vol20": {"rev": "020-r15"}, "vol21": {}}, out)
+    assert [p.name for p in fs] == ["vol20-交项目确认.tsv"]
+    rows = [r.split("\t") for r in fs[0].read_text(encoding="utf-8").splitlines()]
+    assert rows[0] == C.HANDOFF_HEAD
+    assert rows[1][:6] == ["旧单票挡下", "64:9:8", "char=逵", "陸", "□", "2026-11-19"]
+    assert rows[2][1] == "43:5:17" and rows[2][5].startswith("2026-")
+
+
+def test_write_unconsumed_tsv(tmp_path):
+    rem = {("H-web-vol20-020-r13-2026-11-19b", "gold_add"): 52, ("ZM-vol01-roster-renum-rehuman-20261120", "crop_exclude"): 335}
+    p = C.write_unconsumed(tmp_path, rem)
+    rows = [r.split("\t") for r in p.read_text(encoding="utf-8").splitlines()]
+    assert rows[0][:3] == ["批次", "消费者", "条数"] and len(rows) == 3
+    assert rows[1][3] == "vol20" and "events route" in rows[1][4]
+    assert C.write_unconsumed(tmp_path, {}) is None and not p.exists()
+
+
+def test_sweep_unconsumed_routes_only_web_batches(monkeypatch, tmp_path):
+    import types
+    from guji_manager import cli_db
+    calls = []
+    reps = [{("H-web-vol20-r1", "gold_add"): 3, ("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2},
+            {("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2}]
+    monkeypatch.setattr(cli_db, "unconsumed_report", lambda ws: reps.pop(0))
+    monkeypatch.setattr(C, "_run", lambda cmd, env, tries=1: calls.append([str(c) for c in cmd]) and 0)
+    a = types.SimpleNamespace(dry_run=False, no_push=False)
+    out = C.sweep_unconsumed(tmp_path, a)
+    assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2}
+    assert any("route" in c and "H-web-vol20-r1" in c for c in calls) and any("sync" in c for c in calls)
+    assert not any("ZM-x" in c or "H-web-vol13-r1" in c for c in calls)

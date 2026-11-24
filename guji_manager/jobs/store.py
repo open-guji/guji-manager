@@ -1,4 +1,6 @@
-"""任务库的读写（美国机任务库，经 jobsdb 隧道；要 JOBSDB_TOKEN＋JOBSDB_PASSWORD）。
+"""任务库的读写。连法看 databases.toml 的 ``[jobs]``：``pg-tunnel``＝美国机 Postgres（经 jobsdb 隧道，要
+JOBSDB_TOKEN＋JOBSDB_PASSWORD），``d1-worker``／``sqlite``＝D1 独立库 guji-jobs（2026-11-22 用户定搬，见 ``store_d1``）。
+下面各函数是 Postgres 写法；连接是 D1 的（``conn.is_d1``）就转给 ``store_d1`` 的同名函数。
 
 任务库 11-03 从 Neon 切到美国机；Neon 项目 2026-11-19 已删，没有退路。`GUJI_JOBS_BRANCH` 只影响产物包的改动名。
 领单：`FOR UPDATE SKIP LOCKED` 挑一条 queued，同册有在跑的就跳过（另有唯一索引兜底）；
@@ -29,11 +31,30 @@ TRANSIENT = "环境（瞬时）："
 TRANSIENT_DELAY_S = (120, 600)          # 随机隔 2–10 分钟
 
 
-def connect():
-    """开一条 autocommit 连接（写操作各自包在 `conn.transaction()` 里，读不留悬着的事务）。
+def backend() -> str:
+    """任务库现在连哪种：``pg``（美国机）或 ``d1``（含本机 sqlite）。"""
+    from .. import dbconfig
+    return "d1" if dbconfig.get("jobs")["driver"] in ("d1-worker", "sqlite") else "pg"
 
-    只连美国机任务库（jobsdb 隧道）。原来测试分支／``GUJI_REQUIRE_JOBSDB=0`` 退回 Neon 的路随 Neon 删除（11-19）去掉了。
-    """
+
+def enabled() -> bool:
+    """本机能连任务库（有令牌）。"""
+    from .. import dbconfig
+    spec = dbconfig.get("jobs")
+    if spec["driver"] == "sqlite":
+        return True
+    if spec["driver"] == "d1-worker":
+        return bool(dbconfig.tokens("jobs"))
+    from . import jobsdb
+    return jobsdb.enabled()
+
+
+def connect():
+    """开一条连接。Postgres 是 autocommit（写操作各自包在 `conn.transaction()` 里，读不留悬着的事务）；
+    D1 是 ``d1.JobsConn``（一批一个事务）。"""
+    if backend() == "d1":
+        from . import d1
+        return d1.connect()
     from . import jobsdb
     if jobsdb.enabled():
         c = jobsdb.connect()
@@ -43,18 +64,20 @@ def connect():
                      "请用 guji_jobs（会自动载入 secret），或先 . /etc/guji_secrets.sh。")
 
 
-def connect_neon():
-    """连中心库（名字沿用；2026-11-18 起是 Cloudflare D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
-    ``GUJI_JOBS_BRANCH`` 只给测试连中心库别的分支。"""
+def connect_central():
+    """连中心库（2026-11-18 起是 Cloudflare D1，经 Worker）。中心库的 progress 看板写这里，不随任务库切走。
+    ``GUJI_JOBS_BRANCH`` 只给测试连中心库别的分支（分支直接按名字连）。"""
     from ..datastore.connect import connect as _connect
     br = os.environ.get("GUJI_JOBS_BRANCH")
     if br and br != "main":
-        from ..datastore.neonapi import branch_endpoint
-        c = _connect(endpoint=branch_endpoint(br))
+        c = _connect(endpoint=br)
     else:
         c = _connect()
     c.autocommit = True
     return c
+
+
+connect_neon = connect_central   # 旧名（中心库还在 Neon 时起的），留给老调用处
 
 
 class DB:
@@ -71,7 +94,8 @@ class DB:
         import time
 
         from ..datastore import d1conn
-        errs: tuple = (d1conn.OperationalError,)
+        from . import d1
+        errs: tuple = (d1conn.OperationalError, d1.OperationalError)
         try:
             import psycopg
             errs += (psycopg.OperationalError, psycopg.InterfaceError, psycopg.errors.FeatureNotSupported)
@@ -98,6 +122,24 @@ class DB:
         self.c = None
 
 
+def _d1(conn) -> bool:
+    return getattr(conn, "is_d1", False)
+
+
+def _routed(fn):
+    """连接是 D1 的就转给 store_d1 的同名函数。"""
+    import functools
+
+    @functools.wraps(fn)
+    def w(conn, *a, **kw):
+        if _d1(conn):
+            from . import store_d1
+            return getattr(store_d1, fn.__name__)(conn, *a, **kw)
+        return fn(conn, *a, **kw)
+    return w
+
+
+@_routed
 def init(conn) -> None:
     sql = resources.files(__package__).joinpath("schema.sql").read_text(encoding="utf-8")
     with conn.transaction():
@@ -124,6 +166,10 @@ def who() -> str:
 def submit(conn, spec: dict, h: str, *, by: str, why: str | None, priority: int = 100,
            depends_on: list[int] | None = None, again: bool = False) -> dict:
     """存一条任务。同指纹已有排队／在跑／成功的（且没给 again）就记成 duplicate 指向它。"""
+    if _d1(conn):
+        from . import store_d1
+        return store_d1.submit(conn, spec, h, by=by, why=why, priority=priority, depends_on=depends_on, again=again,
+                               book_id=spec["book"] and _book_id(spec))
     with conn.transaction():
         dup = None
         if not again:
@@ -146,6 +192,7 @@ def _now(conn):
     return conn.execute("SELECT now()").fetchone()[0]
 
 
+@_routed
 def list_jobs(conn, *, status: list[str] | None = None, book: str | None = None, limit: int = 30,
               mine: str | None = None, book_id: str | None = None) -> list[dict]:
     q = ["SELECT j.*, (SELECT a.worker FROM jobs.attempt a WHERE a.job_id=j.id ORDER BY a.n DESC LIMIT 1) worker"
@@ -169,10 +216,12 @@ def list_jobs(conn, *, status: list[str] | None = None, book: str | None = None,
     return _rows(conn.execute(" ".join(q), a))
 
 
+@_routed
 def get(conn, job_id: int) -> dict | None:
     return _one(conn.execute("SELECT * FROM jobs.job WHERE id=%s", (job_id,)))
 
 
+@_routed
 def detail(conn, job_id: int) -> dict | None:
     j = get(conn, job_id)
     if j is None:
@@ -183,6 +232,7 @@ def detail(conn, job_id: int) -> dict | None:
     return j
 
 
+@_routed
 def results(conn, job_id: int, kind: str | None = None) -> list[dict]:
     q, a = "SELECT * FROM jobs.result WHERE job_id=%s", [job_id]
     if kind:
@@ -191,6 +241,7 @@ def results(conn, job_id: int, kind: str | None = None) -> list[dict]:
     return _rows(conn.execute(q + " ORDER BY id", a))
 
 
+@_routed
 def cancel(conn, job_id: int, by: str) -> str:
     """排队的直接取消；在跑的置 cancel_requested，执行方下次心跳时停掉子进程。"""
     with conn.transaction():
@@ -209,6 +260,7 @@ def cancel(conn, job_id: int, by: str) -> str:
         return f"已是 {j['status']}，不用取消"
 
 
+@_routed
 def bump(conn, job_id: int, priority: int, by: str) -> bool:
     with conn.transaction():
         r = conn.execute("UPDATE jobs.job SET priority=%s, updated_at=now() WHERE id=%s AND status='queued'",
@@ -218,6 +270,7 @@ def bump(conn, job_id: int, priority: int, by: str) -> bool:
         return bool(r.rowcount)
 
 
+@_routed
 def retry(conn, job_id: int, by: str) -> bool:
     """失败／blocked／取消的单重新排队（同一条，attempts 清零）。"""
     with conn.transaction():
@@ -234,6 +287,9 @@ def retry(conn, job_id: int, by: str) -> bool:
 
 def reap(conn) -> list[tuple[int, str]]:
     """租约过期的 attempt 记 lost，任务退回排队（次数用完记 failed）；依赖失败的排队单记 blocked。"""
+    if _d1(conn):
+        from . import store_d1
+        return store_d1.reap(conn)
     out: list[tuple[int, str]] = []
     with conn.transaction():
         lost = _rows(conn.execute(
@@ -292,8 +348,26 @@ FROM c WHERE j.id = c.id RETURNING j.*
 
 
 def claim(conn, worker: str, *, session: str | None = None, affinity: str | None = None,
-          kinds: list[str] | None = None, only: int | None = None) -> tuple[dict, dict] | None:
-    """领一条可跑的单，返回 (job, attempt)；没有就 None。"""
+          kinds: list[str] | None = None, only: int | None = None, seen: dict | None = None,
+          reap_too: bool = False) -> tuple[dict, dict] | None:
+    """领一条可跑的单，返回 (job, attempt)；没有就 None。
+
+    ``reap_too``：先收回过期领单；``seen``（worker_seen 的参数，不含 state／job_id）：领完顺手报到，
+    领到记 busy＋单号、没领到记 idle。D1 上这三件并成一次请求（见 store_d1.claim）。"""
+    if _d1(conn):
+        from . import store_d1
+        return store_d1.claim(conn, worker, session=session, affinity=affinity, kinds=kinds, only=only, seen=seen,
+                              reap_too=reap_too)
+    if reap_too:
+        reap(conn)
+    got = _claim_pg(conn, worker, session=session, affinity=affinity, kinds=kinds, only=only)
+    if seen is not None:
+        worker_seen(conn, worker, state="busy" if got else seen.get("state", "idle"), job_id=got and got[0]["id"],
+                    **{k: v for k, v in seen.items() if k not in ("state", "job_id")})
+    return got
+
+
+def _claim_pg(conn, worker, *, session, affinity, kinds, only):
     import psycopg
     for _ in range(5):
         try:
@@ -316,9 +390,21 @@ def claim(conn, worker: str, *, session: str | None = None, affinity: str | None
     return None
 
 
-def heartbeat(conn, attempt_id: int, *, stage: str | None = None, progress: str | None = None) -> str:
+def heartbeat(conn, attempt_id: int, *, stage: str | None = None, progress: str | None = None,
+              seen: dict | None = None) -> str:
     """续租，顺手更新阶段与进展。返回要不要停：""＝接着跑；"cancel"＝有人要求停下；
-    "lost"＝租约已被 `reap` 收回（会话卡太久或整机暂停后醒来，单已退回排队），旧会话该停但不是谁叫停的。"""
+    "lost"＝租约已被 `reap` 收回（会话卡太久或整机暂停后醒来，单已退回排队），旧会话该停但不是谁叫停的。
+    ``seen``（worker_seen 的参数，含 name）：租约还在就顺手报到（D1 上同一次请求）。"""
+    if _d1(conn):
+        from . import store_d1
+        return store_d1.heartbeat(conn, attempt_id, stage=stage, progress=progress, seen=seen)
+    why = _heartbeat_pg(conn, attempt_id, stage=stage, progress=progress)
+    if seen is not None and why != "lost":
+        worker_seen(conn, **seen)
+    return why
+
+
+def _heartbeat_pg(conn, attempt_id, *, stage, progress) -> str:
     with conn.transaction():
         r = _one(conn.execute(
             "UPDATE jobs.attempt SET heartbeat_at=now(), lease_until=now() + make_interval(mins => %s)"
@@ -331,6 +417,7 @@ def heartbeat(conn, attempt_id: int, *, stage: str | None = None, progress: str 
         return "cancel" if (j and j["cancel_requested"]) else ""
 
 
+@_routed
 def event(conn, job_id: int, attempt_id: int | None, stage: str | None, msg: str, *, level: str = "info",
           secs: float | None = None, data: dict | None = None) -> None:
     with conn.transaction():
@@ -344,6 +431,7 @@ def _event(conn, job_id, attempt_id, stage, msg, *, level="info", secs=None, dat
                   json.dumps(data, ensure_ascii=False) if data is not None else None))
 
 
+@_routed
 def add_result(conn, job_id: int, attempt_id: int | None, kind: str, name: str, *,
                location: str | None = None, data: dict | None = None) -> None:
     with conn.transaction():
@@ -353,6 +441,7 @@ def add_result(conn, job_id: int, attempt_id: int | None, kind: str, name: str, 
                       json.dumps(data, ensure_ascii=False) if data is not None else None))
 
 
+@_routed
 def finish(conn, job_id: int, attempt_id: int, outcome: str, *, error: str | None = None,
            exit_code: int | None = None, log_tail: str | None = None) -> None:
     """收尾。failed 而次数没用完的，退回排队重试；blocked／cancelled／succeeded 都是终态。
@@ -391,6 +480,7 @@ def finish(conn, job_id: int, attempt_id: int, outcome: str, *, error: str | Non
 _TERMINAL = ("succeeded", "failed", "blocked", "cancelled")
 
 
+@_routed
 def notify_due(conn) -> list[dict]:
     """认领「该通知」的提交人：某人名下已没有排队／在跑的单，且有终态单还没通知过。
     一批单全跑完才通知一次（按人归并）；认领即标 notified_at，并发的执行方只有一个拿得到。
@@ -410,11 +500,13 @@ def notify_due(conn) -> list[dict]:
     return [{"by": k, "jobs": v} for k, v in by.items()]
 
 
+@_routed
 def notify_undo(conn, job_ids: list[int]) -> None:
     """发送失败：把认领退回去，下一次有单收尾时再试。"""
     conn.execute("UPDATE jobs.job SET notified_at = NULL WHERE id = ANY(%s)", (job_ids,))
 
 
+@_routed
 def worker_seen(conn, name: str, *, state: str, session: str | None = None, job_id: int | None = None,
                 runner: str | None = None, done: int | None = None, started: bool = False,
                 note: str | None = None) -> None:
@@ -430,6 +522,7 @@ def worker_seen(conn, name: str, *, state: str, session: str | None = None, job_
             (name, session, socket.gethostname(), runner, state, job_id, done, note, done, started))
 
 
+@_routed
 def workers(conn, minutes: int = 5) -> list[dict]:
     """登记过的执行方，带是否在线（近 minutes 分钟内报到过，且没说已停）。库还没升到有 worker 表时返回空。"""
     import psycopg
@@ -442,6 +535,7 @@ def workers(conn, minutes: int = 5) -> list[dict]:
         return []
 
 
+@_routed
 def live_workers(conn, minutes: int = 3) -> list[dict]:
     """近几分钟有心跳的执行方（在跑单的）。"""
     return _rows(conn.execute(
@@ -449,5 +543,6 @@ def live_workers(conn, minutes: int = 3) -> list[dict]:
         " AND a.heartbeat_at > now() - make_interval(mins => %s) ORDER BY a.heartbeat_at DESC", (minutes,)))
 
 
+@_routed
 def queue_depth(conn) -> int:
     return conn.execute("SELECT count(*) FROM jobs.job WHERE status='queued'").fetchone()[0]

@@ -1,0 +1,108 @@
+<title>整列切分抽查</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>/*COMMON_CSS*/
+#list{display:flex;flex-direction:row-reverse;gap:8px;overflow-x:auto;padding-bottom:6px;align-items:flex-start}
+.colc{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
+.colc .meta{font-size:11px;color:var(--muted);text-align:center}
+.win{position:relative;height:min(78vh,1100px);background:#fff;border:2px solid var(--line);border-radius:4px;cursor:pointer;touch-action:manipulation}
+.colc.ok .win{border-color:var(--ok)}
+.colc.bad .win{border-color:#d33}
+.colc.unsure .win{border-color:#5b5f8a}
+.colc.focus .win{outline:4px solid #e08a00;outline-offset:2px}
+.colc.focus .meta{color:#b86e00;font-weight:600}
+.win img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
+.win .bx{position:absolute;border:1px solid rgba(40,120,220,.75);box-sizing:border-box}
+.win .bx.jz{border-color:rgba(200,120,0,.85)}
+.win .bx.wrong{border:2px solid #d33;background:rgba(220,50,50,.22)}
+.qb{display:flex;flex-direction:column;gap:3px;width:100%}
+.qb button{padding:4px 6px;min-height:32px;font-size:12px}
+.qb button[aria-pressed="true"]{color:#fff}
+.qb button[data-v=ok][aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.qb button[data-v=unsure][aria-pressed="true"]{background:#5b5f8a;border-color:#5b5f8a}
+.legend{font-size:12px;color:var(--muted);margin:4px 0 8px}
+.legend b.b{color:#2878dc}.legend b.j{color:#c87800}.legend b.r{color:#d33}
+</style>
+/*SHELL*/
+<script>
+const D=/*DATA*/null;
+/*COMMON_JS*/
+/*STORE_JS*/
+// 一屏＝一页书，各列从右到左排开。蓝框＝正文格，橙框＝夹注格。点切错的格（并字、劈字、框歪）标红，再点取消；
+// 标了红格这列就是「有错」。整列没问题可不点，翻页时「本页没问题，下一页」把没点的列记作全对（how=page_ok）。
+const MAJOR=D.tpl_version.split(".")[0];
+const screens=[];D.items.forEach(it=>{(screens[it.screen]=screens[it.screen]||[]).push(it)});
+const byId={};D.items.forEach(it=>byId[it.id]=it);
+const S=makeStore({key:"col-check-"+D.book+"-v"+MAJOR,pageOf:k=>(byId[k]||{screen:0}).screen,
+  docOf:(k,raw)=>{const it=byId[k]||{};return {cell:k,vol:it.vol,label:raw.v||null,bad:raw.bad||[]}}});
+const st=S.st;
+const lab=it=>{const r=S.raw(it.id);return r&&r.v?r:null};
+function toggleCell(it,key){
+  const r=lab(it)||{};const bad=(r.v==="bad"?(r.bad||[]):[]).slice();
+  const j=bad.indexOf(key);if(j>=0)bad.splice(j,1);else bad.push(key);
+  if(bad.length)S.set(it.id,{v:"bad",bad});else S.clear(it.id);
+}
+function paint(box,it){
+  const r=lab(it)||{};box.className="colc "+(r.v||"")+(it.focus?" focus":"");
+  const bad=new Set(r.v==="bad"?r.bad||[]:[]);
+  for(const e of box.querySelectorAll(".bx"))e.classList.toggle("wrong",bad.has(e.dataset.k));
+  for(const b of box.querySelectorAll(".qb button[data-v]"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
+}
+function card(it){
+  const box=document.createElement("div");box.className="colc";
+  const m=document.createElement("div");m.className="meta";m.textContent="第 "+it.col+" 列"+(it.focus?" · 请确认":"")+(it.note?" · "+it.note:"");box.appendChild(m);
+  const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;
+  const im=document.createElement("img");im.src=it.img;im.alt="第 "+it.col+" 列";win.appendChild(im);
+  for(const c of it.cells){const d=document.createElement("div");d.className="bx"+(String(c.kind||"").startsWith("jiazhu")?" jz":"");
+    d.dataset.k=c.key;const b=c.box;
+    d.style.left=(b[0]/it.iw*100)+"%";d.style.width=((b[2]-b[0])/it.iw*100)+"%";
+    d.style.top=(b[1]/it.ih*100)+"%";d.style.height=((b[3]-b[1])/it.ih*100)+"%";
+    d.onclick=e=>{e.stopPropagation();toggleCell(it,c.key);paint(box,it);stat()};win.appendChild(d)}
+  box.appendChild(win);
+  const qb=document.createElement("div");qb.className="qb";
+  for(const [v,t] of [["ok","全对"],["unsure","看不出"]]){const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
+    b.onclick=()=>{const r=lab(it);if(r&&r.v===v)S.clear(it.id);else S.set(it.id,{v});paint(box,it);stat()};qb.appendChild(b)}
+  box.appendChild(qb);paint(box,it);return box;
+}
+const NP=()=>Math.max(1,screens.length);
+function stat(){
+  const n={ok:0,bad:0,unsure:0};for(const it of D.items){const r=lab(it);if(r)n[r.v]++}
+  const got=n.ok+n.bad+n.unsure;
+  $("stat").textContent=`已审 ${st.seen}/${NP()} 页 · 已定 ${got}/${D.items.length} 列（全对 ${n.ok}、有错 ${n.bad}、看不出 ${n.unsure}）`;
+  $("bar").style.width=(got/Math.max(1,D.items.length)*100)+"%";
+}
+function render(){
+  st.page=Math.min(Math.max(0,st.page),NP()-1);
+  const L=$("list");L.textContent="";
+  const its=screens[st.page]||[];
+  its.forEach(it=>L.appendChild(card(it)));
+  const f=its[0]||{};
+  $("pg").textContent=`第 ${st.page+1} / ${NP()} 页（册 ${f.vol} 第 ${f.page} 页）`;
+  $("sub").textContent=`${D.book} · ${D.items.length} 列 · 模板 ${D.tpl_version}`;
+  $("hint").innerHTML="";const h=document.createElement("span");
+  h.textContent=D.hint||"一屏是一页书，各列从右到左。看每列的格框切得对不对：把两个字并进一格、把一个字劈开、框明显歪了，就点那一格标红（再点取消）。看不清的列点「看不出」。这一轮只确认格数对、大致切分对：字与字连在一起处切点准不准、格框带不带框线，都不用细看，不算错。整列都对不用点，点「本页没问题，下一页」时没点的列记作全对。每点一下就存后台。";
+  const lg=document.createElement("div");lg.className="legend";lg.innerHTML="<b class=b>蓝框</b>正文格　<b class=j>橙框</b>夹注格　<b class=r>红</b>＝你标的错格";
+  $("hint").append(h,lg);
+  for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
+  for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页没问题，完成":"本页没问题，下一页";
+  stat();S.save();
+}
+function exportAll(){
+  const labels=[],unconfirmed=[];
+  for(const it of D.items){const r=lab(it);
+    if(r)labels.push({cell:it.id,label:r.v,bad:r.bad||[],how:S.how(it.id)});else unconfirmed.push(it.id)}
+  return {page_type:TPL.type,tpl_version:TPL.version,book:D.book,pages_seen:st.seen,labels,unconfirmed};
+}
+function next(){
+  const its=screens[st.page]||[];
+  for(const it of its)if(!lab(it))S.set(it.id,{v:"ok"},"page_ok");
+  saveDoc("s_b"+D.book+"_p"+st.page,{kind:"secs",page:st.page,secs:takeSecs(),ids:its.map(it=>it.id)});
+  st.seen=Math.max(st.seen,st.page+1);
+  if(st.page<NP()-1)st.page++;else{S.flush();showOut(exportAll())}
+  render();scrollTo(0,0);
+}
+for(const id of ["next","next2"])$(id).onclick=next;
+for(const id of ["prev","prev2"])$(id).onclick=()=>{st.page--;render();scrollTo(0,0)};
+$("export").onclick=()=>showOut(exportAll());
+wireDlg();render();
+initDB(async()=>{if(await S.restore())render()});
+</script>

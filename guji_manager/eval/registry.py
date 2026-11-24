@@ -215,12 +215,34 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
       for i, sh, t in (("match_bench", "004-siku-v2-human", "殿本"),
                        ("match_bench_shiji", "005-shiji-human", "史記"),
                        ("match_bench_qtw", "006-qtw-human", "全唐文"))],
+    # 3a 子基准 A2 库外拒识（A23，2026-11-23）：库外形近字对抗集（ai-team 11-15 建，冻结成自带归一图的分片），
+    # 用生产的逐对判官量「库里没有的字被判 same」。各书按生产配置：全唐文 CNN+fuse（glyph_sim_qtw），殿本／史記覆盖分。
+    *[EvalSpec(id=i, script="eval_advset.py", shard=f"glyph-match/advset-{d}", pythonpath=True, extra=x,
+               title=f"3a 库外拒识·{t}", needs=n,
+               note="头条＝形近层误认题数（护栏：不增）；异体层（同形异码）另报；不碰字形库")
+      for i, d, t, x, n in (("advset", "siku-v2", "殿本", (), ()),
+                            ("advset_shiji", "shiji", "史記", (), ()),
+                            ("advset_qtw", "qtw", "全唐文", ("--sim-model", "models/glyph_sim_qtw/model.pt"),
+                             ("heavy",)))],
+    # 3a 子基准 A6 形近字组（CV3，2026-11-23）：OCR 研究 11-18 的形近字组基准（全唐文 118 对、三轮人裁最终标签），
+    # 冻结成自带归一图的分片；生产嵌入（glyph_sim_qtw）对全库近邻，量「首位是对家字」。要全唐文库。
+    EvalSpec(id="nearform", script="eval_nearform.py", shard="glyph-match/nearform-qtw", pythonpath=True,
+             extra=("--sim-model", "models/glyph_sim_qtw/model.pt"),
+             title="3a 形近字组·全唐文", needs=("heavy",),
+             note="头条＝对家误认格数（护栏：不增）；千干／日曰／天夭 标签由文意定，单列不进头条；"
+                  "按 GUJI_GLYPH_DB 取全唐文库，同一物理格的库刻例去掉"),
+    # 3a 子基准 A5 退化（A23，2026-11-23）：ai-team 残笔细笔真实残损集（字是人裁），冻结成带固定候选池的分片；
+    # 判官按生产配置（殿本、史記覆盖分）。头条＝误放（护栏，不增）＋各类别首位命中、放行。
+    *[EvalSpec(id=i, script="eval_match_pool.py", shard=f"glyph-match/damaged-{d}", pythonpath=True,
+               title=f"3a 退化·{t}真实残损", note="类别 残笔／细笔／对照 分报；不碰字形库")
+      for i, d, t in (("match_pool", "siku-v2", "殿本"), ("match_pool_shiji", "shiji", "史記"))],
     # 5a 逐对相似度基准（A23，2026-11-09）：固定候选池、只换相似度函数（同字更像、异字拉开），报全局可分与每对耗时。
     EvalSpec(id="sim_bench", script="eval_sim_bench.py", shard="char-clustering", arg_kind="none",
              pythonpath=True, extra=("run", "--work", "/tmp/sim_bench_qtw",
-                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human"),
+                                     "--shard", "../open-guji-dataset/char-clustering/samples/006-qtw-human",
+                                     "--model", "models/glyph_sim_qtw/model.pt", "--name", "cnn_qtw"),
              title="5a 相似度基准·全唐文", needs=("heavy",),
-             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报"),
+             note="按 GUJI_GLYPH_DB 取全唐文库；严格码位与同形异码折叠两口径都报；cnn_qtw＝全唐文生产在用的 CNN（要 scikit-learn）"),
     *[EvalSpec(id=f"rare_{k}", script="eval_oov.py", shard=f"char-clustering/samples/{sh}",
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
@@ -229,6 +251,12 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                note="emb 检索 unicode-cjk-ab 全表；分 unseen／oov 两层报；--no-flagged 手跑可剔体检标过的")
       for k, sh, t in (("siku_v2", "004-siku-v2-human", "殿本"), ("shiji", "005-shiji-human", "史記"),
                        ("qtw", "006-qtw-human", "全唐文"))],
+    # 3b 子基准 B2 首次字头格（A23，2026-11-23）：全唐文 016–045 库例 0–2 的格，Sheldon 按刻形逐格选字（81 格）。
+    EvalSpec(id="rare_qtw_firstseen", script="eval_oov.py", shard="char-clustering/samples/007-qtw-firstseen",
+             arg_kind="none", out_flag="--json", pythonpath=True,
+             extra=("--bench", "../open-guji-dataset/char-clustering/samples/007-qtw-firstseen", "--items", "rare.jsonl"),
+             title="5b 候选·全唐文首次字头格", needs=("heavy",),
+             note="头条 emb top1／top10；分 firstseen／oov／extB+ 报；81 格约 60 字，按字去重另看"),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
@@ -285,6 +313,31 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
        note="要 --ckpt 指到带结构头的 checkpoint；量结构头准确率（独体字单列）、槽位头 top-3、"
            "三种重排的 top-1/top-10。通过线见脚本头"),
 ]}
+
+
+# 评测套（`guji eval run @<套>`）：第三步识字的子基准一次跑齐（A23，2026-11-23，方案 v2 第七节）。
+# 库相关的（match_bench*、match_pairs*、sim_bench、db_match_books）要按书换 GUJI_GLYPH_DB，不进缺省套；
+# 套里只放自带图块或不碰库的，一台干净机器 `--allow heavy` 就能跑。
+SUITES: dict[str, tuple[str, ...]] = {
+    "read-3a": ("advset", "advset_shiji", "advset_qtw", "match_pool", "match_pool_shiji"),
+    "read-3b": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
+}
+SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
+# 要全唐文字形库的（先 export GUJI_GLYPH_DB=<全唐文 glyph.db>）：5a 相似度、A6 形近字组、A3 归一图端到端
+SUITES["read-qtw-lib"] = ("sim_bench", "nearform", "match_bench_qtw")
+
+
+def expand_suites(keys: list[str]) -> list[str]:
+    """`@套名` 展开成评测器 id，其余原样；去重保序。"""
+    out: list[str] = []
+    for k in keys:
+        if k.startswith("@"):
+            if k[1:] not in SUITES:
+                raise SystemExit(f"没有评测套 {k}；有：{', '.join('@' + x for x in SUITES)}")
+            out += SUITES[k[1:]]
+        else:
+            out.append(k)
+    return list(dict.fromkeys(out))
 
 
 def find_eval(key: str) -> EvalSpec | None:

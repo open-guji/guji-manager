@@ -30,7 +30,7 @@ _ICON = {"queued": "…", "running": "▶", "succeeded": "✓", "failed": "✗",
 
 
 def add_parser(sub) -> argparse.ArgumentParser:
-    p = sub.add_parser("job", help="任务库：交重跑／评测任务、看谁在跑什么、结果在哪（Neon jobs schema）")
+    p = sub.add_parser("job", help="任务库：交重跑／评测任务、看谁在跑什么、结果在哪（美国机 Postgres 或 D1 guji-jobs，看 databases.toml 的 [jobs]）")
     fill(p)
     return p
 
@@ -48,8 +48,8 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--from", dest="from_step", default=None)
     s.add_argument("--to", dest="to_step", default=None)
     s.add_argument("--pages", default=None,
-                   help="页集（3-6,9／all／auto）。不写时：从 context_decide／seed_admit 起的纯重放、cv 同铺底包、没改配置，"
-                        "就自动只跑铺底包之后有新人裁／AI 裁定的页（auto）；其余整册")
+                   help="页集（3-6,9／all／auto／auto:<rev>）。不写时：从 context_decide／seed_admit 起的纯重放、cv 同铺底包、没改配置，"
+                        "就自动只跑铺底包所记中心库 rev 之后入库了人裁／AI 裁定的页（auto）；其余整册")
     s.add_argument("--no-force", action="store_true", help="不加 --force（按指纹能跳就跳）")
     s.add_argument("--corpus", type=int, default=None)
     s.add_argument("--glyph-pin", type=int, default=None)
