@@ -1,7 +1,7 @@
 """write_go.py：把「文意判放行」的格按管线键窗口写成 ctx 裁定（ZM 殿本 11-23 用，第 21–99 册 70 条）。
 
 输入：go_keep.tsv（列：格、原因、机器首选、AI、参校……，见 殿本-ZM.md）；产物根 /home/user/prod（含 volNN/seed_admit）。
-输出：feedback/rulings/<批次>.jsonl（kind=ctx_ruling，group=O，subclass=W，prompt_ver=ctx-wenyi-1，admit_ok=true，conf=high）。
+输出：feedback/rulings/<批次>.jsonl（kind=ctx_ruling，group=O，subclass=W，prompt_ver=ctx-m1（seed_admit 只认 vis-o1／src-1／ctx-m1，写别的版本名重放时整批不命中；ctx-m1 缺省只收子类 Z／N，W 要在册配置里设 vis_ruling_ctx_subclasses=W），admit_ok=true，conf=high）。
 运行：/opt/guji-venv/bin/python write_go.py [--apply]（不带 --apply 只算窗口、不写）。写完要 guji db sync 推库（要求 glyph.db 不比账本旧），
 下一轮 seed_admit 重放才生效，出包后再用 guji rulings-hits 核键窗口。
 
@@ -34,7 +34,7 @@ for v in vols:
     for k in ids:
         if k not in win: miss.append(k);continue
         l,r_,ref=win[k];ch=todo[k]['AI']
-        payload={"source":c.SOURCE,"group":"O","char":ch,"other":False,"conf":"high","why":('文意:'+todo[k]['理由'] if '理由' in todo[k] else '文意判')[:60],"model":"claude-opus-5-5(文意判)","prompt_ver":"ctx-wenyi-1","cell":k,"tok":{},
+        payload={"source":c.SOURCE,"group":"O","char":ch,"other":False,"conf":"high","why":('文意:'+todo[k]['理由'] if '理由' in todo[k] else '文意判')[:60],"model":"claude-opus-5-5(文意判)","prompt_ver":"ctx-m1","cell":k,"tok":{},
           "ctx":{"left":l,"right":r_,"hash":c.ctx_hash(l,r_)},"subclass":"W","zgroup":todo[k]['原因'],"ref":ref,"machine":todo[k]['机器首选'],"admit_ok":True,"gate":"ok","ab":[ch,ch],"conf_ab":["high","high"],"why_b":"","pending_reason":todo[k]['原因']}
         n+=1;ev.append(c.make_event(BATCH,n,c.KIND,c.EventTarget(step="seed_admit",unit="cell",key=k,book=v),payload,actor="model",ts=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())))
 print(len(ev),'missing window',miss)
