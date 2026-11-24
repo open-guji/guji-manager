@@ -49,6 +49,17 @@ def cv_pending_cells(ws: Path, book: str, out_dir: Path) -> dict:
     return pending_cells(products_root(), book, images=True, out_dir=out_dir)
 
 
+def db_only(ws: Path, verb: str, paths: list[str]) -> int:
+    """``guji db pull|sync -w <ws> --only <路径>…``（CV0，manager #901）：只拉／推这些路径，范围外不动、不碰字形库、不重建 glyph.db。
+    要先整体 pull 过一次（状态文件）；推时范围内文件被别人改报 StaleBase，用 sync（合并）不用 push；事件撞号需整体 sync。"""
+    cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "db", verb, "-w", str(ws)]
+    for p in paths:
+        cmd += ["--only", p]
+    if verb != "pull":
+        cmd += ["--no-glyph"]
+    return subprocess.run(cmd, env={**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}).returncode
+
+
 def landed_path(ws: Path, book: str) -> Path:
     return ws / "reports" / book / "_land" / "landed.json"
 
@@ -67,7 +78,7 @@ APPLY_READY = not _E.PENDING_STEPS   # 卡片字段还有没并进 doc 的步（
 
 
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
-         digest: str | None = None) -> dict:
+         digest: str | None = None, pull: bool = False) -> dict:
     """一册收尾。``res`` 是 cv ``pending_cells`` 的返回（或 ``{"cells": [...], "fps": {...}}``）。
     ``digest`` 与上次落定相同 → 整册跳过（不用对账）。"""
     from .datastore.workcopy import data_dir
@@ -75,6 +86,8 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
     if digest and digest == last_digest(ws, book):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
+    if pull and db_only(ws, "pull", [items_rel]):
+        print(f"⚠ {book} 条目文件没拉成（--only {items_rel}）：按本机现有的对账", file=sys.stderr)
     store = P.ItemStore.open(data, text_id, chapter)
     plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by)
     structural = [k for k in STRUCTURAL if plan[k]]
@@ -87,6 +100,11 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
             raise SystemExit("✗ --apply 暂不开放：卡片字段（alt、待审原因、proof_fields）还没并进条目 doc，直接写会把没变的格全判成「改」。"
                              "现在只出计划；并入后开放")
         out["written"] = plan["_store"].save()
+        if out["written"]:
+            out["synced"] = db_only(ws, "sync", [items_rel]) == 0       # 只推这一册的条目文件
+        f = landed_path(ws, book)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"digest": digest, "pack": (res or {}).get("source_rev"), "at": P.now()}), encoding="utf-8")
     return out
 
 
@@ -97,6 +115,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--text-id", required=True, help="book-text 条目 id（全唐文 995ejelvk0、史記 988g3f0wsu、殿本 96mid1ogzk）")
     p.add_argument("--pending-json", help="直接给新待审格 json（{cells:[…]} 或数组）；只对一册用。缺省调 cv pending-cells")
     p.add_argument("--recheck", help="复审格清单 tsv（格号<TAB>说明<TAB>旧人裁 id<TAB>旧字<TAB>时间），并进条目 doc")
+    p.add_argument("--no-pull", action="store_true", help="不先 db pull --only 拉这一册的条目文件")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
@@ -127,7 +146,8 @@ def cmd_land(a) -> int:
             if not a.no_enrich:
                 from ._cv import products_root
                 res = {**res, "cells": _E.enrich(res["cells"], ws=ws, book=b, products=products_root(), recheck=a.recheck)}
-        r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"))
+        r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"),
+                 pull=not a.no_pull and not a.pending_json)
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     changed = [r["book"] for r in results if r["changed"]]
