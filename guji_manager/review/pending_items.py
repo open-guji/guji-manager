@@ -229,7 +229,8 @@ def _keep_resolved(r: dict, doc: dict, fp: str) -> bool:
 
 
 def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[str, str] | None = None,
-              by: str = "", at: str | None = None, close_missing: bool = True) -> dict:
+              by: str = "", at: str | None = None, close_missing: bool = True,
+              keep_src: tuple[str, ...] = ()) -> dict:
     """机器跑完一轮（或导入旧单）：新单上的每一格对到条目，只动有变化的。
 
     - 先按图块指纹认（同一块图＝同一条目，格号挪了就改 `cell`），认不出再按格号认（指纹变了记 `fp_prev`、标 `fp_changed`）；
@@ -237,6 +238,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
     - 字段（`doc`）、状态没变的不动，变了的 ver+1；
     - 人工撤下的保持撤下（只更新字段）；已关、已裁的条目机器又判待审就重新打开（`reopen`）；
     - `close_missing`：开着的条目在新单上没有了 → `closed`（机器放行或不再要人看）。撤下、已裁的不动。
+    - `keep_src`：来源以这些前缀开头的条目（如 `human:`、`script:`，人工加的格、手加格）不被机器关掉。
     返回各项计数与明细。"""
     at = at or now()
     fps = fps or {}
@@ -311,7 +313,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             out["改"].append(cell)
     if close_missing:
         for r in list(store.items.values()):
-            if r["id"] not in seen and r["state"] == "open":
+            if r["id"] not in seen and r["state"] == "open" and not (keep_src and str(r.get("src") or "").startswith(keep_src)):
                 store.put(r, op="close", by=by, at=at, why=src, state="closed")
                 out["关"].append(r["cell"])
     return out

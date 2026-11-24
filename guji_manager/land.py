@@ -27,6 +27,7 @@ from pathlib import Path
 from .review import pending_items as P
 from .swap import current_main
 
+HAND_SRC = ("human:", "script:")          # 人工加的格、手加格（swap-hand-cells）不被机器对账关掉
 CHANGE_KEYS = ("开", "改", "挪格", "图变", "重开", "关")
 
 
@@ -34,10 +35,34 @@ def plan_book(store: P.ItemStore, cells: list[dict], *, src: str, fps: dict[str,
     """对账（只在内存里算，不写文件）：返回 reconcile 的计数明细与 ``changed``。"""
     work = P.ItemStore(store.path, store.text_id, store.chapter)
     work.items = copy.deepcopy(store.items)
-    res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by)
+    res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by, keep_src=HAND_SRC)
     res["changed"] = any(res[k] for k in CHANGE_KEYS)
     res["_store"] = work
     return res
+
+
+def detail_rows(old: P.ItemStore, new: P.ItemStore) -> list[dict]:
+    """对账前后逐条目比：动作、doc 里哪些键变了、新旧 fp。给 ``_land/land-detail.tsv``（QTW 11-24：要能看出是口径还是新裁定）。"""
+    rows = []
+    for iid, r in new.items.items():
+        o = old.items.get(iid)
+        if o is not None and o.get("ver") == r.get("ver"):
+            continue
+        od, nd = (o or {}).get("doc") or {}, r.get("doc") or {}
+        keys = sorted(k for k in set(od) | set(nd) if od.get(k) != nd.get(k))
+        rows.append({"cell": r["cell"], "action": ("开" if o is None else str(r.get("op") or "")), "id": iid,
+                     "old_state": (o or {}).get("state", ""), "new_state": r.get("state", ""),
+                     "old_fp": (o or {}).get("fp", ""), "new_fp": r.get("fp", ""),
+                     "old_cell": (o or {}).get("cell", ""), "src": r.get("src", ""), "doc_keys": ",".join(keys)})
+    return sorted(rows, key=lambda x: P.cell_sort_key(x["cell"]))
+
+
+def write_detail(ws: Path, book: str, rows: list[dict]) -> Path:
+    f = ws / "reports" / book / "_land" / "land-detail.tsv"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    cols = ["cell", "action", "id", "old_state", "new_state", "old_fp", "new_fp", "old_cell", "src", "doc_keys"]
+    f.write_text("\t".join(cols) + "\n" + "".join("\t".join(str(r[c]) for c in cols) + "\n" for r in rows), encoding="utf-8")
+    return f
 
 
 def summarize(res: dict) -> str:
@@ -50,7 +75,7 @@ def cv_pending_cells(ws: Path, book: str, out_dir: Path, extra: list[str] | None
     返回 ``{cells, fps, sprites, digest, …}``；每格一张按内容寻址的单格图（雪碧图坐标会挪，不能用）。"""
     from ._cv import pending_cells, products_root
     out_dir.mkdir(parents=True, exist_ok=True)
-    return pending_cells(products_root(), book, extra=extra or (), images=True, out_dir=out_dir)
+    return pending_cells(products_root(ws), book, extra=extra or (), images=True, out_dir=out_dir)
 
 
 def db_only(ws: Path, verb: str, paths: list[str]) -> int:
@@ -191,7 +216,8 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     store = P.ItemStore.open(data, text_id, chapter)
     plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by)
     structural = [k for k in STRUCTURAL if plan[k]]
-    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel,
+    detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
+    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel, "detail": str(detail),
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
            "needs_rev_bump_check": bool(plan["挪格"])}
@@ -243,7 +269,7 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     from ._cv import products_root
     from .swap import chapter_of
     out_dir = ws / "reports" / book / "_land"
-    products = products_root()
+    products = products_root(ws)
     rc = _E.read_recheck(Path(a.recheck), book) if a.recheck else {}
     rows, kinds = _E.read_seg_flags(Path(a.seg_flags), products, book) if a.seg_flags else ([], [])
     res = cv_pending_cells(ws, book, out_dir, extra=list(rc))
@@ -285,6 +311,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 def cmd_land(a) -> int:
     from .swap import chapter_of, parse_books
     ws = Path(a.workspace).resolve()
+    os.environ["GUJI_WORKSPACE"] = str(ws)             # cv 的 products_root／缓存按它找，不让用户另外 export（QTW 11-24）
     if a.run:
         from .pipeline import run as cv_run
         if cv_run(["pipeline", *a.run]).returncode:
@@ -307,7 +334,7 @@ def cmd_land(a) -> int:
         r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"),
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None)
         results.append(r)
-        print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
+        print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
     for b, v in blocked.items():
         print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)

@@ -147,3 +147,17 @@ def test_move_guard_blocks_when_rev_votes_exist(tmp_path):
     finally:
         WI.live_rows = WI_live
     assert g and g["rev_votes"] == 1
+
+
+def test_hand_added_cells_not_closed_and_detail(tmp_path):
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    P.reconcile(s, [_cell("1:1:1")], src="pack:x")
+    s.add("9:9:9", {"note": "手加"}, by="u", src="human:u")
+    s.save()
+    st = P.ItemStore(s.path, "t", "001")
+    plan = land.plan_book(st, [_cell("1:1:1", why="R02")], src="land")
+    assert "9:9:9" not in plan["关"] and plan["改"] == ["1:1:1"]
+    rows = land.detail_rows(st, plan["_store"])
+    assert [r["cell"] for r in rows] == ["1:1:1"] and rows[0]["doc_keys"] == "why"
+    f = land.write_detail(tmp_path / "ws", "vol01", rows)
+    assert f.read_text(encoding="utf-8").splitlines()[0].startswith("cell\taction")
