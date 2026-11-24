@@ -379,13 +379,23 @@ def cmd_land(a) -> int:
         from .swap import publish_batch, vol_no
         concl = publish_batch(changed, a.text_id)              # 串行、等空闲、被取消重发；只发有变的册，一次一批
         print(f"发站 {','.join(changed)}：{concl}", file=sys.stderr)
+        purge_only = False
         if concl != "success":
-            print("⚠ 发站没成功：条目已在中心库，修好后手动触发 proofing-sync（only=…）或重跑；不记已发", file=sys.stderr)
-            return 3
-        bad = [r["book"] for r in results if r["book"] in changed and not verify_live(a.text_id, vol_no(r["book"]), r.get("cells"))]
-        if bad:
-            print(f"⚠ 线上格数与本地不符：{' '.join(bad)}（CDN 缓存？几分钟后再核）", file=sys.stderr)
-            return 3
+            # 发站 run 红不一定没发成：腾讯云 CDN purge 日配额用完时 run 失败，但数据已上传、带 ?x= 读得到新格。
+            # 以线上数据为准：新的就算发成（只提示缓存），读不到才算失败。
+            if concl in ("failure", "timeout") and all(
+                    verify_live(a.text_id, vol_no(r["book"]), r.get("cells"), minutes=1.0) for r in results if r["book"] in changed):
+                purge_only = True
+                print(f"⚠ 发站 run 是 {concl}，但线上数据已是新的（多半只是 CDN purge 配额）：不判失败；普通读者要等缓存过期或配额重置",
+                      file=sys.stderr)
+            else:
+                print("⚠ 发站没成功且线上没读到新数据：条目已在中心库，修好后手动触发 proofing-sync（only=…）或重跑；不记已发", file=sys.stderr)
+                return 3
+        if not purge_only:
+            bad = [r["book"] for r in results if r["book"] in changed and not verify_live(a.text_id, vol_no(r["book"]), r.get("cells"))]
+            if bad:
+                print(f"⚠ 线上格数与本地不符：{' '.join(bad)}（CDN 缓存？几分钟后再核）", file=sys.stderr)
+                return 3
     return 4 if blocked else 0
 
 
