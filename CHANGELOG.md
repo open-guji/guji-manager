@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH：`guji db pull|push|sync --only <路径>`（可多次；目录以 / 结尾）：只拉、只推、只合这些路径，范围外库里本机都不动；不扫整个数据目录、不整表读 source_files（Worker `prefix=`，旧 Worker 自动退回整表筛）、不碰字形库、不重建 glyph.db。新鲜度按路径记在状态文件 `only_revs`；不加 `--only` 行为不变（换包按条目对账，GM4 11-24）。
+
 ## [0.6.7] - 2026-11-24
 
 - PATCH：新命令 `guji feedback human-conflicts --books … [--batches r1,r2]`：推库前查跨批次人裁冲突，同一现格（过绑定表）几批定成不同字的列出历次与生效字（生效字取 cv `human_chars`，口径同 seed_admit／collect）；绑不上现格的单列；有冲突退出码 3（SJ 11-21）。
