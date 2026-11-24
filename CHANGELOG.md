@@ -4,7 +4,12 @@
 
 ## [未发版]
 
+- PATCH：新命令 `guji feedback human-conflicts --books … [--batches r1,r2]`：推库前查跨批次人裁冲突，同一现格（过绑定表）几批定成不同字的列出历次与生效字（生效字取 cv `human_chars`，口径同 seed_admit／collect）；绑不上现格的单列；有冲突退出码 3（SJ 11-21）。
+- PATCH：新命令 `guji text ctx-ruling write`：按「格号＋字」写终审文意裁定（group O、ctx-m1），键按 seed_admit 5c 窗口（`key_windows`，有 `evidence.vis_ctx` 就用），越过整理本、取不到窗口逐行提示；收进 ZM 会话脚本 `write_ctx_ruling_by_cell.py`（ZM 11-21）。
+- PATCH：`rulings-hits --fetch`：各册并行取产物包、只解 seed_admit／align_ref；`products pack fetch --steps` 同（整包仍要下载，省解包落盘）（ZM 11-21）。
+- PATCH：`rulings-hits` 开了码位表的书、产物没有 `vis_ctx` 时，窗口里有码位目标字的格原因直接写「多半是码位归一」（QTW 11-21，全唐文 陜／戸／勲）；`--data-dir` 指定读码位表的数据目录。
 - PATCH：中心库收 `feedback/rulings/ver_equiv.yaml`（裁定版本等价登记表，GM4 方案②、CV4 实现，cv 读）：原先 `feedback/rulings/` 下只收 `.jsonl`，这张表推库时会被静默跳过、各机拿不到。
+
 ## [0.6.6] - 2026-11-23
 
 - **PATCH**（11-23，GM1，中心库第一步表精简）：`files` 里 kind=config 的 `.json` 不再解析进 `doc`（无读者；kind=list 等不变，`row_sha` 只由 raw 算，不触发重推）；`workcopy` 推库前的 corpus-pack／glyph-pack manifest 保护查询由 `LIKE … OR LIKE` 改成主键区间查询，不再扫整个 ws 的 files。生产库已把 config 的 doc 置空。L0。
