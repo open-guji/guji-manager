@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 
@@ -32,6 +33,12 @@ def _rulings_by_cell(store) -> dict[str, dict]:
     return out
 
 
+def _hit(store, group: str, ver: str, left: str, right: str):
+    """seed_admit 会不会命中这条窗口键：先精确键，cv 带版本等价表（`RulingStore.get_equiv`，cv #1830，
+    `<feedback>/rulings/ver_equiv.yaml`）时再按等价版本查，不另写一套等价逻辑；旧 cv 没有 get_equiv 就只看精确键。"""
+    return getattr(store, "get_equiv", store.get)(group, ver, left, right)
+
+
 def check(products: Path, book: str, store) -> list[dict]:
     from ._cv import llm_questions_of_page, ruling_ctx_hash
     by_cell = _rulings_by_cell(store)
@@ -41,16 +48,37 @@ def check(products: Path, book: str, store) -> list[dict]:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        machine = {c.get("id"): c.get("char") for col in doc.get("seed_admit", doc).get("columns") or []
+                   for c in col.get("chars") or []}
+        ref: dict[str, str] = {}
+        try:
+            ar = json.loads((Path(products) / book / "align_ref" / f.name).read_text(encoding="utf-8")).get("align_ref", {})
+            if ar.get("anchored", True) is not False:
+                ref = {c["id"]: c.get("align_char") or "" for c in ar.get("chars") or [] if c.get("id")}
+        except (OSError, ValueError):
+            pass
+        cands: dict[str, set[str]] = {}
+        for col in doc.get("seed_admit", doc).get("columns") or []:
+            for c in col.get("chars") or []:
+                ks: set[str] = set()
+                for sv in (((c.get("evidence") or {}).get("group") or {}).get("solvers") or []):
+                    ks |= set((sv.get("probs") or {}).keys()) | set((sv.get("scores") or {}).keys())
+                if c.get("id"):
+                    cands[c["id"]] = ks
         for q in llm_questions_of_page(doc):
             r = by_cell.get(q["cell"])
-            if not r or store.get(q["group"], q["ver"], q["l"], q["r"]) is not None:
+            if not r or _hit(store, q["group"], q["ver"], q["l"], q["r"]) is not None:
                 continue
             same_ver = r.get("prompt_ver") == q["ver"]
             rows.append({"cell": q["cell"], "组": q["group"], "裁定字": r.get("char") or ("其他" if r.get("other") else ""),
-                         "把握": r.get("conf"), "原因": "窗口变了" if same_ver else f"提示词版本 {r.get('prompt_ver')}→{q['ver']}",
+                         "把握": r.get("conf"), "原因": "窗口变了" if same_ver else (f"提示词版本 {r.get('prompt_ver')}→{q['ver']}"
+                                                      + ("（--accept-old-ver 可换键）" if old_ver_ok(r, q, cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}) is None
+                                                         else "（不收：" + old_ver_ok(r, q, cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}) + "）")),
                          "裁定窗口": f"{(r.get('ctx') or {}).get('left', '')}｜{(r.get('ctx') or {}).get('right', '')}",
                          "产物窗口": f"{q['l'][-20:]}｜{q['r'][:20]}", "差在": _diff(r.get("ctx"), q["l"], q["r"]), "_q": q, "_r": r,
-                         "_hash": ruling_ctx_hash(q["l"], q["r"])})
+                         "_hash": ruling_ctx_hash(q["l"], q["r"]), "_machine": machine.get(q["cell"]) or "",
+                         "_ref": ref.get(q["cell"]) or "",
+                         "_cands": cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}})
     return rows
 
 
@@ -82,7 +110,8 @@ def _diff(ctx: dict | None, left: str, right: str) -> str:
 
 
 def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozenset,
-               override: tuple | None = None, store=None, anchored: bool = True, ts: str | None = None) -> tuple[str, bool]:
+               override: tuple | None = None, store=None, anchored: bool = True, ts: str | None = None,
+               cp_targets: frozenset = frozenset()) -> tuple[str, bool]:
     """终审看图裁定没放行的原因（按 seed_admit 判的次序）→ (原因, 能不能按产物窗口补键)。
     `store` 给了就核裁定库按这个窗口键实际取到的是不是这一条；`anchored`＝这页 align_ref 锚定了（没锚定管线不认整理本字）。"""
     from ._cv import ruling_ctx_hash
@@ -132,6 +161,11 @@ def vis_reason(v: dict, rec, left: str, right: str, ref_now: str, subs: frozense
     if isinstance(vc, dict):
         return ("按 cv 当场记的 5c 窗口也对得上、manager 能核的条件都满足，仍没放：" + when
                 + "先核产物是否晚于裁定推库（包 manifest 的 db_rev ≥ 裁定 rev）；晚于的话把格号报 GM2") + note, False
+    hit = sorted({ch for ch in (left or "")[-20:] + (right or "")[:20] if ch in cp_targets})
+    if hit:
+        return ("多半是码位归一：产物窗口里有码位表目标字 " + "、".join(hit) + "，seed_admit 最后一步才把邻格放行字改成它们，"
+                "5c 算键时还是原字，从产物终态算的窗口不准。产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后再 --rekey"
+                + ("；" + when.rstrip("，") if when else "")) + note, False
     return ("manager 能核的条件都满足，仍没放。两种可能：①产物早于裁定推库（" + when + "核包 manifest 的 db_rev ≥ 裁定 rev）；"
             "②5c 时邻格字与产物不同而 manager 看不出（码位归一 codepoint_semantic、pair_form 后来改了邻格放行字）。"
             "产物用含 evidence.vis_ctx 的 cv（dev #1763 起）重跑 seed_admit 后，rulings-hits／--rekey 直接按 5c 窗口") + note, False
@@ -141,7 +175,23 @@ def half_cell(rec) -> bool:
     return (getattr(rec, "id", None) or "")[-1:] in ("a", "b")
 
 
-def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None) -> list[dict]:
+def codepoint_targets(book: str, data_dir=None) -> frozenset:
+    """本书码位表的目标字（有别的码位归到它、且与源字不同）。读不到 → 空。"""
+    m: dict = {}
+    try:
+        if data_dir:
+            from .charnorm import codepoints_of
+            m = codepoints_of(data_dir, book)
+        else:
+            from .charnorm import load_norm
+            m = load_norm(book).map
+    except Exception:  # noqa: BLE001
+        m = {}
+    return frozenset(v for k, v in m.items() if k != v)
+
+
+def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, override: tuple | None = None,
+              cp_targets: frozenset = frozenset()) -> list[dict]:
     """终审／看图裁定（group=O，`vis_ruling` 通道）：写了可放行的裁定（high、admit_ok、有字）、产物里这格却仍待审。
     逐格按 seed_admit 的取法现算窗口，给出具体原因（人裁／疑点／子类／对位字／窗口／半格／越过整理本／产物旧）；
     只是窗口变了的可以 `--rekey` 按产物窗口补一条（字、子类、对位字照抄）。"""
@@ -184,7 +234,8 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
             w = win.get(c["id"])
             rec, l, r = w if w is not None else (None, "", "")
             why, ok = vis_reason(v, rec, l, r, amap.get(c["id"], ""), subs, override, store=store, anchored=anchored,
-                                 ts=ts.get(c["id"]))
+                                 ts=ts.get(c["id"]),
+                                 cp_targets=cp_targets if not ((rec.evidence or {}).get("vis_ctx") if rec is not None else None) else frozenset())
             rows.append({"cell": c["id"], "组": f"O/{v.get('prompt_ver')}/{v.get('subclass') or ''}", "裁定字": v["char"],
                          "把握": "high", "原因": why,
                          "裁定窗口": f"{(v.get('ctx') or {}).get('left', '')}｜{(v.get('ctx') or {}).get('right', '')}",
@@ -233,17 +284,44 @@ def _rulings_by_cell_all(store, ts: dict | None = None) -> dict[str, dict]:
     return out
 
 
-def rekey(rows: list[dict], store) -> int:
+def _ver_base(v) -> str:
+    """提示词版本去掉模型后缀（``ctx-m1#claude-opus:high`` → ``ctx-m1``）。"""
+    return str(v or "").split("#", 1)[0]
+
+
+def old_ver_ok(r: dict, q: dict, cands: set[str]) -> str | None:
+    """旧提示词版本的裁定能不能换成当前版本的键（用户 11-24 定两档）。能返回 None，不能返回原因。
+    共同条件：high、单字（非「其他」）、窗口哈希与产物窗口相同（字组由键保证）。
+    ① 只差模型后缀（版本基名相同）：直接换。
+    ② 真换版：裁定字还在新候选里（机器首选、整理本对位字、各路候选）才换。异体闸、抽 10 格看图由执行方（ZM）另做。
+    不收的走网站人审。换键后仍要过 seed_admit 的全部护栏。"""
+    from ._cv import ruling_ctx_hash
+    if r.get("conf") != "high" or r.get("other") or not r.get("char"):
+        return "非 high／其他／无字"
+    if (r.get("ctx") or {}).get("hash") != ruling_ctx_hash(q["l"], q["r"]):
+        return "窗口也变了"
+    if _ver_base(r.get("prompt_ver")) == _ver_base(q["ver"]):
+        return None
+    if r["char"] not in cands:
+        return "AI 字不在新候选里"
+    return None
+
+
+def rekey(rows: list[dict], store, accept_old_ver: bool = False) -> int:
     n = 0
     for x in rows:
         r, q = x["_r"], x["_q"]
-        if q is None or r.get("prompt_ver") != q["ver"]:
+        if q is None:
             continue
+        if r.get("prompt_ver") != q["ver"]:
+            if not accept_old_ver or old_ver_ok(r, q, x.get("_cands") or set()) is not None:
+                continue
         char = "其他" if r.get("other") else r.get("char")
         if not char:
             continue
+        why = ("rekey:" if r.get("prompt_ver") == q["ver"] else f"rekey-ver {r.get('prompt_ver')}→{q['ver']}:") + (r.get("why") or "")
         store.put(q["group"], q["ver"], q["l"], q["r"], char=char, conf=r.get("conf"),
-                  why=("rekey:" + (r.get("why") or ""))[:60], model=r.get("model") or "session", cell=q["cell"],
+                  why=why[:60], model=r.get("model") or "session", cell=q["cell"],
                   pending_reason=r.get("pending_reason"))
         n += 1
     return n
@@ -255,11 +333,15 @@ def cmd(a) -> None:
     if a.batch:
         store._batch = a.batch
     books = [b.strip() for b in a.books.split(",") if b.strip()]
+    if getattr(a, "fetch", False):
+        fetch_books(books, Path(a.products), a.label, a.jobs)
     allrows = []
     for b in books:
         rows = check(Path(a.products), b, store)
         ovr = tuple(x.strip() for x in a.override_groups.split(",") if x.strip()) if a.override_groups is not None else None
-        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr)
+        cps = codepoint_targets(b, getattr(a, "data_dir", None))
+        vis = check_vis(Path(a.products), b, store, VIS_SUBS | {x.strip() for x in (a.vis_subclasses or "").split(",") if x.strip()}, ovr,
+                        cp_targets=cps)
         allrows += rows + vis
         print(f"{b}：仍在问且有文意裁定却没命中 {len(rows)} 格；终审／看图裁定可放行却仍待审 {len(vis)} 格", file=sys.stderr)
     cols = ["cell", "组", "裁定字", "把握", "原因", "差在", "裁定窗口", "产物窗口"]
@@ -273,9 +355,26 @@ def cmd(a) -> None:
     if a.rekey and allrows:
         if not a.batch:
             sys.exit("--rekey 要给 --batch <批次名>（如 llm-rekey-QTW-20261120）")
-        n = rekey(allrows, store)
+        n = rekey(allrows, store, getattr(a, "accept_old_ver", False))
         nv = rekey_vis(allrows, a.batch, store.log.root if hasattr(store.log, "root") else None)
         print(f"按产物窗口补写文意裁定 {n} 条、终审裁定 {nv} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
+
+
+FETCH_STEPS = ("seed_admit", "align_ref")
+
+
+def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4) -> None:
+    """各册取产物包，只解 seed_admit／align_ref 到 `root`（已有就覆盖：这里是核对用的产物根，别指向本机正在跑的产物）。"""
+    from concurrent.futures import ThreadPoolExecutor
+    from .datastore import packs as PK
+
+    def one(b):
+        t = time.time()
+        info = PK.fetch_products(b, root, label=label, force=True, steps=list(FETCH_STEPS))
+        return b, info["name"].rsplit("/", 1)[-1], time.time() - t
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+        for b, lab, dt in ex.map(one, books):
+            print(f"  取 {b} 包 {lab}（只解 seed_admit、align_ref）{dt:.0f} 秒", file=sys.stderr)
 
 
 # ---- 重放预演：重放包 vs ★main 基线，只看有 AI 裁定的格（2026-11-23，GM4）----
@@ -363,10 +462,17 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--out", default=None, help="清单 tsv（缺省打到标准输出）")
     p.add_argument("--rekey", action="store_true", help="按产物里的窗口另写一条裁定（同提示词版本的才写）")
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
+    p.add_argument("--accept-old-ver", action="store_true",
+                   help="--rekey 时旧提示词版本的裁定也换键（用户 11-24 定两档）：high 单字、窗口相同，且只差模型后缀，或裁定字仍在新候选里；其余不动。异体闸、抽样看图由执行方另做")
     p.add_argument("--replay", default=None, metavar="重放包根",
                    help="重放预演：--products 当基线（★main 包根），这里给重放包根，只对账有 AI 裁定的格（新放行／改字／仍待审／退回）；不写库")
     p.add_argument("--vis-subclasses", default=None,
                    help="书级 seed_admit.vis_ruling_ctx_subclasses（如殿本 P,D）：判「子类不收」时一并算收（缺省只算 Z,N）")
+    p.add_argument("--fetch", action="store_true",
+                   help="先按册取产物包（缺省 main），只解 seed_admit、align_ref 到 --products（覆盖；指向专门的核对目录），各册并行")
+    p.add_argument("--label", default=None, help="--fetch 取哪个包标签（缺省各册 main）")
+    p.add_argument("--jobs", type=int, default=4, help="--fetch 同时取几册（缺省 4）")
+    p.add_argument("--data-dir", default=None, help="数据目录（读 config/codepoints.yaml 等码位表；缺省按 cv 找本册配置）")
     p.add_argument("--override-groups", default=None,
                    help="书级 seed_admit.ruling_override_groups，逗号分隔（殿本 ly,dt,wm,ts,mb,fc,rr,ry,guan,wxs,jys）；给了才核越过整理本")
 

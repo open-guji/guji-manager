@@ -39,11 +39,11 @@ STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "groups", "promote", "pair-attr", "model", "font",
     )),
     "text": ("第三步 文意与知识", "AI 文意判字、标点、专名", (
-        "final-review", "rulings-hits",
+        "final-review", "rulings-hits", "ctx-ruling",
     )),
     "feedback": ("第四步 反馈迭代", "出单上线、收单落票、更新 book-text、升 1.0、1.0 之后的反馈", (
         "pending", "online-lists", "swap", "collect", "cellvotes", "closeout", "rekey-cells",
-        "exit-check", "char-diff", "audit", "freeze", "opinions", "progress-sync",
+        "exit-check", "char-diff", "audit", "freeze", "opinions", "progress-sync", "human-conflicts",
     )),
     "output": ("第五步 排版输出", "导出排版文本（md、lines.md／pages.json、维基文库、重排段落）与对勘报告", (
         "export", "collation-report",
