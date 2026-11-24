@@ -153,21 +153,23 @@ def test_vis_unanchored_and_no_hash(tmp_path):
 
 
 def test_accept_old_ver_rekey(tmp_path):
-    """旧版本裁定换键：只收 high 单字、窗口同、AI 字＝机器首选或整理本对位字（11-23 用户定）。"""
+    """旧版本裁定换键两档（11-24 用户定）：只差模型后缀直接换；真换版要 high 单字、窗口同、字在新候选里。"""
     store = RulingStore(tmp_path / "fb")
-    store.put("ry", "v1", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")   # AI＝机器字 → 收
-    store.put("ry", "v1", "丙", "丁", char="日", conf="high", why="", model="m", cell="001:1:1:2")   # AI≠机器字、≠整理本 → 不收
-    store.put("ry", "v1", "戊", "己", char="巳", conf="low", why="", model="m", cell="001:1:1:3")    # 非 high → 不收
-    store.put("ry", "v1", "庚", "辛", char="己", conf="high", why="", model="m", cell="001:1:1:4")   # 窗口也变 → 不收
-    ask = lambda l, r: {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": l, "r": r}}]}}}
-    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "曰", **ask("甲", "乙")},
+    store.put("ry", "v1#m:high", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")   # 只差后缀 → 收（即使不是机器字）
+    store.put("ry", "v1", "丙", "丁", char="日", conf="high", why="", model="m", cell="001:1:1:2")          # 换版、字在候选 → 收
+    store.put("ry", "v1", "戊", "己", char="巳", conf="low", why="", model="m", cell="001:1:1:3")           # 非 high → 不收
+    store.put("ry", "v1", "庚", "辛", char="己", conf="high", why="", model="m", cell="001:1:1:4")          # 窗口也变 → 不收
+    store.put("ry", "v1", "壬", "癸", char="午", conf="high", why="", model="m", cell="001:1:1:5")          # 换版、字不在候选 → 不收
+    ask = lambda l, r, ver="v2": {"evidence": {"group": {"id": "ry", "solvers": [
+        {"why": PENDING, "ask": {"ver": ver, "l": l, "r": r}, "probs": {"日": 0.6, "已": 0.4}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "已", **ask("甲", "乙", "v1")},
                            {"id": "001:1:1:2", "char": "已", **ask("丙", "丁")},
                            {"id": "001:1:1:3", "char": "巳", **ask("戊", "己")},
-                           {"id": "001:1:1:4", "char": "己", **ask("庚x", "辛")}])
+                           {"id": "001:1:1:4", "char": "己", **ask("庚x", "辛")},
+                           {"id": "001:1:1:5", "char": "未", **ask("壬", "癸")}])
     rows = RH.check(tmp_path / "p", "001", store)
-    assert len(rows) == 4
+    assert len(rows) == 5
     assert RH.rekey(rows, store) == 0                                  # 缺省不收旧版本
-    assert RH.rekey(rows, store, accept_old_ver=True) == 1             # 只收第一格
-    got = store.get("ry", "v2", "甲", "乙")
-    assert got is not None and got["char"] == "曰" and "rekey-ver v1→v2" in got["why"]
-    assert store.get("ry", "v2", "丙", "丁") is None
+    assert RH.rekey(rows, store, accept_old_ver=True) == 2             # 只收 1、2 两格
+    assert store.get("ry", "v2", "丙", "丁")["char"] == "日"
+    assert store.get("ry", "v2", "壬", "癸") is None

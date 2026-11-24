@@ -50,6 +50,14 @@ def check(products: Path, book: str, store) -> list[dict]:
                 ref = {c["id"]: c.get("align_char") or "" for c in ar.get("chars") or [] if c.get("id")}
         except (OSError, ValueError):
             pass
+        cands: dict[str, set[str]] = {}
+        for col in doc.get("seed_admit", doc).get("columns") or []:
+            for c in col.get("chars") or []:
+                ks: set[str] = set()
+                for sv in (((c.get("evidence") or {}).get("group") or {}).get("solvers") or []):
+                    ks |= set((sv.get("probs") or {}).keys()) | set((sv.get("scores") or {}).keys())
+                if c.get("id"):
+                    cands[c["id"]] = ks
         for q in llm_questions_of_page(doc):
             r = by_cell.get(q["cell"])
             if not r or store.get(q["group"], q["ver"], q["l"], q["r"]) is not None:
@@ -57,12 +65,13 @@ def check(products: Path, book: str, store) -> list[dict]:
             same_ver = r.get("prompt_ver") == q["ver"]
             rows.append({"cell": q["cell"], "组": q["group"], "裁定字": r.get("char") or ("其他" if r.get("other") else ""),
                          "把握": r.get("conf"), "原因": "窗口变了" if same_ver else (f"提示词版本 {r.get('prompt_ver')}→{q['ver']}"
-                                                      + ("（--accept-old-ver 可换键）" if old_ver_ok(r, q, machine.get(q["cell"]) or "", ref.get(q["cell"]) or "") is None
-                                                         else "（不收：" + old_ver_ok(r, q, machine.get(q["cell"]) or "", ref.get(q["cell"]) or "") + "）")),
+                                                      + ("（--accept-old-ver 可换键）" if old_ver_ok(r, q, cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}) is None
+                                                         else "（不收：" + old_ver_ok(r, q, cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}) + "）")),
                          "裁定窗口": f"{(r.get('ctx') or {}).get('left', '')}｜{(r.get('ctx') or {}).get('right', '')}",
                          "产物窗口": f"{q['l'][-20:]}｜{q['r'][:20]}", "差在": _diff(r.get("ctx"), q["l"], q["r"]), "_q": q, "_r": r,
                          "_hash": ruling_ctx_hash(q["l"], q["r"]), "_machine": machine.get(q["cell"]) or "",
-                         "_ref": ref.get(q["cell"]) or ""})
+                         "_ref": ref.get(q["cell"]) or "",
+                         "_cands": cands.get(q["cell"], set()) | {machine.get(q["cell"]) or "", ref.get(q["cell"]) or ""} - {""}})
     return rows
 
 
@@ -245,17 +254,26 @@ def _rulings_by_cell_all(store, ts: dict | None = None) -> dict[str, dict]:
     return out
 
 
-def old_ver_ok(r: dict, q: dict, machine: str, ref: str) -> str | None:
-    """旧提示词版本的裁定能不能换成当前版本的键（用户 11-23 点头）。能返回 None，不能返回原因。
-    收：high、单字（非「其他」）、窗口与产物窗口完全相同（哈希一致）、裁定字＝机器首选字或整理本对位字。
-    不收的（AI 推翻机器字、窗口变了、非 high）走人审。换键后仍要过 seed_admit 的全部护栏。"""
+def _ver_base(v) -> str:
+    """提示词版本去掉模型后缀（``ctx-m1#claude-opus:high`` → ``ctx-m1``）。"""
+    return str(v or "").split("#", 1)[0]
+
+
+def old_ver_ok(r: dict, q: dict, cands: set[str]) -> str | None:
+    """旧提示词版本的裁定能不能换成当前版本的键（用户 11-24 定两档）。能返回 None，不能返回原因。
+    共同条件：high、单字（非「其他」）、窗口哈希与产物窗口相同（字组由键保证）。
+    ① 只差模型后缀（版本基名相同）：直接换。
+    ② 真换版：裁定字还在新候选里（机器首选、整理本对位字、各路候选）才换。异体闸、抽 10 格看图由执行方（ZM）另做。
+    不收的走网站人审。换键后仍要过 seed_admit 的全部护栏。"""
     from ._cv import ruling_ctx_hash
     if r.get("conf") != "high" or r.get("other") or not r.get("char"):
         return "非 high／其他／无字"
     if (r.get("ctx") or {}).get("hash") != ruling_ctx_hash(q["l"], q["r"]):
         return "窗口也变了"
-    if r["char"] not in (machine, ref):
-        return "AI 字≠机器首选也≠整理本对位字"
+    if _ver_base(r.get("prompt_ver")) == _ver_base(q["ver"]):
+        return None
+    if r["char"] not in cands:
+        return "AI 字不在新候选里"
     return None
 
 
@@ -266,7 +284,7 @@ def rekey(rows: list[dict], store, accept_old_ver: bool = False) -> int:
         if q is None:
             continue
         if r.get("prompt_ver") != q["ver"]:
-            if not accept_old_ver or old_ver_ok(r, q, x.get("_machine") or "", x.get("_ref") or "") is not None:
+            if not accept_old_ver or old_ver_ok(r, q, x.get("_cands") or set()) is not None:
                 continue
         char = "其他" if r.get("other") else r.get("char")
         if not char:
@@ -394,7 +412,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--rekey", action="store_true", help="按产物里的窗口另写一条裁定（同提示词版本的才写）")
     p.add_argument("--batch", default=None, help="--rekey 写进的裁定批次名")
     p.add_argument("--accept-old-ver", action="store_true",
-                   help="--rekey 时旧提示词版本的裁定也换键：只收 high 单字、窗口相同、AI 字＝机器首选或整理本对位字（用户 11-23 定）；其余不动")
+                   help="--rekey 时旧提示词版本的裁定也换键（用户 11-24 定两档）：high 单字、窗口相同，且只差模型后缀，或裁定字仍在新候选里；其余不动。异体闸、抽样看图由执行方另做")
     p.add_argument("--replay", default=None, metavar="重放包根",
                    help="重放预演：--products 当基线（★main 包根），这里给重放包根，只对账有 AI 裁定的格（新放行／改字／仍待审／退回）；不写库")
     p.add_argument("--vis-subclasses", default=None,
