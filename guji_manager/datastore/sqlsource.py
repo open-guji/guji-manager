@@ -30,6 +30,10 @@ class SqlSource:
         conds, args = [], []
         if ws is not None:
             filters = {"ws": ws, **filters}
+        prefix = filters.pop("prefix", None)
+        if prefix is not None:                         # 同 Worker 的 prefix：src_path 区间（走主键）
+            conds.append('"src_path" >= %s AND "src_path" < %s')
+            args += [str(prefix), str(prefix) + "\uffff"]
         for k, v in filters.items():
             if not k.replace("_", "").isalnum():
                 raise ValueError(f"列名不对：{k}")
