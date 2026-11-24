@@ -12,10 +12,16 @@ for p in PAIRS:
         _M.setdefault(a, set()).update(b for b in p if b != a)
 
 
-def blocked(ai_char: str, cands) -> bool:
-    return bool(_M.get(ai_char, set()) & set(cands))
+# 书级开关：殿本（ZM）按文意判日曰、己已巳（sheldon 11-20 口径），这两对关掉；史记、全唐文全开。
+OFF_PAIRS = {"殿本": {"日曰", "己已", "已巳", "己巳"}, "default": set()}
+
+
+def blocked(ai_char: str, cands, book: str = "default") -> bool:
+    off = {frozenset(p) for p in OFF_PAIRS.get(book, OFF_PAIRS["default"])}
+    return any(frozenset((ai_char, b)) not in off for b in _M.get(ai_char, set()) & set(cands))
 
 
 if __name__ == "__main__":
     assert blocked("十", ["千", "十"]) and not blocked("十", ["十", "廿"])
+    assert blocked("日", ["曰", "日"]) and not blocked("日", ["曰", "日"], "殿本") and blocked("十", ["千"], "殿本")
     print("ok")
