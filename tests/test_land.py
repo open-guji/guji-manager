@@ -128,3 +128,22 @@ def test_attach_sprites_and_sheet_rev_unchanged(tmp_path):
     head = {"rev": "001-r3", "cv_version": "0.9.0"}
     sheet = P.export_sheet(st, head)
     assert sheet["rev"] == "001-r3" and sheet["sprites"][0]["name"] == "c1.webp" and len(sheet["cells"]) == 1
+
+
+def test_move_guard_blocks_when_rev_votes_exist(tmp_path):
+    import pytest
+    pytest.importorskip("cv2")
+    st = _store(tmp_path, [_cell("1:1:1")])
+    plan = land.plan_book(st, [_cell("1:1:2")], src="land", fps={})
+    plan["挪格"] = ["1:1:1→1:1:2"]
+    assert land.move_guard({**plan, "挪格": []}, "t", "001-r3", fetch=lambda: []) is None
+    assert land.move_guard(plan, "t", None) is not None
+    rows = [{"key": "cr:001-r3:t:1:1:1", "value": {"v": 1}, "deleted": False}]
+    import guji_manager.feedback.web_inbox as WI
+    WI_live = WI.live_rows
+    try:
+        WI.live_rows = lambda r: r
+        g = land.move_guard(plan, "t", "001-r3", fetch=lambda: rows)
+    finally:
+        WI.live_rows = WI_live
+    assert g and g["rev_votes"] == 1

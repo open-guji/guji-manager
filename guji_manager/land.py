@@ -148,6 +148,28 @@ from . import land_enrich as _E
 APPLY_READY = not _E.PENDING_STEPS   # 卡片字段还有没并进 doc 的步（见 land_enrich.PENDING_STEPS）前，doc 级的「改」不可信，不开 --apply
 
 
+def rev_votes_on(text_id: str, rev: str, fetch=None) -> int:
+    """中心库网站收件箱里，仍按「单版 rev＋格号」记的、投在这个 rev 上的票数（不含按条目记的）。
+    挪格而 rev 不升时，这些票的格号会落到新格号上的别的字（CV4 11-24）。读失败就抛，不当作 0。"""
+    from .feedback import web_inbox as WI
+    rows = (fetch or (lambda: WI.fetch("cellreview", text_id)[0]))()
+    files = WI.rev_files(rows, text_id)
+    return len(files.get(f"{rev}.jsonl", []))
+
+
+def move_guard(plan: dict, text_id: str, rev: str | None, fetch=None) -> dict | None:
+    """一册有格号挪动且该章仍有按当前 rev 记的票 → 拒绝 apply（要先把票落成人裁再对账，或升 rev）。返回拒绝说明，没事返回 None。"""
+    if not plan["挪格"]:
+        return None
+    if not rev:
+        return {"why": "有格号挪动，但线上单没有 rev，核不了按 rev 记的票", "moved": plan["挪格"][:10]}
+    n = rev_votes_on(text_id, rev, fetch)
+    if n:
+        return {"why": f"有格号挪动 {len(plan['挪格'])} 格，且线上单 {rev} 上还有 {n} 条按「单版＋格号」记的票：不升 rev 就地改会让这些票落到别的字上。"
+                       f"先 guji collect 把票落成人裁，或这册改走升 rev 的老换单路径", "moved": plan["挪格"][:10], "rev_votes": n}
+    return None
+
+
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
          digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True) -> dict:
     """一册收尾。``res`` 是 cv ``pending_cells`` 的返回（或 ``{"cells": [...], "fps": {...}}``）。
@@ -173,9 +195,21 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
            "needs_rev_bump_check": bool(plan["挪格"])}
+    if out["changed"] and plan["挪格"]:                 # 计划模式也先报：挪格＋按旧 rev 记的票，apply 会拒绝这册
+        head = P.sheet_path(data, text_id, chapter)
+        rev = json.loads(head.read_text(encoding="utf-8")).get("rev") if head.exists() else None
+        try:
+            blocked = move_guard(plan, text_id, rev)
+        except Exception as e:  # noqa: BLE001 —— 读不到收件箱就按有风险处理，不当 0
+            blocked = {"why": f"有格号挪动，但读不了网站收件箱核按 rev 记的票（{type(e).__name__}）", "moved": plan["挪格"][:10]}
+        if blocked:
+            out["blocked"] = blocked
     if apply:
         if not APPLY_READY:
             raise SystemExit("✗ --apply 暂不开放：卡片字段还有没并进条目 doc 的步（见 land_enrich.PENDING_STEPS）")
+        if out.get("blocked"):
+            out["written"] = 0
+            return out                           # 拒绝：不写条目、不落定；cmd_land 汇总列出
         if out["changed"]:
             out.update(apply_changes(ws, book, data=data, text_id=text_id, chapter=chapter, work=plan["_store"],
                                      sprites=list((res or {}).get("sprites") or []), files_dir=files_dir, sync=sync))
@@ -274,8 +308,11 @@ def cmd_land(a) -> int:
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None)
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}" + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
-    changed = [r["book"] for r in results if r["changed"]]
-    print(json.dumps({"changed": changed, "unchanged": [r["book"] for r in results if not r["changed"]]}, ensure_ascii=False))
+    blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
+    for b, v in blocked.items():
+        print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)
+    changed = [r["book"] for r in results if r["changed"] and r["book"] not in blocked]
+    print(json.dumps({"changed": changed, "unchanged": [r["book"] for r in results if not r["changed"]], "blocked": blocked}, ensure_ascii=False))
     if a.apply and changed and not a.no_publish:
         from .swap import publish_batch, vol_no
         concl = publish_batch(changed, a.text_id)              # 串行、等空闲、被取消重发；只发有变的册，一次一批
@@ -283,11 +320,11 @@ def cmd_land(a) -> int:
         if concl != "success":
             print("⚠ 发站没成功：条目已在中心库，修好后手动触发 proofing-sync（only=…）或重跑；不记已发", file=sys.stderr)
             return 3
-        bad = [r["book"] for r in results if r["changed"] and not verify_live(a.text_id, vol_no(r["book"]), r.get("cells"))]
+        bad = [r["book"] for r in results if r["book"] in changed and not verify_live(a.text_id, vol_no(r["book"]), r.get("cells"))]
         if bad:
             print(f"⚠ 线上格数与本地不符：{' '.join(bad)}（CDN 缓存？几分钟后再核）", file=sys.stderr)
             return 3
-    return 0
+    return 4 if blocked else 0
 
 
 COMMANDS = {"land": (add_parser, cmd_land)}
