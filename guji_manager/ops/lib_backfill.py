@@ -634,6 +634,8 @@ def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
     # 先补锚（带产物页表的 source_rev）、先写事件日志，再进库：换过图源的册（yaml 有 source_rev）
     # 不带锚的事件会被日志拒写，原先这时库里已进了刻例、却没有事件，重放会丢（史记 36、42 册，11-18）
     enrich_events(evs, store=ProductStore())
+    from ..u_stamp import stamp_human
+    stamp_human(evs)            # 册有字格身份账时盖 target.anchor.u（T2）；没账不动
     rep["events"] = elog.append(evs)
     db = GlyphDB(dbp)
     n = 0
