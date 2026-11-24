@@ -169,14 +169,15 @@ def test_human_deduct_only_for_cells_without_item(tmp_path):
     assert [c["cell"] for c in keep] == ["1:1:1", "3:3:3"] and drop == ["2:2:2"]
 
 
-def test_human_src_doc_not_overwritten_but_filled(tmp_path):
+def test_human_src_doc_untouched(tmp_path):
     s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
     s.add("5:5:5", {"note": "人写的备注"}, by="u", src="human:qtw-web")
     s.save()
     st = P.ItemStore(s.path, "t", "001")
     plan = land.plan_book(st, [{**_cell("5:5:5"), "note": "机器想改", "pending_reason": "R01"}], src="land")
     doc = plan["_store"].find("5:5:5")[0]["doc"]
-    assert doc["note"] == "人写的备注" and doc["pending_reason"] == "R01"
+    assert doc == {"note": "人写的备注"} or doc.get("note") == "人写的备注"
+    assert "pending_reason" not in doc and plan["改"] == []
 
 
 def test_resolved_reopen_on_image_change_marks_recheck(tmp_path):

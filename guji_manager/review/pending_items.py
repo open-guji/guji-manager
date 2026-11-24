@@ -274,8 +274,8 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             continue
         seen.add(r["id"])
         if keep_src and str(r.get("src") or "").startswith(keep_src):
-            # 人工加的格（手加、点坏格等）：机器只能补不能改——已有的键（note、原因…）一律以人为准，只补缺的键
-            doc = {**doc, **(r.get("doc") or {})}
+            # 人工加的格（手加、点坏格等）：字段一律以人为准，机器不碰（补缺的键也算「改」，会让没变的册被判有变）
+            doc = r.get("doc") or {}
         upd: dict = {}
         ops = []
         if r["cell"] != cell:
