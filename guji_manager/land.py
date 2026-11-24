@@ -80,21 +80,6 @@ def human_deduct(store: P.ItemStore, cells: list[dict], human: set[str]) -> tupl
     return keep, drop
 
 
-def auto_released_cells(ws: Path, book: str) -> set[str]:
-    """机器自动放行的格（事件 kind=confirm、payload.source=auto 且带 form_fix，如 qtw-auto-form-*）：
-    旧流程 pending_route 按它扣除，对账后同样不新开条目（QTW 11-24：61:1:7、204:6:3、80:4:8）。"""
-    from ._cv import EventLog
-    os.environ["GUJI_WORKSPACE"] = str(ws)
-    pre, out = f"{book}:", set()
-    for e in EventLog().iter_all():
-        pl = getattr(e, "payload", None) or {}
-        t = getattr(e, "target", None)
-        if getattr(e, "kind", None) == "confirm" and pl.get("source") == "auto" and pl.get("form_fix") \
-                and t is not None and t.unit == "cell" and str(t.key).startswith(pre):
-            out.add(P.norm_cell(str(t.key)[len(pre):]))
-    return out
-
-
 def human_cells(ws: Path, book: str) -> set[str]:
     """事件日志里这一册有人裁的格号（cv ``human_chars``：后到覆盖、过绑定表）；读不了就抛，不当「没有」。"""
     from ._cv import human_chars
@@ -382,7 +367,7 @@ def cmd_land(a) -> int:
             res, files_dir = prepare(ws, b, a)
         r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"),
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None,
-                 human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b) | auto_released_cells(ws, b))
+                 human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t按人裁扣掉 {len(r['deducted'])} 格 {r['deducted'][:5]}" if r.get("deducted") else "") + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
