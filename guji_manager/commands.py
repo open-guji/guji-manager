@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, land, round_check, ruling_hits, swap
+from . import cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .cli_cellvotes import cmd_cellvotes
@@ -48,6 +48,8 @@ COMMANDS: dict = {
     **cli_seg.COMMANDS,        # seg pin（整列写定 manual-cells，A22 11-12）
     **collect.COMMANDS,        # collect（收单快路：人裁直接落 book-text，不重放，A31 11-19）
     **land.COMMANDS,           # land（出包后收尾：待审条目对账，GM4 11-24）
+    **ctx_ruling.COMMANDS,     # ctx-ruling（按格号＋字写终审文意裁定，原 ZM 会话脚本，A31 11-21）
+    **human_conflicts.COMMANDS,  # human-conflicts（推库前跨批次人裁冲突，SJ 11-21）
     **ruling_hits.COMMANDS,    # rulings-hits（AI 文意裁定命中核对，A31 11-20）
     **round_check.COMMANDS,    # round-check（收轮检查：seg check×2→gate→premain→待审归层，A31 11-20）
     # 按步骤分组（start／auto／text／feedback／output）与并进 guji 的模块入口（2026-11-22，见 steps.py）

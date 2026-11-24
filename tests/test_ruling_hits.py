@@ -150,3 +150,78 @@ def test_vis_unanchored_and_no_hash(tmp_path):
         {"id": "001:1:1:2", "align_char": "曰"}]}}, ensure_ascii=False), encoding="utf-8")
     row = RH.check_vis(q / "p", "001", RulingStore(tmp_path / "fb2"))[0]
     assert "没写 ctx.hash" in row["原因"] and row["_vis"]
+
+
+def test_vis_codepoint_hint(tmp_path):
+    """QTW (c)：产物没有 vis_ctx、窗口里有码位表目标字 → 原因写明多半是码位归一（全唐文 陜／戸／勲）。"""
+    from guji_manager._cv import RulingLog
+    log = RulingLog(tmp_path / "fb")
+    _vis_event(log, 1, "001:1:1:2", "曰", "曰", "N", "甲", "丙")
+    _one_page(tmp_path)
+    row = RH.check_vis(tmp_path / "p", "001", RulingStore(tmp_path / "fb"), cp_targets=frozenset("丙"))[0]
+    assert "码位归一" in row["原因"] and "丙" in row["原因"]
+
+
+def test_fetch_steps_filter(tmp_path):
+    """pack fetch --steps：整包取、只解指定步。"""
+    import io
+    import tarfile
+    from guji_manager.datastore import packs as PK
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name in ("001/_raw_index.json", "001/seed_admit/p0001.json", "001/align_ref/p0001.json", "001/glyph_match/p0001.json"):
+            data = b"{}"
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tf.addfile(ti, io.BytesIO(data))
+    blob = buf.getvalue()
+    import hashlib
+    man = {"parts": [{"name": "part-000", "sha256": hashlib.sha256(blob).hexdigest()}], "files": 4}
+
+    class Src:
+        pass
+    orig = (PK._call, PK._parts_in_order, PK._ws_name, PK.write_mark)
+    try:
+        PK._call = lambda src, m, k, **kw: json.dumps(man).encode()
+        PK._parts_in_order = lambda src, name, parts: iter([blob])
+        PK._ws_name = lambda: "ws"
+        PK.write_mark = lambda *a, **k: None
+        PK.fetch_products("001", tmp_path / "r", label="x", src=Src(), steps=["seed_admit", "align_ref"])
+    finally:
+        PK._call, PK._parts_in_order, PK._ws_name, PK.write_mark = orig
+    got = sorted(str(p.relative_to(tmp_path / "r")) for p in (tmp_path / "r").rglob("*.json"))
+    assert got == ["001/_raw_index.json", "001/align_ref/p0001.json", "001/seed_admit/p0001.json"]
+
+
+def test_accept_old_ver_rekey(tmp_path):
+    """旧版本裁定换键两档（11-24 用户定）：只差模型后缀直接换；真换版要 high 单字、窗口同、字在新候选里。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1#m:high", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")   # 只差后缀 → 收（即使不是机器字）
+    store.put("ry", "v1", "丙", "丁", char="日", conf="high", why="", model="m", cell="001:1:1:2")          # 换版、字在候选 → 收
+    store.put("ry", "v1", "戊", "己", char="巳", conf="low", why="", model="m", cell="001:1:1:3")           # 非 high → 不收
+    store.put("ry", "v1", "庚", "辛", char="己", conf="high", why="", model="m", cell="001:1:1:4")          # 窗口也变 → 不收
+    store.put("ry", "v1", "壬", "癸", char="午", conf="high", why="", model="m", cell="001:1:1:5")          # 换版、字不在候选 → 不收
+    ask = lambda l, r, ver="v2": {"evidence": {"group": {"id": "ry", "solvers": [
+        {"why": PENDING, "ask": {"ver": ver, "l": l, "r": r}, "probs": {"日": 0.6, "已": 0.4}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "已", **ask("甲", "乙", "v1")},
+                           {"id": "001:1:1:2", "char": "已", **ask("丙", "丁")},
+                           {"id": "001:1:1:3", "char": "巳", **ask("戊", "己")},
+                           {"id": "001:1:1:4", "char": "己", **ask("庚x", "辛")},
+                           {"id": "001:1:1:5", "char": "未", **ask("壬", "癸")}])
+    rows = RH.check(tmp_path / "p", "001", store)
+    assert len(rows) == 5
+    assert RH.rekey(rows, store) == 0                                  # 缺省不收旧版本
+    assert RH.rekey(rows, store, accept_old_ver=True) == 2             # 只收 1、2 两格
+    assert store.get("ry", "v2", "丙", "丁")["char"] == "日"
+    assert store.get("ry", "v2", "壬", "癸") is None
+
+
+def test_check_uses_get_equiv_when_available(tmp_path):
+    """cv 带版本等价表（get_equiv）时，等价命中的裁定不算「未命中」（11-24，不另写等价逻辑）。"""
+    store = RulingStore(tmp_path / "fb")
+    store.put("ry", "v1", "甲", "乙", char="曰", conf="high", why="", model="m", cell="001:1:1:1")
+    ask = {"evidence": {"group": {"id": "ry", "solvers": [{"why": PENDING, "ask": {"ver": "v2", "l": "甲", "r": "乙"}}]}}}
+    _page(tmp_path / "p", [{"id": "001:1:1:1", "char": "日", **ask}])
+    assert len(RH.check(tmp_path / "p", "001", store)) == 1                       # 精确键没中 → 未命中
+    store.get_equiv = lambda g, v, l, r: store.get(g, "v1", l, r)                 # 模拟登记了 v1→v2
+    assert RH.check(tmp_path / "p", "001", store) == []

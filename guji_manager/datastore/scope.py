@@ -139,6 +139,8 @@ def classify(rel: str) -> str | None:
             return "files"
         if len(parts) == 3 and parts[1] == "candidates":
             return "files"
+        if len(parts) == 3 and parts[1] == "rulings" and p.suffix in (".yaml", ".yml"):
+            return "files"                 # 裁定版本等价登记表 ver_equiv.yaml（GM4 方案②，cv 读、随中心库同步，11-24）
         if len(parts) == 3 and parts[1] == "notes" and p.suffix == ".jsonl":
             return "files"                 # 各级没定下的格的查证备注（trace），键同裁定库；管线不读（sheldon 11-08）
         if len(parts) == 2:
