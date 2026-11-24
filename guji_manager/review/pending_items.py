@@ -215,7 +215,7 @@ class ItemStore:
 # ---- 机器一轮：按新单逐格比 ----
 
 
-def _keep_resolved(r: dict, doc: dict, fp: str) -> bool:
+def _keep_resolved(r: dict, doc: dict, fp: str, fp_reopen: bool = True) -> bool:
     """已裁条目（resolved）在新单上又被判待审，要不要重开。人裁不该被「同一块图又判待审」推翻：
     - 新单这格是复审格（`recheck`，人明确要重看）→ 重开；
     - 图块指纹两边都有且不同（图真变了）→ 重开；
@@ -223,13 +223,14 @@ def _keep_resolved(r: dict, doc: dict, fp: str) -> bool:
     if doc.get("recheck"):
         return False
     old = r.get("fp") or ""
-    if fp and old and fp != old:
+    if fp_reopen and fp and old and fp != old:
         return False
     return True
 
 
 def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[str, str] | None = None,
-              by: str = "", at: str | None = None, close_missing: bool = True) -> dict:
+              by: str = "", at: str | None = None, close_missing: bool = True,
+              keep_src: tuple[str, ...] = (), fp_reopen: bool = True) -> dict:
     """机器跑完一轮（或导入旧单）：新单上的每一格对到条目，只动有变化的。
 
     - 先按图块指纹认（同一块图＝同一条目，格号挪了就改 `cell`），认不出再按格号认（指纹变了记 `fp_prev`、标 `fp_changed`）；
@@ -237,6 +238,8 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
     - 字段（`doc`）、状态没变的不动，变了的 ver+1；
     - 人工撤下的保持撤下（只更新字段）；已关、已裁的条目机器又判待审就重新打开（`reopen`）；
     - `close_missing`：开着的条目在新单上没有了 → `closed`（机器放行或不再要人看）。撤下、已裁的不动。
+    - `fp_reopen`：False 时已裁条目只因指纹变不重开（指纹只记，换包收尾用：判定信息变不算图变）。
+    - `keep_src`：来源以这些前缀开头的条目（如 `human:`、`script:`，人工加的格、手加格）不被机器关掉。
     返回各项计数与明细。"""
     at = at or now()
     fps = fps or {}
@@ -271,6 +274,9 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             out["开"].append(cell)
             continue
         seen.add(r["id"])
+        if keep_src and str(r.get("src") or "").startswith(keep_src):
+            # 人工加的格（手加、点坏格等）：字段一律以人为准，机器不碰（补缺的键也算「改」，会让没变的册被判有变）
+            doc = r.get("doc") or {}
         upd: dict = {}
         ops = []
         if r["cell"] != cell:
@@ -280,7 +286,8 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
         if fp and r.get("fp") and r["fp"] != fp:
             upd.update(fp=fp, fp_prev=r["fp"], fp_changed=True)
             ops.append("fp")
-            out["图变"].append(cell)
+            if fp_reopen or r["state"] != "resolved":
+                out["图变"].append(cell)
         elif fp and not r.get("fp"):
             upd["fp"] = fp
         if _canon(r.get("doc") or {}) != _canon(doc):
@@ -293,7 +300,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             else:
                 upd["state"] = want
                 ops.append("state")
-        elif st == "resolved" and want == "open" and _keep_resolved(r, doc, fp):
+        elif st == "resolved" and want == "open" and _keep_resolved(r, doc, fp, fp_reopen):
             out["保持已裁"].append(cell)         # 已有人裁、图没变、机器没要求复审：不重开（r18 出单把刚落的人裁放回单上）
             if upd:                              # 格号挪了、指纹补上等照记，字段不动
                 upd.pop("doc", None)
@@ -302,6 +309,14 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             ops.append("reopen" if want == "open" else "state")
             if want == "open":
                 out["重开"].append(cell)
+                if st == "resolved" and not (r.get("doc") or {}).get("recheck") and not doc.get("recheck"):
+                    # 已裁的格因图真变重开：标复审、带上原人裁（不覆盖人裁，网站提示「这次提交会替代它」）
+                    d2 = dict(upd.get("doc") or doc)
+                    d2["recheck"] = True
+                    d2.setdefault("note", "格图变了，请复审（原人裁见 prior）")
+                    if r.get("event"):
+                        d2.setdefault("prior", {"id": r["event"]})
+                    upd["doc"] = d2
         if not upd:
             out["不变"] += 1
             continue
@@ -311,7 +326,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             out["改"].append(cell)
     if close_missing:
         for r in list(store.items.values()):
-            if r["id"] not in seen and r["state"] == "open":
+            if r["id"] not in seen and r["state"] == "open" and not (keep_src and str(r.get("src") or "").startswith(keep_src)):
                 store.put(r, op="close", by=by, at=at, why=src, state="closed")
                 out["关"].append(r["cell"])
     return out
