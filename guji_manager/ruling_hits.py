@@ -361,16 +361,17 @@ def cmd(a) -> None:
 
 
 FETCH_STEPS = ("seed_admit", "align_ref")
+ANCHOR_FETCH_STEPS = FETCH_STEPS + ("row_segment", "row_segment_runs", "cell_shrink")   # page_cells_sha 要读的两份产物
 
 
-def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4) -> None:
+def fetch_books(books: list[str], root: Path, label: str | None = None, jobs: int = 4, steps=FETCH_STEPS) -> None:
     """各册取产物包，只解 seed_admit／align_ref 到 `root`（已有就覆盖：这里是核对用的产物根，别指向本机正在跑的产物）。"""
     from concurrent.futures import ThreadPoolExecutor
     from .datastore import packs as PK
 
     def one(b):
         t = time.time()
-        info = PK.fetch_products(b, root, label=label, force=True, steps=list(FETCH_STEPS))
+        info = PK.fetch_products(b, root, label=label, force=True, steps=list(steps))
         return b, info["name"].rsplit("/", 1)[-1], time.time() - t
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
         for b, lab, dt in ex.map(one, books):
@@ -490,6 +491,9 @@ def _cmd(a) -> None:
         if a.write and not a.batch:
             sys.exit("--anchor-backfill --write 要给 --batch <批次名>（如 llm-anchor-ZM-20261125）")
         from . import ruling_anchor
+        if getattr(a, "fetch", False):
+            fetch_books([b.strip() for b in a.books.split(",") if b.strip()], Path(a.products), a.label, a.jobs,
+                        steps=ANCHOR_FETCH_STEPS)
         a.batch = a.batch or "llm-anchor-dryrun"
         return ruling_anchor.cmd(a)
     cmd(a)
