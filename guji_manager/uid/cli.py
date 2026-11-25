@@ -176,7 +176,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
     q = s.add_parser("audit", help="自检：有账的书每册现行 main 包入过账没有；--submit 给缺的交 uidsync 单")
     q.add_argument("--submit", action="store_true", help="给缺的册交 uidsync 单（同册同标签只跑一次）")
-    q.add_argument("--cv", default="main", help="uidsync 单用哪版 cv（缺省 main）")
+    q.add_argument("--cv", default=None, help="uidsync 单用哪版 cv（缺省按册用产出 main 包的那版，解析不出退回 main）")
 
     q = s.add_parser("advance", help="切字后入账（同一份切分重跑不动）")
     common(q)

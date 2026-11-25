@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，GM2）：uid 自检交单与推库两处修补（A30 看 uidsync 自检单失败后提出）：① `guji uid audit --submit` 交的 uidsync 单不再一律钉 cv main，按册依次取册 yaml 钉的 `cv_version` → 产出 main 包的那版（标签 `cv0.7.104-…` → `v0.7.104`）→ main（`--cv` 给了照旧一律用它）；全唐文 052／054 的 `page_kinds: table_cols`、042 的 `glyph_sim_qtw_v2` 只有 v0.7.104 与 dev 认，钉 main 必败（#17404、#17467、#17402、#17392）。② `db push|sync --only` 提交时撞整库版本守卫（`d1conn.Stale`，多机同推一个工作区）重读重推，最多 5 次（`GUJI_DB_STALE_TRIES`）；重读时范围内文件已被别人改照旧报 StaleBase，不覆盖（#17374 等）。③ 执行方准备段报 `BookConfigError` 不再算环境类（不再换会话空重试）。L0。
+
 ## [0.6.18] - 2026-11-25
 
 - 发版缘由：~u 人裁抄件补锚档＋`guji uid anchor-fill`＋check-u 两项（#987）；跑完通知带 warn（#985）。
