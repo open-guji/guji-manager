@@ -535,6 +535,10 @@ def remap_in_repo(repo: Path, vdir: Path, chapter: str, *, base: str = "HEAD", p
         if sync["review"]:
             notes.append(f"专名含□待复核 {len(sync['review'])} 条：" + "；".join(f"{i} {t}" for i, t in sync["review"]))
     res = remap_lib.run(ra, chapter, new_char, punct, entity, ra.load_cells(str(tsv)))
+    from ..formats.layer_u import a_to_u, restamp_moved
+    a2u = a_to_u(new_char)       # 新 char 上了 u：挪了锚点的条目把 u 跟到新格（punct／entity v0.4 以 u 为准，免得 key 与 u 打架）
+    restamp_moved(punct, res["punct"], "punct", a2u)
+    restamp_moved(entity, res["entity"], "entity", a2u)
     problems = guard(punct, res["punct"], entity, res["entity"], old["char"], rows)
     if human_missing and require_human:
         problems.append("1.x 册要核人裁账，但取不到人裁事件（没装 cv 或没有事件目录）")
@@ -581,7 +585,9 @@ def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tupl
     返回 (剩下的 left, 已迁清单[(层, 条目, 旧锚, 新锚, 新校验字, 情形)])。就地改 punct。"""
     if not punct or not left:
         return left, []
+    from ..formats.layer_u import a_to_u, restamp_punct
     slots = _slots_any(new_char)
+    a2u = a_to_u(new_char)
     ps = punct.get("punctuations") or []
     rest, done = [], []
     for row in left:
@@ -595,16 +601,19 @@ def _retarget_left_punct(punct: dict | None, new_char: dict, left: list) -> tupl
             a = new or old
             if slots.get(a) == m.group(1):
                 p["anchor"], p["pre_char"] = a, m.group(1)
+                restamp_punct(p, a2u)
                 done.append((layer, ent, old, a, m.group(1), "□识出字")); continue
         if "ADD_DEL" in why and not new and old not in slots:
             cands = sorted((a for a in slots if a.startswith(old) and len(a) == len(old) + 1 and a[-1].isalpha()), key=lambda a: a[-1])
             if cands:
                 a = cands[-1]
                 p["anchor"], p["pre_char"] = a, slots[a]
+                restamp_punct(p, a2u)
                 done.append((layer, ent, old, a, slots[a], "旧格劈开")); continue
         if "ADD_DEL" in why and not new and old not in slots and old[-1:] == "b" and old[:-1] in slots:
             a = old[:-1]               # ③ 旧格是劈开的 NNa／NNb、新包又合回一个 NN：挂在 NN 上（标点在后半格之后＝合并格之后）
             p["anchor"], p["pre_char"] = a, slots[a]
+            restamp_punct(p, a2u)
             done.append((layer, ent, old, a, slots[a], "劈开的格合回一格")); continue
         rest.append(row)
     return rest, done
@@ -632,6 +641,8 @@ def _grow_spans(entity: dict | None, new_char: dict, rows: list[dict], report: l
     两端按表换新格，text 取新格上的字，进复核单。返回放进复核单的条目。就地改 entity。"""
     if not entity:
         return []
+    from ..formats.layer_u import a_to_u, restamp_entity
+    a2u = a_to_u(new_char)
     o2n = {r["old"]: r["new"] for r in rows if r["old"] and r["new"]}
     seq = [(a, x.get("c") or "") for a, x in _chars(new_char)]
     pos = {a: i for i, (a, _) in enumerate(seq)}
@@ -653,6 +664,7 @@ def _grow_spans(entity: dict | None, new_char: dict, rows: list[dict], report: l
         txt = "".join(c for _, c in seq[i:j + 1])
         old_txt = x.get("text")
         x["anchor"] = {"start": ns, "end": nt}
+        restamp_entity(x, a2u)
         x["text"] = txt
         if "span" in x:
             x["span"] = {"start_offset": i, "end_offset": j + 1}
@@ -666,6 +678,8 @@ def _breaks_follow_headings(punct: dict | None, new_char: dict, rows: list[dict]
     （F-OV-12）。只挪中间全是新增格的；就地改 punct，返回 [(旧锚, 新锚)]。"""
     if not punct:
         return []
+    from ..formats.layer_u import a_to_u, restamp_punct
+    a2u = a_to_u(new_char)
     seq = [(a, x.get("c") or "") for a, x in _chars(new_char)]
     pos = {a: i for i, (a, _) in enumerate(seq)}
     added = {r["new"] for r in rows if r["kind"] == "新增"}
@@ -685,11 +699,19 @@ def _breaks_follow_headings(punct: dict | None, new_char: dict, rows: list[dict]
         a_new, c_new = seq[i - 1]
         out.append((m["anchor"], a_new))
         m["anchor"], m["pre_char"] = a_new, c_new
+        restamp_punct(m, a2u)
         if "char_offset" in m:
             m["char_offset"] = i - 1
         brk[a_new] = m
     if out:
-        pm.sort(key=lambda m: (m.get("char_offset", 0) + (0.4 if m.get("pos") == "after" else -0.4)))
+        # 按新 char 读序重排（v0.3 起不写 char_offset 下标缓存，不能再按它排：全是 0 会把所有 before 排到 after 前面）；
+        # 锚点不在新文本里的条目沿用前一条的位置，保持原相对次序
+        keys, last = [], -1
+        for m in pm:
+            last = pos.get(m.get("anchor"), last)
+            keys.append(last + (0.4 if m.get("pos") == "after" else -0.4))
+        order = sorted(range(len(pm)), key=lambda i: keys[i])
+        pm[:] = [pm[i] for i in order]
     return out
 
 

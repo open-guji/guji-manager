@@ -6,7 +6,7 @@
 3. dev 现在这个锚点上的字与 `pre_char` 不同（确实错位了）。
 
 对照表是「dev 当前锚点 → 正确锚点」（不是换图那张：已挪过的会被再挪一次，A33 11-09 提醒）；新 char 用 dev 当前 char。
-只改 `anchor`／`char_offset`，不动 mark、pre_char、source。审计清单写进 commit 信息和轮报告；
+只改 `anchor`／`char_offset`（char 上了 u 时连带 `u`），不动 mark、pre_char、source。审计清单写进 commit 信息和轮报告；
 `sample()` 取固定种子的 30 条给审阅页复核，有错回退并关掉自动。
 """
 from __future__ import annotations
@@ -63,7 +63,9 @@ def plan_fixes(punct: dict, char: dict, cellmap: dict[str, str],
 
 def apply_fixes(punct: dict, char: dict, fixes: list[dict]) -> int:
     """把 plan_fixes 的「可写」项写进 punct（就地）。再核一遍 anchor 没变过。返回写了几条。"""
+    from ..formats.layer_u import a_to_u, restamp_punct
     pos = {a: i for i, (a, _c) in enumerate(slots_of(char))}
+    a2u = a_to_u(char)              # char 上了 u：挪了锚点就把 u 跟到新格（punct v0.4 以 u 为准）
     n = 0
     for f in fixes:
         p = punct["punctuations"][f["idx"]]
@@ -74,6 +76,7 @@ def apply_fixes(punct: dict, char: dict, fixes: list[dict]) -> int:
             p["char_offset"] = pos[f["new"]]
         if "pre_char" in p:
             p["pre_char"] = f["pre_char"]               # 校验字回到换图前的旧值（＝新锚点上的字，条件 2 已核）
+        restamp_punct(p, a2u)
         n += 1
     return n
 
