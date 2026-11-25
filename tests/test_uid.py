@@ -368,3 +368,27 @@ def test_page_cells_sha_falls_back_on_old_cv(monkeypatch):
     assert S.page_cells_sha(B, 1, None) == "aaa+"
     ps["v"] = (None, "b")
     assert S.page_cells_sha(B, 1, None) is None
+
+
+def test_booktext_remote_when_no_local_repo(fb, tmp_path, monkeypatch):
+    """本机没有 book-text 仓：从 raw（这里用 file://）只取这一章，章号两位三位都试；取不到网时用缓存。"""
+    from guji_manager.uid import booktext as BT
+    char, cord = _char_cord({1: [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天")]})
+    char["u_max"] = 11
+    import json as _j
+    src = tmp_path / "raw"
+    d = src / "Book" / "x" / "y" / "z" / "abcxyz" / "default"
+    d.mkdir(parents=True)
+    (d / "001.char.json").write_text(_j.dumps(char), encoding="utf-8")
+    (d / "001.cord.json").write_text(_j.dumps(cord), encoding="utf-8")
+    monkeypatch.setenv("GUJI_BOOK_TEXT", str(tmp_path / "no-such-repo"))
+    monkeypatch.setenv("GUJI_BOOK_TEXT_RAW", src.as_uri())
+    monkeypatch.setenv("GUJI_BOOK_TEXT_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setattr("guji_manager.online_lists.ident", lambda book, ws=None: ("abcxyz", "01"))
+    monkeypatch.setattr("guji_manager.online_lists.book_text_dir", lambda repo, bid: f"{repo}/Book/x/y/z/{bid}")
+    bt = BT.load(B)
+    assert bt is not None and bt.u_max == 11 and bt.path.endswith("001.char.json") and 1 in bt.cells
+    assert (tmp_path / "cache" / "Book/x/y/z/abcxyz/default/001.char.json").exists()
+    (d / "001.char.json").unlink()                       # 「断网」：raw 取不到，用缓存
+    monkeypatch.setenv("GUJI_BOOK_TEXT_RAW", (tmp_path / "gone").as_uri())
+    assert BT.load(B).u_max == 11

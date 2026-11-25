@@ -4,6 +4,12 @@
 
 ## [未发版]
 
+## [0.6.14] - 2026-11-25
+
+- 发版缘由：标 main 入账的机器不用另配 book-text（#970：本机没仓就从 GitHub raw 取这一章，带缓存）。
+
+- PATCH（11-25，CV0 u T1）：`uid advance`／标 main 入账参考 book-text 时，本机没有 book-text 仓（没设 `GUJI_BOOK_TEXT`、缺省目录也没有）就从 GitHub raw（main 分支）只取这一章的 char＋cord，缓存在 `~/.cache/guji/book-text`（`GUJI_BOOK_TEXT_CACHE`），取不到网时用缓存；仍取不到才按 v0.6.13 报错／提示。标 main 的机器不用另配 book-text。L0。
+
 ## [0.6.13] - 2026-11-25
 
 - 发版缘由：标 main 自动入账首次实测（史記 v0.2 42 册）全挂，修 #966：旧 cv 同口径自算 cells_sha、book-text 章号两位三位都找。

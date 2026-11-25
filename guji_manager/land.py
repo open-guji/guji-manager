@@ -259,7 +259,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     from .datastore.workcopy import data_dir
     data = data_dir(ws)
     items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
-    if digest and digest == last_digest(ws, book):
+    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     marker = ws / "reports" / book / "_land" / "needs_sync.json"
     if apply and sync and marker.exists():                       # 上次本机写好了但没推成：先补推
@@ -357,6 +357,14 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
         print(f"⚠ {book} audit alt 退出 {r.returncode}，仍有 {len(lack)} 格没有相似字卡片（环境缺 torch／权重？）：这些格上线会没有候选字", file=sys.stderr)
 
 
+def alt_pending(ws: Path, book: str, text_id: str, chapter: str, res: dict | None) -> bool:
+    """册里有开着、doc 没有 alt 的条目，而这次新判里它已带 alt（要写）：不能按 digest 整册跳过（QTW 11-25：004、019、001）。"""
+    have = {c.get("cell"): c for c in (res or {}).get("cells") or [] if c.get("alt")}
+    if not have:
+        return False
+    return any(cell in have for cell in hand_without_alt(ws, book, text_id, chapter))
+
+
 def keep_old_alt(store: P.ItemStore, cells: list[dict]) -> list[dict]:
     """新判里这格没算出 alt（卡片对不上、audit alt 没出）：宁可保留条目里原有的 alt，也不要冲掉（QTW 11-25：019/027 册 22 格候选字没了）。"""
     out = []
@@ -434,6 +442,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--text", action="store_true", help="对账后算 book-text 计划：包放行字与 book-text dev 逐格比（只读，出 reports/<册>/_land/text-plan.tsv）")
     p.add_argument("--text-apply", action="store_true", help="计划里有字要改的册写回 book-text（独立 worktree、local_check、推 dev；1.x 开 PR）；隐含 --text")
     p.add_argument("--book-text", help="book-text 仓目录（--text 用）")
+    p.add_argument("--clean-products", action="store_true", help="每册收完连 products/<册>（取来的包产物）也清；只在确认包已存 R2（★main）时用")
+    p.add_argument("--disk-report", action="store_true", help="只列工作区／数据目录／book-text 各项占多大、哪些能删，不动任何东西")
     p.add_argument("--keep-files", action="store_true", help="每册收完不清 _packs／导出／单格图（缺省清，盘紧的执行机用）")
     p.add_argument("--no-audit-alt", action="store_true", help="卡片缺格时不自动先跑 guji audit alt")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
@@ -442,13 +452,15 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                    help="先跑 cv：其后的参数原样交 `guji-cv pipeline …`，跑完再收尾")
 
 
-def clean_book(ws: Path, book: str) -> float:
+def clean_book(ws: Path, book: str, products: bool = False) -> float:
     """这册收完就清（执行机盘紧，QTW 11-25 只剩 1.5G）：``_packs/*/<册>``（再取就有）、本册导出目录、本册单格图缓存。
     不碰 reports 其余、book-text、数据目录；返回释放的 GB。"""
     import shutil
     from .swap import _du
     freed = 0.0
-    for p in [*(ws / "_packs").glob(f"*/{book}"), ws / "reports" / book / "_land" / "export"]:
+    # cache/<册>/ 是派生图像 LRU 缓存、products/<册>/ 可由包重取（products 默认不动：本机算出而没存包的产物是唯一一份）
+    extra = [ws / "cache" / book] + ([ws / "products" / book] if products else [])
+    for p in [*(ws / "_packs").glob(f"*/{book}"), ws / "reports" / book / "_land" / "export", *extra]:
         if p.exists():
             freed += _du(p)
             shutil.rmtree(p, ignore_errors=True)
@@ -483,9 +495,32 @@ def text_step(ws: Path, a, books: list[str], results: list[dict]) -> None:
             print(f"  {b} book-text 落文本：{res.get('status')} {res.get('why', '')} {res.get('commit', '')}")
 
 
+def disk_report(ws: Path, book_text: str | None) -> None:
+    """盘满时先看再清（只读）：各项占多大、能不能删。**绝不删**的单列：glyph.db／glyph_store、数据目录里的 feedback／events（中心库副本，没推的改动会丢）。"""
+    import shutil
+    from .swap import _du
+    from .datastore.workcopy import data_dir
+    free = shutil.disk_usage(ws).free / 2 ** 30
+    print(f"盘剩 {free:.1f} GB")
+    rows = [("可删·再生", ws / "_packs", "取来的产物包解压目录，收完就能删（land 自动清）"),
+            ("可删·再生", ws / "cache", "派生图像 LRU 缓存，按需重切（含 cache/sha256）"),
+            ("可删·再取", ws / "products", "产物；确认包已存 R2（★main）才删，本机算出而没存包的是唯一一份"),
+            ("可删·再生", ws / "reports" / "_swap", "换单报告／对照表（对照表已入库的册）"),
+            ("别删", ws / "output", "含 glyph.db／glyph_store（不可再生，账本缩水保护）"),
+            ("别删", data_dir(ws), "数据目录：中心库本机副本，含 feedback／events 和没推的条目（要清先 db sync 推干净，再让它重新 pull）")]
+    if book_text:
+        rows += [("可删·再生", Path(str(book_text) + "-swap"), "swap／land 用的独立 worktree，下次自动重建（git worktree remove 后 git worktree prune）"),
+                 ("可整理", Path(book_text), "book-text 主仓：`git gc --prune=now`；不要删仓本身")]
+    for tag, p, why in rows:
+        print(f"{tag}\t{_du(p) if p.exists() else 0:7.2f} GB\t{p}\t{why}")
+
+
 def cmd_land(a) -> int:
     from .swap import chapter_of, parse_books
     ws = Path(a.workspace).resolve()
+    if a.disk_report:
+        disk_report(ws, a.book_text)
+        return 0
     os.environ["GUJI_WORKSPACE"] = str(ws)             # cv 的 products_root／缓存按它找，不让用户另外 export（QTW 11-24）
     if a.run:
         from .pipeline import run as cv_run
@@ -511,7 +546,7 @@ def cmd_land(a) -> int:
                  human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
         if not a.keep_files and (a.apply or not r["changed"]) and not r.get("blocked") and not (a.text or a.text_apply):
-            freed = clean_book(ws, b)         # 写文本那步还要用导出，开了 --text 的整趟结束后再清
+            freed = clean_book(ws, b, a.clean_products)         # 写文本那步还要用导出，开了 --text 的整趟结束后再清
             if freed > 0.01:
                 print(f"  {b} 清理释放 {freed:.2f} GB", file=sys.stderr)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t按人裁扣掉 {len(r['deducted'])} 格 {r['deducted'][:5]}" if r.get("deducted") else "") + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
@@ -519,7 +554,7 @@ def cmd_land(a) -> int:
         text_step(ws, a, books, results)
         if not a.keep_files and a.apply:
             for b in books:
-                clean_book(ws, b)
+                clean_book(ws, b, a.clean_products)
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
     for b, v in blocked.items():
         print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)
