@@ -405,6 +405,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "RULING_SOURCE": ("feedback.rulings", "SOURCE"),
     "RULING_OTHER": ("feedback.rulings", "OTHER"),
     "RulingStore": ("feedback.rulings", "RulingStore"),
+    "page_state": ("feedback.bindings", "page_state"),             # 旧 cv 没有 page_cells_sha 时 uid 按它同口径自算（11-25）
     "page_cells_sha": ("feedback.rulings", "page_cells_sha"),      # 格锚点用的本页产物戳（cv #1832，裁定键方案③）
     "load_ver_equiv": ("feedback.rulings", "load_ver_equiv"),      # 版本等价表加载（cv #1830）
     "pending_cells": ("feedback.pending_cells", "pending_cells"),

@@ -46,6 +46,21 @@ def from_char(char: dict, cord: dict | None, path: str = "") -> BookTextState:
     return st
 
 
+def chapter_names(ch: str) -> list[str]:
+    """章号的几种写法：册配置给的、三位、两位、不补零（史記册配置没写 chapter_width 时给两位 ``01``，book-text 实际是 ``001``）。"""
+    out = [ch]
+    if ch.isdigit():
+        n = int(ch)
+        out += [f"{n:03d}", f"{n:02d}", str(n)]
+    return list(dict.fromkeys(out))
+
+
+def required(led) -> bool:
+    """这册的账是从 book-text 建的（有 ``src: init`` 的页行）：book-text 里有这册、它的改字工具会自己发号，
+    入账必须参考它，找不到就不能静默跳过（否则新号可能撞上 book-text 已发的号）。"""
+    return any(d.get("src") == "init" and int(d.get("page") or 0) > 0 for d in led.lines)
+
+
 def load(book: str, ws: str | None = None, repo: str | None = None, edition: str = "default") -> BookTextState | None:
     """按册配置找到 book-text 的 char＋cord；找不到返回 None。"""
     try:
@@ -54,9 +69,10 @@ def load(book: str, ws: str | None = None, repo: str | None = None, edition: str
         if not (bid and ch):
             return None
         d = Path(book_text_dir(repo or _cfg()["book_text"], bid)) / edition
-        cp = d / f"{ch}.char.json"
-        if not cp.exists():
+        cp = next((d / f"{c}.char.json" for c in chapter_names(ch) if (d / f"{c}.char.json").exists()), None)
+        if cp is None:
             return None
+        ch = cp.name[:-len(".char.json")]
         char = json.loads(cp.read_text(encoding="utf-8"))
         kp = d / f"{ch}.cord.json"
         cord = json.loads(kp.read_text(encoding="utf-8")) if kp.exists() else None

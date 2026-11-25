@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：标 main 自动入账不挑 cv 版本：`uid.source.page_cells_sha` 先用 cv 的（≥0.7.103），旧 cv 没有时按 `bindings.page_state` 同口径自算（史記 0.7.98 线 42 册首次实测全挂「cannot import page_cells_sha」）。`uid advance` 找 book-text 时章号两位、三位、不补零都试（史記册配置没写 chapter_width，给 `01`，book-text 是 `001.char.json`，原来静默不参考）；账是从 book-text 建的册找不到 book-text 时报错（`--no-book-text` 明说不参考才放行），本机 pipeline 与标 main 的钩子只打提示不挡。L0。
+
 ## [0.6.12] - 2026-11-25
 
 - 发版缘由：字格 u 收尾补漏与读端（#959 migrate-plan 读原样事件、check-u 全库自检；#962 转待审条目同格合并带候选字、tidy-recheck；GM2 读端 #956–#958；GM4 land／audit alt #955 #961）。版本说明：这批先误合进 main 时仍标 0.6.11（main 5411bd2，与已发的 v0.6.11 tag 7f56a81 重号），改发 0.6.12。

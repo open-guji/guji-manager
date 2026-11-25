@@ -173,12 +173,12 @@ def test_advance_and_cell_ref(fb, monkeypatch):
     monkeypatch.setattr(source, "cells_sha", lambda store, book, pg: "shaA+p1")
     monkeypatch.setattr(source, "from_products",
                         lambda store, book, pg, with_chars=True: source.PageCut(pg, "shaA+p1", newcut, boxes))
-    r = uid.advance(B, FakeStore())
+    r = uid.advance(B, FakeStore(), booktext=None)
     assert r["entered"] == 1 and r["u_max"] == 4
     assert cell_ref(f"{B}:1:1:3") == 2 and cell_ref(f"{B}:1:1:4") == 3 and cell_ref(f"{B}:1:1:2") == 4
     assert cell_of(2, B) == f"{B}:1:1:3"
     # 同一份切分再跑：不动
-    assert uid.advance(B, FakeStore())["entered"] == 0
+    assert uid.advance(B, FakeStore(), booktext=None)["entered"] == 0
     led = Ledger.load(B)
     assert len(led.lines) == 2 and led.by_sha(1, "shaA+p1") is not None
     prev, cur = led.page_pair(1)
@@ -321,3 +321,50 @@ def test_advance_new_u_above_book_text_floor(fb, monkeypatch):
     r = uid.advance(B, FakeStore(), booktext=bt)
     assert r["book_text_adopted"] == 0
     assert Ledger.load(B).page(1)["map"][f"{B}:1:1:2"] == 10      # 不发 4..9（book-text u_max 7、作废号 9）
+
+
+def test_booktext_chapter_names_and_required(fb, tmp_path, monkeypatch):
+    """史記册配置没写 chapter_width：册配置给 01，book-text 是 001.char.json——两位三位都找；
+    账是从 book-text 建的册找不到 book-text 时 advance 报错，不静默只看账。"""
+    from guji_manager.uid import booktext as BT
+    assert BT.chapter_names("01") == ["01", "001", "1"]
+    assert BT.chapter_names("001") == ["001", "01", "1"]
+    char, cord = _char_cord({1: [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天")]})
+    char["u_max"] = 9
+    d = tmp_path / "bt" / "Book" / "x" / "y" / "z" / "abcxyz" / "default"
+    d.mkdir(parents=True)
+    import json as _j
+    (d / "001.char.json").write_text(_j.dumps(char), encoding="utf-8")
+    monkeypatch.setattr("guji_manager.online_lists.ident", lambda book, ws=None: ("abcxyz", "01"))
+    monkeypatch.setattr("guji_manager.online_lists.book_text_dir", lambda repo, bid: str(tmp_path / "bt" / "Book/x/y/z" / bid))
+    bt = BT.load(B, repo=str(tmp_path / "bt"))
+    assert bt is not None and bt.u_max == 9 and bt.path.endswith("001.char.json")
+    uid.init_from_book_text(B, char, cord)
+    assert BT.required(uid.Ledger.load(B))
+    monkeypatch.setattr(BT, "load", lambda *a, **k: None)
+    import pytest
+    with pytest.raises(SystemExit, match="book-text"):
+        uid.advance(B, FakeStore())
+    uid.advance(B, FakeStore(), booktext=None, pages=[])       # 明说不参考（--no-book-text）照旧能跑
+
+
+def test_page_cells_sha_falls_back_on_old_cv(monkeypatch):
+    """旧 cv 没有 feedback.rulings.page_cells_sha：按 bindings.page_state 同口径自算。"""
+    import guji_manager._cv as C
+    from guji_manager.uid import source as S
+    real = C.__getattr__
+
+    ps = {"v": ("aaa", "bbb")}
+
+    def no_pcs(name):
+        if name == "page_cells_sha":
+            raise AttributeError(name)
+        if name == "page_state":
+            return lambda book, page, store: ps["v"]
+        return real(name)
+    monkeypatch.setattr(C, "__getattr__", no_pcs)
+    assert S.page_cells_sha(B, 1, None) == "aaa+bbb"
+    ps["v"] = ("aaa", None)
+    assert S.page_cells_sha(B, 1, None) == "aaa+"
+    ps["v"] = (None, "b")
+    assert S.page_cells_sha(B, 1, None) is None
