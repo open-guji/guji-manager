@@ -59,7 +59,15 @@ def _print(d, as_json: bool = True) -> None:
 def cmd_advance(a) -> None:
     from . import advance
     _ws(a)
-    r = advance(a.book, _store(a), _pages(a.pages), dry_run=a.dry_run, force=a.force)
+    bt = "auto"
+    if a.no_book_text:
+        bt = None
+    elif a.book_text:
+        from . import booktext
+        bt = booktext.load(a.book, repo=a.book_text)
+        if bt is None:
+            sys.exit(f"✗ {a.book_text} 里找不到 {a.book} 的 char.json（书 id／章号按册配置）")
+    r = advance(a.book, _store(a), _pages(a.pages), dry_run=a.dry_run, force=a.force, booktext=bt)
     _print(r)
 
 
@@ -164,6 +172,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--pages", default=None, help="只入这些页（如 1-20,33）")
     q.add_argument("--dry-run", action="store_true", help="只算不写")
     q.add_argument("--force", action="store_true", help="cells_sha 没变也重入一行")
+    q.add_argument("--book-text", default=None, metavar="仓",
+                   help="参考这份 book-text 已发的号（缺省按 GUJI_BOOK_TEXT 找，找不到就不参考）")
+    q.add_argument("--no-book-text", action="store_true", help="不参考 book-text，只看账")
 
     q = s.add_parser("init", help="用 book-text 现行 char＋cord 建第一份账")
     common(q)

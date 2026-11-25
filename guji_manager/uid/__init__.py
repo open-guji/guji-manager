@@ -52,12 +52,28 @@ def enter_page(led: Ledger, cut: PageCut, nxt, *, src: str = "advance", force: b
                      lineage=m.lineage, via=m.via, src=src)
 
 
+def _known_u(led: Ledger) -> set[int]:
+    out: set[int] = set()
+    for d in led.lines:
+        out.update(int(u) for u in (d.get("map") or {}).values())
+        out.update(int(x["u"]) for x in d.get("lineage") or [])
+    return out
+
+
 def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, dry_run: bool = False,
-            force: bool = False) -> dict:
-    """切字后入账：现行产物里每页的切分，cells_sha 与该页现行账行不同就入一行。返回统计。"""
+            force: bool = False, booktext="auto") -> dict:
+    """切字后入账：现行产物里每页的切分，cells_sha 与该页现行账行不同就入一行。返回统计。
+
+    ``booktext``：book-text 这册的现状（``uid.booktext.BookTextState``）；缺省 ``"auto"`` 按册配置去找，``None`` 不参考。
+    参考时新号从 book-text 已发的最大号之上发，且要发新号的格若对得上 book-text 已发、账上没有的 u，就认领它（见 ``booktext``）。"""
+    from . import booktext as BT
     from . import source
+    from .ledger import line_id
     led = Ledger.load(book, root)
-    nxt = _Counter(led.u_max())
+    bt = BT.load(book) if booktext == "auto" else booktext
+    nxt = _Counter(max(led.u_max(), bt.floor() if bt else 0))
+    known = _known_u(led) if bt else set()
+    adopted = 0
     todo = sorted(set(pages)) if pages is not None else source.product_pages(store, book)
     new: list[dict] = []
     via: Counter = Counter()
@@ -77,6 +93,12 @@ def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, 
         if d is None:
             skipped += 1
             continue
+        if bt:
+            k = BT.adopt(d, cut, bt, known)
+            if k:
+                adopted += k
+                d["id"] = line_id(book, cut.page, d.get("cells_sha"), d["map"])
+            known.update(int(u) for u in d["map"].values())
         new.append(d)
         led.lines.append(d)          # 同一页多次出现时后面的按新行对照（内存里）
         via.update(d.get("via") or {})
@@ -85,7 +107,7 @@ def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, 
         led.append(new)
     return {"book": book, "pages": len(todo), "entered": len(new), "unchanged": skipped,
             "no_product": missing, "u_max": nxt.n, "via": dict(via), "path": str(led.path),
-            "dry_run": dry_run}
+            "book_text": bt.path if bt else None, "book_text_adopted": adopted, "dry_run": dry_run}
 
 
 def init_from_book_text(book: str, char: dict, cord: dict | None, *, root=None, dry_run: bool = False,
