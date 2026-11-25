@@ -123,6 +123,24 @@ def test_follow_main_punct_layer_no_longer_blocks(capsys, monkeypatch, tmp_path)
     assert "标点" in capsys.readouterr().out
 
 
+def test_follow_main_no_rev_pack_still_reissues(capsys, monkeypatch, tmp_path):
+    """线上单没存 rev 包（史記手工出的旧单）：用户 11-25「线上单总是换最新的」，照换，不再 return 1。"""
+    monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r"); monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "p")
+    monkeypatch.setenv("GUJI_BOOK_TEXT", str(tmp_path)); monkeypatch.setenv("GUJI_CV_REPO", str(tmp_path))
+    monkeypatch.setattr(OL.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr(OL, "ident", lambda v, w=None: ("988g3f0wsu", "012"))
+    monkeypatch.setattr(OL, "_packs", lambda *a: [{"star": True, "label": "L", "size": 2}])
+    monkeypatch.setattr(OL, "_online_rev", lambda *a: "012-r1")
+    monkeypatch.setattr(OL, "_votes", lambda *a: 0)
+    calls = []
+    class R:  # noqa: D401
+        returncode = 0
+    monkeypatch.setattr(OL.subprocess, "run", lambda cmd, **k: (calls.append(cmd), R())[1])
+    assert OL.follow_main("12", "/tmp/ws") == 0
+    assert any("republish.py" in " ".join(map(str, c)) and "issue" in c and "012" in c for c in calls)
+    assert "没存 rev 包" in capsys.readouterr().out
+
+
 def test_vol_list():
     assert OL._vol_list("005-007,020") == ["005", "006", "007", "020"]
 
@@ -194,3 +212,20 @@ def test_audit_new_corpus_is_stale(monkeypatch):
                  [{"star": True, "label": "cv0.7.42-c79-x", "size": 5, "corpus": "79"},
                   {"star": False, "label": "rev-008-r4", "size": 5, "corpus": "78"}])
     assert OL.audit(["008"], "/w") == 1
+
+
+def test_write_gaps_skips_on_old_cv(monkeypatch, tmp_path):
+    """老 cv（史記 0.7.103 patch 线）没有 gap_note／gaps_for_pages：缺页文件不写、不报错（以前整条导出崩在最后）。"""
+    import types
+
+    from guji_manager import _cv
+    from guji_manager.output import guji_format_export as X
+
+    def boom(name):
+        if name in ("gap_note", "gaps_for_pages"):
+            raise AttributeError(name)
+        raise AttributeError(name)
+    monkeypatch.setattr(_cv, "load_book", lambda b: None, raising=False)
+    monkeypatch.setattr(_cv, "__getattr__", boom, raising=False)
+    X._write_gaps(types.SimpleNamespace(book="12", out=str(tmp_path), chapter="012"), [1, 2])
+    assert not (tmp_path / "012.gaps.json").exists()

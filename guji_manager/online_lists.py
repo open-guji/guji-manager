@@ -4,7 +4,8 @@
 做法同那个脚本：线上单发布时存过 `rev-<rev>` 包，字节数与新 main 包相同＝内容相同＝不用重出。
 
 不自动重出（只在输出里提示）：文本挂了标点／实体层的册（机器改字会让实体校验不过，要走 proof_cycle 落票）、
-旧单上已有票的册、还没有线上单的册、线上单没存 rev 包的册（没法确认出自哪个包）。缺令牌／工作区／book-text 时也只提示。
+旧单上已有票的册、还没有线上单的册。线上单没存 rev 包的册（手工出的旧单）照换（用户 11-25「线上单总是换最新的」），
+换完存 rev 包。缺令牌／工作区／book-text 时也只提示。
 重出要 5–10 分钟，所以起一个脱离终端的子进程跑，日志在 `<工作区>/reports/<册>/_publish/auto_issue.log`。
 
 环境变量：`GUJI_DATA_TOKEN_PROD`（推库）、`GUJI_DATA_TOKEN_READ`（读包、读票）、`GUJI_BOOK_TEXT`（book-text 仓，缺省 /home/user/book-text）、
@@ -274,7 +275,9 @@ def follow_main(vol: str, ws: str) -> int:
     if same:
         print(f"{vol}: 线上单 {rev} 已与 main 包 {star['label']} 一致"); return 0
     if not rp:
-        print(f"{vol}: 线上单 {rev} 没存 rev 包，没法确认出自哪个包，不盲目重出；请人工 `republish.py issue`"); return 1
+        # 用户 11-25 定「线上单总是换最新的」：手工 push 出的旧单（史記 001–042 等）没存 rev 包、认不出来源，也照换；
+        # 这次 issue 会存 rev-<新 rev> 包，下回就能比了，不会反复重出。
+        print(f"{vol}: 线上单 {rev} 没存 rev 包（认不出出自哪个包），按「线上单总是换最新的」照换")
     n = _votes(vol, ws, c["cv"], read_env)
     if n != 0:
         print(f"{vol}: 旧单{'读不到票' if n < 0 else f'已有票（{n}）'}，不自动换；先走 proof_cycle plan/apply"); return 1
