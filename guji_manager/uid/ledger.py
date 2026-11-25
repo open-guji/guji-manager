@@ -64,12 +64,18 @@ def line_id(book: str, page: int, cells_sha: str | None, umap: dict) -> str:
     return f"uid-{book}-p{page:04d}-{h}"
 
 
+def default_by() -> str:
+    """谁写的这行：``GUJI_ACTOR``（推中心库也用它）、执行方名 ``GUJI_JOBS_WHO``，都没有就机器名。"""
+    import socket
+    return os.environ.get("GUJI_ACTOR") or os.environ.get("GUJI_JOBS_WHO") or socket.gethostname() or "unknown"
+
+
 def make_line(book: str, page: int, cells_sha: str | None, umap: dict[str, int], *, boxes: dict | None = None,
               chars: dict | None = None, lineage: list | None = None, via: dict | None = None, src: str = "advance",
-              ts: str | None = None) -> dict:
+              ts: str | None = None, by: str | None = None) -> dict:
     d = {"id": line_id(book, page, cells_sha, umap), "kind": KIND, "v": VERSION,
          "ts": ts or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "src": src, "book": book, "page": page, "target": {"book": book},
+         "src": src, "by": by or default_by(), "book": book, "page": page, "target": {"book": book},
          "cells_sha": cells_sha, "map": umap}
     if boxes:
         d["boxes"] = boxes

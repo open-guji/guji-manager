@@ -61,7 +61,7 @@ def _known_u(led: Ledger) -> set[int]:
 
 
 def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, dry_run: bool = False,
-            force: bool = False, booktext="auto") -> dict:
+            force: bool = False, booktext="auto", src: str = "advance") -> dict:
     """切字后入账：现行产物里每页的切分，cells_sha 与该页现行账行不同就入一行。返回统计。
 
     ``booktext``：book-text 这册的现状（``uid.booktext.BookTextState``）；缺省 ``"auto"`` 按册配置去找，``None`` 不参考。
@@ -93,7 +93,7 @@ def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, 
         if cut is None or not cut.cells_sha:
             missing += 1
             continue
-        d = enter_page(led, cut, nxt, force=force)
+        d = enter_page(led, cut, nxt, force=force, src=src)
         if d is None:
             skipped += 1
             continue
