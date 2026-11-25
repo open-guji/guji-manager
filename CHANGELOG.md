@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.6.13] - 2026-11-25
+
+- 发版缘由：标 main 自动入账首次实测（史記 v0.2 42 册）全挂，修 #966：旧 cv 同口径自算 cells_sha、book-text 章号两位三位都找。
+
 - PATCH（11-25，CV0 u T1）：标 main 自动入账不挑 cv 版本：`uid.source.page_cells_sha` 先用 cv 的（≥0.7.103），旧 cv 没有时按 `bindings.page_state` 同口径自算（史記 0.7.98 线 42 册首次实测全挂「cannot import page_cells_sha」）。`uid advance` 找 book-text 时章号两位、三位、不补零都试（史記册配置没写 chapter_width，给 `01`，book-text 是 `001.char.json`，原来静默不参考）；账是从 book-text 建的册找不到 book-text 时报错（`--no-book-text` 明说不参考才放行），本机 pipeline 与标 main 的钩子只打提示不挡。L0。
 
 ## [0.6.12] - 2026-11-25
