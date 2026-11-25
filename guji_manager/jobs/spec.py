@@ -46,7 +46,7 @@ import json
 import re
 import subprocess
 
-KINDS = ("rerun", "ab", "eval", "command", "roundcheck")
+KINDS = ("rerun", "ab", "eval", "command", "roundcheck", "uidsync")   # uidsync：只把 base 包入字格身份账（自检交的单）
 STATUSES = ("queued", "running", "succeeded", "failed", "blocked", "cancelled", "duplicate")
 ACTIVE = ("queued", "running")
 CV_REPO = "https://github.com/open-guji/open-guji-cv"
@@ -111,7 +111,7 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         raise SpecError(f"kind 只能是 {'/'.join(KINDS)}，不是 {kind!r}")
     s["kind"] = kind
     book = s.get("book")
-    if kind in ("rerun", "ab", "roundcheck") and not book:
+    if kind in ("rerun", "ab", "roundcheck", "uidsync") and not book:
         raise SpecError(f"{kind} 要给 book（册，如 vol10）")
     if book is not None and not (isinstance(book, str) and _BOOK.match(book)):
         raise SpecError(f"book 不合规：{book!r}")
@@ -237,6 +237,11 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         s.pop("roundcheck")             # 不给就不出这个键：老任务的指纹不变
     elif s["base"] or s["compare_to"] or s["output"]["pack"]:
         raise SpecError("roundcheck 自己取包、只读：不收 base、compare_to，不存包")
+    if kind == "uidsync":
+        if not s["base"] or s["base"] == "main":
+            raise SpecError("uidsync 要给 base＝要入账的 main 包标签（同册同标签只跑一次）")
+        if s["compare_to"] or s["output"]["pack"] or s["run"]:
+            raise SpecError("uidsync 只入身份账：不收 compare_to、run，不存包")
     s["ws_glob"] = s.get("ws_glob") or DEFAULT_WS_GLOB
     if not re.match(r"^[A-Za-z0-9_*.-]+$", s["ws_glob"]):
         raise SpecError(f"ws_glob 不合规：{s['ws_glob']!r}")

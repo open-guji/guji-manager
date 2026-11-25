@@ -332,6 +332,21 @@ class Job:
         m = re.search(r"已取：(\S+)", out)
         self.ev(f"铺底包 {m.group(1) if m else label}")
 
+    def uid_sync(self, strict: bool = False) -> None:
+        """刚铺的底是 main 包：这册字格身份账要是没入过这份切分，就入账并推中心库（标 main 钩子会漏，11-25）。
+        rerun／ab 里失败只记一笔、不挡；uidsync 单（``strict``）失败即单失败。"""
+        label = self.spec["base"] if self.spec["base"] != "main" else None
+        args = ["uid", "sync", self.spec["book"], "-w", self.ws or "", "--local"] + (["--label", label] if label else [])
+        try:
+            out = self.guji(*args, write=True)
+        except StageError as e:
+            if strict:
+                raise
+            self.ev(f"字格身份账补入账失败（不挡本单）：{e}", level="warn")
+            return
+        line = (out.strip().splitlines() or [""])[-1]
+        self.ev(f"字格身份账：{line[:300]}")
+
     def checks(self) -> None:
         want = (self.spec.get("checks") or {}).get("human_chars")
         if want is None:
@@ -494,9 +509,14 @@ class Job:
         try:
             self.step("prep", self.prep)
             self.step("cv", self.verify_cv)
-            if sp["kind"] in ("rerun", "ab"):
+            if sp["kind"] == "uidsync":
+                self.step("base", self.base)
+                self.step("uid", lambda: self.uid_sync(strict=True))
+            elif sp["kind"] in ("rerun", "ab"):
                 if sp["base"]:
                     self.step("base", self.base)
+                    if sp["base"] == "main":
+                        self.step("uid", self.uid_sync)
                 self.step("check", self.checks)
                 if sp.get("glyph_diff") is not None:
                     self.step("recheck", self.glyph_recheck)
@@ -816,6 +836,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                 got = db(S.claim, worker, session=session, affinity=_last_book(), kinds=kinds, only=only,
                          seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
+                    _maybe_uid_audit(say)
                     # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
@@ -868,6 +889,38 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
             BOARD.publish(db, force=True)
         except Exception:       # noqa: BLE001 —— 断网时退出就不报了，过几分钟自然算离线
             pass
+
+
+#: 空闲执行方几秒做一次字格身份账自检（``guji uid audit --submit``：有账书的 main 包没入账就交 uidsync 单）；0 关
+UID_AUDIT_S = int(os.environ.get("GUJI_UID_AUDIT_S") or 4 * 3600)
+_uid_audit_next: float | None = None
+
+
+def _maybe_uid_audit(say=print) -> None:
+    """空闲时到点就跑一次自检。各执行方首次时刻随机错开；多台同时交同一册同一标签的单，任务库按指纹记 duplicate。
+    失败只打一行，不影响领单。"""
+    global _uid_audit_next
+    if UID_AUDIT_S <= 0:
+        return
+    now = time.time()
+    if _uid_audit_next is None:
+        import random
+        _uid_audit_next = now + random.uniform(0, UID_AUDIT_S)
+        return
+    if now < _uid_audit_next:
+        return
+    _uid_audit_next = now + UID_AUDIT_S
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV")}
+    tok = _token("GUJI_DATA_TOKEN") or _token("GUJI_DATA_TOKEN_READ")
+    if tok:
+        env["GUJI_DATA_TOKEN"] = tok
+    try:
+        r = subprocess.run([str(VENV / "bin" / "guji"), "uid", "audit", "--submit"], capture_output=True, text=True,
+                           timeout=900, env=env)
+        tail = [x for x in (r.stdout + r.stderr).splitlines() if x.startswith(("字格身份账自检", "交单", "缺："))]
+        say("；".join(tail[-6:]) if tail else f"字格身份账自检退出码 {r.returncode}")
+    except (OSError, subprocess.SubprocessError) as e:
+        say(f"字格身份账自检没跑成：{e}")
 
 
 ENV_STREAK_PAUSE = 3

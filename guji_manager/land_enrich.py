@@ -86,7 +86,10 @@ def load_cards(ws: Path, book: str) -> dict[str, dict]:
     f = Path(ws) / "reports" / book / f"{book}.cards.alt.json"
     if not f.exists():
         return {}
-    doc = json.loads(f.read_text(encoding="utf-8"))
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except ValueError:          # 盘满写出的 0 字节／半截文件：当没有，让 audit alt 重新生成
+        return {}
     cards = doc["cards"] if isinstance(doc, dict) else doc
     out: dict[str, dict] = {}
     pre = f"{book}:"

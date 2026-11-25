@@ -285,7 +285,8 @@ def promote(book: str, label: str, note: str = "", src=None, why: str | None = N
                          f"发正式 tag 后在它上面重跑再存；确要标加 --why \"<理由>\"")
     pur = man.get("purity")
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    rec = {"book": book, "label": label, "at": ts, "note": note}
+    from .. import __version__ as mgr_ver
+    rec = {"book": book, "label": label, "at": ts, "note": note, "manager_version": mgr_ver}   # 自检凭它认出旧 manager 标的
     if not is_formal(ver):
         rec.update(cv_version=ver, cv_override=(why or "").strip() or None)
     if pur and pur.get("pure") is False:

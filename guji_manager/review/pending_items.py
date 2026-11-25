@@ -270,6 +270,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
         u = u if isinstance(u, int) and not isinstance(u, bool) else None
         doc = _cell_doc(c)
         doc_alt = doc.get("alt")
+        new_recheck = bool(doc.get("recheck"))        # 新单自己要不要复审（不看条目旧 doc 里留着的 recheck：那是上次复审的痕迹）
         want = "resolved" if doc.get("review") == "human" else "open"
         r = None
         if u is not None:
@@ -325,10 +326,14 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             else:
                 upd["state"] = want
                 ops.append("state")
-        elif st == "resolved" and want == "open" and _keep_resolved(r, doc, fp, fp_reopen):
+        elif st == "resolved" and want == "open" and _keep_resolved(r, {"recheck": new_recheck}, fp, fp_reopen):
             out["保持已裁"].append(cell)         # 已有人裁、图没变、机器没要求复审：不重开（r18 出单把刚落的人裁放回单上）
             if upd:                              # 格号挪了、指纹补上等照记，字段不动
                 upd.pop("doc", None)
+            old_doc = r.get("doc") or {}
+            if old_doc.get("recheck") and old_doc.get("alt") in (None, [], ()) and (c.get("alt") or doc_alt):
+                upd["doc"] = {**old_doc, "alt": c.get("alt") or doc_alt}     # 复审格已裁但仍挂在单上、没有候选字：只补 alt（QTW 11-25 004:92:4:14）
+                ops.append("doc")
         elif st != want:
             upd["state"] = want
             ops.append("reopen" if want == "open" else "state")

@@ -36,6 +36,7 @@ def plan_book(store: P.ItemStore, cells: list[dict], *, src: str, fps: dict[str,
     """对账（只在内存里算，不写文件）：返回 reconcile 的计数明细与 ``changed``。"""
     work = P.ItemStore(store.path, store.text_id, store.chapter)
     work.items = copy.deepcopy(store.items)
+    work.pending = list(store.pending)             # 对账前已追加的行（如还原误重开）一并写出
     res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by, keep_src=HAND_SRC, fp_reopen=False, us=us)
     res["changed"] = any(res[k] for k in CHANGE_KEYS)
     res["_store"] = work
@@ -56,6 +57,27 @@ def detail_rows(old: P.ItemStore, new: P.ItemStore) -> list[dict]:
                      "old_fp": (o or {}).get("fp", ""), "new_fp": r.get("fp", ""),
                      "old_cell": (o or {}).get("cell", ""), "src": r.get("src", ""), "doc_keys": ",".join(keys)})
     return sorted(rows, key=lambda x: P.cell_sort_key(x["cell"]))
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """先写临时文件再 rename：盘满写一半时不留 0 字节的状态文件（QTW 11-25 alt-tried.json）。"""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def read_json(path: Path, default=None):
+    """状态文件读不出来、是 0 字节或写坏了，就当没有（调用方重新生成），不报 JSONDecodeError 退出。"""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
 
 
 def write_detail(ws: Path, book: str, rows: list[dict]) -> Path:
@@ -91,6 +113,36 @@ def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[st
         if ((o[0].get("doc") or {}).get("alt") or []) != ((n[0].get("doc") or {}).get("alt") or []):
             out.append(cell)
     return out
+
+
+def repair_reopened(store: P.ItemStore, by: str = "") -> list[str]:
+    """上一版 land 把「已裁复审格＋补 alt」误重开了（op=machine:doc+reopen、人工来源、doc.review=human）：还原成 resolved。
+    人裁事件不动，只把条目状态改回（QTW 11-25 004:92:4:14、019:120:6:19）。"""
+    out = []
+    for r in list(store.items.values()):
+        if (r["state"] == "open" and str(r.get("src") or "").startswith(HAND_SRC) and r.get("op") == "machine:doc+reopen"
+                and (r.get("doc") or {}).get("review") == "human"):
+            store.put(r, op="machine:restore-resolved", by=by, why="land: 误重开还原（人裁格补 alt 不改状态）", state="resolved")
+            out.append(r["cell"])
+    return out
+
+
+def sheet_stale(data: Path, text_id: str, chapter: str, store: P.ItemStore) -> list[str]:
+    """条目（派生源）与线上单（pending.json）不一致的格：条目有 alt、单上没有或不同（QTW 11-25 002:204:6:3）。"""
+    f = P.sheet_path(data, text_id, chapter)
+    if not f.exists():
+        return []
+    try:
+        sheet = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    on = {c.get("id"): c for c in sheet.get("cells") or []}
+    out = []
+    for r in store.by_state(*P.SHOWN):
+        want = (r.get("doc") or {}).get("alt") or []
+        if want and r["id"] in on and (on[r["id"]].get("alt") or []) != want:
+            out.append(r["cell"])
+    return sorted(out)
 
 
 def human_cells(ws: Path, book: str) -> set[str]:
@@ -185,13 +237,12 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
         out["uploaded"] = upload_sprites(sprites, files_dir)
     out["written"] = work.save()
     sheet = P.export_sheet(work, head)
-    sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
+    atomic_write(sheet_p, json.dumps(sheet, ensure_ascii=False))
     out["cells"] = len(sheet["cells"])
     if sync:
         rels = [str(P.items_path(data, text_id, chapter).relative_to(data)), str(sheet_p.relative_to(data))]
         marker = ws / "reports" / book / "_land" / "needs_sync.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({"rels": rels}), encoding="utf-8")      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
+        atomic_write(marker, json.dumps({"rels": rels}))      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
         out["synced"] = db_only(ws, "sync", rels) == 0
         if not out["synced"]:
             # 现行单（pending.json）是条目派生的文件：收单线等刚推过它，两边都改会 SyncConflict。以库为准重派生——
@@ -251,6 +302,13 @@ def move_guard(plan: dict, text_id: str, rev: str | None, fetch=None) -> dict | 
     return None
 
 
+def _sheet_stale_now(data: Path, text_id: str, chapter: str) -> bool:
+    try:
+        return bool(sheet_stale(data, text_id, chapter, P.ItemStore.open(data, text_id, chapter)))
+    except (OSError, SystemExit):
+        return False
+
+
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
          digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True,
          human: set[str] | None = None) -> dict:
@@ -259,11 +317,12 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     from .datastore.workcopy import data_dir
     data = data_dir(ws)
     items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
-    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res):
+    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res) and not _sheet_stale_now(data, text_id, chapter):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     marker = ws / "reports" / book / "_land" / "needs_sync.json"
+    sheet_rel0 = str(P.sheet_path(data, text_id, chapter).relative_to(data))
     if apply and sync and marker.exists():                       # 上次本机写好了但没推成：先补推
-        rels = json.loads(marker.read_text(encoding="utf-8"))["rels"]
+        rels = (read_json(marker, {}) or {}).get("rels") or [items_rel, sheet_rel0]      # 标记坏了：重推本章两个文件
         if db_only(ws, "sync", rels):
             raise SystemExit(f"✗ {book} 上次没推成的条目文件这次还是推不上（--only {rels}）")
         marker.unlink(missing_ok=True)
@@ -277,13 +336,21 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
         res = {**res, "cells": kept}
     from .u_stamp import u_map
     us = u_map(book, [c.get("cell") or c.get("a") or "" for c in res["cells"]])   # 册有字格身份账才有（T2），没账空
-    plan = plan_book(store, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
+    base = P.ItemStore(store.path, store.text_id, store.chapter)
+    base.items = copy.deepcopy(store.items)
+    restored = repair_reopened(base, by)
+    plan = plan_book(base, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
         structural.append("alt")
+    stale = sheet_stale(data, text_id, chapter, plan["_store"])          # 条目有 alt、线上单没有：单要重派生
+    if stale:
+        structural.append("sheet")
+    if restored:
+        structural.append("restore")
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg,
+    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "sheet_stale": stale, "restored": restored,
            "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
@@ -307,8 +374,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
             out.update(apply_changes(ws, book, data=data, text_id=text_id, chapter=chapter, work=plan["_store"],
                                      sprites=list((res or {}).get("sprites") or []), files_dir=files_dir, sync=sync))
         f = landed_path(ws, book)
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"digest": digest, "pack": current_main(ws, book), "at": P.now()}), encoding="utf-8")
+        atomic_write(f, json.dumps({"digest": digest, "pack": current_main(ws, book), "at": P.now()}))
     return out
 
 
@@ -354,7 +420,7 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
 
     miss, noalt = lacking()
     tried_f = ws / "reports" / book / "_land" / "alt-tried.json"
-    tried = set(json.loads(tried_f.read_text(encoding="utf-8"))) if tried_f.exists() else set()
+    tried = set(read_json(tried_f, []) or [])
     noalt -= tried                                    # 试过一次仍没 alt 的格不反复跑 15 分钟
     if not (miss or noalt):
         return
@@ -388,8 +454,10 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
             return
         miss2, noalt2 = lacking()
     # 试过仍没 alt 的格记下来，下次不再为它们空跑
-    tried_f.parent.mkdir(parents=True, exist_ok=True)
-    tried_f.write_text(json.dumps(sorted(tried | noalt2), ensure_ascii=False), encoding="utf-8")
+    try:
+        atomic_write(tried_f, json.dumps(sorted(tried | noalt2), ensure_ascii=False))
+    except OSError as e:        # 盘满：不拦，下次重新试
+        print(f"⚠ {book} 写不了 {tried_f.name}（{e}）", file=sys.stderr)
     if rc or miss2 or noalt2:
         print(f"⚠ {book} audit alt 退出 {rc}，仍有 {len(miss2)} 格没卡片、{len(noalt2)} 格卡上没相似字（环境缺 torch／权重／原图？）：这些格上线会没有候选字：{sorted(miss2 | noalt2)[:8]}", file=sys.stderr)
 
@@ -423,7 +491,10 @@ def hand_without_alt(ws: Path, book: str, text_id: str, chapter: str) -> list[st
     except (OSError, SystemExit):
         return []
     # 不再只认来源前缀：老单导入的手加格来源是 import:<rev>（QTW 11-25：6 个手加格没补上）；凡开着、没有候选字的条目都并进 extra
-    return sorted(r["cell"] for r in store.items.values() if r["state"] == "open" and not (r.get("doc") or {}).get("alt"))
+    # 已裁（resolved）但仍是复审格（doc.recheck）：照旧显示在单上，网站也要有候选字（QTW 11-25 004:92:4:14）
+    return sorted(r["cell"] for r in store.items.values()
+                  if (r["state"] == "open" or (r["state"] == "resolved" and (r.get("doc") or {}).get("recheck")))
+                  and not (r.get("doc") or {}).get("alt"))
 
 
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
