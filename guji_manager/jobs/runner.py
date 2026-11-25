@@ -842,6 +842,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                          seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
                     _maybe_uid_audit(say)
+                    _maybe_uid_checku(say)
                     # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
@@ -926,6 +927,32 @@ def _maybe_uid_audit(say=print) -> None:
         say("；".join(tail[-6:]) if tail else f"字格身份账自检退出码 {r.returncode}")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"字格身份账自检没跑成：{e}")
+
+
+#: 人裁 check-u 定时报告（秒；缺省 0＝不跑）。只在一台执行方上开，免得每台各发一遍通知（11-25 主导线程定：只报不改）
+UID_CHECKU_S = int(os.environ.get("GUJI_UID_CHECKU_S", "0"))
+_uid_checku_next: float | None = None
+
+
+def _maybe_uid_checku(say=print) -> None:
+    global _uid_checku_next
+    if UID_CHECKU_S <= 0:
+        return
+    now = time.time()
+    if _uid_checku_next is not None and now < _uid_checku_next:
+        return
+    _uid_checku_next = now + UID_CHECKU_S
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    tok = _token("GUJI_DATA_TOKEN") or _token("GUJI_DATA_TOKEN_READ")
+    if tok:
+        env["GUJI_DATA_TOKEN"] = tok
+    try:
+        r = subprocess.run([str(VENV / "bin" / "guji"), "uid", "check-u-report", "--notify", "--roots", str(HOME.parent)],
+                           capture_output=True, text=True, timeout=3600, env=env)
+        tail = [x for x in (r.stdout + r.stderr).splitlines() if x.startswith(("check-u", "  通知"))]
+        say("；".join(tail[-8:]) if tail else f"人裁 check-u 报告退出码 {r.returncode}")
+    except (OSError, subprocess.SubprocessError) as e:
+        say(f"人裁 check-u 报告没跑成：{e}")
 
 
 ENV_STREAK_PAUSE = 3

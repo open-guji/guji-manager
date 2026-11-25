@@ -247,6 +247,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("-o", "--out", default=None, help="补不了的清单（jsonl）")
     q.add_argument("-w", "--workspace", default=None)
 
+    q = s.add_parser("check-u-report", help="本机各工作区跑 check-u，非 0 通知 CV0 和该书项目（只报不改；执行方定时用）")
+    q.add_argument("--roots", nargs="+", default=None, help="找工作区的根目录（缺省 ~ 与当前目录）")
+    q.add_argument("--notify", action="store_true", help="非 0 且和上次不同就发通知")
+
     q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
     q.add_argument("book", help="cv 册（如 vol28）")
     q.add_argument("--ws", required=True, help="中心库工作区（如 siku-zongmu）")
@@ -424,9 +428,10 @@ def cmd_check_u(a) -> None:
     for b in books:
         if not Ledger.load(b).exists:
             continue
-        bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), M.void_seen(log, b))
+        voided = M.void_seen(log, b)
+        bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), voided)
         # 第二项（11-25）：~u 抄件要有补锚档（cv 按事件 id 查框；缺了老人裁判 unanchored、seed_admit 报 human_unbound）
-        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:")]
+        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:") and e.id not in voided]   # 记过作废的不用绑
         pid = M.anchor_patch_ids(fb, b)
         anc = M.missing_anchor_copies(mine, pid)
         nob = [e for e in M.boxless_copies(mine, pid) if e not in anc]     # 第三项：~u 抄件无框无档（guji uid anchor-fill 补）
@@ -481,6 +486,16 @@ def cmd_anchor_fill(a) -> None:
     _print(out)
 
 
+def cmd_checku_report(a) -> None:
+    from . import checku_report as R
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    guji = str(Path(sys.executable).with_name("guji"))
+    r = R.run(a.roots or [str(Path.home()), os.getcwd()], notify=a.notify, guji=guji, env=env)
+    _print({ws: {"total": x["total"], **({"error": x["error"]} if "error" in x else {})} for ws, x in r.items()})
+    if any(x["total"] for x in r.values()):
+        sys.exit(1)
+
+
 def cmd_tidy_recheck(a) -> None:
     """就地整理 u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）。"""
     from .. import u_migrate as M
@@ -521,7 +536,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
