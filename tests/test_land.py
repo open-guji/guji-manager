@@ -309,3 +309,26 @@ def test_alt_pending_bypasses_digest_skip(tmp_path, monkeypatch):
     res = {"cells": [{"cell": "1:2:3", "alt": ["x"]}]}
     assert land.alt_pending(tmp_path, "b", "t", "001", res)
     assert not land.alt_pending(tmp_path, "b", "t", "001", {"cells": [{"cell": "1:2:3"}]})
+
+
+def test_ensure_alt_cards_reruns_for_card_without_alt(tmp_path, monkeypatch):
+    ws = tmp_path
+    f = ws / "reports" / "b" / "b.cards.alt.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps([{"id": "b:1:2:3", "admit": True}]), encoding="utf-8")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if "audit" in cmd:                                   # 第二次（补拉后）才算出 alt
+            if sum("audit" in c for c in calls) >= 2:
+                f.write_text(json.dumps([{"id": "b:1:2:3", "admit": True, "alt": [{"c": "字"}]}]), encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(land.subprocess, "run", fake_run)
+    land.ensure_alt_cards(ws, "b", ["1:2:3"], None, need_alt=["1:2:3"])
+    assert sum("audit" in c for c in calls) == 2 and any("source" in c for c in calls)
+    assert land._E.load_cards(ws, "b")["1:2:3"].get("alt")
+    calls.clear()
+    land.ensure_alt_cards(ws, "b", ["1:2:3"], None, need_alt=["1:2:3"])   # 已有 alt：不再跑
+    assert not calls

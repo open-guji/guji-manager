@@ -333,28 +333,65 @@ def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6
 ALT_TIMEOUT = 900        # 每册 audit alt 最多等这么久，出不来快速告警，别拖整趟
 
 
-def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None = None) -> None:
+def _norm_id(book: str, c: str) -> str:
+    return c if c.startswith(f"{book}:") else f"{book}:{c}"
+
+
+def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None = None, need_alt: list[str] | None = None) -> None:
     """卡片文件（``reports/<册>/<册>.cards.alt.json``，``guji audit alt`` 的输出）缺待审格就先补出：
-    不补的话 land 出来的条目没有相似字，网站显示「机器没定出字」（QTW 11-24：全唐文 36 格）。出不来只告警，不拦（报缺几格）。"""
-    have = set(_E.load_cards(ws, book))
-    want = {f"{book}:{c}" if not c.startswith(f"{book}:") else c for c in cells}
-    have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in have}
-    if not (want - have_ids):
+    不补的话 land 出来的条目没有相似字，网站显示「机器没定出字」（QTW 11-24：全唐文 36 格）。出不来只告警，不拦（报缺几格）。
+    ``need_alt``＝手加／已有条目但没 alt 的格：它们在旧卡片文件里常常有卡（放行的卡、没 alt），光「有卡」不算，要卡上真有 alt
+    （QTW 11-25：002/004/019 那几格卡片文件早就有、没 alt，所以一直没补跑）。
+    取不到字块图（清盘后 cache／原图没了）→ 自动 source pull＋cache warm 再算一遍（001:35:8:22a、001:66:2:15）。"""
+    need_alt = need_alt or []
+
+    def lacking() -> tuple[set[str], set[str]]:
+        cards = _E.load_cards(ws, book)
+        have = {_norm_id(book, h) for h in cards}
+        miss = {_norm_id(book, c) for c in cells} - have
+        noalt = {_norm_id(book, c) for c in need_alt if not (cards.get(c) or cards.get(_norm_id(book, c)) or {}).get("alt")}
+        return miss, noalt
+
+    miss, noalt = lacking()
+    tried_f = ws / "reports" / book / "_land" / "alt-tried.json"
+    tried = set(json.loads(tried_f.read_text(encoding="utf-8"))) if tried_f.exists() else set()
+    noalt -= tried                                    # 试过一次仍没 alt 的格不反复跑 15 分钟
+    if not (miss or noalt):
         return
     # 总入口是 cv 的 cli_v2（manager 命令经入口点并进来；`guji-manager` 自己没有 audit）
-    cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "audit", "alt", book, "-w", str(ws)]
+    base = [sys.executable, "-m", "open_guji_cv.cli_v2"]
+    env = {**os.environ, "GUJI_WORKSPACE": str(ws)}
+    cmd = [*base, "audit", "alt", book, "-w", str(ws)]
     if recheck:
         cmd += ["--extra", str(recheck)]
-    print(f"⚠ {book} 卡片缺 {len(want - have_ids)} 格相似字，先跑 guji audit alt（最多 {ALT_TIMEOUT // 60} 分钟）", file=sys.stderr)
-    try:
-        r = subprocess.run(cmd, env={**os.environ, "GUJI_WORKSPACE": str(ws)}, timeout=ALT_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        print(f"⚠ {book} audit alt 超时（{ALT_TIMEOUT} 秒），不再等：缺相似字的格上线会没有候选字", file=sys.stderr)
+
+    def run_once() -> int | None:
+        print(f"⚠ {book} 卡片缺 {len(miss)} 格、{len(noalt)} 格卡上没相似字，先跑 guji audit alt（最多 {ALT_TIMEOUT // 60} 分钟）", file=sys.stderr)
+        try:
+            return subprocess.run(cmd, env=env, timeout=ALT_TIMEOUT).returncode
+        except subprocess.TimeoutExpired:
+            print(f"⚠ {book} audit alt 超时（{ALT_TIMEOUT} 秒），不再等：缺相似字的格上线会没有候选字", file=sys.stderr)
+            return None
+
+    rc = run_once()
+    if rc is None:
         return
-    have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in _E.load_cards(ws, book)}
-    lack = want - have_ids
-    if r.returncode or lack:
-        print(f"⚠ {book} audit alt 退出 {r.returncode}，仍有 {len(lack)} 格没有相似字卡片（环境缺 torch／权重？）：这些格上线会没有候选字", file=sys.stderr)
+    miss2, noalt2 = lacking()
+    if (rc or miss2 or (noalt2 - tried)):
+        # 清盘后原图／字块缓存没了：补拉再算一遍
+        print(f"⚠ {book} 仍缺相似字：自动 source pull＋cache warm 后重算", file=sys.stderr)
+        for sub in (["source", "pull", book, "-w", str(ws)], ["cache", "warm", "--book", book, "-w", str(ws)]):
+            subprocess.run([*base, *sub], env=env, timeout=ALT_TIMEOUT)
+        miss, noalt = miss2, noalt2
+        rc = run_once()
+        if rc is None:
+            return
+        miss2, noalt2 = lacking()
+    # 试过仍没 alt 的格记下来，下次不再为它们空跑
+    tried_f.parent.mkdir(parents=True, exist_ok=True)
+    tried_f.write_text(json.dumps(sorted(tried | noalt2), ensure_ascii=False), encoding="utf-8")
+    if rc or miss2 or noalt2:
+        print(f"⚠ {book} audit alt 退出 {rc}，仍有 {len(miss2)} 格没卡片、{len(noalt2)} 格卡上没相似字（环境缺 torch／权重／原图？）：这些格上线会没有候选字：{sorted(miss2 | noalt2)[:8]}", file=sys.stderr)
 
 
 def alt_pending(ws: Path, book: str, text_id: str, chapter: str, res: dict | None) -> bool:
@@ -402,6 +439,9 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     added = _E.seg_added_cells(rows, kinds, {c["cell"] for c in res["cells"]})
     if added:
         res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand + added)
+    gone = [h for h in hand if h not in {c["cell"] for c in res["cells"]}]
+    if gone:           # cv 没给这些格（取不到格图／不在册）：条目不会对账，也补不上 alt
+        print(f"⚠ {book} 有 {len(gone)} 个开着没相似字的条目，cv 没给出它们的格（取不到格图？先 source pull＋cache warm）：{gone[:8]}", file=sys.stderr)
     if a.no_enrich:
         return res, out_dir
     if not getattr(a, "no_audit_alt", False):
@@ -410,7 +450,7 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
             extra_f = out_dir / "alt-extra.tsv"
             lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
             extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
-        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None)
+        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None, need_alt=hand)
     cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
     if rc:
         cells = _E.merge_recheck(cells, rc)
