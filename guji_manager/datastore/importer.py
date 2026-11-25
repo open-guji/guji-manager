@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from . import gitsource
 from .d1conn import JSON_COLS, Rollback, insert_stmts
 from .d1sql import NOW
-from .scope import TABLES, Row, ScanResult, fingerprint, scan_files, sha256
+from .scope import BLOB_TABLES, TABLES, Row, ScanResult, fingerprint, scan_files, sha256
 
 SCHEMA_FILE = "schema_d1.sql"
 #: files 一行 raw＋doc 到这么大就把原文放 R2（D1 一行上限 2 MB；与 Worker files.ts ROW_BUDGET 同口径）
@@ -330,7 +330,9 @@ def import_scans(conn, scans: list[ScanResult], *, label: str, allow_delete: boo
                                 "--allow-delete）：\n" + "\n".join(refused))
         typed_of: dict[str, list] = {}
         bodies: dict[str, str] = {}
-        # 写入顺序：先 workspaces（外键），删除倒序
+        # 写入顺序：先 workspaces（外键），删除倒序；「文件登记」（source_files、整文件 blob 表）放最后：
+        # 大批分段提交时中途断了（Stale 等），文件还没登记，下次 push 照旧认为这些文件有改动、差分补齐（11-25 全唐文账推一半的坑）
+        plans.sort(key=lambda x: x[1] in FILE_TABLES)
         for ws, tbl, plan, rows in plans:
             st = rep.per_table.setdefault(tbl, Counter())
             st["rows"] += len(rows)
@@ -366,7 +368,7 @@ def import_scans(conn, scans: list[ScanResult], *, label: str, allow_delete: boo
             for part in _pieces(plan.moves, size=lambda r: 200 + len(str(r.key))):
                 conn.add_group(_move_stmts(tbl, ws, part))
         if not dry_run:
-            for ws, tbl, plan, _ in reversed(plans):
+            for ws, tbl, plan, _ in sorted(reversed(plans), key=lambda x: x[1] in FILE_TABLES):   # 删也是文件登记最后
                 for i in range(0, len(plan.deletes), 5000):
                     part = plan.deletes[i:i + 5000]
                     drevs = revs.take(len(part))
@@ -385,6 +387,9 @@ def import_scans(conn, scans: list[ScanResult], *, label: str, allow_delete: boo
             conn.put_body(h, text)
     return rep
 
+
+#: 记「库里有这个文件、内容是哪版」的表：``workcopy`` 按它们判断本地文件推没推过，所以导入时最后写
+FILE_TABLES = frozenset({"source_files", *BLOB_TABLES})
 
 #: 一张表（某工作区）首次导入超过这么多行就整批记一条变更
 BULK_MIN_ROWS = 1000
