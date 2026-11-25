@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.6.17] - 2026-11-25
+
+- 发版缘由：执行机部分副本上补身份账 push_failed（#983）。
+
 - PATCH（11-25，CV0 u T1）：部分副本（`db pull --exclude`，执行机缺省排除 `feedback/lists/proofing/`）也能 `db push|sync --only`，只要范围和没拉的前缀不相交（相交、整体 push／sync 照旧拒）。执行机铺底后补身份账 `guji uid sync` 不再 push_failed（ZM／GM2 报 #17277 等 20 单）。L0。
 
 ## [0.6.16] - 2026-11-25
