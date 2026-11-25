@@ -197,3 +197,27 @@ def test_cli_plan_and_log_applied(bt, tmp_path, capsys):
     st = OpinionStore(BOOK, LocalBackend(tmp_path / "pool" / BOOK)).load()
     assert st.status(a.id) == "applied" and st.last(a.id, "applied").data == {"text_version": "1.0.2", "pr": "304"}
     assert st.status(c.id) == "to_user"
+
+
+def test_b_prime_on_char_v06_issues_new_u(bt):
+    """char v0.6（带 u）：新格发 u_max＋1，cord 新格不带 CV 格 id，$schema 不降级。"""
+    p = _vd(bt) / "002.char.json"
+    char = json.loads(p.read_text(encoding="utf-8"))
+    n = 0
+    for pg in char["pages"]:
+        for col in pg["columns"]:
+            for c in col["cells"]:
+                n += 1
+                c["u"] = n
+    char["u_max"], char["u_retired"] = n, []
+    char["$schema"] = "https://open-guji.org/schema/char/v0.6.json"
+    p.write_text(json.dumps(char, ensure_ascii=False), encoding="utf-8")
+    rev = {"class": "B′", "cells": [{"a": "3:1:4", "after": "3:1:3", "mark": "mseal1", "from": "excluded",
+                                     "to": "□", "lacuna": True, "guess": "一"}]}
+    res = V.revise(bt, BOOK, "002", [(_op(), rev)], dry_run=False, pr="304")
+    assert res.problems == []
+    char, cord = _load(bt, "002.char.json"), _load(bt, "002.cord.json")
+    new_cell = next(c for p in char["pages"] for col in p["columns"] for c in col["cells"] if c["a"] == "3:1:4")
+    assert new_cell["u"] == n + 1 and char["u_max"] == n + 1
+    assert char["$schema"].endswith("v0.6.json")
+    assert {"a": "3:1:4", "box": SEAL_BOX} in cord["pages"][2]["cells"]

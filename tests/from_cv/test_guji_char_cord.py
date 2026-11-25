@@ -373,7 +373,12 @@ def test_uids_write_u_and_v06():
     assert [c["u"] for c in cells] == [umap[a] for a in cv_as]
     assert all(list(c)[:3] == ["a", "c", "u"] for c in cells)
     assert cc.char_to_lines_md(char) == cc.char_to_lines_md(base["003.char.json"])
-    assert files["003.cord.json"] == base["003.cord.json"]                   # cord 不存 u
+    import copy
+    want = copy.deepcopy(base["003.cord.json"])
+    for p in want["pages"]:
+        for c in p.get("cells") or []:
+            c.pop("id", None)                    # 有身份账时 cord 不存 u、也不再存 CV 格 id（book-text fa159dfb）
+    assert files["003.cord.json"] == want
     assert rep.get("u_dropped") == []
 
 

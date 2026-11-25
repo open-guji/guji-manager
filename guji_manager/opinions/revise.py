@@ -4,7 +4,7 @@
 |---|---|
 | A | 同格改字：char 该格 ``c`` 换掉（有 ``zi`` 的一并去掉） |
 | B | □↔字：阙文补字（去掉 ``lacuna``），或字改成阙文（``c=□``、``lacuna: true``） |
-| B′ | cord 里 ``excluded``／``blank`` 的 mark 变成格：cord 删 mark、加 cell（沿用框与 id）；char 在 ``after`` 那格之后插新格 |
+| B′ | cord 里 ``excluded``／``blank`` 的 mark 变成格：cord 删 mark、加 cell（沿用框；char 没 u 的旧格式才沿用 id）；char 在 ``after`` 那格之后插新格（char v0.6 发新 u＝u_max＋1） |
 | C | 切分变了（拆格、并格、整列），第一阶段不做，跳过并列出 |
 
 伴生层跟着改：标点 ``pre_char``、实体 ``text`` 按新字重算；B′ 插格后各条 ``char_offset``／``span`` 按锚点重算；
@@ -35,6 +35,13 @@ from .textsrc import BookText, vol_key
 LACUNA = "□"
 GUESS_STYLES = ("guess-c", "lacuna", "guess-char")
 CHAR_SCHEMA_V02 = "https://open-guji.org/schema/char/v0.2.json"
+
+
+def _schema_minor(url) -> int:
+    """`…/char/v0.N.json` → N；认不出 → 0。"""
+    import re
+    m = re.search(r"/v0\.(\d+)\.json$", str(url or ""))
+    return int(m.group(1)) if m else 0
 CELL_KEYS = ("a", "c", "lane", "lacuna", "guess", "guess_c", "zi")
 APPLY_CLASSES = ("A", "B", "B′")
 
@@ -205,11 +212,15 @@ def apply_one(char: dict, cord: dict, op_id: str, rev: dict, guess_style: str = 
                     new = {"a": a, "c": g, "guess": True}
                 elif g and guess_style == "guess-c":
                     new["guess_c"] = g
+            if char.get("u_max") is not None:          # char v0.6：新格发新 u（同 book-text char_edits），cord 不带 CV 格 id
+                char["u_max"] = int(char["u_max"]) + 1
+                new = {**dict(list(new.items())[:2]), "u": char["u_max"], **dict(list(new.items())[2:])}
             col["cells"].insert(i + 1, new)
             pg["marks"] = [m for m in pg["marks"] if m.get("id") != mark_id]
             cells = pg.setdefault("cells", [])
             j = next((n for n, x in enumerate(cells) if x.get("a") == after), len(cells) - 1)
-            cells.insert(j + 1, {"a": a, "box": mk["box"], **({"id": mk["id"]} if mk.get("id") else {})})
+            cells.insert(j + 1, {"a": a, "box": mk["box"],
+                                 **({"id": mk["id"]} if mk.get("id") and char.get("u_max") is None else {})})
             if mk.get("slot") is not None and str(mk["slot"]) != a.split(":")[2].rstrip("ab"):
                 out.notes.append(f"mark slot {mk['slot']} ≠ 新格号 {a}（marks 的 slot 与 char 格号口径不同，按「前一格＋1」取号）")
             out.cells.append({"a": a, "after_cell": after, "mark": mk, "new": new, "guess": c.get("guess")})
@@ -382,7 +393,8 @@ def revise(bt_root: str | Path, book: str, vol: str, todo: list, *, dry_run: boo
     char, cord = copy.deepcopy(old_char), json.loads(texts["cord"]) if texts["cord"] else {"pages": []}
     applied = [apply_one(char, cord, op.id, rev, guess_style) for op, rev in todo]
     if any("guess_c" in c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []):
-        char["$schema"] = CHAR_SCHEMA_V02          # guess_c 只有 char v0.2 认（guji-format#21）
+        if _schema_minor(char.get("$schema")) < 2:   # guess_c 要 char ≥ v0.2（guji-format#21）；v0.6 等更新的别降级
+            char["$schema"] = CHAR_SCHEMA_V02
     moves = {c["after_cell"]: c["a"] for ap in applied if ap.cls == "B′" for c in ap.cells}
     punct = json.loads(texts["punct"]) if texts["punct"] else None
     entity = json.loads(texts["entity"]) if texts["entity"] else None
