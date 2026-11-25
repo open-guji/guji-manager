@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+from ..colview import read_gate_raw
+
 _FROM = re.compile(r"页型规则判「([^」]+)」")
 
 #: 最后处理方式的显示顺序
@@ -72,7 +74,9 @@ def judge(m: dict | None) -> dict:
 
 def table_cols_of(book) -> dict[int, list[int]]:
     """册生效的 `column_gate.table_cols`（`{页: [列号…]}`，cv 读配置时已展开成整数）；没写或老 cv 返回空。"""
-    v = ((getattr(book, "params", None) or {}).get("column_gate") or {}).get("table_cols") or {}
+    prm = getattr(book, "params", None) or {}
+    v = ((prm.get("column_geometry") or {}).get("table_cols")        # cv #1872 起的新家，旧 column_gate: 照读
+         or (prm.get("column_gate") or {}).get("table_cols") or {})
     from .._cv import _expand_pages
     return {int(k): sorted(set(_expand_pages(list(c)))) for k, c in dict(v).items() if c}
 
@@ -121,7 +125,7 @@ def build(book, store, pages: list[int]) -> dict:
         if p not in in_scope:
             out_of_scope.setdefault("table_cols", []).append(p)
             continue
-        got = table_cols_got((store.read_raw(book.id, "column_gate", page_key(p)) or {}).get("gate_manifest"))
+        got = table_cols_got(read_gate_raw(store, book.id, page_key(p)))
         if got != want_cols:
             issues["table_cols"].append({"page": p, "want": want_cols, "got": got})
     counts = Counter(r["handling"] for r in rows.values())

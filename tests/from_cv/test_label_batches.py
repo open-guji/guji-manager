@@ -256,7 +256,8 @@ def test_build_both_batches_on_frozen_fixture_page(tmp_path, monkeypatch, ws):
     with pytest.raises(ProductMissing):
         LB.build_column_end("keben", n=10, pages="1", store=store)
     eng = Engine(book, load_pipeline("keben_body_v2"), store=store, cache=cache, log=lambda s: None)
-    eng.run(steps=["border_detect", "column_warp", "row_segment"], pages=[1])
+    eng.run(steps=["border_detect", "column_warp", "column_band", "column_end", "column_geometry", "row_segment"],
+            pages=[1])   # 列端 trim 在 2c column_ends（cv #1869）
 
     b = LB.build_column_end("keben", n=20, pages="1", store=store)
     cards = LB.read_cards(b["batch"])

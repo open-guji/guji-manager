@@ -130,7 +130,8 @@ def page_facts(root: Path, page: int, known: str | None = None) -> PageFacts:
     bands = (_layer(root, "invert_detect", page, "inverted") or {}).get("bands") or []
     if bands:
         f["invert"] = f"{len(bands)} 条"
-    rg = _layer(root, "row_segment_gate", page, "row_segment_gate_manifest") or {}
+    rg = (_layer(root, "cut_gate", page, "row_segment_gate_manifest")          # cv #1872 起刻本链在 cut_gate
+          or _layer(root, "row_segment_gate", page, "row_segment_gate_manifest") or {})
     rej = [str(x) for x in (bg.get("reject") or []) + (rg.get("reject") or [])]
     if (bg and not bg.get("admitted", True)) or (rg and not rg.get("admitted", True)) or rej:
         f["page_gate"] = (rej[0] if rej else "未放行")[:40]

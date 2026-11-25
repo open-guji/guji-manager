@@ -49,7 +49,8 @@ def test_cmd_product_patch_materializes_on_cache_miss(tmp_path, monkeypatch, ws,
     book = load_book("keben")
     store, cache = ProductStore(tmp_path / "products"), ImageCache(tmp_path / "cache")
     eng = Engine(book, pl, store=store, cache=cache, log=lambda s: None)
-    rep = eng.run(steps=["border_detect", "column_warp", "row_segment", "cell_shrink"],
+    rep = eng.run(steps=["border_detect", "column_warp", "column_band", "column_end", "column_geometry",
+                        "row_segment", "cell_shrink"],
                   pages=[1])
     assert not rep.to_dict()["failed"], rep.to_dict()["failed"]
 
@@ -120,8 +121,8 @@ def test_cmd_product_manifest_autocorrects_kind_id_and_warns(tmp_path, monkeypat
     # 不带 rare_candidates/align_ref：一装了 torch，rare_candidates
     # 就会去建「unicode-cjk-a」那张几万字的 CNN embedding 索引，几分钟起步，
     # 这条用例只想测 CLI 的 kind_id/step_id 纠错，不该陪跑那条冷启动。
-    rep = eng.run(steps=["border_detect", "column_warp", "row_segment", "cell_shrink",
-                        "glyph_match", "context_decide"], pages=[1])
+    rep = eng.run(steps=["border_detect", "column_warp", "column_band", "column_end", "column_geometry",
+                        "row_segment", "cell_shrink", "glyph_match", "context_decide"], pages=[1])
     assert not rep.to_dict()["failed"], rep.to_dict()["failed"]
 
     args = argparse.Namespace(action="manifest", book="keben", step="context_decision",
