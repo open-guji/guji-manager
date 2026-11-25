@@ -25,7 +25,9 @@
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
+from pathlib import Path
 
 from .uid.ledger import Ledger
 
@@ -220,6 +222,110 @@ def _copy(e, *, payload: dict | None = None, anchor_u: int | None = None):
     return Event.model_validate(d)
 
 
+def copy_anchor_patches(event_log, copies) -> set[str]:
+    """人裁 ``~u`` 抄件也要带上原件的补锚档（``feedback/anchors/<册>.jsonl``，按事件 id 查）：cv 绑定按 ``ev.id`` 查补锚档，
+    抄件 id 多了 ``~u`` 就查不到框，老裁决判 unanchored、人裁绑不上（11-25 全唐文 vj1 004 册 2,036 格 human_unbound）。
+    ``copies``＝[(原件 id, 抄件 id, 册)]；抄件已有的不重写（只追加）。→ 写过的文件。"""
+    root = Path(event_log.events_dir).parent / "anchors"
+    by_book: dict[str, dict[str, str]] = {}
+    for old, new, book in copies:
+        by_book.setdefault(str(book), {})[old] = new
+    files: set[str] = set()
+    for book, m in sorted(by_book.items()):
+        f = root / f"{book}.jsonl"
+        if not f.exists():
+            continue
+        raw = f.read_text(encoding="utf-8")
+        lines = [json.loads(x) for x in raw.splitlines() if x.strip()]
+        have = {d.get("event") for d in lines}
+        last = {d["event"]: d for d in lines if d.get("event") in m and m[d["event"]] not in have}  # cv 读档后者覆盖：取最后一行
+        add = [{**d, "event": m[e]} for e, d in last.items()]
+        if add:
+            with open(f, "a", encoding="utf-8") as fh:
+                if raw and not raw.endswith("\n"):
+                    fh.write("\n")
+                fh.writelines(json.dumps(d, ensure_ascii=False, separators=(",", ":")) + "\n" for d in add)
+            files.add(str(f))
+    return files
+
+
+def anchor_patch_ids(fb_root, book: str) -> set[str]:
+    """``feedback/anchors/<册>.jsonl`` 里有补锚档的事件 id。"""
+    f = Path(fb_root) / "anchors" / f"{book}.jsonl"
+    if not f.exists():
+        return set()
+    return {json.loads(x).get("event") for x in f.read_text(encoding="utf-8").splitlines() if x.strip()}
+
+
+def missing_anchor_copies(copies, patched: set[str]) -> list:
+    """``~u`` 抄件缺补锚档：抄件自己没框（``target.anchor.bbox``）、补锚档里没有抄件 id、原件却有 → cv 绑不上（应为 0）。"""
+    out = []
+    for e in copies:
+        if not str(e.id).endswith(SUFFIX) or (e.target.anchor or {}).get("bbox") or e.id in patched:
+            continue
+        if e.id[:-len(SUFFIX)] in patched:
+            out.append(e)
+    return out
+
+
+def boxless_copies(copies, patched: set[str]) -> list:
+    """``~u`` 人裁抄件既没框（``target.anchor.bbox``）也没补锚档：cv 只能按 ts／格号老规则认格，常认不上（应为 0）。"""
+    return [e for e in copies if str(e.id).endswith(SUFFIX) and not (e.target.anchor or {}).get("bbox")
+            and e.id not in patched]
+
+
+ANCHOR_SPACE = "raw_page_px@top-right"     # 同 cv feedback.anchor.SPACE（Step3 quad_page 的外接框）
+
+
+def u_anchor_fill(book: str, copies, led, store) -> tuple[list[dict], list[dict]]:
+    """给无框无档的 ``~u`` 人裁抄件按身份账出补锚档行：u 在本页现行账行里的格 → 现行切分里这一格的框
+    （cv ``bindings._cells_versions``＋``_cell_index``，同 cv 绑定口径）。账行 cells_sha 要等于现行产物戳，否则不补。
+    → (补锚档行, 补不了的 [{event, key, u, why}])。不写文件。"""
+    from ._cv import _cell_index, _cells_versions
+    from .uid.source import page_cells_sha
+    memo: dict[int, tuple] = {}
+    out, bad = [], []
+    for e in copies:
+        a = e.target.anchor or {}
+        u = a.get("u")
+        key = str(e.target.key)
+        parts = key.split(":")
+        if u is None or len(parts) != 4:
+            bad.append({"event": e.id, "key": key, "u": u, "why": "没 u 或格号不是 册:页:列:格"})
+            continue
+        page = int(parts[1])
+        if page not in memo:
+            sha = page_cells_sha(book, page, store)
+            line = led.by_sha(page, sha) if sha else None
+            if line is None:
+                memo[page] = (None, "账里没有本页现行切分（先 guji uid sync）")
+            else:
+                vs = _cells_versions(book, page, store)
+                cur = vs[-1] if vs and vs[-1][0] == "current" else None
+                memo[page] = ({int(v): k for k, v in line["map"].items()}, _cell_index(cur[3]) if cur else {}, sha) \
+                    if cur else (None, "本页没有现行切分产物")
+        m = memo[page]
+        if m[0] is None:
+            bad.append({"event": e.id, "key": key, "u": u, "why": m[1]})
+            continue
+        inv, idx, sha = m
+        cell = inv.get(int(u))
+        if cell is None:
+            bad.append({"event": e.id, "key": key, "u": u, "why": "u 不在本页现行账行（作废或拆并了）"})
+            continue
+        _, _, col, rest = cell.split(":")
+        slot = rest.rstrip("abcdefghijklmnopqrstuvwxyz")
+        hit = idx.get((int(col), int(slot), rest[len(slot):]))
+        if not hit:
+            bad.append({"event": e.id, "key": key, "u": u, "why": f"现行切分里没有 {cell} 的框"})
+            continue
+        out.append({"event": e.id, "key": key, "ts": e.ts, "shape": (e.payload or {}).get("shape"),
+                    "anchor": {"v": 1, "space": ANCHOR_SPACE, "bbox": [round(float(x), 2) for x in hit[0]],
+                               "source": "backfill:u", "cells_sha": sha},
+                    "evidence": {"method": "u", "u": int(u), "at": cell.split(":", 2)[2]}})
+    return out, bad
+
+
 def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, event_log) -> dict:
     """把 `plan` 的迁出真写进本地数据目录（只追加）。→ {裁定, 人裁, 待审条目, 裁定没抄, files}。"""
     from .ruling_write import screen
@@ -234,6 +340,8 @@ def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, eve
     if hs:
         event_log.append(hs)
         files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+        files |= copy_anchor_patches(event_log, [(e.id[:-len(SUFFIX)], e.id, e.target.book or e.target.key.split(":")[0])
+                                            for e in hs])
     n_items = 0
     by_file: dict[str, list[dict]] = {}
     for x in res["items"]:
@@ -404,6 +512,8 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
     if hs:
         event_log.append(hs)
         files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+        files |= copy_anchor_patches(event_log, [(e.id[:-len(SUFFIX)], e.id, e.target.book or e.target.key.split(":")[0])
+                                            for e in hs])
     at = P.now()
     rows = [{"kind": "u_void", "book": book, **v, "at": at, "by": "u-migrate"} for v in co["void"]]
     rows += [{"kind": "u_void", "book": book, "stream": "rulings", "id": None, "key": x.get("cell"),
