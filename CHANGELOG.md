@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u 收尾，QTW 反馈）：u 迁移转待审的条目同格并成一条（这格已有活条目就并进去，prior 同时留人裁字、票字），并带候选字 `alt`（现行字＋旧人裁字＋票字，去重、不收占位符）。新命令 `guji uid tidy-recheck <册> --items … [--write]` 就地整理已写出的（同格多条留最早一条、其余撤下写明并入谁，补候选）。
 - PATCH（11-25，CV0 u 收尾补漏）：`guji uid migrate-plan` 改读原样事件：被 cv 页表 rev 闸挡掉的换图源前旧事件（cv 本就不采信、换算件另挂新格号），每格最新是它又没 u 的，`--close` 记档作废（此前漏了，GM2 核出殿本 8,180 格）。新命令 `guji uid check-u [册…]`：有账册每格最新人裁没 u、也没记作废／转待审的（GM2 口径：confirm、unit=cell、v∈HUMAN_VS、source 非 auto／llm／vision／knn_infer），应为 0，有则退出码 1。
 - PATCH（11-25，GM2 u 读端）：第二步读 book-text 伴生层改按字格永久编号 u 对格（punct／entity v0.4 以 u 为准）。新模块 `formats/layer_u.py`；出单句 `sent_export`、收口锚点现算 `closeout/derive`（u 不在 char＝锚点失效，不回退格号）按 u 找格；收口写回 `closeout/writeback`、换包挪锚（`swap/booktext` 表挪锚后、□识出字／劈格／专名伸长／分段符跟标题）挪了格位 key 就把 u 跟到新格，免得 key 与 u 打架（F-OV-18）。顺手修：分段符跟标题后重排标点不再按已删的 `char_offset`（全 0 会把所有 before 排到 after 前）。char 没上 u 的册行为不变。L0。
 

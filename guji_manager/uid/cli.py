@@ -218,6 +218,12 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                         "（feedback/lists/u_void/<册>.jsonl，原事件不动），字不同的人裁转待审条目（recheck），格号不在账的条目撤下。出 收口.tsv／收口.json")
     q.add_argument("--review-items", default=None, help="转待审的条目写进哪个文件（缺省 --items 第一个）")
 
+    q = s.add_parser("tidy-recheck", help="u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）")
+    q.add_argument("book", help="cv 册（读身份账取现行字）")
+    q.add_argument("--items", nargs="+", required=True, help="条目文件")
+    q.add_argument("--write", action="store_true", help="真写（只追加新版本）；缺省只报数")
+    q.add_argument("-w", "--workspace", default=None)
+
     q = s.add_parser("check-u", help="自检：有账册每格最新人裁没 u、也没记作废／转待审的（应为 0；有则退出码 1）")
     q.add_argument("books", nargs="*", help="册（缺省：事件里出现的、有账的全部册）")
     q.add_argument("-o", "--out", default=None, help="清单写到这个 tsv")
@@ -412,8 +418,31 @@ def cmd_check_u(a) -> None:
         sys.exit(1)
 
 
+def cmd_tidy_recheck(a) -> None:
+    """就地整理 u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）。"""
+    from .. import u_migrate as M
+    from ..review import pending_items as P
+    from .ledger import Ledger
+    _ws(a)
+    led = Ledger.load(a.book)
+    cur = led.current() if led.exists else {}
+    chars: dict[str, str] = {}
+    if led.exists:
+        for pg in sorted({int(k.split(":")[1]) for k in cur}):
+            line = led.page(pg) or {}
+            for k, c in (line.get("chars") or {}).items():
+                chars[k.split(":", 1)[1]] = c
+    out = {}
+    for f in a.items:
+        st = P.ItemStore(Path(f))
+        r = M.tidy_recheck(st, chars)
+        n = st.save() if a.write else 0
+        out[f] = {**r, "写行": n}
+    _print(out)
+
+
 def cmd(a) -> None:
-    {"check-u": cmd_check_u, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"check-u": cmd_check_u, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
