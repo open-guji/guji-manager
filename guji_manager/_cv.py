@@ -15,6 +15,8 @@ from typing import Any
 #: 名字 → (cv 内模块, 属性名；None 表示模块本身)；与 cv `manager_api._EXPORTS` 同步，只给旧 cv 兜底用。
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
+    "pending_cells": ("feedback.pending_cells", "pending_cells"),   # 换包收尾：产物→待审格（cv #1835，GM4 11-24）
+    "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "groups_of": ("groups.registry", "groups_of"),
     # opinions（P2 搬来）
     "data_home": ("core.workspace", "data_home"),
@@ -29,6 +31,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "EventLog": ("feedback.events", "EventLog"),
     "load_ver_equiv": ("feedback.rulings", "load_ver_equiv"),
     "page_cells_sha": ("feedback.rulings", "page_cells_sha"),
+    "ruling_validate": ("feedback.rulings", "validate_payload"),   # cv #1837 起；旧 cv 没有，调用方要兜底
     "pending_cells": ("feedback.pending_cells", "pending_cells"),
     "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "batches_root": ("core.workspace", "batches_root"),
@@ -427,6 +430,9 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
 #: 已搬进本包的名字 → (guji_manager 内模块, 属性名)。先查这张表：模块已不在 cv，不再问 cv 门面。
 #: 老代码 `from ._cv import X` 照样能用；新代码直接 import 本包模块。
 _LOCAL: dict[str, tuple[str, str | None]] = {
+    # 写入以字格永久编号 u 为准（11-25）：append 前盖 u，册有账写不出 u 整批报错
+    "EventLog": ("u_stamp", "EventLog"),
+    "RulingLog": ("u_stamp", "RulingLog"),
     # 第 5 步排版输出：cv 原 report/ 的汇总与比对（2026-11-23 搬来）
     "write_diff_strips": ("output.strips", "write_diff_strips"),
     "write_variant_thumbs": ("output.strips", "write_variant_thumbs"),

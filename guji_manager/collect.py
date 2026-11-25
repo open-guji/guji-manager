@@ -369,13 +369,17 @@ def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, 
 def write_rekeys(book: str, rk: list, batch: str | None = None) -> int:
     """``ai_ruling_chars(rekey=…)`` 收的 (ask, 原裁定)：按 ask 的现行组、提示词版本、窗口另写一条（字、把握、模型照抄，
     why 前缀 rekey）。只追加裁定事件，随本册 ``db sync`` 推库。"""
+    import inspect
     from ._cv import RulingStore
+    from .u_stamp import u_of
     store = RulingStore()
+    has_u = "u" in inspect.signature(store.put).parameters        # cv #1848 起 put 收 u（字格永久编号，T2）
     store._batch = batch or f"llm-rekey-collect-{book}-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d-%H%M')}"
     for q, v in rk:
         store.put(q["group"], q["ver"], q["l"], q["r"], char=v["char"], conf=v.get("conf"),
                   why=("rekey:" + (v.get("why") or ""))[:60], model=v.get("model") or "session", cell=q["cell"],
-                  pending_reason=v.get("pending_reason"))
+                  pending_reason=v.get("pending_reason"),
+                  **({"u": u} if has_u and (u := u_of(q["cell"])) is not None else {}))
     return len(rk)
 
 
@@ -486,13 +490,17 @@ def _box_problem_fn(book: str, products_root: str | None, cord_path: Path):
     return CV._box_checker(book, cord_path, 8.0)
 
 
-def current_human(book: str, products_root: str | None) -> dict[str, str]:
+def current_human(book: str, products_root: str | None, pages: list[int] | None = None) -> dict[str, str]:
     """现行人裁 {格（无册前缀）: 字}：cv ``feedback.lookup.human_chars``（seed_admit 人裁通道同一口径），绑定按
     ``products_root``（出单版包）算。出错就抛，不退回按格号。"""
     if products_root:
         os.environ["GUJI_PRODUCTS_DIR"] = products_root
     from ._cv import human_chars
-    return {bare(k): c for k, c in human_chars(book).items() if c and k.startswith(f"{book}:")}
+    try:                    # 只重绑票涉及的页（全书重绑 QTW 004 要 30 多分钟）；旧版 cv 没有 pages 参数就退回全书
+        raw = human_chars(book, pages=pages) if pages else human_chars(book)
+    except TypeError:
+        raw = human_chars(book)
+    return {bare(k): c for k, c in raw.items() if c and k.startswith(f"{book}:")}
 
 
 def batch_cells(book: str, batches: list[str], products_root: str | None) -> tuple[dict[str, str], list[str]]:
@@ -686,9 +694,12 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         # ZM vol01 88:1:12a（rebound 到 13a）、18a（迁移锚，旧格网）会落错格。
         same_ids = consistent_cells(draft)
         votes_now = vote_chars(draft)
+        _pg = sorted({int(str(c).split(":")[0]) for c in [*votes_now, *same_ids] if str(c).split(":")[0].isdigit()})
+        if a.batch:
+            _pg = None
         try:
             try:
-                hc = current_human(book, meta.get("products_root"))
+                hc = current_human(book, meta.get("products_root"), _pg)
             except RuntimeError as e:
                 if "字块图拿不到" not in str(e):
                     raise
@@ -697,7 +708,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
                 env_ = dict(os.environ)
                 _run([*GUJI, "source", "pull", book, "-w", str(ws)], env_)
                 _run([*GUJI, "cache", "warm", "--book", book, "-w", str(ws)], env_)
-                hc = current_human(book, meta.get("products_root"))
+                hc = current_human(book, meta.get("products_root"), _pg)
         except Exception as e:  # noqa: BLE001
             return {"status": "blocked", "rev": rev,
                     "why": f"现行人裁（human_chars）算不出来，不落 book-text：{type(e).__name__}: {str(e)[:300]}"}
@@ -1157,7 +1168,15 @@ def auto_books(ws: Path, text_id: str) -> list[str]:
     books = books_with_votes(votes, open_of)
     # 册 id 以工作区实有的 books/<册>.yaml 为准（史记叫 01 不叫 vol01；殿本叫 vol01）：不改名会白跑一趟 draft 报「没有 books/vol01.yaml」
     have = {q.stem for q in (data / "books").glob("*.yaml")}
-    books = [b if b in have else (b[3:] if b.startswith("vol") and b[3:] in have else b) for b in books]
+    def stem_of(b: str) -> str:               # vol04 → 04（史记）／004（全唐文，三位）／vol04（殿本）；都对不上就原样
+        if b in have:
+            return b
+        d = b[3:] if b.startswith("vol") else b
+        for c in (d, d.zfill(2), d.zfill(3), str(int(d)) if d.isdigit() else d):
+            if c in have:
+                return c
+        return b
+    books = [stem_of(b) for b in books]
     print(f"网站条目票 {len(votes)} 条；有票落在开着的条目上的册：{'、'.join(books) or '没有'}")
     return books
 

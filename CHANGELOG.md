@@ -4,6 +4,23 @@
 
 ## [未发版]
 
+## [0.7.0] - 2026-11-25
+
+- 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已按 v0.7 重改。
+
+- MINOR（11-25，CV0 u T2，Sheldon「不要双写太久了，激进一点」）：**写入以 u 为准**。manager 里 `from ._cv import EventLog／RulingLog` 改拿 `u_stamp` 的子类，append 前统一盖字格永久编号 u（人裁 `target.anchor.u`、裁定 `payload.u`）；册有字格身份账而写不出 u 的（账上没这一格、格号不全）整批报错，不再静默只写格号。没账的册不变。
+- PATCH（11-25，CV0 u T2）：`guji uid migrate-plan` 存量迁移口径按全库实测补齐（#925 #929 #931 本 PR）：窗口按本书归一表比；人裁比字形或读作、先认锚里 cells_sha；没记窗口的裁定按字同／各版同格；`--write` 只追加（`~u` 抄件，ts、seq 不变）。殿本 99 册、全唐文 30 册、脈經、北行、史記 41 册已迁并推库。
+- MINOR（11-24／25，CV0 u T2）：裁定、人裁、待审条目、网站票、book-text 导出挂 u（#921 #924）：`u_stamp`、待审条目按 u 认、`cellvotes` 按 u 认票、`rulings-hits` 按 u 跟现格、`guji uid table`、swap 按 u 出表、导出 char v0.6／norm v0.3。没账的册逐字节同。
+- PATCH（11-25，CV0 u 推全库）：字格身份账改在**标 main 时**入账：新插件 `guji.post_promote` → `uid/promote.py`，有账的册标 main 后先 `db pull --only` 拉这册的账、取回该 main 包 `advance`、有新行就 `db push --only` 推回中心库（`GUJI_UID_ON_PROMOTE=0` 关、`GUJI_UID_AUTO_PUSH=0` 只入本机）。执行机（有 `GUJI_JOB_ID`）跑完不再在 `hooks.finished` 入账：执行机不推数据回库，入了也丢，还会弄脏下张单的 db pull。没账的册不变，L0。
+- PATCH（11-25，CV0 u 试点）：`guji uid advance` 只在本页 seed_admit 是在现行字块上跑的（manifest 上游 `char_index` sha＝现行 `cell_shrink` sha）时才取字；只重切到 cell_shrink、没重跑识字时旧字按格号会整列错位，误导拆格时谁沿用 u（试点 vol28 p3「業」格）。这时只按框对照。L0。
+- PATCH（11-25，CV0 u 试点）：`guji uid advance` 从产物取框改成与 book-text cord 同口径（`cell_shrink` 字框 `bbox_page` 优先，空格才用格四角外接框）。原先只用格框，与 book-text 建的账对照时 vol31 有 4,518 格 IoU 不够、靠中心距才配上；改后 32,611 格全按 IoU 对上。账里已有的行不受影响，L0。
+- MINOR（11-24，CV0「字格永久编号 u」T1）：字格身份账 `guji_manager/uid/`＋命令 `guji uid advance|init|show|verify`：每册 `feedback/uid/<册>.jsonl`（只追加，进中心库 events 表 stream=uid），切字后按框 IoU→中心距→拆→并→字序列对照继承 u；`guji pipeline` 跑完、该册有账时自动入账；`cell_ref()` 对有账的册返回 u（查不到报 `UidMissing`，不回退格号），没账的册照旧恒等。格式见 `doc/参考/字格身份账.md`。没账的册行为不变，cv 产物不动，L0。
+- PATCH（11-24，GM4 整理第四步数据库表）：中心库 `files.doc`、`anchors.doc` 与 `raw` 同内容，importer 不再写（files 写 NULL、anchors 写空串，因该列 NOT NULL 且 D1 删不掉列）；`central_gc._file_rows` 改从 `raw` 解析。配套 cv#1845、workspace-data#35。旧版 manager 照写不报错，只是库里多存一份。L0。
+- MINOR：页型 `col_check` 1.2.0：items 可带 `compact: true`＋`show_w`，列图是压缩过的矮条时按原宽显示、一屏自动换行排多列（上下压缩看左右切线用；Sheldon 11-24）。
+- MINOR：页型 `cut_check` 1.1.0：items 可带 `noline: true`，不画蓝色平均切线（折线已烧在图里时只留红折线；Sheldon 11-24）。
+- MINOR：页型 `col_check` 1.1.0：items 可带 `screen`（分屏键），给了就按它分屏、保持输入顺序，一屏可混放不同页的列（每列标「册·页·列」）；不给照旧一页书一屏（Sheldon 11-23：全唐文这类分得清的书整列看、一屏多放几列）。
+- PATCH：`ctx-ruling write`／`rulings-hits --rekey-vis` 对齐 cv #1837 写前校验：试跑就预检（版本 seed_admit 不认的逐条列出，退出码 2）；真写遇 cv 拒写不抛栈，打原因、提示登记 `ver_equiv.yaml`，退出码 2、一条不落。`_cv` 加 `ruling_validate`（旧 cv 没有则跳过预检）。
+
 ## [0.6.8] - 2026-11-24
 
 - PATCH：`guji db pull|push|sync --only <路径>`（可多次；目录以 / 结尾）：只拉、只推、只合这些路径，范围外库里本机都不动；不扫整个数据目录、不整表读 source_files（Worker `prefix=`，旧 Worker 自动退回整表筛）、不碰字形库、不重建 glyph.db。新鲜度按路径记在状态文件 `only_revs`；不加 `--only` 行为不变（换包按条目对账，GM4 11-24）。

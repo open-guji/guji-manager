@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-guji.org/schema/norm/v0.3.json",
+  "title": "GujiNorm",
+  "description": "规范层 (guji-norm v0.3)：按格位记异体→通行字，book-text original 每章一份；v0.3 顶层改用 $schema（不再写 schema: guji-norm/0.2），条目增 u",
+  "type": "object",
+  "required": [
+    "$schema",
+    "book_id",
+    "volume",
+    "items"
+  ],
+  "properties": {
+    "book_id": {
+      "type": "string"
+    },
+    "volume": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "table": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "a",
+          "c",
+          "t"
+        ],
+        "properties": {
+          "a": {
+            "type": "string",
+            "pattern": "^\\d+:\\d+:-?[1-9]\\d*[ab]?$"
+          },
+          "c": {
+            "type": "string",
+            "minLength": 1
+          },
+          "t": {
+            "type": "string",
+            "minLength": 1
+          },
+          "by": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string",
+            "enum": [
+              "异体"
+            ]
+          },
+          "u": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "该格的字格永久编号（v0.3）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "$schema": {
+      "type": "string"
+    }
+  }
+}

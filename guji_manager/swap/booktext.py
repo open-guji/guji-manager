@@ -71,8 +71,37 @@ def _iou(a, b) -> float:
     return i / u if u > 0 else 0.0
 
 
+def cell_table_by_u(old_char: dict, new_char: dict) -> list[dict] | None:
+    """新旧两版 char 每格都带字格永久编号 u（char v0.6）→ 按 u 对上出表（T2，不再跑框 IoU）；任一版有格没 u → None。
+    同一个 u＝同一格；旧 u 不在新版：删（新版 `u_retired` 里有就写并进哪个 u／删掉）；新 u 不在旧版：新增。"""
+    oc, nc = _chars(old_char), _chars(new_char)
+    if not oc or not nc or any("u" not in x for _, x in oc) or any("u" not in x for _, x in nc):
+        return None
+    new_by_u = {x["u"]: (a, x) for a, x in nc}
+    old_us = {x["u"] for _, x in oc}
+    ret = {r["u"]: r for r in new_char.get("u_retired") or []}
+    rows: list[dict] = []
+    for a, x in oc:
+        hit = new_by_u.get(x["u"])
+        if hit is None:
+            r = ret.get(x["u"]) or {}
+            note = f"u{x['u']} " + (f"并入 u{r['into']}" if "into" in r else "删掉" if r.get("gone") else "新版没有")
+            rows.append(dict(old=a, new="", oc=x.get("c", ""), nc="", kind="删", iou=0.0, note=note))
+            continue
+        b, y = hit
+        rows.append(dict(old=a, new=b, oc=x.get("c", ""), nc=y.get("c", ""), kind="同格" if a == b else "改号",
+                         iou=1.0, note="按u" + ("；改字" if x.get("c") != y.get("c") else "")))
+    rows += [dict(old="", new=b, oc="", nc=y.get("c", ""), kind="新增", iou=0.0, note=f"u{y['u']}")
+             for b, y in nc if y["u"] not in old_us]
+    return rows
+
+
 def cell_table(old_char: dict, old_cord: dict, new_char: dict, new_cord: dict, thr: float = IOU_MIN) -> list[dict]:
-    """旧格→新格。每行 {old, new, oc, nc, kind, iou, note}；kind ∈ 同格／改号／删／新增；格号不带册前缀。"""
+    """旧格→新格。每行 {old, new, oc, nc, kind, iou, note}；kind ∈ 同格／改号／删／新增；格号不带册前缀。
+    新旧两版都带 u（char v0.6）时直接按 u 对（`cell_table_by_u`），不跑框配对。"""
+    by_u = cell_table_by_u(old_char, new_char)
+    if by_u is not None:
+        return by_u
     och = {a: x.get("c") for a, x in _chars(old_char)}
     nch = {a: x.get("c") for a, x in _chars(new_char)}
     OB, NB = _boxes(old_cord), _boxes(new_cord)
@@ -748,6 +777,8 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
             _git(wt, "sparse-checkout", "set", "--cone", "scripts", *sparse)
         _git(wt, "checkout", "-q", branch)
     else:
+        if sparse:              # 复用的 worktree 也要把稀疏范围换成这一本书（殿本、全唐文共用一个 worktree，GM4 11-24）
+            _git(wt, "sparse-checkout", "set", "--cone", "scripts", *sparse)
         _git(wt, "checkout", "-q", "-f", "-B", branch, "refs/remotes/origin/dev")
         _git(wt, "reset", "-q", "--hard", "refs/remotes/origin/dev")          # 上一册失败留下的改动不能带进来
         _git(wt, "clean", "-fdq", "--", "Book")

@@ -48,6 +48,38 @@ def test_command_registered():
     assert "ctx-ruling" in COMMANDS
 
 
+def test_rejected_version_reports_clearly(tmp_path, capsys, monkeypatch):
+    """cv #1837 起 RulingLog.append 拒写 seed_admit 不认的版本：试跑就报、真写退出码 2 不抛栈、一条不落。"""
+    import pytest
+    from guji_manager import _cv
+    try:
+        _cv.ruling_validate
+    except AttributeError:
+        pytest.skip("装的 cv 没有 rulings.validate_payload（< #1837）")
+    _pkg(tmp_path / "p")
+    cells = tmp_path / "c.tsv"
+    cells.write_text("001:1:1:2\t曰\thigh\n", encoding="utf-8")
+    orig = CR.build_events
+
+    def bad(*a, **k):
+        evs, notes = orig(*a, **k)
+        for e in evs:
+            e.payload["prompt_ver"] = "ctx-m9"
+        return evs, notes
+    monkeypatch.setattr(CR, "build_events", bad)
+    a = NS(workspace=None, cells=str(cells), products=str(tmp_path / "p"), batch="bycell", subclass="P", model="m",
+           ruling_dir=str(tmp_path / "fb" / "rulings"), fetch=False, label=None, jobs=1, dry_run=True)
+    assert CR.cmd(a) == 2
+    assert "seed_admit 不认" in capsys.readouterr().err
+    a.dry_run = False
+    with pytest.raises(SystemExit) as ex:
+        CR.cmd(a)
+    assert ex.value.code == 2
+    err = capsys.readouterr().err
+    assert "一条都没写" in err and "ctx-m9" in err
+    assert not list((tmp_path / "fb" / "rulings").glob("*.jsonl"))
+
+
 def test_build_events_with_anchor():
     """新写裁定带格锚点 cells_sha＋ref（裁定键方案③）。"""
     from guji_manager import ctx_ruling as CR

@@ -22,3 +22,6 @@
 - `vpairs.json`：异体对对称表（来自 guji-runner `config/variants/variants.json` 的 `directed` 与 `config/dicts/variants.tsv`，对称化、不传递，约 83k 对），供异体闸第②条用；生僻字（如 𲍠／鵓）表里没有。全唐文 11-23 复核另发现缺 䕶↔護、蹖↔踳、巿↔市，已转 CV4 评估补表。闸规则见 Wiki「文意判字标点专名合并判定」8.2 第 3a 条。
 
 > 更正（CV4 11-23，open-guji-cv#1811）：`vpairs.json` 是快照，不含 `variants.pairkind.tsv` 的 V 行；新用法优先 `open_guji_cv.variants.are_variants`。䕶→護、蹖→踳（chǔn 义）已进 cv 异体表；巿／市 是形近不同义（C），不进异体表，靠闸①与看图。
+
+## confuse_guard.py（易混字守卫，11-24）
+AI 判出的字属易混对（十千、于干、七十、未末、己已巳、日曰、戊戌戍等，表可扩），且候选含另一方 → 不放行，交 B 路／看图。与异体闸并列用，三书通用。来源：史记册29–38 单路放行 53 格看图出 1 真错（37:27:5:16a 十/千）。

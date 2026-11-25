@@ -99,23 +99,18 @@ def read_manifests(src, packs: dict[tuple, Pack], workers: int = 16) -> None:
 
 
 def _file_rows(conn, like: str):
-    """files 表按路径前缀取行；大文件（``body_r2=1``）的 raw／doc 不在表里，去 R2 取原文再补上。"""
-    for ws, path, raw, doc, body_r2, sha in conn.execute(
-            "SELECT ws, src_path, raw, doc, body_r2, sha256 FROM files WHERE src_path LIKE %s", (like,)):
+    """files 表按路径前缀取行；大文件（``body_r2=1``）的 raw 不在表里，去 R2 取原文。doc 一律从 raw 解析（files.doc 11-24 起停写）。"""
+    for ws, path, raw, body_r2, sha in conn.execute(
+            "SELECT ws, src_path, raw, body_r2, sha256 FROM files WHERE src_path LIKE %s", (like,)):
         if body_r2 and not raw:
             backend = getattr(conn, "backend", None)
             if backend is None or not hasattr(backend, "get_body"):
                 raise RuntimeError(f"{ws}:{path} 原文在 R2（body_r2），本连接取不到")
             raw = backend.get_body(sha)
-            try:
-                doc = json.loads(raw)
-            except ValueError:
-                doc = None
-        if isinstance(doc, str):
-            try:
-                doc = json.loads(doc)
-            except ValueError:
-                doc = None
+        try:
+            doc = json.loads(raw) if raw else None
+        except ValueError:
+            doc = None
         yield ws, path, raw, doc
 
 

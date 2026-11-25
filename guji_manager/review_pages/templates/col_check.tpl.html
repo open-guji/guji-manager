@@ -3,8 +3,10 @@
 <style>/*COMMON_CSS*/
 #list{display:flex;flex-direction:row-reverse;gap:8px;overflow-x:auto;padding-bottom:6px;align-items:flex-start}
 .colc{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
-.colc .meta{font-size:11px;color:var(--muted);text-align:center}
+.colc .meta{font-size:11px;color:var(--muted);text-align:center;width:0;min-width:100%;word-break:break-all}
 .win{position:relative;height:min(78vh,1100px);background:#fff;border:2px solid var(--line);border-radius:4px;cursor:pointer;touch-action:manipulation}
+.colc.compact .win{height:auto;width:var(--w)}
+#list.wrap{flex-wrap:wrap;row-gap:10px}
 .colc.ok .win{border-color:var(--ok)}
 .colc.bad .win{border-color:#d33}
 .colc.unsure .win{border-color:#5b5f8a}
@@ -42,15 +44,15 @@ function toggleCell(it,key){
   if(bad.length)S.set(it.id,{v:"bad",bad});else S.clear(it.id);
 }
 function paint(box,it){
-  const r=lab(it)||{};box.className="colc "+(r.v||"")+(it.focus?" focus":"");
+  const r=lab(it)||{};box.className="colc "+(r.v||"")+(it.focus?" focus":"")+(it.compact?" compact":"");
   const bad=new Set(r.v==="bad"?r.bad||[]:[]);
   for(const e of box.querySelectorAll(".bx"))e.classList.toggle("wrong",bad.has(e.dataset.k));
   for(const b of box.querySelectorAll(".qb button[data-v]"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
 }
 function card(it){
   const box=document.createElement("div");box.className="colc";
-  const m=document.createElement("div");m.className="meta";m.textContent="第 "+it.col+" 列"+(it.focus?" · 请确认":"")+(it.note?" · "+it.note:"");box.appendChild(m);
-  const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;
+  const m=document.createElement("div");m.className="meta";m.textContent=(it.mixed?it.vol+"·"+it.page+"页·":"")+"第 "+it.col+" 列"+(it.focus?" · 请确认":"")+(it.note?" · "+it.note:"");box.appendChild(m);
+  const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;if(it.compact)win.style.setProperty("--w",(it.show_w||it.iw)+"px");
   const im=document.createElement("img");im.src=it.img;im.alt="第 "+it.col+" 列";win.appendChild(im);
   for(const c of it.cells){const d=document.createElement("div");d.className="bx"+(String(c.kind||"").startsWith("jiazhu")?" jz":"");
     d.dataset.k=c.key;const b=c.box;
@@ -72,11 +74,11 @@ function stat(){
 }
 function render(){
   st.page=Math.min(Math.max(0,st.page),NP()-1);
-  const L=$("list");L.textContent="";
+  const L=$("list");L.textContent="";L.classList.toggle("wrap",(screens[st.page]||[]).every(x=>x.compact));
   const its=screens[st.page]||[];
   its.forEach(it=>L.appendChild(card(it)));
   const f=its[0]||{};
-  $("pg").textContent=`第 ${st.page+1} / ${NP()} 页（册 ${f.vol} 第 ${f.page} 页）`;
+  $("pg").textContent=f.mixed?`第 ${st.page+1} / ${NP()} 页（${its.length} 列）`:`第 ${st.page+1} / ${NP()} 页（册 ${f.vol} 第 ${f.page} 页）`;
   $("sub").textContent=`${D.book} · ${D.items.length} 列 · 模板 ${D.tpl_version}`;
   $("hint").innerHTML="";const h=document.createElement("span");
   h.textContent=D.hint||"一屏是一页书，各列从右到左。看每列的格框切得对不对：把两个字并进一格、把一个字劈开、框明显歪了，就点那一格标红（再点取消）。看不清的列点「看不出」。这一轮只确认格数对、大致切分对：字与字连在一起处切点准不准、格框带不带框线，都不用细看，不算错。整列都对不用点，点「本页没问题，下一页」时没点的列记作全对。每点一下就存后台。";

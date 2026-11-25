@@ -63,6 +63,8 @@ CHAR_SCHEMA_URL_V02 = "https://open-guji.org/schema/char/v0.2.json"     # 有 gu
 CHAR_SCHEMA_URL_V03 = "https://open-guji.org/schema/char/v0.3.json"     # 有图片格或图列才写这一版
 CHAR_SCHEMA_URL_V04 = "https://open-guji.org/schema/char/v0.4.json"     # 有待审格（pending_reason）才写这一版（已停用）
 CHAR_SCHEMA_URL_V05 = "https://open-guji.org/schema/char/v0.5.json"     # 有无法识别字（unk）才写这一版
+CHAR_SCHEMA_URL_V06 = "https://open-guji.org/schema/char/v0.6.json"     # 带字格永久编号 u（u_max、u_retired）才写这一版
+NORM_SCHEMA_URL_V03 = "https://open-guji.org/schema/norm/v0.3.json"     # 带 u 的 norm（顶层改 $schema）
 CORD_SCHEMA_URL = "https://open-guji.org/schema/cord/v0.1.json"
 CORD_SCHEMA_URL_V02 = "https://open-guji.org/schema/cord/v0.2.json"     # 有插图块（marks.figure）才写这一版
 FIG_SCHEMA_URL = "https://open-guji.org/schema/fig/v0.1.json"
@@ -79,7 +81,10 @@ CHAR_SCHEMA_FILES = {CHAR_SCHEMA_URL: SCHEMA_PATHS["char"], CHAR_SCHEMA_URL_V02:
                      CHAR_SCHEMA_URL_V03: _FORMATS / "guji_char_v0.3.schema.json",
                      CHAR_SCHEMA_URL_V04: _FORMATS / "guji_char_v0.4.schema.json",
                      # v0.5 随 manager 带一份（guji-format#31 的副本），cv 的 formats/ 还没有它
-                     CHAR_SCHEMA_URL_V05: Path(__file__).with_name("guji_char_v0.5.schema.json")}
+                     CHAR_SCHEMA_URL_V05: Path(__file__).with_name("guji_char_v0.5.schema.json"),
+                     # v0.6 与 norm v0.3 也随 manager 带（guji-format#34 的副本，字格永久编号 u）
+                     CHAR_SCHEMA_URL_V06: Path(__file__).with_name("guji_char_v0.6.schema.json")}
+NORM_SCHEMA_FILES = {NORM_SCHEMA_URL_V03: Path(__file__).with_name("guji_norm_v0.3.schema.json")}
 CORD_SCHEMA_FILES = {CORD_SCHEMA_URL: SCHEMA_PATHS["cord"], CORD_SCHEMA_URL_V02: _FORMATS / "guji_cord_v0.2.schema.json"}
 KEYS = ("cv", "lines")
 
@@ -322,13 +327,16 @@ def _box_ok(b) -> bool:
 
 def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = None, version: str = "0.1.0",
                     keys: str = "cv", chapter: str | None = None, figure_regions: dict[int, list[dict]] | None = None,
-                    prev_fig: dict | None = None) -> tuple[dict[str, dict], dict]:
+                    prev_fig: dict | None = None, uids: dict | None = None) -> tuple[dict[str, dict], dict]:
     """`guji-pages/0.1` → (`{NNN.char.json, NNN.cord.json, NNN.norm.json[, NNN.fig.json]}`, 报告)。
 
     `zi`/`norm` 是 F3 同章的 `zi.json`（`guji-zi/0.1`）/`norm.json`（`guji-norm/0.1`），没有就当空。
     `figure_regions`：插图块 `{页: [{box, col, span, alt, fig?}]}`（`feedback/figures.resolved_figure_regions`）；
     `prev_fig`：book-text 现行的同章 fig.json（沿用图 id、保留重绘图），见模块头「图」。用到图才出 `NNN.fig.json`，
     其中文件字段待 `crop_figures` 填。
+    `uids`：字格永久编号（T2，册有字格身份账才给）`{"map": {CV 格号(页:列:格[ab]): u}, "u_max": int, "u_retired": [...]}`。
+    给了就每格写 `u`、顶层写 `u_max`（`u_retired` 非空才写）、`$schema` 升 char v0.6，norm 条目带 `u`、升 norm v0.3；
+    有格查不到 u 就报错（不写半截）。插图块占掉的格连 u 一起去掉，记进报告 `u_dropped`。不给＝与以前逐字节相同。
     报告 `{pages, cells, boxed, dropped: {regions, columns, cells, marks}, rekeyed, figures: {inline, block, kept, dropped_cells}}`。
     pages.json 的格没盖满 `n_chars`（有字没框，字只在 lines.md 里）就报错——纯转换补不出那些字。
     """
@@ -339,6 +347,7 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
     vol = pj.get("volume")
     volume = vol.get("index") if isinstance(vol, dict) else vol
     zi_by_o = {z["o"]: z for z in (zi or {}).get("items", []) if z.get("o") is not None}
+    umap = {_strip_book(k): v for k, v in ((uids or {}).get("map") or {}).items()}
     n_cov = sum(1 if isinstance(c["o"], int) else c["o"][1] - c["o"][0] for p in pj["pages"] for c in p["cells"])
     if "n_chars" in pj and n_cov != pj["n_chars"]:
         raise ValueError(f"pages.json 的格只盖住 {n_cov} 字元，n_chars 是 {pj['n_chars']}——有字没框，要用 lines.md 补，纯转换做不了")
@@ -402,6 +411,16 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
             cpage["columns"] = ccols = kept
         char_pages.append(cpage)
         out_cells = [c for col in ccols for c in col["cells"]]
+        if uids is not None:
+            for cv, c in zip(cv_cells, out_cells):
+                u = umap.get(_strip_book(cv.get("a") or ""))
+                if u is None:
+                    raise ValueError(f"p{pn} 格 {cv.get('a')}「{c.get('c')}」在字格身份账里没有 u——先 guji uid advance")
+                kv = list(c.items())
+                c.clear()
+                c.update(kv[:2])
+                c["u"] = int(u)
+                c.update(kv[2:])
         keymap = {cv.get("a"): c["a"] for cv, c in zip(cv_cells, out_cells)}
         idmap = {cv["id"]: c["a"] for cv, c in zip(cv_cells, out_cells) if cv.get("id")}
         allmap.update(keymap)
@@ -475,20 +494,35 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
 
     head = {"book_id": book_id, "volume": volume}
     norm_items = [_norm_item(n, allmap) for n in (norm or {}).get("items", [])]
+    if uids is not None:
+        for raw, n in zip((norm or {}).get("items", []), norm_items):
+            u = umap.get(_strip_book(raw.get("a") or ""))
+            if u is None:
+                raise ValueError(f"norm {raw.get('a')} 在字格身份账里没有 u")
+            n["u"] = int(u)
+    pre_fig = [[c for col in p["columns"] for c in col["cells"] if "u" in c] for p in char_pages] if uids is not None else []
     figures, frep = _apply_figures(char_pages, cord_pages, fig_alt, figure_regions or {}, prev_fig, chapter)
     rep["figures"] = frep
+    if uids is not None:
+        rep["u_dropped"] = sorted(c["u"] for p in pre_fig for c in p if c["a"] in set(frep["dropped_cells"]))
     if frep["dropped_cells"]:
         gone = set(frep["dropped_cells"])
         norm_items = [n for n in norm_items if n["a"] not in gone]  # 插图块占掉的格上的规范层一并去掉
     has_fig = bool(figures)
     has_guess_c = any("guess_c" in c for p in char_pages for col in p["columns"] for c in col["cells"])
     has_unk = any("unk" in c for p in char_pages for col in p["columns"] for c in col["cells"])
-    char = {"$schema": (CHAR_SCHEMA_URL_V05 if has_unk else CHAR_SCHEMA_URL_V03 if has_fig
-                        else CHAR_SCHEMA_URL_V02 if has_guess_c else CHAR_SCHEMA_URL),
-            "version": version, **head, "pages": char_pages}
+    char = {"$schema": (CHAR_SCHEMA_URL_V06 if uids is not None else CHAR_SCHEMA_URL_V05 if has_unk
+                        else CHAR_SCHEMA_URL_V03 if has_fig else CHAR_SCHEMA_URL_V02 if has_guess_c else CHAR_SCHEMA_URL),
+            "version": version, **head}
+    if uids is not None:
+        char["u_max"] = int(uids.get("u_max") or max(umap.values(), default=0))
+        if uids.get("u_retired"):
+            char["u_retired"] = list(uids["u_retired"])
+    char["pages"] = char_pages
     has_block = any(m["kind"] == "figure" for p in cord_pages for m in p.get("marks", []))
     cord = {"$schema": CORD_SCHEMA_URL_V02 if has_block else CORD_SCHEMA_URL, **head, "pages": cord_pages}
-    norm_out = {"schema": NORM_SCHEMA, **head, "table": (norm or {}).get("table"), "items": norm_items}
+    norm_out = ({"$schema": NORM_SCHEMA_URL_V03} if uids is not None else {"schema": NORM_SCHEMA}) | {
+        **head, "table": (norm or {}).get("table"), "items": norm_items}
     out = {f"{chapter}.char.json": char, f"{chapter}.cord.json": cord, f"{chapter}.norm.json": norm_out}
     if figures:
         out[f"{chapter}.fig.json"] = {"$schema": FIG_SCHEMA_URL, **head, "figures": figures}
@@ -860,8 +894,8 @@ def validate(obj: dict, kind: str) -> list[str]:
     """按 guji-format 的 JSON Schema 校验（`kind` = char / cord / fig）。char、cord 按它自己的 `$schema` 取版本
     （char v0.1–v0.4，cord v0.1／v0.2），认不出的按 v0.1。"""
     import jsonschema
-    files = {"char": CHAR_SCHEMA_FILES, "cord": CORD_SCHEMA_FILES}.get(kind, {})
-    path = files.get(obj.get("$schema"), SCHEMA_PATHS[kind])
+    files = {"char": CHAR_SCHEMA_FILES, "cord": CORD_SCHEMA_FILES, "norm": NORM_SCHEMA_FILES}.get(kind, {})
+    path = files.get(obj.get("$schema"), SCHEMA_PATHS.get(kind) or NORM_SCHEMA_FILES[NORM_SCHEMA_URL_V03])
     schema = json.loads(path.read_text(encoding="utf-8"))
     v = jsonschema.Draft202012Validator(schema)
     return [f"{'/'.join(map(str, e.path))}: {e.message}" for e in v.iter_errors(obj)]

@@ -46,7 +46,7 @@ def _central():
     c.backend.bodies[sha] = big
     rows = [
         ("feedback/lists/freeze/vol01.jsonl", '{"pack": "products/w/vol01/e/"}\n', None, 0, "s1"),
-        ("feedback/lists/proofing/t/001.pending.json", "{}", '{"cv_commit": "abc"}', 0, "s2"),
+        ("feedback/lists/proofing/t/001.pending.json", '{"cv_commit": "abc"}', None, 0, "s2"),    # doc 停写（11-24），读 raw
         ("feedback/lists/proofing/t/002.pending.json", "", None, 1, sha),       # 大文件：原文在 R2
     ]
     for path, raw, doc, r2, s in rows:

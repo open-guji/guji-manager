@@ -6,6 +6,8 @@
 
 * 全程设 ``GUJI_DB_NO_GLYPH=1``：同步只推待审单与事件，绝不碰字形库账本（11-04 字形账本被清空的事故）。
 * 开跑前、每批之间都核字形库账本不空、不比基准少一成以上、磁盘够；不过就停在原地不动。
+* 单次 sync 模式（缺省，cv 带 ``--defer-sync`` 时）：开跑 db pull 一次→auto_cycle 各批只写本地→手加格补回→整趟 db sync 一次→按 ``--publish-batch`` 分批发布核对；
+  下面是 ``--no-single-sync`` 的老做法：
 * 每批 ``--batch-size`` 册：auto_cycle（``--no-publish``）→ ``sync_workspace(no_glyph)`` → 对这批 ``proofing-sync only=`` 发布并等跑完
   → 逐册取线上 ``NNN.pending.json`` 核版本 → 核过的清掉本地产物包。全站一把发会撞 40 分钟超时，所以只发这一批。
 * 状态写 ``<工作区>/reports/_swap/state.json``，崩了/容器重启后同样的命令接着做（已核对的册跳过）。
@@ -119,7 +121,11 @@ def precheck(ws: Path, state: dict, text_id: str = DIANBEN_ID) -> None:
         raise SystemExit("先 export GUJI_ACTOR=<你的名字>")
     free = shutil.disk_usage(ws).free / 2 ** 30
     if free < MIN_FREE_GB:
-        raise SystemExit(f"磁盘只剩 {free:.1f}GB（要 ≥ {MIN_FREE_GB}GB）：先清 _packs／cache／旧 exports")
+        freed = auto_clean(ws, state)                       # 换包提速：先自己清已核对册的包和字块缓存，清完还不够才停
+        free = shutil.disk_usage(ws).free / 2 ** 30
+        print(f"磁盘不足，自动清理释放 {freed:.1f}GB，现剩 {free:.1f}GB", file=sys.stderr)
+        if free < MIN_FREE_GB:
+            raise SystemExit(f"磁盘只剩 {free:.1f}GB（要 ≥ {MIN_FREE_GB}GB），自动清理后仍不够：先清旧 exports／别的大目录")
     # 待收字登记表和 corpus/daizhige 是殿本的数据；全唐文、史記的数据目录本来就没有（11-18 全唐文 swap run 被它误拦），非殿本只提示不拦
     bad = data_problem(data_dir(ws))
     if bad:
@@ -131,6 +137,79 @@ def precheck(ws: Path, state: dict, text_id: str = DIANBEN_ID) -> None:
     if bad:
         raise SystemExit(bad)
     state.setdefault("ledger_baseline", now)
+
+
+def _du(p: Path) -> float:
+    n = 0
+    for root, _d, files in os.walk(p):
+        for f in files:
+            try:
+                n += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return n / 2 ** 30
+
+
+def auto_clean(ws: Path, state: dict) -> float:
+    """磁盘不够时自动清（QTW 11-24：每轮要停下手清 _packs／cache／sha256）。只清能再生的：
+    ①状态里 verified／fresh 的册的 ``_packs/*/<册>``；②没有「进行中」册时的 ``_packs`` 空壳；③``cache/sha256``（按内容寻址的缓存，用到再取）。
+    不碰 reports、book-text、数据目录。返回释放的 GB。"""
+    freed = 0.0
+    finished = {b for b, v in state.get("books", {}).items() if v.get("status") in ("verified", "fresh")}
+    for b in finished:
+        for p in (ws / "_packs").glob(f"*/{b}"):
+            freed += _du(p)
+            shutil.rmtree(p, ignore_errors=True)
+    c = ws / "cache" / "sha256"
+    if shutil.disk_usage(ws).free / 2 ** 30 < MIN_FREE_GB and c.is_dir():
+        freed += _du(c)
+        shutil.rmtree(c, ignore_errors=True)
+    return freed
+
+
+def pull_workspace(ws: Path, force_ok: bool = False) -> int:
+    """开跑先拉一次库（不碰字形库）：旧 glyph.db 挡住时加 --force（丢掉本地没推的改动，换包的 ws 本来就只是出单用）。
+    状态里已有「进行中」册（断点续跑）不 --force，免得丢掉已写未推的新单。"""
+    env = {**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}
+    base = [sys.executable, "-m", "open_guji_cv.cli_v2", "db", "pull", "-w", str(ws), "--no-glyph"]
+    rc = subprocess.run(base, env=env).returncode
+    if rc and force_ok:                                  # 旧 glyph.db 等挡住拉库（11-24 QTW 001）：没有未推的新单才敢 --force
+        rc = subprocess.run([*base, "--force"], env=env).returncode
+    return rc
+
+
+def sync_retry(ws: Path, tries: int = 3) -> dict:
+    """一趟里唯一的一次 db sync；Stale／StaleBase（库被别人写过）等几秒重试，SyncConflict 先 pull 再试（11-24 QTW 001 册被拦）。"""
+    from ..cli_db import sync_workspace
+    last: Exception | None = None
+    for i in range(tries):
+        try:
+            return sync_workspace(ws, admit=False, no_glyph=True)
+        except Exception as e:  # noqa: BLE001
+            name = type(e).__name__
+            if name not in ("Stale", "StaleBase", "SyncConflict") or i == tries - 1:
+                raise
+            last = e
+            print(f"sync 遇到 {name}：{str(e)[:120]}，{5 * (i + 1)} 秒后{'拉库' if name == 'SyncConflict' else ''}重试（第 {i + 2} 次）", file=sys.stderr)
+            time.sleep(5 * (i + 1))
+            if name == "SyncConflict":
+                pull_workspace(ws)
+    raise last  # pragma: no cover
+
+
+def apply_hand_cells(ws: Path, books: list[str], hand_cells: Path | None, text_id: str, state: dict) -> None:
+    """手加格持久化（019:120:6:19、004:92:4:14 每次换单都被丢）：清单 ``{"<册>": [{"cell": "页:列:格", "note": "..."}]}``，
+    换完单、推库之前对每个册 ``republish.py add-cell --no-sync`` 补回。失败只记状态、不挡。"""
+    if not hand_cells or not Path(hand_cells).exists():
+        return
+    cfg = json.loads(Path(hand_cells).read_text(encoding="utf-8"))
+    cv = Path(os.environ.get("GUJI_CV") or Path.home() / "cv")
+    for b in books:
+        for e in cfg.get(b, []) + cfg.get(chapter_of(b), []):
+            r = subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "republish.py"), "add-cell", "--book", b, "-w", str(ws),
+                                "--cell", e["cell"], "--note", e.get("note", "手加格（换单自动补回）"), "--src", "script:swap-hand-cells", "--no-sync"],
+                               capture_output=True, text=True, env={**os.environ, "GUJI_WORKSPACE": str(ws), "PYTHONPATH": str(cv)})
+            state["books"][b].setdefault("hand_cells", {})[e["cell"]] = "ok" if r.returncode == 0 else "failed: " + (r.stdout + r.stderr).strip()[-200:]
 
 
 def current_main(ws: Path, book: str) -> str | None:
@@ -190,6 +269,19 @@ def live_rev(text_id: str, n: int) -> str | None:
         return None
 
 
+def _cv_supports_defer_sync(cv: Path) -> bool:
+    try:
+        return "--defer-sync" in (cv / "scripts" / "zhengli" / "auto_cycle.py").read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def default_hand_cells(book_text: str, text_id: str) -> Path | None:
+    """手加格清单缺省位置：book-text 仓根 ``swap-hand-cells.json``（跟 book-text 一起版本化，换容器不丢）。"""
+    f = Path(book_text) / "swap-hand-cells.json"
+    return f if f.exists() else None
+
+
 def last_publish_age_hours() -> float | None:
     """最近一次 proofing-sync（任何触发方）离现在多少小时；查不到返回 None。
     定时收单每半小时一趟，每趟都发站会耗尽腾讯云每日 CDN purge 配额（11-23 LimitExceeded.DailyQuota），
@@ -206,28 +298,73 @@ def last_publish_age_hours() -> float | None:
     return max(0.0, (time.time() - t) / 3600)
 
 
-def publish_batch(books: list[str], text_id: str) -> str:
-    """对这批册触发 proofing-sync（only=），等跑完，返回 conclusion。"""
+def _proofing_runs(limit: int = 10) -> list[dict]:
+    r = subprocess.run(["gh", "run", "list", "-R", WEB_REPO, "--workflow", "proofing-sync.yml", "-L", str(limit),
+                        "--json", "databaseId,createdAt,status,conclusion"], capture_output=True, text=True)
+    try:
+        return json.loads(r.stdout or "[]")
+    except ValueError:
+        return []
+
+
+def wait_idle(max_minutes: float = 60.0) -> bool:
+    """等网站 proofing-sync 没有排队／在跑的 run 再触发（并发的 run 会互相取消：11-24 全唐文 011 假 verified、008 手加格被冲掉）。
+    等到了返回 True，超时返回 False（照触发，由后面的 conclusion 判）。"""
+    end = time.time() + max_minutes * 60
+    while time.time() < end:
+        if not any(r.get("status") in ("in_progress", "queued", "waiting", "pending", "requested") for r in _proofing_runs()):
+            return True
+        time.sleep(30)
+    return False
+
+
+def publish_batch(books: list[str], text_id: str, retries: int = 2) -> str:
+    """对这批册触发**一次** proofing-sync（only=），等跑完，返回 conclusion（只有 ``success`` 才算发成）。
+
+    触发前先等别的 run 跑完（串行，不并发）；被取消（cancelled，多半被别的触发顶掉）就等空闲后重发，最多 ``retries`` 次。"""
     only = ",".join(f"{text_id}/{chapter_of(b)}" for b in books)
-    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    r = subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", WEB_REPO, "--ref", "main",
-                        "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={only}"],
-                       capture_output=True, text=True)
-    if r.returncode:
-        return "trigger-fail: " + r.stderr.strip()[-200:]
-    time.sleep(20)
-    q = f'[.[]|select(.createdAt>="{since}")][-1].databaseId'
-    rid = subprocess.run(["gh", "run", "list", "-R", WEB_REPO, "--workflow", "proofing-sync.yml", "-L", "5",
-                          "--json", "databaseId,createdAt", "-q", q], capture_output=True, text=True).stdout.strip()
-    if not rid:
-        return "no-run"
-    while True:
-        st = subprocess.run(["gh", "run", "view", rid, "-R", WEB_REPO, "--json", "status,conclusion"],
-                            capture_output=True, text=True)
-        d = json.loads(st.stdout or "{}")
-        if d.get("status") == "completed":
-            return d.get("conclusion") or "unknown"
-        time.sleep(45)
+    concl = "unknown"
+    for attempt in range(retries + 1):
+        wait_idle()
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        r = subprocess.run(["gh", "workflow", "run", "proofing-sync.yml", "-R", WEB_REPO, "--ref", "main",
+                            "-f", "target=production", "-f", "parts=publish", "-f", "dry_run=false", "-f", f"only={only}"],
+                           capture_output=True, text=True)
+        if r.returncode:
+            return "trigger-fail: " + r.stderr.strip()[-200:]
+        rid = ""
+        for _ in range(6):                               # 触发后 run 要几秒才出现
+            time.sleep(10)
+            runs = sorted((x for x in _proofing_runs() if x.get("createdAt", "") >= since), key=lambda x: x["createdAt"])
+            if runs:
+                rid = str(runs[0]["databaseId"])           # 我们是触发前才确认空闲的，这段时间里最早的一条就是我们的
+                break
+        if not rid:
+            return "no-run"
+        deadline = time.time() + 50 * 60
+        concl = "timeout"
+        while time.time() < deadline:
+            st = subprocess.run(["gh", "run", "view", rid, "-R", WEB_REPO, "--json", "status,conclusion"],
+                                capture_output=True, text=True)
+            d = json.loads(st.stdout or "{}")
+            if d.get("status") == "completed":
+                concl = d.get("conclusion") or "unknown"
+                break
+            time.sleep(45)
+        if concl != "cancelled":
+            return concl
+        print(f"⚠ proofing-sync {rid} 被取消（第 {attempt + 1} 次），等空闲后重发", file=sys.stderr)
+    return concl
+
+
+def wait_live_rev(text_id: str, n: int, want: str | None, minutes: float = 6.0) -> str | None:
+    """发布成功后线上文件可能还在 CDN 缓存里：核到想要的版本或超时为止，返回最后读到的 rev。"""
+    end = time.time() + minutes * 60
+    got = live_rev(text_id, n)
+    while want and got != want and time.time() < end:
+        time.sleep(20)
+        got = live_rev(text_id, n)
+    return got
 
 
 def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dict) -> None:
@@ -250,14 +387,14 @@ def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dic
 
 
 def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path, book_text: Path | None = None,
-                       cv: Path | None = None) -> None:
+                       cv: Path | None = None, sync: bool = True) -> None:
     """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
 
     全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
-    from ..cli_db import sync_workspace
     audit_books(ws, done, book_text, text_id, state, sp)          # 产物包核过就清，所以在发布前出机器改字抽检数据
-    sync_workspace(ws, admit=False, no_glyph=True)
-    refresh_progress(done, text_id, cv, state)                       # 新单已进中心库，看板才算得对
+    if sync:
+        sync_retry(ws)
+        refresh_progress(done, text_id, cv, state)                   # 新单已进中心库，看板才算得对
     save_state(sp, state)
     if os.environ.get("GUJI_SWAP_NO_PUBLISH"):          # 并行分片时不各自发布（网站发布 workflow 串行排队、互相取消），最后统一发
         for b in done:
@@ -266,8 +403,11 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
         return
     concl = publish_batch(done, text_id)
     for b in done:
-        want, got = expected_rev(ws, b, text_id), live_rev(text_id, vol_no(b))
-        ok = want is not None and want == got
+        want = expected_rev(ws, b, text_id)
+        # 发站没成功（failure／cancelled／no-run／timeout）一律不算 verified，哪怕线上碰巧读到想要的版本：
+        # 11-24 011 状态 verified、实际 proofing-sync 失败，线上停在 011-r13
+        got = wait_live_rev(text_id, vol_no(b), want) if concl == "success" else live_rev(text_id, vol_no(b))
+        ok = concl == "success" and want is not None and want == got
         state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got, publish=concl)
         if ok:
             for p in (ws / "_packs").glob(f"*/{b}"):
@@ -324,13 +464,21 @@ def cmd_run(a) -> int:
     for chunk in chunks(pub_only, a.batch_size):
         precheck(ws, state, text_id)
         publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv)
+    single = not a.no_single_sync and _cv_supports_defer_sync(cv)
+    if single is False and not a.no_single_sync:
+        print("⚠ cv 的 auto_cycle 还没有 --defer-sync（要 open-guji-cv#1829 之后的版本）：退回每册各 sync 的老做法", file=sys.stderr)
+    if todo and not a.no_pull:
+        unpushed = any(v.get("status") in ("done", "publish-mismatch") for v in state["books"].values())
+        if pull_workspace(ws, force_ok=not unpushed):
+            print("⚠ guji db pull 没成：照现有本地库往下做（出单后 sync 会再合并一次）", file=sys.stderr)
+    deferred: list[str] = []
     for chunk in chunks(todo, a.batch_size):
-        precheck(ws, state, text_id)                         # 每批之间再核一次账本与磁盘
+        precheck(ws, state, text_id)                         # 每批之间再核一次账本与磁盘（磁盘不够先自动清）
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "w", encoding="utf-8") as f:
             subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", ",".join(chunk),
-                            "-w", str(ws), "--book-text", a.book_text, "--no-publish",
+                            "-w", str(ws), "--book-text", a.book_text, *(["--defer-sync"] if single else ["--no-publish"]),
                             *(["--ack-unlanded-votes", a.ack_unlanded_votes] if getattr(a, "ack_unlanded_votes", None) else []),
                             *(["--land-votes"] if getattr(a, "land_votes", False) else [])],
                            cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
@@ -342,7 +490,18 @@ def cmd_run(a) -> int:
         done = [b for b in chunk if state["books"][b]["status"] == "done"]
         if not done:
             continue
-        publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text), cv)
+        if single:
+            deferred += done                                 # 本地写好了，中心库和网站整趟最后一次推
+        else:
+            publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text), cv)
+    if deferred:
+        apply_hand_cells(ws, deferred, Path(a.hand_cells) if a.hand_cells else default_hand_cells(a.book_text, text_id), text_id, state)
+        save_state(sp, state)
+        sync_retry(ws)                                       # 整趟唯一一次推库
+        refresh_progress(deferred, text_id, cv, state)
+        save_state(sp, state)
+        for chunk in chunks(deferred, a.publish_batch):      # 发站按批（全站一把发会撞 40 分钟超时、CDN purge 配额）
+            publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv, sync=False)
     rep = write_audit_report(ws, state)
     if rep:
         print(f"机器改字抽检表：{rep}", file=sys.stderr)
@@ -363,7 +522,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--book-text", required=True)
     p.add_argument("--text-id", default=DIANBEN_ID, help="book-text 书 ID（缺省殿本；全唐文 995ejelvk0、史記 988g3f0wsu）")
     p.add_argument("--cv", default=os.environ.get("GUJI_CV", str(Path.home() / "cv")), help="open-guji-cv 检出目录")
-    p.add_argument("--batch-size", type=int, default=6, help="每批几册（全站一把发会超时）")
+    p.add_argument("--batch-size", type=int, default=6, help="每批几册（出单批；单次 sync 模式下只决定一次 auto_cycle 跑几册，不再每批 sync）")
+    p.add_argument("--publish-batch", type=int, default=10, help="整趟 sync 后每批发几册（全站一把发会超 40 分钟）")
+    p.add_argument("--no-single-sync", action="store_true", help="run：退回每册各 sync 的老做法（缺省整趟只拉一次库、只 sync 一次）")
+    p.add_argument("--no-pull", action="store_true", help="run：开跑不先 db pull（刚拉过）")
+    p.add_argument("--hand-cells", help="run：手加格清单 json（缺省 <book-text>/swap-hand-cells.json）：{\"<册>\": [{\"cell\": \"92:4:14\", \"note\": \"…\"}]}，换完单自动 add-cell 补回")
     p.add_argument("--state", default=None)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--export", help="book-text：导出目录（缺省取 reports/<册>/_cycle/ 下最新的 export）")

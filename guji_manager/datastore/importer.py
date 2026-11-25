@@ -175,6 +175,11 @@ def _record(row: Row, ws: str, rev: int, cols: list[tuple[str, str]]) -> tuple:
         base["doc"] = row.doc
         if row.tbl == "files" and row.doc is not None and len(_doc_json(row.doc).encode("utf-8")) >= ROW_BUDGET:
             base["doc"] = None
+        # 11-24 GM4：files.doc、anchors.doc 与 raw 同内容（共约 35 MB），不再写（读者改读 raw）。anchors.doc 是 NOT NULL 且 D1 删不掉列，写空串
+        if row.tbl == "files":
+            base["doc"] = None
+        elif row.tbl == "anchors":
+            base["doc"] = ""
     if body_in_r2(row):
         base["raw"], base["body_r2"] = "", 1
     for k, v in zip(TABLES[row.tbl].key, row.key):

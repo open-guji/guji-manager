@@ -124,6 +124,8 @@ def write_events(log, batches, verdicts, products, *, batch: str, step: str, uni
                                           anchor=product_anchor(products, step, ids), **ids),
                               payload, source_format="server", reviewer=reviewer))
     enrich_events(evs)   # 人裁带锚：重切后靠它找回是哪个字（总览/15）
+    from ..u_stamp import stamp_human
+    stamp_human(evs)     # 册有字格身份账时盖 target.anchor.u（T2）；没账不动
     n = log.append(evs)
     b = batches.get(batch)
     if b is None:
