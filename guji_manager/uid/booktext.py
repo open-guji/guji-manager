@@ -7,7 +7,7 @@ book-text 的改字工具（``char_edits``、manager 意见修订 B′）会自�
 2. **认领**：这一页本来要发新号（``new``／``split_from``）的格，若与 book-text 里「账上还没有的 u」那一格框对得上
    （IoU ≥ 0.5；或中心距近且同字），就用 book-text 的 u 入账，谱系记 ``src: "book-text"``。
 
-book-text 位置：``GUJI_BOOK_TEXT``（缺省同 ``online_lists``），书 id／章号按册配置（``online_lists.ident``）。找不到就不参考（照旧只看账）。
+book-text 位置：``GUJI_BOOK_TEXT``（缺省同 ``online_lists``）；本机没有仓就从 GitHub raw main 取这一章（带缓存）。书 id／章号按册配置（``online_lists.ident``）。
 """
 from __future__ import annotations
 
@@ -61,14 +61,65 @@ def required(led) -> bool:
     return any(d.get("src") == "init" and int(d.get("page") or 0) > 0 for d in led.lines)
 
 
+#: 本机没有 book-text 仓时，从 GitHub raw 取（仓公开，默认分支 main）；``GUJI_BOOK_TEXT_RAW`` 可改
+RAW_BASE = "https://raw.githubusercontent.com/open-guji/book-text/main"
+
+
+def _cache_dir() -> Path:
+    return Path(os.environ.get("GUJI_BOOK_TEXT_CACHE") or Path.home() / ".cache" / "guji" / "book-text")
+
+
+def _fetch(rel: str, timeout: float = 30) -> bytes | None:
+    """取 ``<RAW>/<rel>``：每次先上网取（u_max 要新），成功写缓存；404 → None；网络失败退回缓存（没有也 None）。"""
+    import urllib.error
+    import urllib.request
+    cache = _cache_dir() / rel
+    url = f"{os.environ.get('GUJI_BOOK_TEXT_RAW') or RAW_BASE}/{rel}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "guji-manager"}), timeout=timeout) as r:
+            data = r.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        data = None
+    except (urllib.error.URLError, OSError):
+        data = None
+    if data is None:
+        return cache.read_bytes() if cache.exists() else None
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache.with_suffix(cache.suffix + ".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(cache)
+    return data
+
+
+def _remote(bid: str, ch: str, edition: str) -> BookTextState | None:
+    from ..online_lists import book_text_dir
+    d = f"{book_text_dir('', bid).lstrip('/')}/{edition}"
+    for c in chapter_names(ch):
+        raw = _fetch(f"{d}/{c}.char.json")
+        if raw is None:
+            continue
+        kraw = _fetch(f"{d}/{c}.cord.json")
+        return from_char(json.loads(raw), json.loads(kraw) if kraw else None, f"{os.environ.get('GUJI_BOOK_TEXT_RAW') or RAW_BASE}/{d}/{c}.char.json")
+    return None
+
+
 def load(book: str, ws: str | None = None, repo: str | None = None, edition: str = "default") -> BookTextState | None:
-    """按册配置找到 book-text 的 char＋cord；找不到返回 None。"""
+    """按册配置找到 book-text 的 char＋cord；找不到返回 None。
+
+    找法：给了 ``repo``（``--book-text``）只看它；否则本机有 book-text 仓（``GUJI_BOOK_TEXT``，缺省同 ``online_lists``）就看本机，
+    本机没有仓才从 GitHub raw（main 分支）只取这一章的 char＋cord，缓存在 ``~/.cache/guji/book-text``（取不到网时用缓存）。
+    这样标 main 的机器不用另配 book-text（主线程 11-25）。"""
     try:
         from ..online_lists import _cfg, book_text_dir, ident
         bid, ch = ident(book, ws or os.environ.get("GUJI_WORKSPACE"))
         if not (bid and ch):
             return None
-        d = Path(book_text_dir(repo or _cfg()["book_text"], bid)) / edition
+        root = repo or _cfg()["book_text"]
+        if not repo and not Path(root, "Book").is_dir():
+            return _remote(bid, ch, edition)
+        d = Path(book_text_dir(root, bid)) / edition
         cp = next((d / f"{c}.char.json" for c in chapter_names(ch) if (d / f"{c}.char.json").exists()), None)
         if cp is None:
             return None
@@ -77,7 +128,7 @@ def load(book: str, ws: str | None = None, repo: str | None = None, edition: str
         kp = d / f"{ch}.cord.json"
         cord = json.loads(kp.read_text(encoding="utf-8")) if kp.exists() else None
         return from_char(char, cord, str(cp))
-    except Exception:  # noqa: BLE001 —— 参考不到就照旧只看账
+    except Exception:  # noqa: BLE001 —— 参考不到就照旧只看账（账从 book-text 建的册由 advance 报错）
         return None
 
 
