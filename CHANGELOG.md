@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，GM4）：中心库 events 的 payload、target 已改成由 raw 算的虚拟列（线上已迁；Worker 与 importer 不写，旧版 manager 不受影响），`doc/数据库/中心库.md` 同步。文档改动，L0。
 ## [0.6.9] - 2026-11-25
 
 - 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已补改（原拟 0.7.0，用户 11-25 定「不要总是升级 minor，先升 patch」改发 0.6.9）。
