@@ -209,3 +209,22 @@ def test_ledger_line_is_central_db_event(fb):
     d = make_line(B, 3, "s", {f"{B}:3:1:1": 1})
     assert d["id"].startswith("uid-vol31-p0003-") and d["target"] == {"book": B}
     json.dumps(d, ensure_ascii=False)
+
+
+def test_chars_fresh_only_when_seed_admit_on_current_cut():
+    from types import SimpleNamespace as NS
+    from guji_manager.uid import source
+
+    class Store:
+        def __init__(self, up, cur):
+            self.up, self.cur = up, cur
+
+        def manifest(self, book, step):
+            return NS(get=lambda k: NS(upstream={"char_index": self.up}) if self.up else None)
+
+        def sha(self, book, step, key):
+            return self.cur
+
+    assert source.chars_fresh(Store("abc", "abc"), "vol28", "p0003")
+    assert not source.chars_fresh(Store("abc", "def"), "vol28", "p0003")   # 重切后没重跑识字
+    assert not source.chars_fresh(Store(None, "def"), "vol28", "p0003")    # 没有 seed_admit
