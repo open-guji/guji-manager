@@ -458,7 +458,9 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
             if not _box_ok(c.get("box")):
                 rep["dropped"]["cells"] += 1
                 continue
-            cells.append({"a": keymap[c.get("a")], "box": c["box"], **({"id": c["id"]} if c.get("id") else {})})
+            # 有字格身份账（char 带 u）时 cord 不再写 CV 格 id：格的身份是 char 的 u（book-text fa159dfb 起 cord 已删 cells[].id）
+            cells.append({"a": keymap[c.get("a")], "box": c["box"],
+                          **({"id": c["id"]} if c.get("id") and uids is None else {})})
             rep["boxed"] += 1
         marks = []
         for m in pjp.get("marks", []):
