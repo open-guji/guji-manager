@@ -4,10 +4,10 @@
 
 ## [未发版]
 
-- PATCH（11-25，CV0 u）：`guji uid advance` 参考 book-text 已发的号（`uid/booktext.py`）：新号从 `max(账 u_max, char u_max, char 最大 u, char 作废号)` 之上发，绝不发 book-text 改字工具（char_edits、意见修订 B′）已用过的号；本页要发新号的格若与 book-text 里账上还没有的 u 框对得上（IoU≥0.5，或中心距近且同字），就认领那个 u，谱系记 `src: "book-text"`。book-text 按 `GUJI_BOOK_TEXT`＋册配置找，找不到照旧只看账；`--book-text <仓>` 指定、`--no-book-text` 关。L0。
 ## [0.7.0] - 2026-11-25
 
 - 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已按 v0.7 重改。
+- T1 #940：`guji uid advance` 参考 book-text 已发的号（`uid/booktext.py`）：新号从 `max(账 u_max, char u_max, char 最大 u, char 作废号)` 之上发，绝不发 book-text 改字工具（char_edits、意见修订 B′）已用过的号；本页要发新号的格若与 book-text 里账上还没有的 u 框对得上（IoU≥0.5，或中心距近且同字），就认领那个 u，谱系记 `src: "book-text"`。book-text 按 `GUJI_BOOK_TEXT`＋册配置找，找不到照旧只看账；`--book-text <仓>` 指定、`--no-book-text` 关。L0。
 
 - PATCH（11-25，CV0 u：book-text 全库 cord 已删 `cells[].id`，fa159dfb）：导出有身份账时 cord 不再写 CV 格 id；意见修订 B′ 在 char v0.6 上插新格发新 u（u_max＋1）、cord 新格不带 id、`$schema` 不再降成 v0.2。manager 别处读 cord 都按格位 `a`，不读 id。
 - MINOR（11-25，CV0 u T2，Sheldon「不要双写太久了，激进一点」）：**写入以 u 为准**。manager 里 `from ._cv import EventLog／RulingLog` 改拿 `u_stamp` 的子类，append 前统一盖字格永久编号 u（人裁 `target.anchor.u`、裁定 `payload.u`）；册有字格身份账而写不出 u 的（账上没这一格、格号不全）整批报错，不再静默只写格号。没账的册不变。
