@@ -42,11 +42,12 @@ def _db(op: str, book: str, ws: str, env: dict) -> tuple[bool, str]:
 
 
 def sync(book: str, label: str | None = None, ws: str | None = None, *, products: str | Path | None = None,
-         src: str = "sync", push: bool = True) -> dict:
+         src: str = "sync", push: bool = True, reconfirm: bool = False) -> dict:
     """把这册 main 包（``label``，缺省现行 main）的切分入账并推中心库；标 main 钩子、执行机开跑前、定时自检共用。
 
     ``products`` 给了就用那份产物（执行机刚铺的底），否则取回 ``label`` 包到临时目录。返回
-    ``{"status": disabled|pull_failed|entered|synced|unchanged|push_failed, "entered": 页数, "label": …}``；出错照抛。"""
+    ``{"status": disabled|pull_failed|entered|synced|unchanged|push_failed, "entered": 页数, "label": …}``；出错照抛。
+    ``reconfirm``：包已对过账也再记一笔带时间的「已对过」（见 ``mark_synced``）。"""
     if ws:
         os.environ["GUJI_WORKSPACE"] = str(Path(ws).resolve())
     from . import advance, book_enabled, enabled, mark_synced
@@ -70,7 +71,9 @@ def sync(book: str, label: str | None = None, ws: str | None = None, *, products
         with tempfile.TemporaryDirectory(prefix="uid-sync-") as tmp:
             fetch_products(book, Path(tmp), label=label)
             r = advance(book, ProductStore(Path(tmp)), src=src, label=label)
-    status = "entered" if r["entered"] else ("synced" if mark_synced(book, label, src=src) else "unchanged")
+    # reconfirm（标 main 钩子、自检交的 uidsync 单）：同一个包重标 main 也记一笔，自检才不会一直报缺
+    status = "entered" if r["entered"] else ("synced" if mark_synced(book, label, src=src, reconfirm=reconfirm)
+                                             else "unchanged")
     out = {"status": status, "entered": r["entered"], "label": label, "u_max": r["u_max"], "via": r["via"]}
     if push and status != "unchanged":
         ok, msg = _db("push", book, ws, env)
@@ -84,7 +87,7 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
     try:
         if os.environ.get("GUJI_UID_ON_PROMOTE", "1") == "0":
             return
-        r = sync(book, label, ws, src="promote")
+        r = sync(book, label, ws, src="promote", reconfirm=True)
         if r["status"] == "pull_failed":
             print(f"⚠ 字格身份账：拉中心库 {book} 的账失败，没入账（{r.get('msg')}）；手跑：{manual}", file=sys.stderr)
         elif r["status"] == "push_failed":

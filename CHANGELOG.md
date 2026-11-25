@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：同一个包撤回又重标 main（殿本 9 册撤回 r15frame）时，账里已有这份切分，`uid sync` 判「unchanged」不写也不推。但 main 指针比账里最晚一行新，自检就一直报缺、一直交 uidsync 单。修法：标 main 钩子和 uidsync 单（`--reconfirm`）遇到已对过的包，再记一笔带时间的「已对过」并推。执行机开跑前的 uid 步不变。L0。
+
 ## [0.6.18] - 2026-11-25
 
 - 发版缘由：~u 人裁抄件补锚档＋`guji uid anchor-fill`＋check-u 两项（#987）；跑完通知带 warn（#985）。

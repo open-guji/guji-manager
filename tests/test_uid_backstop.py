@@ -44,7 +44,7 @@ def test_runner_uid_sync_after_main_base():
     assert args[:3] == ("uid", "sync", "vol01") and "--local" in args and "--label" not in args and kw["write"] is True
     f, ev, calls = _fake("L9")
     R.Job.uid_sync(f, strict=True)
-    assert calls[0][0][-2:] == ("--label", "L9")
+    assert calls[0][0][-3:] == ("--label", "L9", "--reconfirm")     # uidsync 单：已对过也记一笔（重标 main）
     f, ev, calls = _fake("main", fail=True)
     R.Job.uid_sync(f)                                   # rerun 里失败只记一笔
     assert ev and ev[-1][1].get("level") == "warn"

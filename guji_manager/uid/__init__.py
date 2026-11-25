@@ -171,14 +171,20 @@ def enabled(book: str, root=None) -> bool:
     return ledger_path(book, root).exists()
 
 
-def mark_synced(book: str, label: str, *, root=None, src: str = "sync") -> bool:
+def mark_synced(book: str, label: str, *, root=None, src: str = "sync", reconfirm: bool = False) -> bool:
     """记一笔「main 包 ``label`` 已对过账、没有要入的页」（page 0、空 map 的册级行），自检就不再重取这个包。
-    已有同一笔 → 不写，返回 False。"""
+    已有同一笔 → 不写，返回 False。``reconfirm``：已有也再记一笔带时间的（同一个包撤回又重标 main 时，
+    main 指针比账里最晚一行新，自检按时间比会一直报缺、一直交 uidsync 单；11-25 殿本 9 册撤回 r15frame）。"""
+    import datetime as dt
     import hashlib
     led = Ledger.load(book, root)
     lid = f"uid-{book}-sync-{hashlib.sha256(label.encode()).hexdigest()[:12]}"
     if any(d.get("id") == lid for d in led.lines) or any(d.get("label") == label for d in led.lines):
-        return False
+        if not reconfirm:
+            return False
+        lid += "-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S")
+        if any(d.get("id") == lid for d in led.lines):
+            return False
     from .ledger import make_line
     d = make_line(book, 0, None, {}, src=src)
     d["id"] = lid
