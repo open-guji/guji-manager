@@ -8,6 +8,7 @@
 
 - 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已按 v0.7 重改。
 
+- PATCH（11-25，CV0 u：book-text 全库 cord 已删 `cells[].id`，fa159dfb）：导出有身份账时 cord 不再写 CV 格 id；意见修订 B′ 在 char v0.6 上插新格发新 u（u_max＋1）、cord 新格不带 id、`$schema` 不再降成 v0.2。manager 别处读 cord 都按格位 `a`，不读 id。
 - MINOR（11-25，CV0 u T2，Sheldon「不要双写太久了，激进一点」）：**写入以 u 为准**。manager 里 `from ._cv import EventLog／RulingLog` 改拿 `u_stamp` 的子类，append 前统一盖字格永久编号 u（人裁 `target.anchor.u`、裁定 `payload.u`）；册有字格身份账而写不出 u 的（账上没这一格、格号不全）整批报错，不再静默只写格号。没账的册不变。
 - PATCH（11-25，CV0 u T2）：`guji uid migrate-plan` 存量迁移口径按全库实测补齐（#925 #929 #931 本 PR）：窗口按本书归一表比；人裁比字形或读作、先认锚里 cells_sha；没记窗口的裁定按字同／各版同格；`--write` 只追加（`~u` 抄件，ts、seq 不变）。殿本 99 册、全唐文 30 册、脈經、北行、史記 41 册已迁并推库。
 - MINOR（11-24／25，CV0 u T2）：裁定、人裁、待审条目、网站票、book-text 导出挂 u（#921 #924）：`u_stamp`、待审条目按 u 认、`cellvotes` 按 u 认票、`rulings-hits` 按 u 跟现格、`guji uid table`、swap 按 u 出表、导出 char v0.6／norm v0.3。没账的册逐字节同。
