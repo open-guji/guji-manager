@@ -168,6 +168,16 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
         if products:
             q.add_argument("--products", default=None, help="产物根（缺省按工作区）")
 
+    q = s.add_parser("sync", help="把 main 包（缺省现行 main）的切分入账并推中心库：标 main 钩子漏了时补，执行机／自检也用它")
+    common(q)
+    q.add_argument("--label", default=None, help="包标签（缺省现行 main）")
+    q.add_argument("--local", action="store_true", help="用本机现行产物（已铺好这份包），不另取")
+    q.add_argument("--no-push", action="store_true", help="只入本机账，不拉不推中心库")
+
+    q = s.add_parser("audit", help="自检：有账的书每册现行 main 包入过账没有；--submit 给缺的交 uidsync 单")
+    q.add_argument("--submit", action="store_true", help="给缺的册交 uidsync 单（同册同标签只跑一次）")
+    q.add_argument("--cv", default="main", help="uidsync 单用哪版 cv（缺省 main）")
+
     q = s.add_parser("advance", help="切字后入账（同一份切分重跑不动）")
     common(q)
     q.add_argument("--pages", default=None, help="只入这些页（如 1-20,33）")
@@ -441,8 +451,23 @@ def cmd_tidy_recheck(a) -> None:
     _print(out)
 
 
+def cmd_sync(a) -> None:
+    from .promote import sync
+    ws = str(Path(a.workspace).resolve()) if a.workspace else os.environ.get("GUJI_WORKSPACE")
+    r = sync(a.book, a.label, ws, products="local" if a.local else a.products, push=not a.no_push)
+    _print(r)
+    if r["status"] in ("pull_failed", "push_failed"):
+        sys.exit(1)
+
+
+def cmd_audit(a) -> None:
+    from . import audit
+    r = audit.run(submit=a.submit, cv=a.cv)
+    _print({"missing": r["missing"], "submitted": r["submitted"]})
+
+
 def cmd(a) -> None:
-    {"check-u": cmd_check_u, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 

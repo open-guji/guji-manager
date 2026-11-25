@@ -61,7 +61,7 @@ def _known_u(led: Ledger) -> set[int]:
 
 
 def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, dry_run: bool = False,
-            force: bool = False, booktext="auto", src: str = "advance") -> dict:
+            force: bool = False, booktext="auto", src: str = "advance", label: str | None = None) -> dict:
     """切字后入账：现行产物里每页的切分，cells_sha 与该页现行账行不同就入一行。返回统计。
 
     ``booktext``：book-text 这册的现状（``uid.booktext.BookTextState``）；缺省 ``"auto"`` 按册配置去找，``None`` 不参考。
@@ -103,6 +103,8 @@ def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, 
                 adopted += k
                 d["id"] = line_id(book, cut.page, d.get("cells_sha"), d["map"])
             known.update(int(u) for u in d["map"].values())
+        if label:
+            d["label"] = label       # 哪个产物包的切分（标 main 钩子／sync 记；自检按它判断 main 包入过没有）
         new.append(d)
         led.lines.append(d)          # 同一页多次出现时后面的按新行对照（内存里）
         via.update(d.get("via") or {})
@@ -167,6 +169,22 @@ def init_from_book_text(book: str, char: dict, cord: dict | None, *, root=None, 
 def enabled(book: str, root=None) -> bool:
     """这册启用了 u（有身份账）。"""
     return ledger_path(book, root).exists()
+
+
+def mark_synced(book: str, label: str, *, root=None, src: str = "sync") -> bool:
+    """记一笔「main 包 ``label`` 已对过账、没有要入的页」（page 0、空 map 的册级行），自检就不再重取这个包。
+    已有同一笔 → 不写，返回 False。"""
+    import hashlib
+    led = Ledger.load(book, root)
+    lid = f"uid-{book}-sync-{hashlib.sha256(label.encode()).hexdigest()[:12]}"
+    if any(d.get("id") == lid for d in led.lines) or any(d.get("label") == label for d in led.lines):
+        return False
+    from .ledger import make_line
+    d = make_line(book, 0, None, {}, src=src)
+    d["id"] = lid
+    d["label"] = label
+    led.append([d])
+    return True
 
 
 def book_enabled(root=None) -> bool:
