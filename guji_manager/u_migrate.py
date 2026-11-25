@@ -268,6 +268,64 @@ def missing_anchor_copies(copies, patched: set[str]) -> list:
     return out
 
 
+def boxless_copies(copies, patched: set[str]) -> list:
+    """``~u`` 人裁抄件既没框（``target.anchor.bbox``）也没补锚档：cv 只能按 ts／格号老规则认格，常认不上（应为 0）。"""
+    return [e for e in copies if str(e.id).endswith(SUFFIX) and not (e.target.anchor or {}).get("bbox")
+            and e.id not in patched]
+
+
+ANCHOR_SPACE = "raw_page_px@top-right"     # 同 cv feedback.anchor.SPACE（Step3 quad_page 的外接框）
+
+
+def u_anchor_fill(book: str, copies, led, store) -> tuple[list[dict], list[dict]]:
+    """给无框无档的 ``~u`` 人裁抄件按身份账出补锚档行：u 在本页现行账行里的格 → 现行切分里这一格的框
+    （cv ``bindings._cells_versions``＋``_cell_index``，同 cv 绑定口径）。账行 cells_sha 要等于现行产物戳，否则不补。
+    → (补锚档行, 补不了的 [{event, key, u, why}])。不写文件。"""
+    from ._cv import _cell_index, _cells_versions
+    from .uid.source import page_cells_sha
+    memo: dict[int, tuple] = {}
+    out, bad = [], []
+    for e in copies:
+        a = e.target.anchor or {}
+        u = a.get("u")
+        key = str(e.target.key)
+        parts = key.split(":")
+        if u is None or len(parts) != 4:
+            bad.append({"event": e.id, "key": key, "u": u, "why": "没 u 或格号不是 册:页:列:格"})
+            continue
+        page = int(parts[1])
+        if page not in memo:
+            sha = page_cells_sha(book, page, store)
+            line = led.by_sha(page, sha) if sha else None
+            if line is None:
+                memo[page] = (None, "账里没有本页现行切分（先 guji uid sync）")
+            else:
+                vs = _cells_versions(book, page, store)
+                cur = vs[-1] if vs and vs[-1][0] == "current" else None
+                memo[page] = ({int(v): k for k, v in line["map"].items()}, _cell_index(cur[3]) if cur else {}, sha) \
+                    if cur else (None, "本页没有现行切分产物")
+        m = memo[page]
+        if m[0] is None:
+            bad.append({"event": e.id, "key": key, "u": u, "why": m[1]})
+            continue
+        inv, idx, sha = m
+        cell = inv.get(int(u))
+        if cell is None:
+            bad.append({"event": e.id, "key": key, "u": u, "why": "u 不在本页现行账行（作废或拆并了）"})
+            continue
+        _, _, col, rest = cell.split(":")
+        slot = rest.rstrip("abcdefghijklmnopqrstuvwxyz")
+        hit = idx.get((int(col), int(slot), rest[len(slot):]))
+        if not hit:
+            bad.append({"event": e.id, "key": key, "u": u, "why": f"现行切分里没有 {cell} 的框"})
+            continue
+        out.append({"event": e.id, "key": key, "ts": e.ts, "shape": (e.payload or {}).get("shape"),
+                    "anchor": {"v": 1, "space": ANCHOR_SPACE, "bbox": [round(float(x), 2) for x in hit[0]],
+                               "source": "backfill:u", "cells_sha": sha},
+                    "evidence": {"method": "u", "u": int(u), "at": cell.split(":", 2)[2]}})
+    return out, bad
+
+
 def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, event_log) -> dict:
     """把 `plan` 的迁出真写进本地数据目录（只追加）。→ {裁定, 人裁, 待审条目, 裁定没抄, files}。"""
     from .ruling_write import screen

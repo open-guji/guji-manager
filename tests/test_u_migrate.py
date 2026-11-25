@@ -184,3 +184,25 @@ def test_tidy_recheck(tmp_path):
     # 新开时同格已有活条目：并进去
     M.add_recheck(st, "80:6:3", {"prior": {"human": "稱"}}, u=5, now_char="偁", by="a", src="script:u-closeout")
     assert len([r for r in st.items.values() if r["state"] == "open"]) == 1
+
+
+def test_u_anchor_fill(tmp_path, monkeypatch):
+    """无框无档的 ~u 抄件：按账取 u 在现行切分的格框出补锚档；账行与现行戳不符、u 不在现行账行的不补。"""
+    from types import SimpleNamespace as NS
+    from guji_manager import _cv
+    from guji_manager.uid import source
+    led = _led(tmp_path)                                      # 第 3 页 S1：3:1:1..5 → u1..5
+    monkeypatch.setattr(source, "page_cells_sha", lambda b, p, st: {3: "S1", 4: "OTHER"}.get(p))
+    monkeypatch.setattr(_cv, "_cells_versions", lambda b, p, st: [("current", 0.0, 9e9, "cells")], raising=False)
+    monkeypatch.setattr(_cv, "_cell_index", lambda c: {(1, 4, ""): ([10, 20, 30, 40], "char")}, raising=False)
+
+    def ev(i, key, u):
+        return NS(id=i, ts="t", target=NS(key=key, anchor={"source_rev": "r", "u": u}), payload={"shape": "黃"})
+    lines, bad = M.u_anchor_fill(B, [ev("a~u", f"{B}:3:1:2", 4), ev("b~u", f"{B}:3:1:3", 99),
+                                     ev("c~u", f"{B}:4:1:1", 1)], led, store=None)
+    assert [d["event"] for d in lines] == ["a~u"]
+    assert lines[0]["anchor"]["bbox"] == [10, 20, 30, 40] and lines[0]["evidence"] == {"method": "u", "u": 4, "at": "1:4"}
+    assert {x["event"]: x["why"][:4] for x in bad} == {"b~u": "u 不在", "c~u": "账里没有"}
+    copies = [NS(id="a~u", target=NS(anchor={"u": 4})), NS(id="x~u", target=NS(anchor={"bbox": [1]})),
+              NS(id="y~u", target=NS(anchor={"u": 1})), NS(id="z", target=NS(anchor={}))]
+    assert [e.id for e in M.boxless_copies(copies, {"y~u"})] == ["a~u"]

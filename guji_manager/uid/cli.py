@@ -240,6 +240,12 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("-v", "--verbose", action="store_true", help="0 的册也列")
     q.add_argument("-w", "--workspace", default=None)
 
+    q = s.add_parser("anchor-fill", help="~u 人裁抄件补锚档：原件有档的照抄；无框无档的按身份账取 u 在现行切分的框（缺省只报数）")
+    q.add_argument("books", nargs="*", help="册（缺省：有 ~u 抄件的全部册）")
+    q.add_argument("--write", action="store_true", help="真写 feedback/anchors/<册>.jsonl（只追加）")
+    q.add_argument("-o", "--out", default=None, help="补不了的清单（jsonl）")
+    q.add_argument("-w", "--workspace", default=None)
+
     q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
     q.add_argument("book", help="cv 册（如 vol28）")
     q.add_argument("--ws", required=True, help="中心库工作区（如 siku-zongmu）")
@@ -419,18 +425,59 @@ def cmd_check_u(a) -> None:
             continue
         bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), M.void_seen(log, b))
         # 第二项（11-25）：~u 抄件要有补锚档（cv 按事件 id 查框；缺了老人裁判 unanchored、seed_admit 报 human_unbound）
-        anc = M.missing_anchor_copies([e for e in raw if str(e.target.key).startswith(f"{b}:")], M.anchor_patch_ids(fb, b))
-        total += len(bad) + len(anc)
-        n_anc += len(anc)
+        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:")]
+        pid = M.anchor_patch_ids(fb, b)
+        anc = M.missing_anchor_copies(mine, pid)
+        nob = [e for e in M.boxless_copies(mine, pid) if e not in anc]     # 第三项：~u 抄件无框无档（guji uid anchor-fill 补）
+        total += len(bad) + len(anc) + len(nob)
+        n_anc += len(anc) + len(nob)
         rows += [f"{b}\t{e.target.key}\t{e.id}\t没u没记档" for e in bad]
         rows += [f"{b}\t{e.target.key}\t{e.id}\t抄件缺补锚档" for e in anc]
-        if bad or anc or a.verbose:
-            print(f"{b}\t{len(bad)}" + (f"\t缺补锚档 {len(anc)}" if anc else ""))
+        rows += [f"{b}\t{e.target.key}\t{e.id}\t抄件无框无档" for e in nob]
+        if bad or anc or nob or a.verbose:
+            print(f"{b}\t{len(bad)}" + (f"\t缺补锚档 {len(anc)}" if anc else "") + (f"\t无框无档 {len(nob)}" if nob else ""))
     if a.out:
         Path(a.out).write_text("册\t格\t事件\t问题\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
-    print(f"合计 {total}" + (f"（其中 ~u 抄件缺补锚档 {n_anc}：guji uid check-u 修不了，按 u_migrate.copy_anchor_patches 补）" if n_anc else ""))
+    print(f"合计 {total}" + (f"（其中 ~u 抄件绑不上格 {n_anc}：guji uid anchor-fill 补）" if n_anc else ""))
     if total:
         sys.exit(1)
+
+
+def cmd_anchor_fill(a) -> None:
+    """~u 人裁抄件补锚档：原件有档的抄一行；无框无档的按身份账取 u 在现行切分里的框。只追加 ``feedback/anchors/<册>.jsonl``。
+    产物用现行产物根（``GUJI_PRODUCTS_DIR``）：先把各册 main 包取下来（``guji products pack fetch <册> --to …``）。"""
+    from .. import u_migrate as M
+    from .._cv import EventLog, ProductStore, counts_as_human
+    from ..feedback.web_votes import HUMAN_VS
+    from .ledger import Ledger
+    _ws(a)
+    log = EventLog()
+    fb = Path(log.events_dir).parent
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
+    books = a.books or sorted({str(e.target.key).split(":", 1)[0] for e in raw if str(e.id).endswith(M.SUFFIX)})
+    store = ProductStore()
+    out, bads = {}, []
+    for b in books:
+        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:")]
+        if a.write:
+            M.copy_anchor_patches(log, [(e.id[:-len(M.SUFFIX)], e.id, b) for e in mine if str(e.id).endswith(M.SUFFIX)])
+        todo = M.boxless_copies(mine, M.anchor_patch_ids(fb, b))
+        if not todo:
+            continue
+        lines, bad = M.u_anchor_fill(b, todo, Ledger.load(b), store)
+        bads += [{"book": b, **x} for x in bad]
+        if a.write and lines:
+            f = fb / "anchors" / f"{b}.jsonl"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            raw_txt = f.read_text(encoding="utf-8") if f.exists() else ""
+            with open(f, "a", encoding="utf-8") as fh:
+                if raw_txt and not raw_txt.endswith("\n"):
+                    fh.write("\n")
+                fh.writelines(json.dumps(d, ensure_ascii=False, separators=(",", ":")) + "\n" for d in lines)
+        out[b] = {"补": len(lines), "补不了": len(bad), **({"why": dict(Counter(x["why"] for x in bad))} if bad else {})}
+    if a.out and bads:
+        Path(a.out).write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in bads), encoding="utf-8")
+    _print(out)
 
 
 def cmd_tidy_recheck(a) -> None:
@@ -472,7 +519,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
