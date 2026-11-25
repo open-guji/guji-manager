@@ -38,3 +38,8 @@ def test_rc_branch_deleted_still_checked():
 def test_rc_tag_ignored():
     code, lines = verdict(MAIN, {"v0.4.7": "c1", "v0.4.8": "c3", "v0.4.9-rc.1": "x"}, HEADS)
     assert code == 0 and not any("rc.1" in ln for ln in lines)
+
+
+def test_abandoned_version_is_not_flagged():
+    code, lines = verdict([("b" * 40, "发 v0.7.0：rc/v0.7.0 合进 main")], {}, ["rc/v0.7.0"])
+    assert code == 0 and "作废" in lines[0]

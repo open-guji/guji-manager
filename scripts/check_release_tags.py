@@ -20,6 +20,10 @@ import sys
 
 _REL = re.compile(r"rc/v(\d+\.\d+\.\d+)\b")
 _TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+#: 进过 main 却作废、不打 tag 的版本号（版本 → 理由）。tag 不能删，所以只能在这里登记。
+ABANDONED = {
+    "0.7.0": "2026-11-25 用户定「不要总是升级 minor，先升 patch」，同一批改动改发 0.6.9",
+}
 
 
 def verdict(main_fp: list[tuple[str, str]], tags: dict[str, str],
@@ -42,7 +46,9 @@ def verdict(main_fp: list[tuple[str, str]], tags: dict[str, str],
     for v in sorted(versions, key=lambda s: tuple(int(x) for x in s.split("."))):
         tag, rel = "v" + v, released.get(v)
         got = tags.get(tag)
-        if got is None:
+        if got is None and v in ABANDONED:
+            lines.append(f"· {tag} 作废不打 tag：{ABANDONED[v]}")
+        elif got is None:
             if rel:
                 bad = True
                 lines.append(f"✗ {tag} 已发进 main（{rel[:8]}）但没有 tag：在这个合并提交上补打")
