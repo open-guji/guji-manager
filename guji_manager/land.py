@@ -36,6 +36,7 @@ def plan_book(store: P.ItemStore, cells: list[dict], *, src: str, fps: dict[str,
     """对账（只在内存里算，不写文件）：返回 reconcile 的计数明细与 ``changed``。"""
     work = P.ItemStore(store.path, store.text_id, store.chapter)
     work.items = copy.deepcopy(store.items)
+    work.pending = list(store.pending)             # 对账前已追加的行（如还原误重开）一并写出
     res = P.reconcile(work, cells, src=src, fps=fps or {}, by=by, keep_src=HAND_SRC, fp_reopen=False, us=us)
     res["changed"] = any(res[k] for k in CHANGE_KEYS)
     res["_store"] = work
@@ -91,6 +92,36 @@ def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[st
         if ((o[0].get("doc") or {}).get("alt") or []) != ((n[0].get("doc") or {}).get("alt") or []):
             out.append(cell)
     return out
+
+
+def repair_reopened(store: P.ItemStore, by: str = "") -> list[str]:
+    """上一版 land 把「已裁复审格＋补 alt」误重开了（op=machine:doc+reopen、人工来源、doc.review=human）：还原成 resolved。
+    人裁事件不动，只把条目状态改回（QTW 11-25 004:92:4:14、019:120:6:19）。"""
+    out = []
+    for r in list(store.items.values()):
+        if (r["state"] == "open" and str(r.get("src") or "").startswith(HAND_SRC) and r.get("op") == "machine:doc+reopen"
+                and (r.get("doc") or {}).get("review") == "human"):
+            store.put(r, op="machine:restore-resolved", by=by, why="land: 误重开还原（人裁格补 alt 不改状态）", state="resolved")
+            out.append(r["cell"])
+    return out
+
+
+def sheet_stale(data: Path, text_id: str, chapter: str, store: P.ItemStore) -> list[str]:
+    """条目（派生源）与线上单（pending.json）不一致的格：条目有 alt、单上没有或不同（QTW 11-25 002:204:6:3）。"""
+    f = P.sheet_path(data, text_id, chapter)
+    if not f.exists():
+        return []
+    try:
+        sheet = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    on = {c.get("id"): c for c in sheet.get("cells") or []}
+    out = []
+    for r in store.by_state(*P.SHOWN):
+        want = (r.get("doc") or {}).get("alt") or []
+        if want and r["id"] in on and (on[r["id"]].get("alt") or []) != want:
+            out.append(r["cell"])
+    return sorted(out)
 
 
 def human_cells(ws: Path, book: str) -> set[str]:
@@ -251,6 +282,13 @@ def move_guard(plan: dict, text_id: str, rev: str | None, fetch=None) -> dict | 
     return None
 
 
+def _sheet_stale_now(data: Path, text_id: str, chapter: str) -> bool:
+    try:
+        return bool(sheet_stale(data, text_id, chapter, P.ItemStore.open(data, text_id, chapter)))
+    except (OSError, SystemExit):
+        return False
+
+
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
          digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True,
          human: set[str] | None = None) -> dict:
@@ -259,7 +297,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     from .datastore.workcopy import data_dir
     data = data_dir(ws)
     items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
-    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res):
+    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res) and not _sheet_stale_now(data, text_id, chapter):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     marker = ws / "reports" / book / "_land" / "needs_sync.json"
     if apply and sync and marker.exists():                       # 上次本机写好了但没推成：先补推
@@ -277,13 +315,21 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
         res = {**res, "cells": kept}
     from .u_stamp import u_map
     us = u_map(book, [c.get("cell") or c.get("a") or "" for c in res["cells"]])   # 册有字格身份账才有（T2），没账空
-    plan = plan_book(store, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
+    base = P.ItemStore(store.path, store.text_id, store.chapter)
+    base.items = copy.deepcopy(store.items)
+    restored = repair_reopened(base, by)
+    plan = plan_book(base, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
         structural.append("alt")
+    stale = sheet_stale(data, text_id, chapter, plan["_store"])          # 条目有 alt、线上单没有：单要重派生
+    if stale:
+        structural.append("sheet")
+    if restored:
+        structural.append("restore")
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg,
+    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "sheet_stale": stale, "restored": restored,
            "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0

@@ -344,3 +344,27 @@ def test_resolved_recheck_cell_gets_alt_only(tmp_path):
     assert out["改"] == ["1:2:3"] and out["保持已裁"] == ["1:2:3"]
     it = s.find("1:2:3")[0]
     assert it["state"] == "resolved" and it["doc"]["alt"] and it["doc"]["review"] == "human"
+
+
+def test_hand_resolved_recheck_not_reopened_and_restored(tmp_path):
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    s.put(None, op="open", by="x", at="2026-11-01", id="pi_1", cell="1:2:3", fp="f", state="resolved",
+          doc={"recheck": True, "review": "human"}, src="human:qtw-web")
+    s.put(None, op="machine:doc+reopen", by="x", at="2026-11-01", id="pi_2", cell="1:2:4", fp="g", state="open",
+          doc={"recheck": True, "review": "human"}, src="human:qtw-web")
+    s.save()
+    s = P.ItemStore(s.path, "t", "001")
+    out = P.reconcile(s, [{"cell": "1:2:3", "review": "pending", "alt": [{"c": "字"}]}], src="land:b",
+                      fps={"1:2:3": "f"}, keep_src=land.HAND_SRC, fp_reopen=False)
+    assert out["重开"] == [] and s.find("1:2:3")[0]["state"] == "resolved"
+    assert land.repair_reopened(s) == ["1:2:4"] and s.find("1:2:4")[0]["state"] == "resolved"
+
+
+def test_sheet_stale_detects_missing_alt(tmp_path):
+    s = _store(tmp_path, [_cell("1:2:3")])
+    it = s.find("1:2:3")[0]
+    s.put(it, op="machine:doc", doc={**it["doc"], "alt": [{"c": "柳"}]})
+    sh = P.sheet_path(tmp_path, "t", "001")
+    sh.parent.mkdir(parents=True)
+    sh.write_text(json.dumps({"cells": [{"id": it["id"], "cell": "1:2:3"}]}), encoding="utf-8")
+    assert land.sheet_stale(tmp_path, "t", "001", s) == ["1:2:3"]
