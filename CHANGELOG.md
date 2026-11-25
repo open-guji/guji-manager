@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：`guji swap book-text --glyph-db` 的 R1 闸不再把**身份账已作废格**（旧包 u 在新包 `u_retired` 里，gone／into）的刻例算 orphan，只计数（`retired`，写进 R1 说明）。重切删掉的格本来就是库 id 留原键、读时由 cv `bindings.rebind_library_shapes` 按裁决事件换现格，不该改键；原先 W1 重切后带 --glyph-db 换单会被 r1-stop 拦。没作废却不在新包的格照旧拦。
 - PATCH（11-25，CV0）：耗时统计跟上新步骤。`guji perf top`（本机与 `--remote`）按 cv 四大步（版面／切字／识字／定字，取自管线骨架 `stages:`，闸归它挂的那一步）分组；`--remote` 先列任务阶段（prep／run／push／uid／recheck…，取自任务库 event），prep 再拆分段（执行方从准备脚本「== 准备耗时」解析，记进事件 `data.prep_parts`）。新 `guji perf spans <步> [--remote]` 看一步的分段排行。步内分段名单 `PERF_HOOKS` 补第三轮：row_segment（segment_column、U-Net 判官各方法、layout_for）、column_band（band_strip）、cell_shrink、rare_candidates（rare_for_batch、CNN 批量、笔画重排）、`RunContext.image`／`raw_page`，另按 STEPS 自动给每个有 `render` 的步套壳，冷缓存再生（`<Step类>.render`）单独可见并在 top／spans 里小计。跑测试时不再往正式任务库推耗时（11-18 起有 cv／manager 测试的合成步 t_step_a 等进了 D1）。不动 cv 产物与指纹，L0。
 - 文档（11-25，GM4）：wiki「换线上人审单」加第零节现行口径——`guji pipeline … --text-id` 默认收尾并写回（#1004），出包不再单独换包／换单；裁定键放宽与 `u`、`ruling_anchor_loose`、收单自动、仍要手工的兜底。只改文档（L0）。
 

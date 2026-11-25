@@ -181,6 +181,27 @@ def test_rekey_gate_orphan_and_ok(tmp_path):
     assert rekey_gate(db, rows, 4)["ok"]
 
 
+def test_rekey_gate_retired_u_not_orphan(tmp_path):
+    """身份账已作废（u_retired gone／into）的旧格：重切删格，库键留原样读时换现格——只计数不拦（W1）。"""
+    import sqlite3
+    from guji_manager.swap.booktext import rekey_gate, retired_keys
+    db = tmp_path / "g.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE instances(instance_id TEXT, source_id TEXT, label TEXT)")
+    c.executemany("INSERT INTO instances VALUES(?,?,?)", [("v2:vol04:1:1:2", "s", "乙"), ("v2:vol04:1:1:3", "s", "丙")])
+    c.commit(); c.close()
+    cell = lambda a, u: {"a": a, "c": "x", "u": u}
+    old = {"pages": [{"columns": [{"cells": [cell("1:1:1", 1), cell("1:1:2", 2), cell("1:1:3", 3)]}]}]}
+    new = {"pages": [{"columns": [{"cells": [cell("1:1:1", 1)]}]}], "u_retired": [{"u": 2, "gone": True}, {"u": 3, "into": 1}]}
+    assert retired_keys(old, new) == {"1:1:2", "1:1:3"}
+    rows = [dict(old="1:1:1", new="1:1:1", kind="同格"), dict(old="1:1:2", new="", kind="删"), dict(old="1:1:3", new="", kind="删")]
+    g = rekey_gate(db, rows, 4, retired=retired_keys(old, new))
+    assert g["ok"] and g["retired"] == 2 and g["orphan"] == []
+    new["u_retired"] = [{"u": 2, "gone": True}]                      # 3 没作废却不在新包：照旧拦
+    g = rekey_gate(db, rows, 4, retired=retired_keys(old, new))
+    assert not g["ok"] and g["orphan"] == ["v2:vol04:1:1:3"] and g["retired"] == 1
+
+
 def test_finish_redirect_and_unanchored(tmp_path):
     from guji_manager.swap import finish as F
     t1 = [{"旧格": "vol01:1:1:1", "新格": "vol01:1:1:2", "类别": "改号"}, {"旧格": "vol01:1:1:2", "新格": "", "类别": "删"},
