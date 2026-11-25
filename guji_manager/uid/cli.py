@@ -303,7 +303,7 @@ def cmd_web_backfill(a) -> None:
     except Exception:                       # 没装 cv、读不到书配置：退化成 ==
         same = None
     rows = B.load_votes(conn, a.site_book, a.site_vol)
-    res = B.plan_rows(B.Resolver(led, same), rows)
+    res = B.plan_rows(B.Resolver(led, same), rows, B.load_vote_events(conn, a.ws, a.book))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     with open(out / "配上.jsonl", "w", encoding="utf-8") as fh:
