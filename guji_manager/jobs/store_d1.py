@@ -323,6 +323,14 @@ def notify_due(conn) -> list[dict]:
         f"   SELECT DISTINCT c.submitted_by FROM job c WHERE c.notified_at IS NULL AND c.status IN {_TERM_SQL}"
         "    AND NOT EXISTS (SELECT 1 FROM job q WHERE q.submitted_by = c.submitted_by AND q.status IN ('queued','running')))"
         " RETURNING id, kind, book, status, error, submitted_by, json_extract(spec, '$.why') AS why", [])])[0]
+    if rows:
+        # 单上的提醒（warn 事件）一起带回：重试成功前的失败、不挡单的补入账失败等，只看终态会漏（GM2 11-25 #17277）
+        sql = ("SELECT job_id, stage, msg FROM event WHERE level = 'warn'"
+               " AND job_id IN (SELECT value FROM json_each(?1)) ORDER BY id")
+        warns = conn.batch([(sql, [json.dumps([r["id"] for r in rows])])])[0]
+        for r in rows:
+            r["warns"] = [f"{w['stage']}：{w['msg']}" if w.get("stage") else w["msg"]
+                          for w in warns if w["job_id"] == r["id"]]
     by: dict[str, list[dict]] = {}
     for r in sorted(rows, key=lambda r: r["id"]):
         by.setdefault(r["submitted_by"], []).append(r)

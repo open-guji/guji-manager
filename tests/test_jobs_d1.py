@@ -76,6 +76,15 @@ def test_heartbeat_cancel_finish_notify(conn):
     assert len(S.notify_due(conn)) == 1
 
 
+def test_notify_due_carries_warn_events(conn):
+    a = _sub(conn, "h1")
+    _j, att = S.claim(conn, "w1")
+    S.event(conn, a["id"], att["id"], "uid", "补入账失败（不挡本单）", level="warn")
+    S.finish(conn, a["id"], att["id"], "succeeded")
+    job = S.notify_due(conn)[0]["jobs"][0]
+    assert job["warns"] == ["uid：补入账失败（不挡本单）"]
+
+
 def test_notify_waits_until_all_done(conn):
     a = _sub(conn, "h1")
     _sub(conn, "h2", book="vol02")
