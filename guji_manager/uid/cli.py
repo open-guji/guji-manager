@@ -330,6 +330,7 @@ def cmd_migrate_plan(a) -> None:
         (out / "收口.json").write_text(json.dumps(summ, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"收口": summ}, ensure_ascii=False))
     if a.write:
+        M.check_close_inputs(co, a.review_items or ((a.items or [None])[0]))      # 先核再写：别写一半才报错
         w = M.apply(res, ruling_events=rul_ev, human_events=hum_ev, ruling_log=store.log, event_log=EventLog())
         if co is not None:
             c = M.write_close(a.book, co, rescued=rescued, unscreened=w["裁定没抄"], human_events=hum_ev,

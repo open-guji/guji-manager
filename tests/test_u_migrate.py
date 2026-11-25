@@ -105,3 +105,23 @@ def test_rescue_and_close(tmp_path):
     assert [r["h"]["id"] for r in co["review"]] == ["c"] and co["review"][0]["u"] == 1
     assert {(v["stream"], v["id"]) for v in co["void"]} == {("events", "d"), ("events", "e"), ("rulings", None)}
     assert co["withdraw"] == [{"id": "pi_x", "file": "f.jsonl", "reason": "格号不在现行账里"}]
+    # 有人裁要转待审却没给条目文件：写之前就报错（11-25 全唐文 046／082 写了一半才报）
+    import pytest
+    with pytest.raises(SystemExit, match="什么都没写"):
+        M.check_close_inputs(co, None)
+    M.check_close_inputs(co, "f.jsonl")
+    M.check_close_inputs({"review": [], "void": []}, None)
+    M.check_close_inputs(None, None)
+    calls = []
+
+    class _Log:
+        def append(self, xs):
+            calls.append(xs)
+    import os
+    os.environ["GUJI_FEEDBACK_DIR"] = str(tmp_path / "fb")
+    try:
+        with pytest.raises(SystemExit):
+            M.write_close(B, co, rescued=got, unscreened=[], human_events={}, event_log=_Log(), review_file=None)
+    finally:
+        del os.environ["GUJI_FEEDBACK_DIR"]
+    assert calls == [] and not (tmp_path / "fb").exists()
