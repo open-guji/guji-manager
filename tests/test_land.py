@@ -262,3 +262,16 @@ def test_text_plan_fills_blank_from_pack_and_keeps_human(tmp_path, monkeypatch):
     assert got["1:1:1"][3] == "巿"                      # □ 补包字
     assert "1:1:2" not in got                           # 没变
     assert "1:1:3" not in got or got["1:1:3"][3] == "乙"   # 人裁最高，不被包改
+
+
+def test_hand_cell_gets_alt_but_nothing_else(tmp_path):
+    """手加格没有候选字：补 alt；doc 里别的键一律不碰（机器的 note／原因不覆盖）。"""
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    s.add("5:5:5", {"note": "人写的备注"}, by="u", src="human:qtw-web")
+    s.save()
+    st = P.ItemStore(s.path, "t", "001")
+    alt = [{"c": "柳", "s": 0.9}]
+    plan = land.plan_book(st, [{**_cell("5:5:5"), "note": "机器想改", "alt": alt}], src="land")
+    doc = plan["_store"].find("5:5:5")[0]["doc"]
+    assert doc["alt"] == alt and doc["note"] == "人写的备注" and "pending_reason" not in doc
+    assert land.alt_changed(st, plan["_store"], plan["改"]) == ["5:5:5"]

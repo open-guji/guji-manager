@@ -357,6 +357,17 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
         print(f"⚠ {book} audit alt 退出 {r.returncode}，仍有 {len(lack)} 格没有相似字卡片（环境缺 torch／权重？）：这些格上线会没有候选字", file=sys.stderr)
 
 
+def hand_without_alt(ws: Path, book: str, text_id: str, chapter: str) -> list[str]:
+    """条目里来源是人工／脚本（手加格）、还开着、doc 里没有候选字（alt）的格号：要补 alt。"""
+    from .datastore.workcopy import data_dir
+    try:
+        store = P.ItemStore.open(data_dir(ws), text_id, chapter)
+    except (OSError, SystemExit):
+        return []
+    return sorted(r["cell"] for r in store.items.values()
+                  if r["state"] == "open" and str(r.get("src") or "").startswith(HAND_SRC) and not (r.get("doc") or {}).get("alt"))
+
+
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     """取新待审格并按 CV4 的次序并成完整条目 doc：pending_cells（带复审格、自检要放上单的格）→ 卡片字段 → 复审 → 自检
     → 待审原因 → 锚点原因 → 相似字字形图（按内容寻址）。返回 (res, 单图所在目录)。"""
@@ -365,14 +376,20 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     products = products_of(ws)
     rc = _E.read_recheck(Path(a.recheck), book) if a.recheck else {}
     rows, kinds = _E.read_seg_flags(Path(a.seg_flags), products, book) if a.seg_flags else ([], [])
-    res = cv_pending_cells(ws, book, out_dir, extra=list(rc))
+    hand = hand_without_alt(ws, book, a.text_id, chapter_of(book))          # 手加格没有候选字：补 alt（只补这一个键）
+    res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand)
     added = _E.seg_added_cells(rows, kinds, {c["cell"] for c in res["cells"]})
     if added:
-        res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + added)
+        res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand + added)
     if a.no_enrich:
         return res, out_dir
     if not getattr(a, "no_audit_alt", False):
-        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], a.recheck)
+        extra_f = None
+        if a.recheck or hand:
+            extra_f = out_dir / "alt-extra.tsv"
+            lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
+            extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
+        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None)
     cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
     if rc:
         cells = _E.merge_recheck(cells, rc)

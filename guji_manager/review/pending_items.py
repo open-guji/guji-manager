@@ -269,6 +269,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
         u = us.get(cell) if us else c.get("u")      # 没给 us 时认单上自带的 u（export_sheet 导出的单）
         u = u if isinstance(u, int) and not isinstance(u, bool) else None
         doc = _cell_doc(c)
+        doc_alt = doc.get("alt")
         want = "resolved" if doc.get("review") == "human" else "open"
         r = None
         if u is not None:
@@ -294,7 +295,10 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
         seen.add(r["id"])
         if keep_src and str(r.get("src") or "").startswith(keep_src):
             # 人工加的格（手加、点坏格等）：字段一律以人为准，机器不碰（补缺的键也算「改」，会让没变的册被判有变）
-            doc = r.get("doc") or {}
+            old_doc = r.get("doc") or {}
+            doc = old_doc
+            if doc.get("alt") in (None, [], ()) and (c.get("alt") or doc_alt):        # 唯一的例外：手加格没有候选字时补 alt（别的键一律不碰）
+                doc = {**old_doc, "alt": c.get("alt") or doc_alt}
         upd: dict = {}
         ops = []
         if u is not None and r.get("u") is None:
