@@ -1,8 +1,9 @@
 """一页「这份切分」从哪来：cv 产物（切字后入账）或 book-text 的 char＋cord（从现行文本重建账）。
 
-两边的框都折成 cord 空间（左上原点 ``[x, y, w, h]``），口径同 book-text 导出
-（``formats/guji_page_cv``：``tr_bbox_to_xywh(quad_bounds(quad_page), W)``），所以从 book-text 建的账与之后从产物入账的
-行可以直接按框对照。
+两边的框都折成 cord 空间（左上原点 ``[x, y, w, h]``），口径同 book-text 导出（``formats/guji_page_cv``）：
+字框（Step4 ``cell_shrink`` 的 ``bbox_page``）优先，没有字框（空格）再用格四角的外接框 ``quad_bounds(quad_page)``。
+所以从 book-text 建的账与之后从产物入账的行可以直接按框对照（11-25 试点实测：只用格框时 vol31 有 4,518 格 IoU 不够、
+靠中心距才配上）。
 """
 from __future__ import annotations
 
@@ -52,12 +53,20 @@ def from_products(store, book: str, page: int, *, with_chars: bool = True) -> Pa
             chars = {s.id: s.char for s in page_slots(store, book, page, [])}
         except Exception:  # noqa: BLE001 —— 没跑到 seed_admit：不带字，只按框对照
             chars = {}
+    # 框口径同 book-text cord（formats/guji_page_cv）：字框（cell_shrink 的 bbox_page）优先，没有再用格的四角外接框
+    ink: dict[str, list] = {}
+    chars_idx = read_view(store, book, "cell_shrink", key, "char_index") if W else None
+    if chars_idx is not None:
+        for col in chars_idx.columns:
+            for ch in col.chars:
+                if ch.bbox_page is not None and ch.cell_type != "empty":
+                    ink[ch.id] = tr_bbox_to_xywh(ch.bbox_page, W)
     out: list[Cell] = []
     boxes: dict[str, list] = {}
     for col in sorted(cells.columns, key=lambda c: c.col):
         for c in sorted(col.cells, key=lambda c: c.order):
             cid = f"{book}:{page}:{col.col}:{c.slot}{c.sub or ''}"
-            b = tr_bbox_to_xywh(quad_bounds(c.quad_page), W) if (c.quad_page and W) else None
+            b = ink.get(cid) or (tr_bbox_to_xywh(quad_bounds(c.quad_page), W) if (c.quad_page and W) else None)
             if b:
                 boxes[cid] = b
             out.append(Cell(cid, xywh_to_box(b), chars.get(cid)))
