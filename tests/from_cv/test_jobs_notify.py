@@ -35,3 +35,16 @@ def test_missing_column_disables_quietly(monkeypatch):
     assert N.notify_submitters(db, msgs.append) == 0
     assert N.notify_submitters(db, msgs.append) == 0
     assert len(calls) == 1 and len(msgs) == 1       # 第二次不再碰库
+
+
+def test_message_carries_warns_of_succeeded_jobs():
+    ok = {**_j(1, "succeeded"), "warns": ["finish：失败，退回排队重试：环境（瞬时）：prep：db-pull 500",
+                                       "uid：字格身份账补入账失败（不挡本单）：push_failed"]}
+    bad = {**_j(2, "failed", "run：boom"), "warns": ["finish：失败：run：boom"]}
+    t = N.message([ok, bad])
+    assert "⚠ finish：失败，退回排队重试" in t and "⚠ uid：字格身份账补入账失败" in t
+    assert t.count("boom") == 1                     # 失败单的 finish 提醒就是 error，不重复
+    assert "成功的单也看一眼" in t
+    many = {**_j(3, "succeeded"), "warns": [f"reap：w{i} 失联" for i in range(5)]}
+    t = N.message([many])
+    assert "共 5 条提醒" in t and "w0 失联" not in t and "w4 失联" in t

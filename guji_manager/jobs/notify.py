@@ -41,9 +41,34 @@ def message(jobs: list[dict]) -> str | None:
     for j in jobs:
         tail = f"：{(j['error'] or '').splitlines()[0][:120]}" if j["status"] != "succeeded" and j["error"] else ""
         lines.append(f"#{j['id']} {j['book'] or j['kind']} {_ICON.get(j['status'], j['status'])}{tail}")
+        lines += _warn_lines(j)
     more = f"（另有 {len(lines) - 30} 条略）" if len(lines) > 30 else ""
     tip = "详情 `guji_jobs show <单号>`；失败的可 `guji_jobs retry <单号>`。" if bad else "详情 `guji_jobs show <单号>`。"
+    if any(j.get("warns") for j in jobs if j["status"] != "cancelled"):
+        tip += "⚠ 是单上的提醒（成功的单也看一眼：重试前的失败、不挡单的补入账失败等）。"
     return head + "\n" + "\n".join(lines[:30]) + more + "\n" + tip
+
+
+#: 每条单最多带几条提醒（warn 事件），每条截多长
+WARN_MAX, WARN_LEN = 3, 160
+
+
+def _warn_lines(j: dict) -> list[str]:
+    """单上的提醒（库层带回的 ``warns``：重试成功前那次的失败原因、uid 补入账失败等不挡单的事）。
+    失败单的最后一条（``finish`` 写的就是 error）已在上一行，不重复；取消单不报。"""
+    if j["status"] == "cancelled":
+        return []
+    first = ((j.get("error") or "").splitlines() or [""])[0][:60]
+    seen: list[str] = []
+    for w in j.get("warns") or ():
+        t = " ".join(str(w).split())
+        if not t or t in seen or (first and first in t and j["status"] != "succeeded"):
+            continue
+        seen.append(t)
+    out = [f"   ⚠ {t[:WARN_LEN - 1] + '…' if len(t) > WARN_LEN else t}" for t in seen[-WARN_MAX:]]
+    if len(seen) > WARN_MAX:
+        out.insert(0, f"   ⚠ 共 {len(seen)} 条提醒，只列最后 {WARN_MAX} 条")
+    return out
 
 
 def _send(to: str, text: str) -> str:
