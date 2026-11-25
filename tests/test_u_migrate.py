@@ -1,4 +1,6 @@
 """存量迁移提案（T2）：裁定直接迁／宽松迁／清单，人裁按框，待审条目，守恒。只出提案不写库。"""
+import json
+
 from guji_manager import u_migrate as M
 from guji_manager.uid.ledger import Ledger, make_line
 
@@ -72,6 +74,10 @@ def test_apply_appends_only(tmp_path):
     he = make_event("h1", 3, "confirm", EventTarget(step="seed_admit", unit="cell", key=cell, anchor={"source_rev": "r"}),
                     {"v": "confirm", "shape": "玄"})
     el.append([he])
+    anc = tmp_path / "fb" / "anchors" / f"{B}.jsonl"
+    anc.parent.mkdir(parents=True, exist_ok=True)
+    patch = {"event": he.id, "key": cell, "anchor": {"bbox": [1, 2, 3, 4], "source": "backfill:x"}}
+    anc.write_text(json.dumps(patch) + "\n" + json.dumps({**patch, "event": "other"}) + "\n")
     items = tmp_path / "031.items.jsonl"
     st = P.ItemStore(items)
     st.add("3:1:3", {"why": ["x"]}, by="t", src="human:t")
@@ -88,6 +94,10 @@ def test_apply_appends_only(tmp_path):
     nh = list(el.read("h1~u"))[0]
     assert nh.target.anchor == {"source_rev": "r", "u": 3} and nh.ts == he.ts
     assert next(iter(P.ItemStore(items).items.values()))["u"] == 3
+    # ~u 抄件带上原件的补锚档（cv 按事件 id 查框；11-25 全唐文 004 human_unbound），再写一次不重复
+    ls = [json.loads(x) for x in anc.read_text().splitlines()]
+    assert ls[-1] == {**patch, "event": he.id + "~u"} and len(ls) == 3 and str(anc) in w["files"]
+    assert M.copy_anchor_patches(el, [(he.id, he.id + "~u", B)]) == set() and len(anc.read_text().splitlines()) == 3
 
 
 def test_rescue_and_close(tmp_path):
@@ -145,6 +155,13 @@ def test_check_u_helpers(tmp_path):
     latest = M.latest_by_key(hum, f"{B}:")
     assert latest[f"{B}:1:1:1"].id == "a~u"
     assert [e.id for e in M.unaccounted(latest, {"c"})] == ["b"]
+    # 第二项：~u 抄件缺补锚档（原件有档、抄件没框也没档）
+    assert [e.id for e in M.missing_anchor_copies(hum, {"a"})] == ["a~u"]
+    assert M.missing_anchor_copies(hum, {"a", "a~u"}) == [] and M.missing_anchor_copies(hum, set()) == []
+    anc = tmp_path / "anchors" / f"{B}.jsonl"
+    anc.parent.mkdir()
+    anc.write_text(json.dumps({"event": "a"}) + "\n")
+    assert M.anchor_patch_ids(tmp_path, B) == {"a"} and M.anchor_patch_ids(tmp_path, "zz") == set()
 
 
 def test_tidy_recheck(tmp_path):
@@ -167,3 +184,25 @@ def test_tidy_recheck(tmp_path):
     # 新开时同格已有活条目：并进去
     M.add_recheck(st, "80:6:3", {"prior": {"human": "稱"}}, u=5, now_char="偁", by="a", src="script:u-closeout")
     assert len([r for r in st.items.values() if r["state"] == "open"]) == 1
+
+
+def test_u_anchor_fill(tmp_path, monkeypatch):
+    """无框无档的 ~u 抄件：按账取 u 在现行切分的格框出补锚档；账行与现行戳不符、u 不在现行账行的不补。"""
+    from types import SimpleNamespace as NS
+    from guji_manager import _cv
+    from guji_manager.uid import source
+    led = _led(tmp_path)                                      # 第 3 页 S1：3:1:1..5 → u1..5
+    monkeypatch.setattr(source, "page_cells_sha", lambda b, p, st: {3: "S1", 4: "OTHER"}.get(p))
+    monkeypatch.setattr(_cv, "_cells_versions", lambda b, p, st: [("current", 0.0, 9e9, "cells")], raising=False)
+    monkeypatch.setattr(_cv, "_cell_index", lambda c: {(1, 4, ""): ([10, 20, 30, 40], "char")}, raising=False)
+
+    def ev(i, key, u):
+        return NS(id=i, ts="t", target=NS(key=key, anchor={"source_rev": "r", "u": u}), payload={"shape": "黃"})
+    lines, bad = M.u_anchor_fill(B, [ev("a~u", f"{B}:3:1:2", 4), ev("b~u", f"{B}:3:1:3", 99),
+                                     ev("c~u", f"{B}:4:1:1", 1)], led, store=None)
+    assert [d["event"] for d in lines] == ["a~u"]
+    assert lines[0]["anchor"]["bbox"] == [10, 20, 30, 40] and lines[0]["evidence"] == {"method": "u", "u": 4, "at": "1:4"}
+    assert {x["event"]: x["why"][:4] for x in bad} == {"b~u": "u 不在", "c~u": "账里没有"}
+    copies = [NS(id="a~u", target=NS(anchor={"u": 4})), NS(id="x~u", target=NS(anchor={"bbox": [1]})),
+              NS(id="y~u", target=NS(anchor={"u": 1})), NS(id="z", target=NS(anchor={}))]
+    assert [e.id for e in M.boxless_copies(copies, {"y~u"})] == ["a~u"]
