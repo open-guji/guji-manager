@@ -205,7 +205,8 @@ def column_basis(book: str, page: int, col: int, store=None) -> dict | None:
     from ._cv import steps as _s  # noqa: F401
     st = store or ProductStore()
     try:
-        pw = st.read(book, "column_warp", page_key(page), "column_windows")
+        from .colview import merged_windows      # cv 切字五小步后 band／trim 在 2b／2c，拼回再算（老产物原样）
+        pw = merged_windows(st, book, page_key(page))
     except Exception:  # noqa: BLE001
         pw = None
     rec = None if pw is None else pw.column(col)
