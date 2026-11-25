@@ -163,3 +163,12 @@ def init_from_book_text(book: str, char: dict, cord: dict | None, *, root=None, 
 def enabled(book: str, root=None) -> bool:
     """这册启用了 u（有身份账）。"""
     return ledger_path(book, root).exists()
+
+
+def book_enabled(root=None) -> bool:
+    """这部书启用了 u：书的账目录（``<feedback>/uid``，一个工作区一部书）里已有任一册账。
+    没 book-text 的册（如全唐文 031 起）没法从 book-text init，靠它判断标 main 时要不要按 main 包首次入账。"""
+    from pathlib import Path
+    from .ledger import default_root
+    r = Path(root) if root else default_root()
+    return r.is_dir() and any(r.glob("*.jsonl"))

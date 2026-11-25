@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：标 main 自动入账（`uid/promote.py`）对**这部书已启用 u、本册还没账**的册（没 book-text 的册，如全唐文 031 起）按 main 包首次入账（读序发号）并推库；书是否启用看账目录里有没有任一册账（`uid.book_enabled`）。整部书没账的照旧不碰。L0。
+
 ## [0.6.10] - 2026-11-25
 
 - PATCH（11-25，CV0 u 收尾）：`guji uid migrate-plan --close`：清单上的人裁按高置信异体、列内近邻唯一同字再救 u；其余裁定、没字或格已不在的人裁作废（不删原事件，记 `feedback/lists/u_void/<册>.jsonl`），字不同的人裁转待审条目（recheck），格号不在账的条目撤下；出 `收口.tsv`／`收口.json`。双写期收尾：`u_stamp.current_cell` 对有账册里没 u 的记录返回 None（`latest_human`、`rulings-hits` 不再按格号认），六个写入点改 `stamp_strict`（盖不上整批报错）。`_cv` 加 `variant_group`。
