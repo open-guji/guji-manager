@@ -195,6 +195,15 @@ def _save(data: Path, st: dict, only, remote_in: dict[str, str], rev: int, *, ad
     write_state(data, **kw, base=base, rev=g, **({"only_revs": revs} if revs else {}))
 
 
+def _partial_only_guard(st: dict, only, what: str) -> None:
+    """部分副本（``pull --exclude``）也能 ``--only`` 推／同步，只要范围和没拉的前缀不相交：范围内本机就是全的，
+    guard 也只按范围比（2026-11-25：执行机按 ``run`` 排除拉的副本上补身份账推不上去）。相交才拒。"""
+    ex = [str(x) for x in (st.get("exclude") or [])]
+    hit = [x for x in only for e in ex if x.startswith(e) or e.startswith(x)]
+    if hit:
+        _partial_guard(st, f"{what} --only {hit[0]}（和没拉的前缀相交）")
+
+
 def _state(ws_dir: Path) -> tuple[Path, dict]:
     data = data_dir(Path(ws_dir))
     st = read_state(data)
@@ -243,7 +252,7 @@ def push_only(conn, ws_dir: Path, only, *, actor: str | None, dry_run: bool = Fa
     ws_dir = Path(ws_dir)
     only = norm_only(only)
     data, st = _state(ws_dir)
-    _partial_guard(st, "push")
+    _partial_only_guard(st, only, "push")
     ws = str(st["ws"])
     base_in = {k: v for k, v in (st.get("base") or {}).items() if in_only(k, only)}
     local = _local_under(data, only)
@@ -336,7 +345,7 @@ def sync_only(src, conn, ws_dir: Path, only, *, actor: str | None, cache=None, b
     ws_dir = Path(ws_dir)
     only = norm_only(only)
     data, st = _state(ws_dir)
-    _partial_guard(st, "sync")
+    _partial_only_guard(st, only, "sync")
     ws = str(st["ws"])
     base_in = {k: v for k, v in (st.get("base") or {}).items() if in_only(k, only)}
     local = _local_under(data, only)

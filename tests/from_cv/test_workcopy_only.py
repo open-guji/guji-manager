@@ -160,3 +160,26 @@ def test_push_only_cut_midway_retries_cleanly(repo, conn, tmp_path, monkeypatch)
     assert out["pushed"] == [EV]
     assert {f"evt_b_{i}" for i in range(2, 40)} <= {r["id"] for r in src.rows("events", "tws")}
     assert push_only(conn, a, ["feedback/events/"], actor="t")["action"] == "nothing"
+
+
+def test_push_only_on_partial_copy_ok_unless_range_hits_exclude(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """按 ``run`` 排除拉的部分副本：范围和没拉的前缀不相交就能 --only 推（执行机补身份账），相交、整体推照旧拒。"""
+    from guji_manager.datastore.workcopy import push, read_state, write_state
+    from guji_manager.datastore.workcopy_only import push_only, sync_only
+    src, cache, m = _two(repo, conn, tmp_path, monkeypatch)
+    a, da = m["a"]
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    st = read_state(da)
+    write_state(da, **{**st, "exclude": ["feedback/lists/proofing/"]})
+    _add_event(da, "evt_b_2", 2)
+    out = push_only(conn, a, ["feedback/events/"], actor="t")
+    assert out["pushed"] == [EV]
+    assert {r["id"] for r in src.rows("events", "tws")} >= {"evt_b_2"}
+    assert read_state(da)["exclude"] == ["feedback/lists/proofing/"]       # 还是部分副本
+    _add_event(da, "evt_b_3", 3)
+    assert sync_only(src, conn, a, ["feedback/events/"], actor="t", cache=cache)
+    for bad in (["feedback/lists/"], ["feedback/lists/proofing/x.jsonl"]):
+        with pytest.raises(SystemExit, match="部分副本"):
+            push_only(conn, a, bad, actor="t")
+    with pytest.raises(SystemExit, match="部分副本"):
+        push(conn, a, actor="t")
