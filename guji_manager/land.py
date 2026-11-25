@@ -277,7 +277,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
         res = {**res, "cells": kept}
     from .u_stamp import u_map
     us = u_map(book, [c.get("cell") or c.get("a") or "" for c in res["cells"]])   # 册有字格身份账才有（T2），没账空
-    plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
+    plan = plan_book(store, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
@@ -357,6 +357,30 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
         print(f"⚠ {book} audit alt 退出 {r.returncode}，仍有 {len(lack)} 格没有相似字卡片（环境缺 torch／权重？）：这些格上线会没有候选字", file=sys.stderr)
 
 
+def keep_old_alt(store: P.ItemStore, cells: list[dict]) -> list[dict]:
+    """新判里这格没算出 alt（卡片对不上、audit alt 没出）：宁可保留条目里原有的 alt，也不要冲掉（QTW 11-25：019/027 册 22 格候选字没了）。"""
+    out = []
+    for c in cells:
+        if not c.get("alt"):
+            live = store.find(c.get("cell") or "")
+            old = (live[0].get("doc") or {}).get("alt") if live else None
+            if old:
+                c = {**c, "alt": old}
+        out.append(c)
+    return out
+
+
+def hand_without_alt(ws: Path, book: str, text_id: str, chapter: str) -> list[str]:
+    """条目里来源是人工／脚本（手加格）、还开着、doc 里没有候选字（alt）的格号：要补 alt。"""
+    from .datastore.workcopy import data_dir
+    try:
+        store = P.ItemStore.open(data_dir(ws), text_id, chapter)
+    except (OSError, SystemExit):
+        return []
+    # 不再只认来源前缀：老单导入的手加格来源是 import:<rev>（QTW 11-25：6 个手加格没补上）；凡开着、没有候选字的条目都并进 extra
+    return sorted(r["cell"] for r in store.items.values() if r["state"] == "open" and not (r.get("doc") or {}).get("alt"))
+
+
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     """取新待审格并按 CV4 的次序并成完整条目 doc：pending_cells（带复审格、自检要放上单的格）→ 卡片字段 → 复审 → 自检
     → 待审原因 → 锚点原因 → 相似字字形图（按内容寻址）。返回 (res, 单图所在目录)。"""
@@ -365,14 +389,20 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     products = products_of(ws)
     rc = _E.read_recheck(Path(a.recheck), book) if a.recheck else {}
     rows, kinds = _E.read_seg_flags(Path(a.seg_flags), products, book) if a.seg_flags else ([], [])
-    res = cv_pending_cells(ws, book, out_dir, extra=list(rc))
+    hand = hand_without_alt(ws, book, a.text_id, chapter_of(book))          # 手加格没有候选字：补 alt（只补这一个键）
+    res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand)
     added = _E.seg_added_cells(rows, kinds, {c["cell"] for c in res["cells"]})
     if added:
-        res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + added)
+        res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand + added)
     if a.no_enrich:
         return res, out_dir
     if not getattr(a, "no_audit_alt", False):
-        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], a.recheck)
+        extra_f = None
+        if a.recheck or hand:
+            extra_f = out_dir / "alt-extra.tsv"
+            lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
+            extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
+        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None)
     cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
     if rc:
         cells = _E.merge_recheck(cells, rc)
@@ -404,11 +434,28 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--text", action="store_true", help="对账后算 book-text 计划：包放行字与 book-text dev 逐格比（只读，出 reports/<册>/_land/text-plan.tsv）")
     p.add_argument("--text-apply", action="store_true", help="计划里有字要改的册写回 book-text（独立 worktree、local_check、推 dev；1.x 开 PR）；隐含 --text")
     p.add_argument("--book-text", help="book-text 仓目录（--text 用）")
+    p.add_argument("--keep-files", action="store_true", help="每册收完不清 _packs／导出／单格图（缺省清，盘紧的执行机用）")
     p.add_argument("--no-audit-alt", action="store_true", help="卡片缺格时不自动先跑 guji audit alt")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
                    help="先跑 cv：其后的参数原样交 `guji-cv pipeline …`，跑完再收尾")
+
+
+def clean_book(ws: Path, book: str) -> float:
+    """这册收完就清（执行机盘紧，QTW 11-25 只剩 1.5G）：``_packs/*/<册>``（再取就有）、本册导出目录、本册单格图缓存。
+    不碰 reports 其余、book-text、数据目录；返回释放的 GB。"""
+    import shutil
+    from .swap import _du
+    freed = 0.0
+    for p in [*(ws / "_packs").glob(f"*/{book}"), ws / "reports" / book / "_land" / "export"]:
+        if p.exists():
+            freed += _du(p)
+            shutil.rmtree(p, ignore_errors=True)
+    for f in (ws / "reports" / book / "_land").glob("*.webp"):      # 单格图已传 R2、条目已落库
+        freed += f.stat().st_size / 2 ** 30
+        f.unlink(missing_ok=True)
+    return freed
 
 
 def text_step(ws: Path, a, books: list[str], results: list[dict]) -> None:
@@ -463,9 +510,16 @@ def cmd_land(a) -> int:
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None,
                  human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
+        if not a.keep_files and (a.apply or not r["changed"]) and not r.get("blocked") and not (a.text or a.text_apply):
+            freed = clean_book(ws, b)         # 写文本那步还要用导出，开了 --text 的整趟结束后再清
+            if freed > 0.01:
+                print(f"  {b} 清理释放 {freed:.2f} GB", file=sys.stderr)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t按人裁扣掉 {len(r['deducted'])} 格 {r['deducted'][:5]}" if r.get("deducted") else "") + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
     if (a.text or a.text_apply) and not a.pending_json:
         text_step(ws, a, books, results)
+        if not a.keep_files and a.apply:
+            for b in books:
+                clean_book(ws, b)
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
     for b, v in blocked.items():
         print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)

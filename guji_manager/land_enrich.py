@@ -88,7 +88,17 @@ def load_cards(ws: Path, book: str) -> dict[str, dict]:
         return {}
     doc = json.loads(f.read_text(encoding="utf-8"))
     cards = doc["cards"] if isinstance(doc, dict) else doc
-    return {str(c.get("cell") or c.get("a")): c for c in cards if c.get("cell") or c.get("a")}
+    out: dict[str, dict] = {}
+    pre = f"{book}:"
+    for c in cards:
+        # 卡的键：review.cards 出的卡只有 id（`<册>:<格号>`）、没有 cell／a；audit alt 合成的卡才带 cell。
+        # 统一按「不带册号的格号」存（land 的 cells 用裸格号），带册号的 id 也认（QTW 11-25：019 册 10 格 alt 冲掉就是这里对不上）
+        k = c.get("cell") or c.get("a") or c.get("id")
+        if not k:
+            continue
+        k = str(k)
+        out[k[len(pre):] if k.startswith(pre) else k] = c
+    return out
 
 
 def enrich(cells: list[dict], *, ws: Path, book: str, products: Path, recheck: Path | None = None,

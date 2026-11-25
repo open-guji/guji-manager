@@ -125,3 +125,45 @@ def test_rescue_and_close(tmp_path):
     finally:
         del os.environ["GUJI_FEEDBACK_DIR"]
     assert calls == [] and not (tmp_path / "fb").exists()
+
+
+def test_check_u_helpers(tmp_path):
+    from types import SimpleNamespace as NS
+    from guji_manager.feedback.web_votes import HUMAN_VS
+    v = next(iter(HUMAN_VS))
+
+    def ev(i, key, ts, batch, u=None, src=None, kind="confirm"):
+        return NS(id=i, kind=kind, ts=ts, batch=batch, seq=1,
+                  target=NS(unit="cell", key=key, anchor={"u": u} if u is not None else {}),
+                  payload={"v": v, **({"source": src} if src else {})})
+    evs = [ev("a", f"{B}:1:1:1", "t1", "X"), ev("a~u", f"{B}:1:1:1", "t1", "X~u", u=3),   # 抄件排在原件后
+           ev("b", f"{B}:1:1:2", "t1", "Y"),                                                # 没 u、没记档 → 漏
+           ev("c", f"{B}:1:1:3", "t2", "Z"),                                                # 没 u、记过作废
+           ev("d", f"{B}:1:1:4", "t2", "Z", src="llm")]                                     # 不算人裁
+    hum = [e for e in evs if M.is_human_cell(e, HUMAN_VS, lambda e: True)]
+    assert [e.id for e in hum] == ["a", "a~u", "b", "c"]
+    latest = M.latest_by_key(hum, f"{B}:")
+    assert latest[f"{B}:1:1:1"].id == "a~u"
+    assert [e.id for e in M.unaccounted(latest, {"c"})] == ["b"]
+
+
+def test_tidy_recheck(tmp_path):
+    from guji_manager.review import pending_items as P
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    st.add("80:6:3", {"pending_reason": "recheck", "prior": {"human": "偁", "event": "e1"}, "detail": "人裁"},
+           by="a", src="script:u-closeout", u=5)
+    st.put(None, op="open", by="T5", id="pi_b", cell="80:6:3", fp="", state="open", src="script:u-closeout-web",
+           doc={"pending_reason": "recheck", "prior": {"vote": "稱"}, "detail": "票"}, u=5, at="9999")
+    st.save()
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    assert M.tidy_recheck(st, {"80:6:3": "□"}) == {"并掉": 1, "补候选": 1}
+    st.save()
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    live = [r for r in st.items.values() if r["state"] == "open"]
+    assert len(live) == 1
+    d = live[0]["doc"]
+    assert d["prior"] == {"human": "偁", "event": "e1", "vote": "稱"} and [x["c"] for x in d["alt"]] == ["偁", "稱"]
+    assert M.tidy_recheck(st, {"80:6:3": "□"}) == {"并掉": 0, "补候选": 0}      # 重跑不动
+    # 新开时同格已有活条目：并进去
+    M.add_recheck(st, "80:6:3", {"prior": {"human": "稱"}}, u=5, now_char="偁", by="a", src="script:u-closeout")
+    assert len([r for r in st.items.values() if r["state"] == "open"]) == 1

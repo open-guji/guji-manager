@@ -360,7 +360,7 @@ def close_out(led: Ledger, left: list[dict], *, human_u: set | None = None) -> d
                 if u in human_u:
                     void.append({"stream": "events", "id": h["id"], "key": cell, "reason": x["理由"] + "；这格已有带 u 的人裁"})
                 else:
-                    review.append({"cell": cell, "u": u, "h": h,
+                    review.append({"cell": cell, "u": u, "h": h, "now": (cur.get("chars") or {}).get(cell),
                                    "detail": f"u 迁移挂不上：{x['理由']}（切分变过，原人裁可能判的是挪走的那格），请对着现行切分重看"})
             else:
                 void.append({"stream": "events", "id": h["id"], "key": cell,
@@ -427,7 +427,8 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
             h = r["h"]
             doc = {"pending_reason": "recheck", "recheck": True, "detail": r["detail"],
                    "note": r["detail"], "prior": {"human": h.get("shape") or h.get("reading"), "event": h["id"]}}
-            st.add(P.norm_cell(r["cell"]), doc, by="u-migrate", src="script:u-closeout", why="u 迁移挂不上", u=r["u"])
+            add_recheck(st, P.norm_cell(r["cell"]), doc, u=r["u"], now_char=r.get("now"),
+                        by="u-migrate", src="script:u-closeout")
             n_rev += 1
         st.save()
         files.add(str(rf))
@@ -445,3 +446,138 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
         st.save()
         files.add(f)
     return {"人裁救回": len(hs), "作废": n_void, "转待审": n_rev, "撤下": n_wd, "files": sorted(files)}
+
+
+# ── 全库自检（11-25，GM2 核出「有账册每格最新人裁没 u、也没作废／转待审」8,226 格：
+#    根因是 migrate-plan 读事件走了 cv 的页表 rev 闸，换图源前的旧事件（cv 本就不采信）没进清单）──
+
+NOT_HUMAN_SOURCES = ("auto", "llm", "vision", "knn_infer")
+
+
+def is_human_cell(e, human_vs, counts_as_human) -> bool:
+    """GM2 口径：confirm、unit=cell、payload.v ∈ HUMAN_VS、算人裁、payload.source 不是 auto／llm／vision／knn_infer。"""
+    t = e.target
+    p = e.payload or {}
+    return (e.kind == "confirm" and t.unit == "cell" and p.get("v") in human_vs and counts_as_human(e)
+            and str(p.get("source") or "") not in NOT_HUMAN_SOURCES)
+
+
+def latest_by_key(evs, pre: str) -> dict:
+    """每格最新一条（按 ts、批次、序号；`~u` 抄件 ts 同原件、批次名在后，所以排在原件之后）。"""
+    out: dict = {}
+    for e in sorted((e for e in evs if str(e.target.key).startswith(pre)), key=lambda e: (e.ts, e.batch, e.seq)):
+        out[e.target.key] = e
+    return out
+
+
+def void_seen(event_log, book: str) -> set:
+    """u_void 里记过的人裁事件 id（作废和转待审都算有去向）。"""
+    import json
+    vp = void_path(event_log) / f"{book}.jsonl"
+    seen = set()
+    if vp.exists():
+        for line in vp.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                if d.get("stream") == "events" and d.get("id"):
+                    seen.add(d["id"])
+    return seen
+
+
+def unaccounted(latest: dict, seen: set) -> list:
+    """每格最新人裁没 u、也没记作废／转待审的 → [Event]。全库收尾后应为空。"""
+    return [e for k, e in sorted(latest.items())
+            if not isinstance((e.target.anchor or {}).get("u"), int) and e.id not in seen]
+
+
+# ── 转待审条目整理（11-25 QTW：同格一条、带候选字）──────────────────────────────────────────
+
+CLOSEOUT_SRC = ("script:u-closeout", "script:u-closeout-web")
+_NOT_CHAR = {"", "□", "〓", "■", "unrec", "unk", "?", "？"}
+
+
+def _is_char(c) -> bool:
+    return isinstance(c, str) and len(c) == 1 and c not in _NOT_CHAR
+
+
+def _join(a, b, sep="／"):
+    xs = []
+    for v in (a, b):
+        for x in (v.split(sep) if isinstance(v, str) else ([] if v is None else [v])):
+            if x not in xs and x != "":
+                xs.append(x)
+    return sep.join(str(x) for x in xs) if all(isinstance(x, str) for x in xs) else xs[0] if xs else None
+
+
+def merge_docs(a: dict, b: dict) -> dict:
+    """两条转待审条目的 doc 合成一条：prior 各键合并（人裁字、票字、事件同时留），detail／note 用「；」接，alt 取并集。"""
+    out = {**a, **{k: v for k, v in b.items() if k not in ("prior", "detail", "note", "alt")}}
+    pa, pb = a.get("prior") or {}, b.get("prior") or {}
+    out["prior"] = {k: _join(pa.get(k), pb.get(k)) for k in dict.fromkeys([*pa, *pb])}
+    for k in ("detail", "note"):
+        v = _join(a.get(k), b.get(k), sep="；")
+        if v:
+            out[k] = v
+    alt = list(a.get("alt") or [])
+    for x in b.get("alt") or []:
+        if x.get("c") not in {y.get("c") for y in alt}:
+            alt.append(x)
+    if alt:
+        out["alt"] = alt
+    return out
+
+
+def recheck_alt(doc: dict, now_char: str | None = None) -> list[dict]:
+    """候选字：现行字、旧人裁字、票字（去重，非字占位不算）；已有的 alt 保留在前。"""
+    alt = list(doc.get("alt") or [])
+    have = {x.get("c") for x in alt}
+    p = doc.get("prior") or {}
+    for c, src in [(now_char, "now"), *[(x, "human") for x in str(p.get("human") or "").split("／")],
+                   *[(x, "vote") for x in str(p.get("vote") or "").split("／")]]:
+        if _is_char(c) and c not in have:
+            alt.append({"c": c, "p": c, "src": src})
+            have.add(c)
+    return alt
+
+
+def add_recheck(st, cell: str, doc: dict, *, u: int | None, now_char: str | None, by: str, src: str):
+    """开一条转待审条目：这格已有活条目（open／resolved）就并进去（prior、候选合并），不另开；带候选字。"""
+    live = [r for r in st.find(cell) if r["cell"] == cell and r["state"] in ("open", "resolved")]
+    if live:
+        r = live[0]
+        merged = merge_docs(r.get("doc") or {}, doc)
+        merged["alt"] = recheck_alt(merged, now_char)
+        return st.put(r, op="add", by=by, why="u 迁移挂不上（并入）", doc=merged, state="open",
+                      **({"u": u} if u is not None and r.get("u") is None else {}))
+    doc = {**doc, "alt": recheck_alt(doc, now_char)}
+    return st.add(cell, doc, by=by, src=src, why="u 迁移挂不上", u=u)
+
+
+def tidy_recheck(st, chars: dict[str, str] | None = None, by: str = "u-migrate") -> dict:
+    """就地整理已写出的转待审条目：同格多条（人裁一条＋网页票一条等）并成一条（留最早的，其余撤下、写明并入谁），
+    并补候选字（现行字＋旧人裁字＋票字）。``chars``：{格号(不带册): 现行字}。→ {并掉, 补候选}。"""
+    chars = chars or {}
+    by_cell: dict[str, list[dict]] = {}
+    for r in st.items.values():
+        if r["state"] in ("open", "resolved"):
+            by_cell.setdefault(r["cell"], []).append(r)
+    merged = filled = 0
+    for cell, rs in by_cell.items():
+        ours = [r for r in rs if str(r.get("src") or "") in CLOSEOUT_SRC]
+        if not ours:
+            continue
+        rs = sorted(rs, key=lambda r: (str(r.get("src") or "") in CLOSEOUT_SRC, r.get("at") or "", r["id"]))
+        keep, rest = rs[0], rs[1:]
+        doc = keep.get("doc") or {}
+        for r in rest:
+            doc = merge_docs(doc, r.get("doc") or {})
+            st.put(r, op="withdraw", by=by, why=f"同格并入 {keep['id']}（u 迁移收口）", state="withdrawn")
+            merged += 1
+        alt = recheck_alt(doc, chars.get(cell))
+        u = keep.get("u") if keep.get("u") is not None else next((r.get("u") for r in rest if r.get("u") is not None), None)
+        if rest or alt != (keep.get("doc") or {}).get("alt") or (u is not None and keep.get("u") is None):
+            if alt != (keep.get("doc") or {}).get("alt"):
+                filled += 1
+            st.put(keep, op="edit", by=by, why="u 迁移收口：同格合并、补候选字", doc={**doc, "alt": alt},
+                   **({"u": u} if u is not None and keep.get("u") is None else {}))
+    return {"并掉": merged, "补候选": filled}

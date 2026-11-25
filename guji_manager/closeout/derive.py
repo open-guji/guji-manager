@@ -74,26 +74,38 @@ def _nearest(slots, pos, anchor: str) -> str | None:
 
 
 def invalid_anchors(char: dict, punct: dict | None, entity: dict | None) -> list[tuple]:
-    """F-OV-02 式：返回 (层, 条目, 旧锚, 落点格, 内容, "ANCHOR_MISS｜说明")。落点格＝要出标记的新格。"""
+    """F-OV-02 式：返回 (层, 条目, 旧锚, 落点格, 内容, "ANCHOR_MISS｜说明")。落点格＝要出标记的新格。
+
+    以 u 为准（punct／entity v0.4）：条目带 u 且 char 上了 u 时按 u 找格，u 不在 char 里（格并掉／删掉）就是锚点失效，
+    不回退格位 key；格位 key 与 u 指的不是同一格时只按 u 那一格核校验字（按 u 修 key 是 book-text `remap_anchors --by-u` 的事）。"""
+    from ..formats.layer_u import entity_cells, punct_cell, u_to_a
     slots = slots_of(char)
     pos = {a: i for i, (a, _c) in enumerate(slots)}
+    u2a = u_to_a(char)
     out = []
     for i, p in enumerate((punct or {}).get("punctuations") or []):
-        a = p.get("anchor")
-        if not a:
+        key = p.get("anchor")
+        if not key:
             continue
+        a = punct_cell(p, u2a)
         mark = repr(p.get("mark", ""))[1:-1]
-        if a not in pos:
-            out.append(("punct", f"#{i}", a, _nearest(slots, pos, a) or "", mark, f"ANCHOR_MISS｜锚点指向不存在的格 {a}"))
+        if a is None:
+            out.append(("punct", f"#{i}", key, _nearest(slots, pos, key) or "", mark, f"ANCHOR_MISS｜锚点格 u={p.get('u')} 已不在 char 里"))
+        elif a not in pos:
+            out.append(("punct", f"#{i}", key, _nearest(slots, pos, a) or "", mark, f"ANCHOR_MISS｜锚点指向不存在的格 {a}"))
         elif "pre_char" in p and slots[pos[a]][1] != p["pre_char"]:
-            out.append(("punct", f"#{i}", a, a, mark, f"ANCHOR_MISS｜校验字不符：{p['pre_char']}→{slots[pos[a]][1]}"))
+            out.append(("punct", f"#{i}", key, a, mark, f"ANCHOR_MISS｜校验字不符：{p['pre_char']}→{slots[pos[a]][1]}"))
     for x in (entity or {}).get("entities") or []:
         anc = x.get("anchor") or {}
-        s, t = anc.get("start"), anc.get("end")
-        if not s or not t:
+        if not anc.get("start") or not anc.get("end"):
             continue
-        span = f"{s}～{t}"
-        if s not in pos or t not in pos:
+        s, t = entity_cells(x, u2a)
+        span = f"{anc.get('start')}～{anc.get('end')}"
+        if s is None or t is None:
+            miss = anc.get("start") if s is None else anc.get("end")
+            out.append(("entity", x.get("id", ""), span, _nearest(slots, pos, miss) or "", x.get("text", ""),
+                        "ANCHOR_MISS｜首尾格的 u 已不在 char 里"))
+        elif s not in pos or t not in pos:
             miss = s if s not in pos else t
             out.append(("entity", x.get("id", ""), span, _nearest(slots, pos, miss) or "", x.get("text", ""),
                         "ANCHOR_MISS｜首尾格不存在"))
@@ -106,10 +118,12 @@ def invalid_anchors(char: dict, punct: dict | None, entity: dict | None) -> list
 
 def _windows(char: dict, punct: dict | None, sites: set[str]):
     """增删格所在句子的格集合（新格号）。句末标点按 punct 里 mark 含 。？！ 的锚点在读序中的位置切。"""
+    from ..formats.layer_u import punct_cell, u_to_a
     slots = slots_of(char)
     pos = {a: i for i, (a, _c) in enumerate(slots)}
-    ends = sorted(pos[p["anchor"]] for p in (punct or {}).get("punctuations") or []
-                  if p.get("anchor") in pos and set(p.get("mark", "")) & ENDS)
+    u2a = u_to_a(char)
+    cells = [punct_cell(p, u2a) for p in (punct or {}).get("punctuations") or [] if set(p.get("mark", "")) & ENDS]
+    ends = sorted(pos[a] for a in cells if a in pos)
     win: set[str] = set()
     for s in sites:
         if s not in pos:

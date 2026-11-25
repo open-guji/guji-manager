@@ -218,6 +218,18 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                         "（feedback/lists/u_void/<册>.jsonl，原事件不动），字不同的人裁转待审条目（recheck），格号不在账的条目撤下。出 收口.tsv／收口.json")
     q.add_argument("--review-items", default=None, help="转待审的条目写进哪个文件（缺省 --items 第一个）")
 
+    q = s.add_parser("tidy-recheck", help="u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）")
+    q.add_argument("book", help="cv 册（读身份账取现行字）")
+    q.add_argument("--items", nargs="+", required=True, help="条目文件")
+    q.add_argument("--write", action="store_true", help="真写（只追加新版本）；缺省只报数")
+    q.add_argument("-w", "--workspace", default=None)
+
+    q = s.add_parser("check-u", help="自检：有账册每格最新人裁没 u、也没记作废／转待审的（应为 0；有则退出码 1）")
+    q.add_argument("books", nargs="*", help="册（缺省：事件里出现的、有账的全部册）")
+    q.add_argument("-o", "--out", default=None, help="清单写到这个 tsv")
+    q.add_argument("-v", "--verbose", action="store_true", help="0 的册也列")
+    q.add_argument("-w", "--workspace", default=None)
+
     q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
     q.add_argument("book", help="cv 册（如 vol28）")
     q.add_argument("--ws", required=True, help="中心库工作区（如 siku-zongmu）")
@@ -268,16 +280,23 @@ def cmd_migrate_plan(a) -> None:
                 rul[p["cell"]] = p
                 rul_ev[p["cell"]] = e
     hum: dict[str, dict] = {}
-    for e in sorted(EventLog().iter_all(), key=lambda e: (e.ts, e.batch, e.seq)):
+    log = EventLog()
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
+    gated = {e.id for e in log.iter_all() if M.is_human_cell(e, HUMAN_VS, counts_as_human)}
+    for e in sorted((e for e in raw if e.id in gated), key=lambda e: (e.ts, e.batch, e.seq)):
         t = e.target
-        if (e.kind != "confirm" or t.unit != "cell" or not str(t.key).startswith(pre)
-                or (e.payload or {}).get("v") not in HUMAN_VS or not counts_as_human(e)):
+        if not str(t.key).startswith(pre):
             continue
         an = t.anchor or {}
         hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"),
                       "reading": (e.payload or {}).get("reading"),
                       "cells_sha": an.get("cells_sha"), "u": an.get("u")}
         hum_ev[e.id] = e
+    # 页表 rev 闸挡掉的（换图源前的旧事件，cv 不采信；换算件 ~r 另挂在新格号上）：每格最新的是它、又没 u → 作废记档
+    rev_void = [{"stream": "events", "id": e.id, "key": k,
+                 "reason": "页表 rev 不符（换图源前的旧事件，cv 本就不采信；换算件另挂新格号）"}
+                for k, e in M.latest_by_key(raw, pre).items()
+                if e.id not in gated and not isinstance((e.target.anchor or {}).get("u"), int)]
     items = []
     for f in a.items or []:
         cur: dict[str, dict] = {}
@@ -315,6 +334,7 @@ def cmd_migrate_plan(a) -> None:
         taken = {int(h["u"]) for h in hum.values() if h.get("u") is not None} | {int(x["u"]) for x in res["human"]}
         rescued, rest = M.rescue_human(led, res["清单"], same=load_norm(a.book).same, variant=variant, taken=taken)
         co = M.close_out(led, rest, human_u=taken | {int(x["u"]) for x in rescued})
+        co["void"] += rev_void
         summ = {"人裁救回": dict(Counter(x["how"] for x in rescued)), "作废": dict(Counter(v["stream"] for v in co["void"])),
                 "转待审": len(co["review"]), "撤下": len(co["withdraw"])}
         with open(out / "收口.tsv", "w", encoding="utf-8") as fh:
@@ -372,8 +392,57 @@ def cmd_web_backfill(a) -> None:
     _print(summ)
 
 
+def cmd_check_u(a) -> None:
+    """全库自检：有账册每格最新人裁没 u、也没记作废／转待审的（GM2 口径）。有就列出并退出码 1。"""
+    from .. import u_migrate as M
+    from .._cv import EventLog, counts_as_human
+    from ..feedback.web_votes import HUMAN_VS
+    from .ledger import Ledger
+    _ws(a)
+    log = EventLog()
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
+    books = a.books or sorted({str(e.target.key).split(":", 1)[0] for e in raw})
+    total, rows = 0, []
+    for b in books:
+        if not Ledger.load(b).exists:
+            continue
+        bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), M.void_seen(log, b))
+        total += len(bad)
+        rows += [f"{b}\t{e.target.key}\t{e.id}" for e in bad]
+        if bad or a.verbose:
+            print(f"{b}\t{len(bad)}")
+    if a.out:
+        Path(a.out).write_text("册\t格\t事件\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
+    print(f"合计 {total}")
+    if total:
+        sys.exit(1)
+
+
+def cmd_tidy_recheck(a) -> None:
+    """就地整理 u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）。"""
+    from .. import u_migrate as M
+    from ..review import pending_items as P
+    from .ledger import Ledger
+    _ws(a)
+    led = Ledger.load(a.book)
+    cur = led.current() if led.exists else {}
+    chars: dict[str, str] = {}
+    if led.exists:
+        for pg in sorted({int(k.split(":")[1]) for k in cur}):
+            line = led.page(pg) or {}
+            for k, c in (line.get("chars") or {}).items():
+                chars[k.split(":", 1)[1]] = c
+    out = {}
+    for f in a.items:
+        st = P.ItemStore(Path(f))
+        r = M.tidy_recheck(st, chars)
+        n = st.save() if a.write else 0
+        out[f] = {**r, "写行": n}
+    _print(out)
+
+
 def cmd(a) -> None:
-    {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"check-u": cmd_check_u, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 

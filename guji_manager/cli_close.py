@@ -148,14 +148,35 @@ def cmd_audit(args) -> None:
                     if ln.strip() and not ln.lstrip().startswith("#")}
             want = {w if w.startswith(f"{book}:") else f"{book}:{w}" for w in want}
             todo += [c for c in cs if c.get("admit") and c.get("id") in want]
+            # 没有卡片的格（手工加格、切分之外的点名格）：按格图直接算——合成一张只带格位的卡，alt 只看字块图
+            import re
+            have = {c.get("id") for c in cs}
+            for w in sorted(want - have):
+                m = re.fullmatch(rf"{re.escape(book)}:(\d+):(\d+):(\d+)([a-z]*)", w)
+                if not m:
+                    continue
+                card = {"id": w, "cell": w.split(":", 1)[1], "page": int(m[1]), "col": int(m[2]), "slot": int(m[3]),
+                        "sub": m[4], "admit": True, "synthetic": True}
+                cs.append(card)
+                todo.append(card)
         if args.reviewed:
             # 人裁过的格也算（它们多已放行、不在待审里）：给 alt-eval 拿历史人裁量真实命中，不进待审单
             from ._cv import human_chars
             done = human_chars(book)
             todo += [c for c in cs if c.get("admit") and c.get("id") in done]
+        from .review.alt_cands import TemplateBank
+        if todo and not TemplateBank().available:
+            print(f"✗ {book} 相似字模型不可用（缺 torch 或 glyph_sim_qtw_v2 checkpoint）：不出卡片，别当成没有相似字", file=sys.stderr)
+            sys.exit(1)
         zi = ZiCache(Path(args.zi_cache) if args.zi_cache else None, fetch=args.fetch_zi)
         alt = alt_for_cards(book, todo, k=args.k or ALT_K, zi=zi, ctx=eng.ctx, log=lambda m: print(m, file=sys.stderr))
         n = attach(cs, alt)
+        lacking = [c["id"] for c in todo if not c.get("alt")]
+        if todo and lacking and len(lacking) == len(todo):
+            print(f"✗ {book} 待审 {len(todo)} 格一格相似字都没出：缺书影源（先 source pull 取原图）或字块图取不到，不写卡片文件", file=sys.stderr)
+            sys.exit(1)
+        if lacking:
+            print(f"⚠ {book} 有 {len(lacking)} 格没出相似字（取不到字块图？）：{lacking[:8]}", file=sys.stderr)
         dst = Path(args.cards_out) if args.cards_out else out_dir / f"{book}.cards.alt.json"
         dst.write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
         print(f"{book} 相似字：待审 {len(todo)} 格，出 alt {n} 格（字统网新取 {zi.n_fetched} 字）→ {dst}")
