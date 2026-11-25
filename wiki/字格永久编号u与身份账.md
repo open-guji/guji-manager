@@ -28,7 +28,7 @@
 | 命令 | 做什么 |
 |---|---|
 | `guji uid init <册>` | 从 book-text 现有切分建账（每格发 u）。一册只做一次 |
-| `guji uid advance <册>` | 切字后入账：按框 IoU→中心距→拆→并→字序列对照，把旧 u 接到新格上。`guji pipeline` 跑完、册有账时自动入 |
+| `guji uid advance <册>` | 切字后入账：按框 IoU→中心距→拆→并→字序列对照，把旧 u 接到新格上。**标 main 时自动入**（`guji pipeline products pack promote` 之后拉这册的账、按新 main 包入账、推回中心库；`GUJI_UID_ON_PROMOTE=0` 关，`GUJI_UID_AUTO_PUSH=0` 只入本机）。执行机跑完不入账，没标 main 的试跑包不进账 |
 | `guji uid show <册> --cell 格号` ／ `--u N` | 查一格的 u，或一个 u 现在在哪格、来历 |
 | `guji uid verify <册>` | 核账：u 不重复、作废的不再出现、每页最后一行和产物对得上 |
 | `guji uid table <册> [--pages …]` | 出「旧切分→新切分」格级对照表（`旧格 新格 旧字 新字 类别 IoU 说明`），和 A31 的 old_new_cells 同格式，`cell_migrate`／`cell_rekey`／swap 直接读 |
