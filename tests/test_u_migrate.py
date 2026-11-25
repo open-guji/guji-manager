@@ -155,6 +155,13 @@ def test_check_u_helpers(tmp_path):
     latest = M.latest_by_key(hum, f"{B}:")
     assert latest[f"{B}:1:1:1"].id == "a~u"
     assert [e.id for e in M.unaccounted(latest, {"c"})] == ["b"]
+    # 第二项：~u 抄件缺补锚档（原件有档、抄件没框也没档）
+    assert [e.id for e in M.missing_anchor_copies(hum, {"a"})] == ["a~u"]
+    assert M.missing_anchor_copies(hum, {"a", "a~u"}) == [] and M.missing_anchor_copies(hum, set()) == []
+    anc = tmp_path / "anchors" / f"{B}.jsonl"
+    anc.parent.mkdir()
+    anc.write_text(json.dumps({"event": "a"}) + "\n")
+    assert M.anchor_patch_ids(tmp_path, B) == {"a"} and M.anchor_patch_ids(tmp_path, "zz") == set()
 
 
 def test_tidy_recheck(tmp_path):

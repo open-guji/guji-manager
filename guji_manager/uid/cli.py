@@ -234,7 +234,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--write", action="store_true", help="真写（只追加新版本）；缺省只报数")
     q.add_argument("-w", "--workspace", default=None)
 
-    q = s.add_parser("check-u", help="自检：有账册每格最新人裁没 u、也没记作废／转待审的（应为 0；有则退出码 1）")
+    q = s.add_parser("check-u", help="自检：有账册每格最新人裁没 u、也没记作废／转待审的；~u 人裁抄件缺补锚档的（都应为 0；有则退出码 1）")
     q.add_argument("books", nargs="*", help="册（缺省：事件里出现的、有账的全部册）")
     q.add_argument("-o", "--out", default=None, help="清单写到这个 tsv")
     q.add_argument("-v", "--verbose", action="store_true", help="0 的册也列")
@@ -412,18 +412,23 @@ def cmd_check_u(a) -> None:
     log = EventLog()
     raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
     books = a.books or sorted({str(e.target.key).split(":", 1)[0] for e in raw})
-    total, rows = 0, []
+    fb = Path(log.events_dir).parent
+    total, rows, n_anc = 0, [], 0
     for b in books:
         if not Ledger.load(b).exists:
             continue
         bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), M.void_seen(log, b))
-        total += len(bad)
-        rows += [f"{b}\t{e.target.key}\t{e.id}" for e in bad]
-        if bad or a.verbose:
-            print(f"{b}\t{len(bad)}")
+        # 第二项（11-25）：~u 抄件要有补锚档（cv 按事件 id 查框；缺了老人裁判 unanchored、seed_admit 报 human_unbound）
+        anc = M.missing_anchor_copies([e for e in raw if str(e.target.key).startswith(f"{b}:")], M.anchor_patch_ids(fb, b))
+        total += len(bad) + len(anc)
+        n_anc += len(anc)
+        rows += [f"{b}\t{e.target.key}\t{e.id}\t没u没记档" for e in bad]
+        rows += [f"{b}\t{e.target.key}\t{e.id}\t抄件缺补锚档" for e in anc]
+        if bad or anc or a.verbose:
+            print(f"{b}\t{len(bad)}" + (f"\t缺补锚档 {len(anc)}" if anc else ""))
     if a.out:
-        Path(a.out).write_text("册\t格\t事件\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
-    print(f"合计 {total}")
+        Path(a.out).write_text("册\t格\t事件\t问题\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
+    print(f"合计 {total}" + (f"（其中 ~u 抄件缺补锚档 {n_anc}：guji uid check-u 修不了，按 u_migrate.copy_anchor_patches 补）" if n_anc else ""))
     if total:
         sys.exit(1)
 

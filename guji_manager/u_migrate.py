@@ -249,6 +249,25 @@ def copy_anchor_patches(event_log, copies) -> set[str]:
     return files
 
 
+def anchor_patch_ids(fb_root, book: str) -> set[str]:
+    """``feedback/anchors/<册>.jsonl`` 里有补锚档的事件 id。"""
+    f = Path(fb_root) / "anchors" / f"{book}.jsonl"
+    if not f.exists():
+        return set()
+    return {json.loads(x).get("event") for x in f.read_text(encoding="utf-8").splitlines() if x.strip()}
+
+
+def missing_anchor_copies(copies, patched: set[str]) -> list:
+    """``~u`` 抄件缺补锚档：抄件自己没框（``target.anchor.bbox``）、补锚档里没有抄件 id、原件却有 → cv 绑不上（应为 0）。"""
+    out = []
+    for e in copies:
+        if not str(e.id).endswith(SUFFIX) or (e.target.anchor or {}).get("bbox") or e.id in patched:
+            continue
+        if e.id[:-len(SUFFIX)] in patched:
+            out.append(e)
+    return out
+
+
 def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, event_log) -> dict:
     """把 `plan` 的迁出真写进本地数据目录（只追加）。→ {裁定, 人裁, 待审条目, 裁定没抄, files}。"""
     from .ruling_write import screen
