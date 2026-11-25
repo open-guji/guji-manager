@@ -59,15 +59,17 @@ def _split(flat, punct_at: dict[int, list[str]]) -> list[tuple[int, int]]:
 def sent_export(char: dict, punct: dict | None, entity: dict | None, *,
                 pending_cells: set[str] | None = None,
                 assumed_cells: set[str] | None = None) -> list[dict]:
+    from ..formats.layer_u import entity_cells, punct_cell, u_to_a
     flat = flatten_cells(char)
     idx = {a: i for i, (a, _) in enumerate(flat)}
+    u2a = u_to_a(char)              # 伴生层以 u 为准（punct／entity v0.4）；char 没上 u 时空表，照旧按格位 key
     assumed_cells = assumed_cells or set()
 
     marks_g: list[tuple[int, str]] = []          # (全局位置 = 标记前字数, 标点)
     for p in (punct or {}).get("punctuations", []):
         if p.get("kind") in ("break", "heading"):
             continue
-        i = idx.get(p.get("anchor"))
+        i = idx.get(punct_cell(p, u2a))
         if i is None:
             continue
         marks_g.append((i + 1 if p.get("pos", "after") == "after" else i, p["mark"]))
@@ -77,8 +79,8 @@ def sent_export(char: dict, punct: dict | None, entity: dict | None, *,
 
     ents = []
     for e in (entity or {}).get("entities", []):
-        a = e.get("anchor") or {}
-        s, en = idx.get(a.get("start")), idx.get(a.get("end"))
+        sa, ea = entity_cells(e, u2a)
+        s, en = idx.get(sa), idx.get(ea)
         if s is None or en is None or en < s:
             continue
         ents.append((s, en + 1, e))
