@@ -25,3 +25,10 @@
 
 ## confuse_guard.py（易混字守卫，11-24）
 AI 判出的字属易混对（十千、于干、七十、未末、己已巳、日曰、戊戌戍等，表可扩），且候选含另一方 → 不放行，交 B 路／看图。与异体闸并列用，三书通用。来源：史记册29–38 单路放行 53 格看图出 1 真错（37:27:5:16a 十/千）。
+
+## 11-25 起按字格永久编号 u（CV0 切换完成，不双写）
+- `write_go.py`：裁定 payload 带 `u`（`cell_ref(格号)`；没启用 u 的册不写）；cv 书级开关 `seed_admit.ruling_by_u` 已开（殿本、史記、全唐文），按（组，册，u）查裁定。
+- `to_punct.py`：新增第 6 个参数 `UMAP.json`（`{格位key: u}`，从该册 char.json 每格的 `a`、`u` 取）；给了就写 punct/entity **v0.4**：punct 条带 `u`、不写 `char_offset`；entity 带 `u_start`／`u_end`、不写 `span`；UMAP 里找不到的格位直接退出。不给才按旧格式（只有旧册用）。
+- `migrate_v03.py`：v0.3 一行一条的迁移已由 CV0 在 dev 完成；脚本留作参考，不再用于新迁移。
+- 改字：用 book-text 的改字工具（会发 `u＝u_max+1`），不要手改 char 的格数。
+

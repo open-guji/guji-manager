@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """A 路 text(含 【卷】【題】、标点、⟦类:专名⟧) → book-text 的 punct.json / entity.json 草稿。
 字与格的对应：用 SEG/<段>.idx.json（全册格序、anchor、机器字；疑问格以 A 所判字为准，仅用于核对）。
-用法：to_punct.py SEGDIR OUTDIR 前缀 BOOK_ID VOL > 写 OUTDIR/<VOL>.punct.draft.json / .entity.draft.json
+用法：to_punct.py SEGDIR OUTDIR 前缀 BOOK_ID VOL [UMAP.json] > 写 OUTDIR/<VOL>.punct.draft.json / .entity.draft.json
 标记：卷首→ '#'(heading,before)，篇题→ '##'(heading,before)，段间→ '\\n\\n'(break,after 上一字)，标点→ point，《》→ point before/after；
 专名 类型 人 people 地 place 官 office 朝 dynasty 号/號 reign，target 先全记 new_candidate（挂库另行匹配）。"""
 import json,sys,glob,os,re
 seg,out,pre,book,vol=sys.argv[1:6]
+# 11-25 起以字格永久编号 u 为准（punct/entity v0.4）：UMAP.json = {格位key: u}（从该册 char.json 每格的 a、u 取，或 guji uid 身份账）。
+# 没给 UMAP 就按旧格式（只有 anchor、char_offset、span）写，仅供旧册；新册必须给。
+UMAP=json.load(open(sys.argv[6])) if len(sys.argv)>6 else None
+if UMAP is None: print('警告：没给 UMAP.json，按旧格式写（无 u）',file=sys.stderr)
 OPEN=set('《「『');CLOSE=set('》」』');POINT=set('，。、；：？！')
 TYPE={'人':'people','地':'place','官':'office','朝':'dynasty','号':'reign','號':'reign'}
 TAG=re.compile(r'⟦(人|地|官|朝|号|號):([^⟦⟧\n]+)⟧')
@@ -73,7 +77,19 @@ for f in sorted(glob.glob(f'{seg}/{pre}*.idx.json')):
         if cell_of: prev_line_end=cell_of[-1]
     prev_line_end=None if False else prev_line_end
 puncts.sort(key=lambda p:(p['char_offset'],0 if p['pos']=='before' else 1))
+if UMAP is not None:
+    miss=[]
+    for p in puncts:
+        u=UMAP.get(p['anchor'])
+        if u is None: miss.append(p['anchor']);continue
+        p['u']=int(u);p.pop('char_offset',None)
+    for e in ents:
+        us,ue=UMAP.get(e['anchor']['start']),UMAP.get(e['anchor']['end'])
+        if us is None or ue is None: miss.append(e['anchor']['start']);continue
+        e['u_start']=int(us);e['u_end']=int(ue);e.pop('span',None)
+    if miss: print('UMAP 里找不到的格位',len(miss),miss[:5],file=sys.stderr);sys.exit(1)
+SCH='v0.4' if UMAP is not None else 'v0.2'
 base=dict(book_id=book,volume=int(vol))
-json.dump(dict(**{'$schema':'https://open-guji.org/schema/punct/v0.2.json','version':'0.1.0'},**base,punctuations=puncts),open(f'{out}/{vol}.{pre}.punct.draft.json','w'),ensure_ascii=False)
-json.dump(dict(**{'$schema':'https://open-guji.org/schema/entity/v0.2.json','version':'0.1.0'},**base,entities=ents),open(f'{out}/{vol}.{pre}.entity.draft.json','w'),ensure_ascii=False)
+json.dump(dict(**{'$schema':f'https://open-guji.org/schema/punct/{SCH}.json','version':'0.1.0'},**base,punctuations=puncts),open(f'{out}/{vol}.{pre}.punct.draft.json','w'),ensure_ascii=False)
+json.dump(dict(**{'$schema':f'https://open-guji.org/schema/entity/{SCH}.json','version':'0.1.0'},**base,entities=ents),open(f'{out}/{vol}.{pre}.entity.draft.json','w'),ensure_ascii=False)
 print('puncts',len(puncts),'ents',len(ents),'bad',bad)
