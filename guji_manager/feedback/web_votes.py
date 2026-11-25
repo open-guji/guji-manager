@@ -92,12 +92,21 @@ def cell_order(a: str) -> tuple:
     return (int(m[1]), int(m[2]), int(m[3]), m[4]) if m else (10**9, 0, 0, a)
 
 
-def latest_votes(votes: list[dict], site_book: str, rev: str) -> tuple[list[dict], dict[str, int]]:
-    """只留本书本 rev 的合法票，去测试票，同格同来源留最新一条。返回 (票, 丢弃计数)。"""
+def vote_u(v: dict) -> int | None:
+    """票上的字格永久编号（网站 D1 可空列 `u`，T5）；没有或不是正整数 → None。"""
+    u = v.get("u")
+    if isinstance(u, str) and u.isdigit():
+        u = int(u)
+    return u if isinstance(u, int) and not isinstance(u, bool) and u > 0 else None
+
+
+def latest_votes(votes: list[dict], site_book: str, rev: str, *, u_any_rev: bool = False) -> tuple[list[dict], dict[str, int]]:
+    """只留本书本 rev 的合法票，去测试票，同格同来源留最新一条。返回 (票, 丢弃计数)。
+    带 u 的票（T2）：同格按 u 认（不按格号）；``u_any_rev`` 时别的 rev 的带 u 票也收（u 不随 rev 变）。"""
     dropped: dict[str, int] = defaultdict(int)
     best: dict[tuple, dict] = {}
     for v in votes:
-        if v.get("book") != site_book or v.get("rev") != rev:
+        if v.get("book") != site_book or (v.get("rev") != rev and not (u_any_rev and vote_u(v) is not None)):
             dropped["别的书或别的 rev"] += 1
             continue
         if is_test(v):
@@ -109,7 +118,7 @@ def latest_votes(votes: list[dict], site_book: str, rev: str) -> tuple[list[dict
         if v["choice"] == "char" and len(v.get("char") or "") != 1:
             dropped["选字档没给单字"] += 1
             continue
-        k = (v["a"], v["voter"])
+        k = (("u", vote_u(v)) if vote_u(v) is not None else v["a"], v["voter"])
         if k not in best or (v.get("ts") or 0) >= (best[k].get("ts") or 0):
             best[k] = v
     return sorted(best.values(), key=lambda v: (cell_order(v["a"]), v.get("ts") or 0)), dict(dropped)
@@ -136,8 +145,11 @@ def payload_of(choice: str, char: str = "", alt: str = "", unk: str = "") -> dic
 
 
 def latest_human(events) -> dict[str, object]:
-    """每格最后一条算人裁的 confirm（`counts_as_human`），key → Event。``events`` 是 Event 的可迭代。"""
+    """每格最后一条算人裁的 confirm（`counts_as_human`），key → Event。``events`` 是 Event 的可迭代。
+    带 `target.anchor.u` 且册有字格身份账的（T2）：key 用这个 u **现在**的格号（重切、补删字后格号变了也跟着走）；
+    u 已作废的不算任何一格的人裁。"""
     from .._cv import counts_as_human
+    from ..u_stamp import current_cell
     last: dict[str, object] = {}
     for e in events:
         t = e.target
@@ -145,9 +157,33 @@ def latest_human(events) -> dict[str, object]:
             continue
         if not counts_as_human(e):
             continue
-        if t.key not in last or e.ts >= last[t.key].ts:
-            last[t.key] = e
+        key = current_cell({"cell": t.key, "u": (t.anchor or {}).get("u")})
+        if key is None:
+            continue
+        if key not in last or e.ts >= last[key].ts:
+            last[key] = e
     return last
+
+
+def resolve_u(votes: list[dict], cv_book: str) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """带 u 的票换成 u **现在**的格号（`a`，记 `_by_u`；原格号记 `a_at_vote`）→ (票, [(作废的票, 理由)])。
+    册没账或票没 u 的原样。"""
+    from ..u_stamp import _ledger, current_cell
+    if _ledger(cv_book) is None:
+        return list(votes), []
+    out, gone = [], []
+    for v in votes:
+        u = vote_u(v)
+        if u is None:
+            out.append(v)
+            continue
+        cur = current_cell({"cell": f"{cv_book}:{v['a']}", "u": u})
+        if cur is None:
+            gone.append((v, f"u{u} 已并掉或删掉"))
+            continue
+        a = cur.split(":", 1)[1]
+        out.append({**v, "a": a, "_by_u": True, **({"a_at_vote": v["a"]} if a != v["a"] else {})})
+    return out, gone
 
 
 def same_verdict(p: dict, q: dict, same=None) -> bool:
@@ -242,6 +278,9 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
     ``sheet_prior`` {格位: 单上 prior.id}：投票人看过的旧人裁，票就是有意推翻它（见模块说明）。"""
     sheet_prior = sheet_prior or {}
     out = Triage()
+    votes, gone = resolve_u(votes, cv_book)                 # 带 u 的票按字格身份账挂到现在的格（T2）
+    for v, why in gone:
+        out.drafts.append(Draft(f"{cv_book}:{v['a']}", v["a"], {}, [v], held=f"格位对不上：{why}", kind="moved"))
     groups: dict[str, list[dict]] = defaultdict(list)
     for v in votes:
         groups[v["a"]].append(v)
@@ -287,7 +326,7 @@ def triage(votes: list[dict], cv_book: str, human: dict, *, include_none: bool =
         d = Draft(key, a, p, real)
         if p["v"] == "not_a_char" and not include_none:
             d.held, d.kind = "无字：调用方显式不写（include_none=False）", "none"
-        elif check is not None:
+        elif check is not None and not all(v.get("_by_u") for v in real):   # 全是按 u 认的票：u 就是身份，不再对框
             why = check(a)
             if why:
                 d.held, d.kind = f"格位对不上：{why}", "moved"

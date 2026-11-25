@@ -7,6 +7,8 @@
                                      # 用现行 book-text 建第一份账：char 带 u（v0.6）就照抄，不带按读序 1..N
     guji uid show vol31 [--page 12] [--cell vol31:12:3:4 | --u 1234] [--json]
     guji uid verify vol31 [--products …]   # 账自洽；给了产物再核每页现行切分都入了账
+    guji uid table vol31 [--pages …] [-o 格级表.tsv]   # 账上「上一份切分→当前切分」出 old_new_cells 同格式的格级表
+                                     # （给 cellvotes migrate、ops cell-rekey、swap 用，不再另跑框 IoU；T2）
 
 `guji pipeline` 跑完、该册已有账时自动 advance（`hooks.finished`），一般不用手跑。
 写账只写本地数据目录 `<feedback>/uid/`；推中心库另跑 `guji db sync`。
@@ -181,9 +183,33 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--check-products", action="store_true")
     q.add_argument("--pages", default=None)
 
+    q = s.add_parser("table", help="账上「上一份切分→当前切分」出格级对照表（old_new_cells 同格式）")
+    common(q, products=False)
+    q.add_argument("--pages", default=None)
+    q.add_argument("-o", "--out", default=None, help="写到文件（缺省打到 stdout）")
+
+
+def cmd_table(a) -> None:
+    from collections import Counter
+
+    from ..u_table import table_rows, to_tsv
+    from .ledger import Ledger
+    _ws(a)
+    led = Ledger.load(a.book)
+    if not led.exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账")
+    rows = table_rows(led, _pages(a.pages))
+    txt = to_tsv(rows)
+    if a.out:
+        Path(a.out).write_text(txt, encoding="utf-8")
+        print(json.dumps({"rows": len(rows), **Counter(r["类别"] for r in rows), "out": a.out}, ensure_ascii=False),
+              file=sys.stderr)
+    else:
+        sys.stdout.write(txt)
+
 
 def cmd(a) -> None:
-    {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify}[a.uid_cmd](a)
+    {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table}[a.uid_cmd](a)
 
 
 COMMANDS = {"uid": (add_parser, cmd)}

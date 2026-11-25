@@ -14,8 +14,23 @@ from typing import Callable, Iterable
 
 
 def _cell_ref() -> Callable[[str], object]:
-    from .cell_ref import cell_ref
-    return cell_ref
+    """批量用的 cell_ref：同一次调用里每册只读一次账、只建一次「格号→u」表（`cell_ref` 逐格查要每次重算各页最后一行）。
+    口径同 `cell_ref`：册没账恒等返回格号；有账缺格抛 `UidMissing`。"""
+    from .cell_ref import UidMissing, _ledger
+    cur: dict[str, dict[str, int] | None] = {}
+
+    def ref(cid: str):
+        book = cid.split(":", 1)[0]
+        if book not in cur:
+            led = _ledger(book)
+            cur[book] = led.current() if led is not None and led.exists else None
+        m = cur[book]
+        if m is None:
+            return cid
+        if cid not in m:
+            raise UidMissing(f"{cid}：{book} 有字格身份账，但现行账里没有这一格（切字后没入账？跑 guji uid advance {book}）")
+        return m[cid]
+    return ref
 
 
 def is_full_cell(cid: object) -> bool:
@@ -49,6 +64,37 @@ def u_map(book: str, cells: Iterable[str], ref: Callable[[str], object] | None =
             return {}                     # 册没账：cell_ref 恒等
         out[bare] = u
     return out
+
+
+def _ledger(book: str):
+    from .cell_ref import _ledger as L
+    return L(book)
+
+
+def export_uids(book: str) -> dict | None:
+    """book-text 导出用（`from_pages_json(uids=…)`）：册有账 → {map, u_max, u_retired}；没账 → None。"""
+    led = _ledger(book)
+    if led is None or not led.exists:
+        return None
+    return {"map": led.u_map(), "u_max": led.u_max(),
+            "u_retired": [led.retired()[u] for u in sorted(led.retired())]}
+
+
+def current_cell(p: dict) -> str | None:
+    """裁定 payload → 它**现在**挂的格号：带 u 且册有账就按账反查（重切、补删字后格号变了也跟着走），
+    u 已作废／账里没有 → None；没带 u → 原 `cell`。"""
+    cell = p.get("cell")
+    u = p.get("u")
+    if not (isinstance(u, int) and not isinstance(u, bool)) or not is_full_cell(cell):
+        return cell
+    from .cell_ref import UidMissing, cell_of
+    book = cell.split(":", 1)[0]
+    if _ledger(book) is None:
+        return cell
+    try:
+        return cell_of(u, book)
+    except UidMissing:
+        return None
 
 
 def stamp_rulings(evs: list, ref: Callable[[str], object] | None = None) -> int:

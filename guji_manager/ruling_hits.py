@@ -27,10 +27,22 @@ def _rulings_by_cell(store) -> dict[str, dict]:
         return out
     evs = [e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND]
     for e in sorted(evs, key=replay_key):
-        p = e.payload or {}
+        p = _follow_u(e.payload or {})
         if p.get("cell") and p.get("ctx") and p.get("prompt_ver") != "src-2":
             out[p["cell"]] = p
     return out
+
+
+def _follow_u(p: dict) -> dict:
+    """带 u 的裁定按字格身份账挂到**现在**的格号（T2）：格号变了就换 `cell`、原格号记 `cell_at_write`；
+    u 已作废（并掉／删掉）→ 空字典（这条不再对哪一格作数）。没 u 或没账原样返回。"""
+    from .u_stamp import current_cell
+    cur = current_cell(p)
+    if cur is None:
+        return {}
+    if cur != p.get("cell"):
+        return {**p, "cell": cur, "cell_at_write": p.get("cell")}
+    return p
 
 
 def _hit(store, group: str, ver: str, left: str, right: str):
@@ -277,7 +289,7 @@ def _rulings_by_cell_all(store, ts: dict | None = None) -> dict[str, dict]:
     if not store.log.events_dir.exists():
         return out
     for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
-        p = e.payload or {}
+        p = _follow_u(e.payload or {})
         if p.get("cell"):
             out[p["cell"]] = p
             if ts is not None:
