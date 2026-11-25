@@ -330,6 +330,9 @@ def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6
         time.sleep(20)
 
 
+ALT_TIMEOUT = 900        # 每册 audit alt 最多等这么久，出不来快速告警，别拖整趟
+
+
 def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None = None) -> None:
     """卡片文件（``reports/<册>/<册>.cards.alt.json``，``guji audit alt`` 的输出）缺待审格就先补出：
     不补的话 land 出来的条目没有相似字，网站显示「机器没定出字」（QTW 11-24：全唐文 36 格）。出不来只告警，不拦（报缺几格）。"""
@@ -338,12 +341,16 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
     have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in have}
     if not (want - have_ids):
         return
-    cmd = [sys.executable, "-c", "import sys; from guji_manager.cli import main; sys.argv[0]='guji'; main()",
-           "audit", "alt", book, "-w", str(ws)]
+    # 总入口是 cv 的 cli_v2（manager 命令经入口点并进来；`guji-manager` 自己没有 audit）
+    cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "audit", "alt", book, "-w", str(ws)]
     if recheck:
         cmd += ["--extra", str(recheck)]
-    print(f"⚠ {book} 卡片缺 {len(want - have_ids)} 格相似字，先跑 guji audit alt", file=sys.stderr)
-    r = subprocess.run(cmd, env={**os.environ, "GUJI_WORKSPACE": str(ws)})
+    print(f"⚠ {book} 卡片缺 {len(want - have_ids)} 格相似字，先跑 guji audit alt（最多 {ALT_TIMEOUT // 60} 分钟）", file=sys.stderr)
+    try:
+        r = subprocess.run(cmd, env={**os.environ, "GUJI_WORKSPACE": str(ws)}, timeout=ALT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print(f"⚠ {book} audit alt 超时（{ALT_TIMEOUT} 秒），不再等：缺相似字的格上线会没有候选字", file=sys.stderr)
+        return
     have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in _E.load_cards(ws, book)}
     lack = want - have_ids
     if r.returncode or lack:
