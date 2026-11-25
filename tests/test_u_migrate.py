@@ -125,3 +125,23 @@ def test_rescue_and_close(tmp_path):
     finally:
         del os.environ["GUJI_FEEDBACK_DIR"]
     assert calls == [] and not (tmp_path / "fb").exists()
+
+
+def test_check_u_helpers(tmp_path):
+    from types import SimpleNamespace as NS
+    from guji_manager.feedback.web_votes import HUMAN_VS
+    v = next(iter(HUMAN_VS))
+
+    def ev(i, key, ts, batch, u=None, src=None, kind="confirm"):
+        return NS(id=i, kind=kind, ts=ts, batch=batch, seq=1,
+                  target=NS(unit="cell", key=key, anchor={"u": u} if u is not None else {}),
+                  payload={"v": v, **({"source": src} if src else {})})
+    evs = [ev("a", f"{B}:1:1:1", "t1", "X"), ev("a~u", f"{B}:1:1:1", "t1", "X~u", u=3),   # 抄件排在原件后
+           ev("b", f"{B}:1:1:2", "t1", "Y"),                                                # 没 u、没记档 → 漏
+           ev("c", f"{B}:1:1:3", "t2", "Z"),                                                # 没 u、记过作废
+           ev("d", f"{B}:1:1:4", "t2", "Z", src="llm")]                                     # 不算人裁
+    hum = [e for e in evs if M.is_human_cell(e, HUMAN_VS, lambda e: True)]
+    assert [e.id for e in hum] == ["a", "a~u", "b", "c"]
+    latest = M.latest_by_key(hum, f"{B}:")
+    assert latest[f"{B}:1:1:1"].id == "a~u"
+    assert [e.id for e in M.unaccounted(latest, {"c"})] == ["b"]
