@@ -439,3 +439,21 @@ def test_audit_missing_by_pointer_time(monkeypatch):
     assert [(m["book"], m["label"]) for m in got] == [("01", "L2")]
     assert A.book_id_of("siku-zongmu") == "96mid1ogzk" and A.book_id_of("988g3f0wsu") == "988g3f0wsu"
     assert A._ver("0.6.8") < A.MIN_MANAGER <= A._ver("0.6.16")
+
+
+def test_audit_cv_for_uses_pack_cv_tag():
+    from guji_manager.uid.audit import cv_for
+    seen = []
+
+    def ok(ref):
+        seen.append(ref)
+        return "a" * 40
+
+    def missing(ref):
+        raise ValueError(ref)
+
+    assert cv_for("cv0.7.104-c76-g-640c04-k11-qtw054-vj1", resolve=ok) == "v0.7.104" and seen == ["v0.7.104"]
+    assert cv_for("cv0.7.104-c76", resolve=missing) == "main"          # tag 不在：退回缺省
+    assert cv_for("r15frame-a2", fallback="dev", resolve=ok) == "dev"   # 标签不带版本
+    assert cv_for("cv0.7.104-c76", pinned="0.7.99", resolve=ok) == "v0.7.99"         # 册 yaml 钉的优先
+    assert cv_for("cv0.7.104-c76", pinned="v9.9.9", resolve=lambda r: missing(r) if r == "v9.9.9" else ok(r)) == "v0.7.104"
