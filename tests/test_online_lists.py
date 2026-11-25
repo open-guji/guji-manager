@@ -229,3 +229,13 @@ def test_write_gaps_skips_on_old_cv(monkeypatch, tmp_path):
     monkeypatch.setattr(_cv, "__getattr__", boom, raising=False)
     X._write_gaps(types.SimpleNamespace(book="12", out=str(tmp_path), chapter="012"), [1, 2])
     assert not (tmp_path / "012.gaps.json").exists()
+
+
+def test_apply_pending_keeps_v06_for_u_char():
+    """带 u 的 char 过 apply_pending（republish stamp_char_pending）后 $schema 仍是 v0.6，不降成 v0.1（史記 012，11-25）。"""
+    from guji_manager.formats import guji_char_cord as cc
+    char = {"$schema": cc.CHAR_SCHEMA_URL_V06, "u_max": 2,
+            "pages": [{"columns": [{"cells": [{"a": "1:1:1", "u": 1, "c": "甲"}, {"a": "1:1:2", "u": 2, "c": "乙"}]}]}]}
+    n = cc.apply_pending(char, {"cells": [{"cell": "1:1:2", "cand": [{"c": "丙"}]}]}, current={"1:1:2": "丁"})
+    assert n["held_current"] == 1
+    assert char["$schema"] == cc.CHAR_SCHEMA_URL_V06
