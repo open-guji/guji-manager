@@ -39,3 +39,15 @@ def test_every_member_belongs_to_one_step_and_deleted_ones_are_gone():
         assert gone not in COMMANDS and gone not in steps.STEP_OF
     manager_only = set(COMMANDS) - set(steps.STEPS) - {"db", "archive", "snap", "central-gc", "datastore"}
     assert manager_only <= set(steps.STEP_OF), sorted(manager_only - set(steps.STEP_OF))
+
+
+def test_pipeline_with_text_id_lands_by_default():
+    out = steps.route(["pipeline", "p", "vol01", "-w", "ws", "--text-id", "t"])
+    assert out[0] == "land" and "--apply" in out
+    plan = steps.route(["pipeline", "p", "vol01", "-w", "ws", "--text-id", "t", "--land"])
+    assert plan[0] == "land" and "--apply" not in plan
+
+
+def test_pipeline_no_land_goes_to_cv():
+    out = steps.route(["pipeline", "p", "vol01", "-w", "ws", "--text-id", "t", "--no-land"])
+    assert out == ["pipeline", "p", "vol01", "-w", "ws"]

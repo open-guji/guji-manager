@@ -88,8 +88,8 @@ def _raw_parser(sub, name: str, help_: str):
 def land_argv(rest: list[str]) -> list[str]:
     """``<管线> <册> -w <ws> --text-id <id> --land [cv 参数…]`` → ``land <册> -w <ws> --text-id <id> --apply --run <管线> <册> [cv 参数…]``。
     ``--text-id``、``--book-text`` 只给 land 用，不转给 cv（给了 ``--book-text`` 就连 book-text 一步：``--land`` 出计划、``--land-apply`` 写回）。``--land`` 只出收尾计划，``--land-apply`` 才真写条目、推库、发站。"""
-    apply = "--land-apply" in rest
-    args = [x for x in rest if x not in ("--land", "--land-apply")]
+    apply = "--land" not in rest          # 默认就是写回（sheldon 11-25 定）；只有显式 --land 才只出计划
+    args = [x for x in rest if x not in ("--land", "--land-apply", "--no-land")]
     ws = tid = bt = None
     cv_args: list[str] = []
     i = 0
@@ -122,7 +122,19 @@ def route(argv: list[str]) -> list[str] | None:
     step, rest = argv[0], argv[1:]
     helpish = ("-h", "--help", "help", "commands")
     if step == "pipeline" and (not rest or (rest[0] not in STEP_OF and rest[0] not in ("help", "commands"))):
-        if "--land" in rest or "--land-apply" in rest:             # 先调 cv 跑管线，再由 manager 收尾（待审条目对账；sheldon 11-23 定：对外交互都归 manager）
+        # 先调 cv 跑管线，再由 manager 收尾（待审条目对账；sheldon 11-23 定：对外交互都归 manager）。
+        # sheldon 11-25 定：默认开启——给了 --text-id（收尾要用）就自动收尾；不要收尾加 --no-land（试验跑、没有书 ID 的册）；--land 只出计划
+        if "--no-land" in rest:
+            out, skip = [], False
+            for x in rest:                                          # --text-id／--book-text 只给收尾用，不转给 cv
+                if skip:
+                    skip = False
+                elif x in ("--text-id", "--book-text"):
+                    skip = True
+                elif x != "--no-land":
+                    out.append(x)
+            return ["pipeline", *out]
+        if "--land" in rest or "--land-apply" in rest or "--text-id" in rest:
             return land_argv(rest)
         return None                      # 真的跑管线：guji pipeline <管线> <册> …（-h 也给 cv 的帮助）
     if not rest or rest[0] in helpish:
