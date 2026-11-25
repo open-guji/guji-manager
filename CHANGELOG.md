@@ -4,13 +4,19 @@
 
 ## [未发版]
 
-## [0.6.11] - 2026-11-25
+## [0.6.12] - 2026-11-25
 
-- 发版缘由：字格 u 收尾（CV0 T1）：#951 标 main 给书已启用 u 的没账册首次入账；#952 中心库导入文件登记最后写（推一半重推补齐）、migrate-plan --close 缺条目文件写前报错。 #959 migrate-plan 读原样事件、check-u 全库自检；#962 转待审条目同格合并带候选字、tidy-recheck。
+- 发版缘由：字格 u 收尾补漏与读端（#959 migrate-plan 读原样事件、check-u 全库自检；#962 转待审条目同格合并带候选字、tidy-recheck；GM2 读端 #956–#958；GM4 land／audit alt #955 #961）。版本说明：这批先误合进 main 时仍标 0.6.11（main 5411bd2，与已发的 v0.6.11 tag 7f56a81 重号），改发 0.6.12。
 
 - PATCH（11-25，CV0 u 收尾，QTW 反馈）：u 迁移转待审的条目同格并成一条（这格已有活条目就并进去，prior 同时留人裁字、票字），并带候选字 `alt`（现行字＋旧人裁字＋票字，去重、不收占位符）。新命令 `guji uid tidy-recheck <册> --items … [--write]` 就地整理已写出的（同格多条留最早一条、其余撤下写明并入谁，补候选）。
 - PATCH（11-25，CV0 u 收尾补漏）：`guji uid migrate-plan` 改读原样事件：被 cv 页表 rev 闸挡掉的换图源前旧事件（cv 本就不采信、换算件另挂新格号），每格最新是它又没 u 的，`--close` 记档作废（此前漏了，GM2 核出殿本 8,180 格）。新命令 `guji uid check-u [册…]`：有账册每格最新人裁没 u、也没记作废／转待审的（GM2 口径：confirm、unit=cell、v∈HUMAN_VS、source 非 auto／llm／vision／knn_infer），应为 0，有则退出码 1。
 - PATCH（11-25，GM2 u 读端）：第二步读 book-text 伴生层改按字格永久编号 u 对格（punct／entity v0.4 以 u 为准）。新模块 `formats/layer_u.py`；出单句 `sent_export`、收口锚点现算 `closeout/derive`（u 不在 char＝锚点失效，不回退格号）按 u 找格；收口写回 `closeout/writeback`、换包挪锚（`swap/booktext` 表挪锚后、□识出字／劈格／专名伸长／分段符跟标题）挪了格位 key 就把 u 跟到新格，免得 key 与 u 打架（F-OV-18）。顺手修：分段符跟标题后重排标点不再按已删的 `char_offset`（全 0 会把所有 before 排到 after 前）。char 没上 u 的册行为不变。L0。
+- PATCH（11-25，GM4）：audit alt：没卡片的格按格图算、缺模型或书影源报错；land 给手加格补 alt（只补这一个键，#955）；卡片按裸格号对上（id 去册号）、新判没 alt 保留旧 alt、手加格不再只认来源前缀、每册收完清盘（#961）。
+- PATCH（11-25，GM2）：点校工具按 u：write_go 裁定带 u、to_punct 写 v0.4（#956）；collect 按页绑格时键不是「页:列:格」（册启用 u）就整册绑，不把 u 当页号（#957）。
+
+## [0.6.11] - 2026-11-25
+
+- 发版缘由：字格 u 收尾（CV0 T1）：#951 标 main 给书已启用 u 的没账册首次入账；#952 中心库导入文件登记最后写（推一半重推补齐）、migrate-plan --close 缺条目文件写前报错。
 
 - PATCH（11-25，CV0 u T1）：中心库导入把「文件登记」（`source_files`、整文件 blob 表）放到最后写（删也最后）。大批 `db push` 分段提交时中途断了（Stale 等），文件还没登记，下次 push 照旧认为有改动、差分补齐；原来文件先登记、事件只进一半，再推以为没改动（11-25 全唐文账实例，复现测试 `test_push_only_cut_midway_retries_cleanly`）。L0。
 - PATCH（11-25，CV0 u T1）：`guji uid migrate-plan --close --write` 有人裁要转待审却没给条目文件时，在任何写入之前就报错（`u_migrate.check_close_inputs`），不再写了 ~u 抄件、作废记档才报。L0。
