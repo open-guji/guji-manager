@@ -1,6 +1,6 @@
 # 字格永久编号 u 与身份账
 
-> 0.7.0 起（2026-11-25）。设计与格式细节见仓里 [doc/参考/字格身份账.md](https://github.com/open-guji/guji-manager/blob/dev/doc/参考/字格身份账.md)、[doc/4-反馈迭代/设计-字格u改挂.md](https://github.com/open-guji/guji-manager/blob/dev/doc/4-反馈迭代/设计-字格u改挂.md)。
+> 0.6.9 起（2026-11-25）。设计与格式细节见仓里 [doc/参考/字格身份账.md](https://github.com/open-guji/guji-manager/blob/dev/doc/参考/字格身份账.md)、[doc/4-反馈迭代/设计-字格u改挂.md](https://github.com/open-guji/guji-manager/blob/dev/doc/4-反馈迭代/设计-字格u改挂.md)。
 
 ## 为什么要 u
 
@@ -53,7 +53,7 @@ vol28:9:1:-1                國        删         u794 并入 u795
 | 网站票 | D1 票表的 `u` 列 | `cellvotes` 按 u 分组；u 已作废的票挂起（`moved`） |
 | book-text | char v0.6 每格 `u`，顶层 `u_max`、`u_retired`；norm v0.3 条目带 `u` | 网站、标点专名按 u 挂 |
 
-**写入一律以 u 为准**（0.7.0）：manager 里所有写人裁事件、裁定的地方（`EventLog`／`RulingLog`）追加前自动盖 u。册有身份账而盖不上（账上没这一格、格号不全）的，**整批报错不写**，提示先 `guji uid advance <册>`。格号照写，方便人读。没账的册行为不变。
+**写入一律以 u 为准**（0.6.9）：manager 里所有写人裁事件、裁定的地方（`EventLog`／`RulingLog`）追加前自动盖 u。册有身份账而盖不上（账上没这一格、格号不全）的，**整批报错不写**，提示先 `guji uid advance <册>`。格号照写，方便人读。没账的册行为不变。
 
 ## 存量迁移（2026-11-25 已对全库做完）
 
