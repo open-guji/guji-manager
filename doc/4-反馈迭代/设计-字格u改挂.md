@@ -66,8 +66,9 @@
 
 - 新函数 `uid` 侧（T1 的 ledger）出「旧切分→新切分」行，格式与 `swap/booktext.cell_table` 相同（`old new oc nc kind iou`）。
   `swap/booktext.remap_in_repo`：册有账且新旧两版 char 都带 u 时，**按 u 对应**出表，不再跑 IoU；否则照旧。
-- `feedback/cell_migrate.py`、`ops/cell_rekey.py`：加 `--from-ledger <册>`，从账导出同格式的格级对照表（`旧格 新格 旧字 新字 类别 IoU 说明`），
-  下游逻辑不动。
+- `feedback/cell_migrate.py`、`ops/cell_rekey.py`：先跑 `guji uid table <册> -o 表.tsv`（`u_table.py`，按账上每页「上一份→当前一份」切分、
+  同 u 即同格），出同格式的格级对照表（`旧格 新格 旧字 新字 类别 IoU 说明`），再照旧交给这两个工具，下游逻辑不动。
+- `swap/booktext.cell_table`：新旧两版 char 都带 u 时按 u 对（`cell_table_by_u`），不跑框配对。
 - 标点专名：char 带 u 后，`remap_anchors` 由 T4（book-text）改成按 u 挂；swap 这边只保证新 char 里 u 对。
 
 ### 6. book-text 导出（`formats/guji_char_cord.py`、`output/guji_format_export.py`）
@@ -92,6 +93,15 @@
 | `守恒.json` | 迁前、迁出、没迁三数，`迁前 = 迁出 + 没迁` 对不上就抛错 |
 
 真写（追加事件、推库）放在试点那一步，由主导线程问过 Sheldon 再做。
+
+## 二½、落地记录
+
+- 第一批 #921（11-24）：§二.1、.3、.6 的 `from_pages_json(uids=…)`。
+- 第二批（11-25，T1 #923 合后）：`u_stamp` 改用账批量查、`export_uids`、`current_cell`；导出命令有账自动带 u（`--no-uid` 关）；
+  collect 重键经 cv `RulingStore.put(u=…)`（cv #1848 起，旧 cv 不带）；rulings-hits 等按 u 跟到现格（`_follow_u`，作废的 u 不再作数）；
+  网页票 `latest_votes`／`triage`／`latest_human` 按 u（带 u 的旧 rev 票也收，按 u 认的不再对框）；`guji uid table`；swap 按 u 出表；
+  `guji uid migrate-plan`（`u_migrate.py`）。与 §二.7 的出入：宽松证明 manager 拿不到候选，改为「两侧 2 字都同」（页首页尾只比有字的一侧）；
+  人裁按框 IoU≥0.5（没框只在该页没重切过时按格号）；票不在这里迁（网站 D1 的 u 列由 T5 按 `guji uid table`／现行账回填）。
 
 ## 三、测试（先写，T1 合前用假账跑）
 

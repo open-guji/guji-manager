@@ -369,13 +369,17 @@ def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, 
 def write_rekeys(book: str, rk: list, batch: str | None = None) -> int:
     """``ai_ruling_chars(rekey=…)`` 收的 (ask, 原裁定)：按 ask 的现行组、提示词版本、窗口另写一条（字、把握、模型照抄，
     why 前缀 rekey）。只追加裁定事件，随本册 ``db sync`` 推库。"""
+    import inspect
     from ._cv import RulingStore
+    from .u_stamp import u_of
     store = RulingStore()
+    has_u = "u" in inspect.signature(store.put).parameters        # cv #1848 起 put 收 u（字格永久编号，T2）
     store._batch = batch or f"llm-rekey-collect-{book}-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d-%H%M')}"
     for q, v in rk:
         store.put(q["group"], q["ver"], q["l"], q["r"], char=v["char"], conf=v.get("conf"),
                   why=("rekey:" + (v.get("why") or ""))[:60], model=v.get("model") or "session", cell=q["cell"],
-                  pending_reason=v.get("pending_reason"))
+                  pending_reason=v.get("pending_reason"),
+                  **({"u": u} if has_u and (u := u_of(q["cell"])) is not None else {}))
     return len(rk)
 
 

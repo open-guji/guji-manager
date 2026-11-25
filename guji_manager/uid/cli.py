@@ -7,6 +7,11 @@
                                      # 用现行 book-text 建第一份账：char 带 u（v0.6）就照抄，不带按读序 1..N
     guji uid show vol31 [--page 12] [--cell vol31:12:3:4 | --u 1234] [--json]
     guji uid verify vol31 [--products …]   # 账自洽；给了产物再核每页现行切分都入了账
+    guji uid table vol31 [--pages …] [-o 格级表.tsv]   # 账上「上一份切分→当前切分」出 old_new_cells 同格式的格级表
+                                     # （给 cellvotes migrate、ops cell-rekey、swap 用，不再另跑框 IoU；T2）
+    guji uid migrate-plan vol31 -o <目录> [--items <章>.items.jsonl …]
+                                     # 存量裁定／人裁／待审条目配 u 的**提案**（不写库）：rulings.jsonl、human.jsonl、
+                                     # items.jsonl、清单.tsv、守恒.json（T2，口径见 guji_manager/u_migrate.py）
 
 `guji pipeline` 跑完、该册已有账时自动 advance（`hooks.finished`），一般不用手跑。
 写账只写本地数据目录 `<feedback>/uid/`；推中心库另跑 `guji db sync`。
@@ -181,9 +186,88 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--check-products", action="store_true")
     q.add_argument("--pages", default=None)
 
+    q = s.add_parser("table", help="账上「上一份切分→当前切分」出格级对照表（old_new_cells 同格式）")
+    common(q, products=False)
+    q.add_argument("--pages", default=None)
+    q.add_argument("-o", "--out", default=None, help="写到文件（缺省打到 stdout）")
+
+    q = s.add_parser("migrate-plan", help="存量裁定／人裁／待审条目配 u 的提案（只出文件，不写库）")
+    common(q, products=False)
+    q.add_argument("-o", "--out", required=True, help="输出目录")
+    q.add_argument("--items", nargs="*", default=None, help="待审条目文件（<数据目录>/feedback/lists/pending/<书>/<章>.items.jsonl）")
+
+
+def cmd_table(a) -> None:
+    from collections import Counter
+
+    from ..u_table import table_rows, to_tsv
+    from .ledger import Ledger
+    _ws(a)
+    led = Ledger.load(a.book)
+    if not led.exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账")
+    rows = table_rows(led, _pages(a.pages))
+    txt = to_tsv(rows)
+    if a.out:
+        Path(a.out).write_text(txt, encoding="utf-8")
+        print(json.dumps({"rows": len(rows), **Counter(r["类别"] for r in rows), "out": a.out}, ensure_ascii=False),
+              file=sys.stderr)
+    else:
+        sys.stdout.write(txt)
+
+
+def cmd_migrate_plan(a) -> None:
+    from .. import u_migrate as M
+    from .._cv import RULING_KIND, EventLog, RulingStore, counts_as_human, replay_key
+    from ..feedback.web_votes import HUMAN_VS
+    from .ledger import Ledger
+    _ws(a)
+    led = Ledger.load(a.book)
+    if not led.exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账，先 guji uid init／advance")
+    pre = f"{a.book}:"
+    rul: dict[str, dict] = {}
+    store = RulingStore()
+    if store.log.events_dir.exists():
+        for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
+            p = e.payload or {}
+            if str(p.get("cell") or "").startswith(pre):
+                rul[p["cell"]] = p
+    hum: dict[str, dict] = {}
+    for e in sorted(EventLog().iter_all(), key=lambda e: (e.ts, e.batch, e.seq)):
+        t = e.target
+        if (e.kind != "confirm" or t.unit != "cell" or not str(t.key).startswith(pre)
+                or (e.payload or {}).get("v") not in HUMAN_VS or not counts_as_human(e)):
+            continue
+        an = t.anchor or {}
+        hum[t.key] = {"id": e.id, "cell": t.key, "bbox": an.get("bbox"), "u": an.get("u")}
+    items = []
+    for f in a.items or []:
+        cur: dict[str, dict] = {}
+        for line in Path(f).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                cur[r["id"]] = r
+        items += [{**r, "_file": f} for r in cur.values() if r.get("state") != "closed"]
+    res = M.plan(led, rulings=list(rul.values()), humans=list(hum.values()), items=items)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for name in ("rulings", "human", "items"):
+        with open(out / f"{name}.jsonl", "w", encoding="utf-8") as fh:
+            for x in res[name]:
+                fh.write(json.dumps(x, ensure_ascii=False) + "\n")
+    with open(out / "清单.tsv", "w", encoding="utf-8") as fh:
+        fh.write("类别\t键\t理由\n")
+        for x in res["清单"]:
+            fh.write(f"{x['类别']}\t{x['键']}\t{x['理由']}\n")
+    (out / "守恒.json").write_text(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"]},
+                                             ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "out": str(out)}, ensure_ascii=False))
+
 
 def cmd(a) -> None:
-    {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify}[a.uid_cmd](a)
+    {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+     "migrate-plan": cmd_migrate_plan}[a.uid_cmd](a)
 
 
 COMMANDS = {"uid": (add_parser, cmd)}

@@ -96,6 +96,8 @@ def main(argv=None) -> int:
     ap.add_argument("--prev-fig", default=None, help="book-text 现行的同章 fig.json：沿用图 id、保留重绘图")
     ap.add_argument("--page-images", default=None, help="页图目录（<页>.png），裁图先找这里")
     ap.add_argument("--no-fetch", action="store_true", help="裁图不取 R2 页图（只用本地）")
+    ap.add_argument("--no-uid", action="store_true",
+                    help="char-cord：册有字格身份账也不写 u（缺省有账就写 u、u_max、u_retired，char v0.6）")
     a = ap.parse_args(argv)
     if a.format == "char-cord" and not a.text_version:
         ap.error("--format char-cord 要给 --text-version：首次出写 0.1.0，已有的册写 book-text 上的现行版本"
@@ -138,7 +140,11 @@ def main(argv=None) -> int:
     if a.format == "char-cord":
         conv = dict(zi=files[f"{a.chapter}.zi.json"], norm=files[f"{a.chapter}.norm.json"],
                     version=a.text_version, keys=a.keys, chapter=a.chapter)
-        new, rep = cc.from_pages_json(pj, **conv, figure_regions=regions, prev_fig=load(a.prev_fig))
+        from ..u_stamp import export_uids
+        uids = None if a.no_uid else export_uids(a.book)
+        if uids is not None:
+            print(f"   字格永久编号：账上 {len(uids['map'])} 格、u_max {uids['u_max']}、作废 {len(uids['u_retired'])} → char v0.6")
+        new, rep = cc.from_pages_json(pj, **conv, figure_regions=regions, prev_fig=load(a.prev_fig), uids=uids)
         pre = None
         if a.pending:
             import copy

@@ -481,7 +481,7 @@ def cmd_draft(args) -> None:
             raise SystemExit(f"读到 0 票（{where}）：核对 --rev／--site-book／--items，别拿空草稿往下走"
                              f"（确实没人投、要照换单：加 --from-kv --allow-empty）")
         empty_ok = _confirm_empty(args, where)
-    votes, dropped = latest_votes(raw, args.site_book, args.rev)
+    votes, dropped = latest_votes(raw, args.site_book, args.rev, u_any_rev=True)   # 带 u 的旧 rev 票也收（T2）
     from .feedback import landing_policy as LP
     policy = LP.get_policy(getattr(args, "policy", None))
     votes, waiting = LP.apply_policy(policy, votes)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
