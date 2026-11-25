@@ -246,7 +246,8 @@ def cmd_migrate_plan(a) -> None:
                 or (e.payload or {}).get("v") not in HUMAN_VS or not counts_as_human(e)):
             continue
         an = t.anchor or {}
-        hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"), "u": an.get("u")}
+        hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"),
+                      "reading": (e.payload or {}).get("reading"), "u": an.get("u")}
         hum_ev[e.id] = e
     items = []
     for f in a.items or []:

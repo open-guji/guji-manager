@@ -11,7 +11,7 @@
     **两侧都同**，或**一侧同且裁定字＝账上这格的字**（manager 拿不到候选，用现行文本的字代替 cv 的「字在候选」），过了取现行 u；
     裁定没记窗口（`ctx` 空）的证明不了，进清单；
   - 其余进清单（理由：账上没这一页／格号不在账里／窗口对不上／账行没记字）。
-- **人裁**（每格最新一条算人裁的 confirm，`anchor` 没 u 的）：人裁字（`shape`）＝账上这格的字（按归一表）就迁；
+- **人裁**（每格最新一条算人裁的 confirm，`anchor` 没 u 的）：人裁字（`shape` 字形或 `reading` 读作，任一）＝账上这格的字（按归一表）就迁；账上记的是文本字，「巳」形读「已」的要比 reading；
   没字可比（无字、图等）→ 只在该页账**只入过一次**（切分没变过）时按格号迁；其余进清单。
   （人裁的 `anchor.bbox` 是 `raw_page_px@top-right` 右上原点、图源也可能换过，和账里 cord 框不在一个坐标系，不拿来比。）
 - **待审条目**：条目格号在账上该页现行 map 里 → 补 u（同 `reconcile(us=…)`）；不在 → 清单。
@@ -119,17 +119,18 @@ def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], 
             continue
         u = int(cur["map"][cell])
         have = (cur.get("chars") or {}).get(cell, "")
-        if h.get("shape") and have:
-            if same(h["shape"], have):
+        mine = [x for x in (h.get("shape"), h.get("reading")) if x]
+        if mine and have:
+            if any(same(x, have) for x in mine):
                 out.append({"id": h["id"], "cell": cell, "u": u, "how": "字同"})
             else:
-                left.append({"类别": "人裁", "键": cell, "理由": f"人裁「{h['shape']}」，账上这格是「{have}」"})
+                left.append({"类别": "人裁", "键": cell, "理由": f"人裁「{'／'.join(dict.fromkeys(mine))}」，账上这格是「{have}」"})
             continue
         prev, _ = led.page_pair(pg)
         if prev is None:
             out.append({"id": h["id"], "cell": cell, "u": u, "how": "该页只切过一次"})
         else:
-            left.append({"类别": "人裁", "键": cell, "理由": "没框可比，且该页重切过"})
+            left.append({"类别": "人裁", "键": cell, "理由": "没字可比，且该页重切过"})
     return out, left
 
 

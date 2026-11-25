@@ -34,20 +34,21 @@ def test_plan(tmp_path):
     hum = [{"id": "h1", "cell": f"{B}:3:1:3", "shape": "玄"},
            {"id": "h2", "cell": f"{B}:3:1:3", "shape": "元"},
            {"id": "h3", "cell": f"{B}:4:1:1"},
-           {"id": "h4", "cell": f"{B}:3:1:4"}]
+           {"id": "h4", "cell": f"{B}:3:1:4"},
+           {"id": "h5", "cell": f"{B}:3:1:3", "shape": "元", "reading": "玄"}]                           # 字形≠、读作＝账上字：迁
     items = [{"id": "pi_a", "cell": "3:1:2"}, {"id": "pi_b", "cell": "7:1:1"}, {"id": "pi_c", "cell": "3:1:1", "u": 1}]
     r = M.plan(led, rulings=rul, humans=hum, items=items)
     got = sorted((x["cell"], x["u"], x["how"]) for x in r["rulings"])
     assert got == [(f"{B}:3:1:1", 1, "宽松"), (f"{B}:3:1:2", 2, "直接"), (f"{B}:3:1:3", 3, "宽松"), (f"{B}:3:1:4", 4, "宽松")]
     assert all(x["payload"]["u"] == x["u"] for x in r["rulings"])
-    assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6}
+    assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6, "h5": 3}
     assert [x["id"] for x in r["items"]] == ["pi_a"]
-    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 4, "迁出": 2, "没迁": 2},
+    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 5, "迁出": 3, "没迁": 2},
                          "items": {"迁前": 2, "迁出": 1, "没迁": 1}}
     why = {(x["类别"], x["键"]): x["理由"] for x in r["清单"]}
     assert "窗口对不上" in why[("裁定", f"{B}:3:1:5")] and "没记字" in why[("裁定", f"{B}:4:1:1")]
     assert why[("人裁", f"{B}:3:1:3")] == "人裁「元」，账上这格是「玄」"
-    assert why[("人裁", f"{B}:3:1:4")] == "没框可比，且该页重切过"
+    assert why[("人裁", f"{B}:3:1:4")] == "没字可比，且该页重切过"
 
 
 def test_apply_appends_only(tmp_path):
