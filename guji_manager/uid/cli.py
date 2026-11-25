@@ -12,6 +12,9 @@
     guji uid migrate-plan vol31 -o <目录> [--items <章>.items.jsonl …]
                                      # 存量裁定／人裁／待审条目配 u 的**提案**（不写库）：rulings.jsonl、human.jsonl、
                                      # items.jsonl、清单.tsv、守恒.json（T2，口径见 guji_manager/u_migrate.py）
+    guji uid web-backfill vol28 --ws siku-zongmu --site-book 96mid1ogzk --site-vol 028 -o <目录> [--write]
+                                     # 中心库 web_inbox 里没带 u 的网站旧票（精校票、改字意见）按账补 u（只补字段、换新 seq）；
+                                     # 账读中心库 events（stream=uid）。口径见 guji_manager/u_web_backfill.py
 
 `guji pipeline` 跑完、该册已有账时自动 advance（`hooks.finished`），一般不用手跑。
 写账只写本地数据目录 `<feedback>/uid/`；推中心库另跑 `guji db sync`。
@@ -199,6 +202,15 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                    help="真写本地数据目录（只追加）：裁定、人裁各抄一条带 u 的（id、批次加 ~u，ts、seq 不变）；待审条目追加补 u 的新版本。"
                         "推中心库另跑 guji db push --only（写入.json 列了文件）")
 
+    q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
+    q.add_argument("book", help="cv 册（如 vol28）")
+    q.add_argument("--ws", required=True, help="中心库工作区（如 siku-zongmu）")
+    q.add_argument("--site-book", required=True, help="网站书 ID（如 96mid1ogzk）")
+    q.add_argument("--site-vol", required=True, help="网站册号（票上的 vol／volume，如 028）")
+    q.add_argument("--branch", default="main", help="中心库分支（缺省 main）")
+    q.add_argument("-o", "--out", required=True, help="输出目录：配上.jsonl、清单.tsv、结果.json")
+    q.add_argument("--write", action="store_true", help="真写中心库 web_inbox（只补 u 字段、换新 seq；写前先记 D1 时间旅行书签）")
+
 
 def cmd_table(a) -> None:
     from collections import Counter
@@ -277,9 +289,40 @@ def cmd_migrate_plan(a) -> None:
         print(json.dumps({"写入": w}, ensure_ascii=False))
 
 
+def cmd_web_backfill(a) -> None:
+    from .. import u_web_backfill as B
+    from ..charnorm import load_norm
+    from ..datastore.connect import connect
+    conn = connect(branch=a.branch)
+    led = B.load_ledger(conn, a.ws, a.book)
+    if not led.exists:
+        sys.exit(f"✗ 中心库没有 {a.ws}/{a.book} 的字格身份账")
+    try:
+        same = load_norm(a.book).same
+    except Exception:                       # 没装 cv、读不到书配置：退化成 ==
+        same = None
+    rows = B.load_votes(conn, a.site_book, a.site_vol)
+    res = B.plan_rows(B.Resolver(led, same), rows)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / "配上.jsonl", "w", encoding="utf-8") as fh:
+        for f in res["fills"]:
+            fh.write(json.dumps({k: f[k] for k in ("kind", "key", "格", "set", "how")}, ensure_ascii=False) + "\n")
+    with open(out / "清单.tsv", "w", encoding="utf-8") as fh:
+        fh.write("类别\t键\t格\t理由\n")
+        for x in res["清单"]:
+            fh.write(f"{x['kind']}\t{x['key']}\t{x['格']}\t{x['理由']}\n")
+    summ = {"册": a.book, "网站": f"{a.site_book}/{a.site_vol}", "守恒": res["守恒"], "方式": res["方式"],
+            "配上的u已作废": res["配上的u已作废"]}
+    if a.write:
+        summ["写"] = B.apply(conn, res["fills"])
+    (out / "结果.json").write_text(json.dumps(summ, ensure_ascii=False, indent=1), encoding="utf-8")
+    _print(summ)
+
+
 def cmd(a) -> None:
     {"advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
-     "migrate-plan": cmd_migrate_plan}[a.uid_cmd](a)
+     "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
 COMMANDS = {"uid": (add_parser, cmd)}
