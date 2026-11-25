@@ -149,6 +149,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "Engine": ("core.engine", "Engine"),
     "git_rev": ("core.engine", "git_rev"),
     "load_pipeline": ("core.pipeline", "load_pipeline"),
+    "list_pipelines": ("core.pipeline", "list_pipelines"),    # 耗时统计按四大步分组（cli_perf.stage_map，2026-11-25）
     "ShadowGate": ("shadow.gate", "ShadowGate"),
     "load_model": ("shadow.model", "load_model"),
     "page_evidence": ("shadow.offline", "page_evidence"),

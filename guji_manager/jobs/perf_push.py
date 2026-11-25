@@ -58,6 +58,11 @@ _ready = False
 
 
 def enabled() -> bool:
+    """连得上任务库才推。**跑测试时不推**（11-25 查到 cv／manager 测试里的合成步 t_step_a 等推进了正式库）：
+    pytest 进程里有 ``PYTEST_CURRENT_TEST``；真要在测试里推，设 ``GUJI_PERF_PUSH_IN_TESTS=1``。"""
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("GUJI_PERF_PUSH_IN_TESTS"):
+        return False
     from .._cv import jobs_store as S
     return S.enabled()
 
@@ -244,6 +249,95 @@ def remote_job(job_id: int) -> list[dict]:
                  s.step, s.ok, s.skipped, s.failed, s.wall_s, s.p50_s, s.max_s, s.overhead, s.slowest
             FROM jobs.perf_run r LEFT JOIN jobs.perf_step s USING (run_id)
            WHERE r.job_id = %s ORDER BY r.started_at, s.wall_s DESC""", (job_id,))
+        names = [d.name for d in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+    finally:
+        c.close()
+
+
+def remote_phases(days: float = 7, book: str | None = None) -> list[dict]:
+    """任务单各阶段（执行方 `jobs/runner.py` 记进 `event` 的 prep／run／push／uid／recheck…，带 `secs` 的那条）近 `days` 天合计。
+    `run` 阶段就是跑 cv 管线（明细在 perf_step）；其余阶段在 Engine 外面，perf 文件里没有，只能从这里看。"""
+    from .._cv import jobs_store_connect as connect
+    c = connect()
+    try:
+        if getattr(c, "is_d1", False):
+            return c.q(f"""
+              SELECT e.stage, count(*) AS n, round(sum(e.secs), 1) AS secs,
+                     round(avg(e.secs), 1) AS avg_s, round(max(e.secs), 1) AS max_s
+                FROM event e {"JOIN job j ON j.id = e.job_id" if book else ""}
+               WHERE e.secs IS NOT NULL AND e.at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || ? || ' seconds')
+                 {"AND j.book = ?" if book else ""}
+               GROUP BY e.stage ORDER BY sum(e.secs) DESC""", [int(days * 86400)] + ([book] if book else []))
+        cur = c.execute(f"""
+          SELECT e.stage, count(*) AS n, round(sum(e.secs)::numeric, 1) AS secs,
+                 round(avg(e.secs)::numeric, 1) AS avg_s, round(max(e.secs)::numeric, 1) AS max_s
+            FROM jobs.event e {"JOIN jobs.job j ON j.id = e.job_id" if book else ""}
+           WHERE e.secs IS NOT NULL AND e.at >= now() - make_interval(secs => %(secs)s)
+             {"AND j.book = %(book)s" if book else ""}
+           GROUP BY e.stage ORDER BY sum(e.secs) DESC""", {"secs": days * 86400, "book": book})
+        names = [d.name for d in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+    finally:
+        c.close()
+
+
+def remote_spans(days: float = 7, step: str | None = None, book: str | None = None) -> dict[str, dict]:
+    """近 `days` 天各步的分段合计：{步: {"ok": 页数, "compute_s": 计算秒, "spans": {分段: 墙钟秒}}}。
+    分段 JSON 在库里不好聚合，取回来在本机加（每次运行一行，一周几千行、几 MB）。"""
+    from .._cv import jobs_store_connect as connect
+    c = connect()
+    try:
+        if getattr(c, "is_d1", False):
+            rows = c.q(f"""
+              SELECT s.step, s.ok, s.compute_s, s.spans FROM perf_step s JOIN perf_run r USING (run_id)
+               WHERE s.spans IS NOT NULL AND r.started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || ? || ' seconds')
+                 {"AND s.step = ?" if step else ""} {"AND r.book = ?" if book else ""}""",
+                       [int(days * 86400)] + ([step] if step else []) + ([book] if book else []))
+        else:
+            cur = c.execute(f"""
+              SELECT s.step, s.ok, s.compute_s, s.spans FROM jobs.perf_step s JOIN jobs.perf_run r USING (run_id)
+               WHERE s.spans IS NOT NULL AND r.started_at >= now() - make_interval(secs => %(secs)s)
+                 {"AND s.step = %(step)s" if step else ""} {"AND r.book = %(book)s" if book else ""}""",
+                            {"secs": days * 86400, "step": step, "book": book})
+            names = [d.name for d in cur.description]
+            rows = [dict(zip(names, r)) for r in cur.fetchall()]
+    finally:
+        c.close()
+    out: dict[str, dict] = {}
+    for r in rows:
+        a = out.setdefault(r["step"], {"ok": 0, "compute_s": 0.0, "spans": {}})
+        a["ok"] += r["ok"] or 0
+        a["compute_s"] += float(r["compute_s"] or 0)
+        sp = r["spans"]
+        if isinstance(sp, str):
+            sp = json.loads(sp)
+        for k, v in (sp or {}).items():
+            a["spans"][k] = a["spans"].get(k, 0.0) + float(v[1])
+    return out
+
+
+def remote_prep_parts(days: float = 7, book: str | None = None) -> list[dict]:
+    """准备（prep）各段近 `days` 天合计：执行方从准备脚本「== 准备耗时」段解析、记在事件 `data.prep_parts` 里
+    （`runner.prep_parts`，11-25 起）。→ [{"part", "n", "secs"}]，按秒从大到小。"""
+    from .._cv import jobs_store_connect as connect
+    c = connect()
+    try:
+        if getattr(c, "is_d1", False):
+            return c.q(f"""
+              SELECT p.key AS part, count(*) AS n, sum(p.value) AS secs
+                FROM event e {"JOIN job j ON j.id = e.job_id" if book else ""}, json_each(e.data, '$.prep_parts') p
+               WHERE e.stage = 'prep' AND e.data LIKE '%prep_parts%'
+                 AND e.at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || ? || ' seconds')
+                 {"AND j.book = ?" if book else ""}
+               GROUP BY p.key ORDER BY sum(p.value) DESC""", [int(days * 86400)] + ([book] if book else []))
+        cur = c.execute(f"""
+          SELECT p.key AS part, count(*) AS n, sum(p.value::numeric) AS secs
+            FROM jobs.event e {"JOIN jobs.job j ON j.id = e.job_id" if book else ""},
+                 jsonb_each_text(e.data -> 'prep_parts') p
+           WHERE e.stage = 'prep' AND e.data ? 'prep_parts' AND e.at >= now() - make_interval(secs => %(secs)s)
+             {"AND j.book = %(book)s" if book else ""}
+           GROUP BY p.key ORDER BY sum(p.value::numeric) DESC""", {"secs": days * 86400, "book": book})
         names = [d.name for d in cur.description]
         return [dict(zip(names, r)) for r in cur.fetchall()]
     finally:
