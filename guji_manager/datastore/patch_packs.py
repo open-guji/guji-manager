@@ -127,8 +127,21 @@ def unpack(data: bytes, cache, book: str, page: int, fp: str, stamp: str | None)
         if hashlib.sha256(b).hexdigest() != want[n]:
             raise ValueError(f"{n} sha256 对不上")
     for n in sorted(got):
-        cache.put_bytes(book, KIND, n[:-len(".png")], got[n], stamp=stamp)
+        _put(cache, book, n[:-len(".png")], got[n], stamp)
     return len(got)
+
+
+def _put(cache, book: str, key: str, data: bytes, stamp: str | None) -> None:
+    """cv 的 `ImageCache.put_bytes`（cv #1899 起）；旧 cv 没有就照它的写法落盘（临时文件＋换上、记页戳）。"""
+    if hasattr(cache, "put_bytes"):
+        cache.put_bytes(book, KIND, key, data, stamp=stamp)
+        return
+    path = cache.path(book, KIND, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.stem}.tmp{os.getpid()}{path.suffix}")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+    cache.set_page_stamp(book, KIND, key, stamp)
 
 
 # ── 取 ────────────────────────────────────────────────────────────────
