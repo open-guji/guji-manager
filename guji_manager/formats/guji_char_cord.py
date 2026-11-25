@@ -519,7 +519,17 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
     if uids is not None:
         char["u_max"] = int(uids.get("u_max") or max(umap.values(), default=0))
         if uids.get("u_retired"):
-            char["u_retired"] = list(uids["u_retired"])
+            # into 的目标 u 不在本次 char 里（身份账有、产物没出这格：空列、插图块占掉、目标又作废…）→ 降成 {u, gone}，
+            # char 对外不留悬空引用；u 照样退役、不复用。降了几条记进报告 `u_retired_dangling`（史記 01，11-25）。
+            live = {c["u"] for p in char_pages for col in p["columns"] for c in col["cells"] if "u" in c}
+            ret, dangling = [], []
+            for x in uids["u_retired"]:
+                if "into" in x and x["into"] not in live:
+                    dangling.append(dict(x))
+                    x = {"u": x["u"], "gone": True}
+                ret.append(dict(x))
+            char["u_retired"] = ret
+            rep["u_retired_dangling"] = dangling
     char["pages"] = char_pages
     has_block = any(m["kind"] == "figure" for p in cord_pages for m in p.get("marks", []))
     cord = {"$schema": CORD_SCHEMA_URL_V02 if has_block else CORD_SCHEMA_URL, **head, "pages": cord_pages}

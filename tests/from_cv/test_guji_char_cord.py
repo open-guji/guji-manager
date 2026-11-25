@@ -382,6 +382,20 @@ def test_uids_write_u_and_v06():
     assert rep.get("u_dropped") == []
 
 
+def test_uids_retired_into_missing_target_becomes_gone():
+    """作废号 into 的目标 u 不在本次 char 里（身份账有、产物没出这格）→ 降成 {u, gone}，记进报告；目标在的照旧（史記 01，11-25）。"""
+    pj = _pj(True)
+    cv_as = [c["a"] for p in pj["pages"] for c in p["cells"]]
+    umap = {a: 10 + i for i, a in enumerate(cv_as)}
+    ret = [{"u": 3, "into": 10}, {"u": 4, "into": 999}, {"u": 5, "gone": True}]
+    files, rep = cc.from_pages_json(pj, version="1.0.0", uids={"map": umap, "u_max": 999, "u_retired": ret})
+    char = files["003.char.json"]
+    assert char["u_retired"] == [{"u": 3, "into": 10}, {"u": 4, "gone": True}, {"u": 5, "gone": True}]
+    assert rep["u_retired_dangling"] == [{"u": 4, "into": 999}]
+    assert ret[1] == {"u": 4, "into": 999}          # 不改入参
+    assert cc.validate(char, "char") == []
+
+
 def test_uids_absent_is_byte_identical():
     a, _ = cc.from_pages_json(_pj(True), version="1.0.0")
     b, _ = cc.from_pages_json(_pj(True), version="1.0.0", uids=None)

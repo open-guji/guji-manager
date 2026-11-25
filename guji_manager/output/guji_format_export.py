@@ -156,6 +156,10 @@ def main(argv=None) -> int:
         if fig is not None:
             for e in cc.crop_figures(fig, new[f"{a.chapter}.cord.json"], _image_loader(a), a.out):
                 print(f"   ✗ {e}")
+        dg = rep.get("u_retired_dangling") or []
+        if dg:
+            print(f"   作废号 into 目标不在本章 char 里 {len(dg)} 条，降成 gone（号照样退役）："
+                  + "、".join(f"{x['u']}→{x['into']}" for x in dg[:12]) + ("…" if len(dg) > 12 else ""))
         cc.write_files(new, a.out)
         _write_gaps(a, plist)
         st = cc.stats(new[f"{a.chapter}.char.json"], new[f"{a.chapter}.cord.json"])
