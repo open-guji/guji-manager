@@ -4,6 +4,15 @@
 
 ## [未发版]
 
+## [0.6.11] - 2026-11-25
+
+- 发版缘由：字格 u 收尾（CV0 T1）：#951 标 main 给书已启用 u 的没账册首次入账；#952 中心库导入文件登记最后写（推一半重推补齐）、migrate-plan --close 缺条目文件写前报错。
+
+- PATCH（11-25，CV0 u T1）：中心库导入把「文件登记」（`source_files`、整文件 blob 表）放到最后写（删也最后）。大批 `db push` 分段提交时中途断了（Stale 等），文件还没登记，下次 push 照旧认为有改动、差分补齐；原来文件先登记、事件只进一半，再推以为没改动（11-25 全唐文账实例，复现测试 `test_push_only_cut_midway_retries_cleanly`）。L0。
+- PATCH（11-25，CV0 u T1）：`guji uid migrate-plan --close --write` 有人裁要转待审却没给条目文件时，在任何写入之前就报错（`u_migrate.check_close_inputs`），不再写了 ~u 抄件、作废记档才报。L0。
+
+- PATCH（11-25，CV0 u T1）：标 main 自动入账（`uid/promote.py`）对**这部书已启用 u、本册还没账**的册（没 book-text 的册，如全唐文 031 起）按 main 包首次入账（读序发号）并推库；书是否启用看账目录里有没有任一册账（`uid.book_enabled`）。整部书没账的照旧不碰。L0。
+
 ## [0.6.10] - 2026-11-25
 
 - PATCH（11-25，CV0 u 收尾）：`guji uid migrate-plan --close`：清单上的人裁按高置信异体、列内近邻唯一同字再救 u；其余裁定、没字或格已不在的人裁作废（不删原事件，记 `feedback/lists/u_void/<册>.jsonl`），字不同的人裁转待审条目（recheck），格号不在账的条目撤下；出 `收口.tsv`／`收口.json`。双写期收尾：`u_stamp.current_cell` 对有账册里没 u 的记录返回 None（`latest_human`、`rulings-hits` 不再按格号认），六个写入点改 `stamp_strict`（盖不上整批报错）。`_cv` 加 `variant_group`。

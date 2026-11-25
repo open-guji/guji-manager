@@ -373,10 +373,19 @@ def void_path(event_log) -> "Path":
     return Path(event_log.events_dir).parent / "lists" / "u_void"
 
 
+def check_close_inputs(co: dict | None, review_file: str | None) -> None:
+    """收口要写之前先核输入：有人裁要转待审就必须有条目文件。放在任何写入（``apply``、``write_close``）之前调，
+    免得 ~u 抄件、作废记档写了一半才报错（11-25 全唐文 046／082）。"""
+    if co is not None and co.get("review") and not review_file:
+        raise SystemExit(f"✗ 有 {len(co['review'])} 条人裁要转待审，但没给条目文件（--items 或 --review-items，"
+                         "如 <数据目录>/feedback/lists/pending/<书>/<册>.items.jsonl，没有会新建）；什么都没写")
+
+
 def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[dict], human_events: dict, event_log,
                 review_file: str | None) -> dict:
     """收口真写（只追加）：救回的人裁抄 `~u` 件；作废的记进 `feedback/lists/u_void/<册>.jsonl`（原事件不动）；
     转待审的开条目；撤下的条目 op=withdraw。→ {人裁救回, 作废, 转待审, 撤下, files}。"""
+    check_close_inputs(co, review_file)
     import json
     from pathlib import Path
     from .review import pending_items as P

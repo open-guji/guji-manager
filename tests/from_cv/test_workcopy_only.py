@@ -126,3 +126,37 @@ def test_push_only_ok_when_others_wrote_outside_range(repo, conn, tmp_path, monk
     assert push_only(conn, b, [BOOK], actor="b")["pushed"] == [BOOK]
     assert sync(src, conn, b, actor="b", cache=cache)["action"] == "pulled"  # 整体 sync 只把别人的事件拉下来
     assert local_changes(b) == [] and b"evt_b_2" in (db_ / EV).read_bytes()
+
+
+def test_push_only_cut_midway_retries_cleanly(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """大批分段提交时中途断了（11-25 全唐文账：source_files 已登记、events 只进一半，再推以为没改动）：
+    文件登记放最后写，断了文件仍算没推，重推补齐。"""
+    from guji_manager.datastore import d1conn
+    from guji_manager.datastore.workcopy import local_changes
+    from guji_manager.datastore.workcopy_only import push_only
+    src, _cache, m = _two(repo, conn, tmp_path, monkeypatch)
+    a, da = m["a"]
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    for i in range(2, 40):
+        _add_event(da, f"evt_b_{i}", i)
+    from guji_manager.datastore import importer
+    monkeypatch.setattr(importer, "PIECE_BYTES", 2000)               # events 拆成好几组、几段提交
+    monkeypatch.setattr(d1conn, "CHUNK_STMTS", 3)
+    real, calls = conn.backend.batch, []
+
+    def flaky(stmts, guard=None):
+        calls.append(1)
+        if len(calls) == 3:
+            raise d1conn.Stale("库在你读取之后被别人写过", *conn.backend.heads())
+        return real(stmts, guard)
+    monkeypatch.setattr(conn.backend, "batch", flaky)
+    with pytest.raises(d1conn.Stale):
+        push_only(conn, a, ["feedback/events/"], actor="t")
+    monkeypatch.setattr(conn.backend, "batch", real)
+    have = {r["id"] for r in src.rows("events", "tws")}
+    assert not {f"evt_b_{i}" for i in range(2, 40)} <= have          # 确实只进了一部分
+    assert local_changes(a) == [EV]                                    # 文件没登记：本地仍算有改动
+    out = push_only(conn, a, ["feedback/events/"], actor="t")
+    assert out["pushed"] == [EV]
+    assert {f"evt_b_{i}" for i in range(2, 40)} <= {r["id"] for r in src.rows("events", "tws")}
+    assert push_only(conn, a, ["feedback/events/"], actor="t")["action"] == "nothing"
