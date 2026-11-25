@@ -99,7 +99,9 @@
 - 第一批 #921（11-24）：§二.1、.3、.6 的 `from_pages_json(uids=…)`。
 - 第二批（11-25，T1 #923 合后）：`u_stamp` 改用账批量查、`export_uids`、`current_cell`；导出命令有账自动带 u（`--no-uid` 关）；
   collect 重键经 cv `RulingStore.put(u=…)`（cv #1848 起，旧 cv 不带）；rulings-hits 等按 u 跟到现格（`_follow_u`，作废的 u 不再作数）；
-  网页票 `latest_votes`／`triage`／`latest_human` 按 u（带 u 的旧 rev 票也收，按 u 认的不再对框）；`guji uid table`；swap 按 u 出表。
+  网页票 `latest_votes`／`triage`／`latest_human` 按 u（带 u 的旧 rev 票也收，按 u 认的不再对框）；`guji uid table`；swap 按 u 出表；
+  `guji uid migrate-plan`（`u_migrate.py`）。与 §二.7 的出入：宽松证明 manager 拿不到候选，改为「两侧 2 字都同」（页首页尾只比有字的一侧）；
+  人裁按框 IoU≥0.5（没框只在该页没重切过时按格号）；票不在这里迁（网站 D1 的 u 列由 T5 按 `guji uid table`／现行账回填）。
 
 ## 三、测试（先写，T1 合前用假账跑）
 
