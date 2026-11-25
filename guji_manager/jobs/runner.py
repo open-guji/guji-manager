@@ -340,7 +340,8 @@ class Job:
         """刚铺的底是 main 包：这册字格身份账要是没入过这份切分，就入账并推中心库（标 main 钩子会漏，11-25）。
         rerun／ab 里失败只记一笔、不挡；uidsync 单（``strict``）失败即单失败。"""
         label = self.spec["base"] if self.spec["base"] != "main" else None
-        args = ["uid", "sync", self.spec["book"], "-w", self.ws or "", "--local"] + (["--label", label] if label else [])
+        args = (["uid", "sync", self.spec["book"], "-w", self.ws or "", "--local"] + (["--label", label] if label else [])
+                + (["--reconfirm"] if strict else []))      # uidsync 单：包已对过也记一笔，自检才不重复交单
         try:
             out = self.guji(*args, write=True)
         except StageError as e:

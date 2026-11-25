@@ -173,6 +173,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--label", default=None, help="包标签（缺省现行 main）")
     q.add_argument("--local", action="store_true", help="用本机现行产物（已铺好这份包），不另取")
     q.add_argument("--no-push", action="store_true", help="只入本机账，不拉不推中心库")
+    q.add_argument("--reconfirm", action="store_true", help="这个包已对过账也再记一笔带时间的（重标 main 后自检才不报缺）")
 
     q = s.add_parser("audit", help="自检：有账的书每册现行 main 包入过账没有；--submit 给缺的交 uidsync 单")
     q.add_argument("--submit", action="store_true", help="给缺的册交 uidsync 单（同册同标签只跑一次）")
@@ -506,7 +507,8 @@ def cmd_tidy_recheck(a) -> None:
 def cmd_sync(a) -> None:
     from .promote import sync
     ws = str(Path(a.workspace).resolve()) if a.workspace else os.environ.get("GUJI_WORKSPACE")
-    r = sync(a.book, a.label, ws, products="local" if a.local else a.products, push=not a.no_push)
+    r = sync(a.book, a.label, ws, products="local" if a.local else a.products, push=not a.no_push,
+             reconfirm=a.reconfirm)
     _print(r)
     if r["status"] in ("pull_failed", "push_failed"):
         sys.exit(1)
