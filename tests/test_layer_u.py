@@ -69,8 +69,11 @@ def test_restamp_moved_and_no_u_char_untouched():
     e1 = {"entities": [{"id": "x", "anchor": {"start": "1:1:1", "end": "1:1:2"}, "u_start": 3, "u_end": 3}]}
     assert L.restamp_moved(e0, e1, "entity", a2u) == 1 and e1["entities"][0]["u_end"] == 4
     p = {"anchor": "1:1:2"}
-    L.restamp_punct(p, {})                      # char 没上 u：不加 u
+    L.restamp_punct(p, a2u)                     # 条目没 u（旧文件）：不加字段
     assert "u" not in p
+    q = {"anchor": "1:1:2", "u": 1}
+    L.restamp_punct(q, {})                      # char 没上 u：不动
+    assert q["u"] == 1
 
 
 def test_swap_post_steps_restamp_u():

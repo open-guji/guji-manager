@@ -3,7 +3,8 @@
 2026-11-25 起以 u 为准：标点 `u`、专名 `u_start`／`u_end`、异体 `u` 是格的身份，格位 key（`anchor`、`a`）只供人读。
 读：条目带 u 且 char 上了 u → 按 u 找格（u 不在 char 里＝格没了，返回 None，**不**回退格位 key）；
     条目没 u 或 char 没上 u（旧册）→ 照旧按格位 key。
-写：挪了格位 key 的条目，char 上了 u 就把 u 跟着改成新格的 u（`restamp`），免得 key 与 u 打架（F-OV-18）。
+写：挪了格位 key 的条目，带 u 且 char 上了 u 就把 u 跟着改成新格的 u（`restamp`），免得 key 与 u 打架（F-OV-18）；
+    没 u 的旧条目不加字段（补 u 是 book-text 迁移的事）。
 纯函数，不读写文件。
 """
 from __future__ import annotations
@@ -46,14 +47,14 @@ def entity_cells(x: dict, u2a: dict[int, str]) -> tuple[str | None, str | None]:
 
 
 def restamp_punct(p: dict, a2u: dict[str, int]) -> None:
-    """标点挪到 `anchor` 之后调用：char 上了 u 就把 u 改成新锚点格的 u。"""
-    if a2u and p.get("anchor") in a2u:
+    """标点挪到 `anchor` 之后调用：条目带 u（v0.4）且 char 上了 u，就把 u 改成新锚点格的 u。没 u 的旧文件不加字段。"""
+    if a2u and "u" in p and p.get("anchor") in a2u:
         p["u"] = a2u[p["anchor"]]
 
 
 def restamp_entity(x: dict, a2u: dict[str, int]) -> None:
     anc = x.get("anchor") or {}
-    if a2u and anc.get("start") in a2u and anc.get("end") in a2u:
+    if a2u and "u_start" in x and anc.get("start") in a2u and anc.get("end") in a2u:
         x["u_start"], x["u_end"] = a2u[anc["start"]], a2u[anc["end"]]
 
 
