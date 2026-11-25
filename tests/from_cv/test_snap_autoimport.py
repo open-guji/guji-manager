@@ -592,13 +592,15 @@ def test_downgrade_record_has_three_columns_and_rollback_ok(world):
 
 def test_pack_brings_gates_along(world, tmp_path):
     prod = tmp_path / "gp"
-    write_products(prod, "new", steps=["border_detect", "border_detect_gate", "column_warp", "column_gate"])
+    # cv #1872 起刻本链切字出口闸是挂在 cell_shrink 的 cut_gate，column_warp 出口不再挂闸
+    write_products(prod, "new", steps=["border_detect", "border_detect_gate", "column_warp", "cell_shrink",
+                                       "cut_gate"])
     spec = sp.PackSpec(book=BOOK, products_root=prod, ws_dir=world["cloud"] / WS_DIR, cv_commit=world["A"],
-                       steps=["border_detect", "column_warp"], stamp="20260927T0003",
+                       steps=["border_detect", "column_warp", "cell_shrink"], stamp="20260927T0003",
                        glyph_fingerprint="x", session="s")
     m = sp.build_tree(spec, tmp_path / "gt")
-    assert m["steps"] == ["border_detect", "border_detect_gate", "column_warp", "column_gate"]
-    assert m["gates_added"] == ["border_detect_gate", "column_gate"]
+    assert m["steps"] == ["border_detect", "border_detect_gate", "column_warp", "cell_shrink", "cut_gate"]
+    assert m["gates_added"] == ["border_detect_gate", "cut_gate"]
 
 
 def test_glyph_fingerprint_follows_borrowed_db(world, tmp_path, monkeypatch):

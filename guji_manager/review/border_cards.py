@@ -49,6 +49,7 @@ from .._cv import strip_column_rules
 from .._cv import column_row_profile, column_text_band, denoise_column
 from .._cv import page_column_windows
 from .._cv import effective_raw_path
+from ..colview import read_gate
 from .._cv import imread as cv_imread
 
 HEAD_UP, HEAD_DN = 250, 45
@@ -198,7 +199,7 @@ def headcol_cards(store: ProductStore, book: str, pages: list[int]) -> list[dict
         res = _borders(store, book, pg)
         if res is None:
             continue
-        gate = store.read(book, "column_gate", page_key(pg), "gate_manifest")
+        gate = read_gate(store, book, page_key(pg))     # 刻本链在 cut_gate（cv #1872），老产物在 column_gate
         cells = store.read(book, "row_segment", page_key(pg), "cells")
         gcols = {c.col: c for c in (gate.columns if gate else [])}
         ccols = {c.col: c for c in (cells.columns if cells else [])}
