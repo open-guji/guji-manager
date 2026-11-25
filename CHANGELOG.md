@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+## [0.6.10] - 2026-11-25
+
 - PATCH（11-25，CV0 u 收尾）：`guji uid migrate-plan --close`：清单上的人裁按高置信异体、列内近邻唯一同字再救 u；其余裁定、没字或格已不在的人裁作废（不删原事件，记 `feedback/lists/u_void/<册>.jsonl`），字不同的人裁转待审条目（recheck），格号不在账的条目撤下；出 `收口.tsv`／`收口.json`。双写期收尾：`u_stamp.current_cell` 对有账册里没 u 的记录返回 None（`latest_human`、`rulings-hits` 不再按格号认），六个写入点改 `stamp_strict`（盖不上整批报错）。`_cv` 加 `variant_group`。
 - PATCH（11-25，GM4）：中心库 events 的 payload、target 已改成由 raw 算的虚拟列（线上已迁；Worker 与 importer 不写，旧版 manager 不受影响），`doc/数据库/中心库.md` 同步。文档改动，L0。
 ## [0.6.9] - 2026-11-25
