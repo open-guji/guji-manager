@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- 文档（11-25，GM4）：wiki「换线上人审单」加第零节现行口径——`guji pipeline … --text-id` 默认收尾并写回（#1004），出包不再单独换包／换单；裁定键放宽与 `u`、`ruling_anchor_loose`、收单自动、仍要手工的兜底。只改文档（L0）。
+
 - PATCH（11-25，CV0）：跟上 cv 切字五小步（cv #1869／#1872）的产物布局。新 `guji_manager/colview.py`：`merged_windows` 把 2b `column_bands`、2c `column_ends` 拼回列窗口（列端分档批 `label-batch column-end` 原先读 `column_warp` 拿不到 trim 直接崩）；`read_gate`／`read_gate_raw` 出口闸先读 `cut_gate` 再退回 `column_gate`／`row_segment_gate`（border_cards、页型对账 table_cols、seg_causes、overlay 用）。页型对账的 `table_cols` 也认 `column_geometry:` 下的写法。测试：四条 from_cv 用例按新步列表改；`test_code_deps_coverage` 登记 cut_gate 借常量的两处 import（另两处由 cv #1882 补进 code_deps）。不动 cv 产物，L0。
 
 ## [0.6.21] - 2026-11-25
