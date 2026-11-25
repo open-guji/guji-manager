@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u）：`guji uid advance` 参考 book-text 已发的号（`uid/booktext.py`）：新号从 `max(账 u_max, char u_max, char 最大 u, char 作废号)` 之上发，绝不发 book-text 改字工具（char_edits、意见修订 B′）已用过的号；本页要发新号的格若与 book-text 里账上还没有的 u 框对得上（IoU≥0.5，或中心距近且同字），就认领那个 u，谱系记 `src: "book-text"`。book-text 按 `GUJI_BOOK_TEXT`＋册配置找，找不到照旧只看账；`--book-text <仓>` 指定、`--no-book-text` 关。L0。
 ## [0.7.0] - 2026-11-25
 
 - 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已按 v0.7 重改。

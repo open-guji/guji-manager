@@ -248,3 +248,47 @@ def test_on_promote_pulls_advances_pushes(fb, monkeypatch):
     monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 0, "u_max": 9, "via": {}})
     promote.on_promote("volA", "L1", str(fb))
     assert calls == ["pull", ("fetch", "L1")]
+
+
+def _bt_scenario(fb, monkeypatch):
+    """旧账：天 玄 黃（1..3）；book-text 改字工具补了「地」发 u=7（u_max=7），框在「天」「玄」之间。cv 重切也切出「地」。"""
+    from guji_manager.uid import booktext as BT
+    old = [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天"), Cell(f"{B}:1:1:2", (1000, 200, 1040, 250), "玄"),
+           Cell(f"{B}:1:1:3", (1000, 250, 1040, 300), "黃")]
+    char, cord = _char_cord({1: old})
+    uid.init_from_book_text(B, char, cord)
+    newcut = [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天"),
+              Cell(f"{B}:1:1:2", (1000, 150, 1040, 200), "地"),
+              Cell(f"{B}:1:1:3", (1000, 200, 1040, 250), "玄"),
+              Cell(f"{B}:1:1:4", (1000, 250, 1040, 300), "黃")]
+    boxes = {c.id: [c.box[0], c.box[1], c.box[2] - c.box[0], c.box[3] - c.box[1]] for c in newcut}
+    monkeypatch.setattr(source, "product_pages", lambda store, book: [1])
+    monkeypatch.setattr(source, "cells_sha", lambda store, book, pg: "shaB+p1")
+    monkeypatch.setattr(source, "from_products",
+                        lambda store, book, pg, with_chars=True: source.PageCut(pg, "shaB+p1", newcut, boxes))
+    bchar, bcord = _char_cord({1: [old[0], Cell(f"{B}:1:1:1x", (1002, 152, 1040, 198), "地"), old[1], old[2]]})
+    for x, u in zip(bchar["pages"][0]["columns"][0]["cells"], (1, 7, 2, 3)):
+        x["u"] = u
+    bchar["u_max"] = 7
+    return BT.from_char(bchar, bcord, "fake")
+
+
+def test_advance_adopts_book_text_u(fb, monkeypatch):
+    bt = _bt_scenario(fb, monkeypatch)
+    r = uid.advance(B, FakeStore(), booktext=bt)
+    assert r["book_text_adopted"] == 1
+    led = Ledger.load(B)
+    cur = led.page(1)
+    assert cur["map"][f"{B}:1:1:2"] == 7 and cur["map"][f"{B}:1:1:3"] == 2
+    assert {"u": 7, "new": True, "src": "book-text"} in cur["lineage"]
+    assert cur["id"] == uid.ledger.line_id(B, 1, "shaB+p1", cur["map"])
+    assert verify(led) == []
+
+
+def test_advance_new_u_above_book_text_floor(fb, monkeypatch):
+    bt = _bt_scenario(fb, monkeypatch)
+    bt.cells[1] = [(u, b, c) for u, b, c in bt.cells[1] if u != 7]   # book-text 那格对不上，但号 7 已用过
+    bt.retired = {9}
+    r = uid.advance(B, FakeStore(), booktext=bt)
+    assert r["book_text_adopted"] == 0
+    assert Ledger.load(B).page(1)["map"][f"{B}:1:1:2"] == 10      # 不发 4..9（book-text u_max 7、作废号 9）
