@@ -90,8 +90,9 @@ def _override_keys() -> set[str]:
     return {f.name for f in dataclasses.fields(BookSpec)} - FORBIDDEN_IN_OVERRIDE
 _KEYS = {"kind", "book", "cv", "cv_ref", "pipeline", "steps", "pages", "force", "no_reuse", "book_overrides",
          "pin_args", "base", "checks", "env", "params", "compare_to", "output", "run", "ws_glob", "ws_repo", "why",
-         "glyph_diff", "db_rev", "roundcheck"}
-_NOT_HASHED = ("why", "output", "cv_ref", "ws_repo")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
+         "glyph_diff", "db_rev", "roundcheck", "jobs"}
+_NOT_HASHED = ("why", "output", "cv_ref", "ws_repo", "jobs")   # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）；
+#   jobs＝guji pipeline --jobs 页级并行数，cv 并行产物与串行逐字节相同，不改计算
 
 
 class SpecError(ValueError):
@@ -202,6 +203,12 @@ def normalize(raw: dict, *, resolve=None) -> dict:
     if params is not None and not isinstance(params, dict):
         raise SpecError("params 要是 JSON 对象（同 guji pipeline --params）")
     s["params"] = params or None
+
+    jobs = s.get("jobs")
+    if jobs is not None and (isinstance(jobs, bool) or not isinstance(jobs, int) or jobs < 1):
+        raise SpecError("jobs 要是 ≥1 的整数（guji pipeline --jobs，页级并行进程数；大册降并行防 OOM）")
+    if jobs is None:
+        s.pop("jobs", None)
 
     cmp_ = s.get("compare_to")
     if isinstance(cmp_, dict):

@@ -395,6 +395,8 @@ class Job:
             args.append("--force")
         if sp.get("params"):
             args += ["--params", json.dumps(sp["params"], ensure_ascii=False)]
+        if sp.get("jobs"):
+            args += ["--jobs", str(sp["jobs"])]     # 大册降并行：执行机会话内存上限约 13.4 GiB（W1 #17580）
         # 册级覆盖在内存里叠：准备时的改值（cv_version 等）＋需求单的 book_overrides，合成一份给 --override
         # （旧版 cv 的 --override 会顶掉环境变量里的，所以这里自己合，不靠 CLI 合）
         ov = {**self.prep_override, **(sp.get("book_overrides") or {})}

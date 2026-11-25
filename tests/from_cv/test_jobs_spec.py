@@ -37,3 +37,14 @@ def test_db_rev_in_hash_and_optional():
     for bad in (-1, "1", True, 1.5):
         with pytest.raises(SP.SpecError):
             norm(book="vol10", cv="v0.5.16", db_rev=bad)
+
+
+def test_jobs_not_in_hash_and_optional():
+    """jobs（guji pipeline --jobs）只改并行数、产物不变，不进指纹；不给就不出这个键（W1 #17580 大册降并行防 OOM）。"""
+    a = norm(book="vol10", cv="v0.5.16")
+    assert "jobs" not in a
+    b = norm(book="vol10", cv="v0.5.16", jobs=2)
+    assert b["jobs"] == 2 and SP.spec_hash(a) == SP.spec_hash(b)
+    for bad in (0, -1, "2", True, 1.5):
+        with pytest.raises(SP.SpecError):
+            norm(book="vol10", cv="v0.5.16", jobs=bad)

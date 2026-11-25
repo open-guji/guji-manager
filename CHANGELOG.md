@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，GM2，W1）：重跑单加 `jobs` 字段（`guji_jobs submit --jobs N`），runner 传成 `guji pipeline --jobs N`；不给照旧按执行机 CPU 数。不进指纹（并行产物与串行逐字节相同）。缘由：执行机会话内存上限约 13.4 GiB，全唐文 001 row_segment 4 进程×约 4 GB OOM（#17580）。L0。
+
 ## [0.6.22] - 2026-11-25
 
 - 发版缘由：swap R1 闸放过身份账已作废格的刻例（#1010，W1 重切后换单带 --glyph-db 不再被拦）。
