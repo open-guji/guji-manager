@@ -71,6 +71,10 @@ def advance(book: str, store, pages: Iterable[int] | None = None, *, root=None, 
     from .ledger import line_id
     led = Ledger.load(book, root)
     bt = BT.load(book) if booktext == "auto" else booktext
+    if booktext == "auto" and bt is None and BT.required(led):
+        raise SystemExit(f"✗ {book} 的账是从 book-text 建的，但找不到这册的 char.json（GUJI_BOOK_TEXT、书 id／章号按册配置，"
+                         "章号两位三位都试过）；不参考 book-text 入账可能发出它已用过的号。设好 GUJI_BOOK_TEXT 或 --book-text <仓> 再跑，"
+                         "确认不要参考就加 --no-book-text")
     nxt = _Counter(max(led.u_max(), bt.floor() if bt else 0))
     known = _known_u(led) if bt else set()
     adopted = 0

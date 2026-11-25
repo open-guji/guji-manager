@@ -82,7 +82,7 @@ def _uid_advance(eng) -> None:
         r = uid.advance(eng.book.id, eng.store)
         if r["entered"]:
             print(f"字格身份账：{eng.book.id} 入账 {r['entered']} 页（u_max={r['u_max']}，{r['via']}）", file=sys.stderr)
-    except Exception as e:  # noqa: BLE001
+    except (Exception, SystemExit) as e:  # noqa: BLE001 —— 找不到 book-text 等报错不挡管线
         print(f"⚠ 字格身份账入账失败（{eng.book.id}）：{e}；手跑 guji uid advance {eng.book.id}", file=sys.stderr)
 
 
