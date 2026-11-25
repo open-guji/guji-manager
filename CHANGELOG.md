@@ -4,8 +4,6 @@
 
 ## [未发版]
 
-- PATCH（11-25，CV0 u：book-text 全库 cord 已删 `cells[].id`，fa159dfb）：导出有身份账时 cord 不再写 CV 格 id；意见修订 B′ 在 char v0.6 上插新格发新 u（u_max＋1）、cord 新格不带 id、`$schema` 不再降成 v0.2。manager 别处读 cord 都按格位 `a`，不读 id。
-
 ## [0.7.0] - 2026-11-25
 
 - 发版缘由：字格永久编号 u（CV0 T1／T2）全库推完，写入以 u 为准；标 main 时自动入账（执行机跟 main 才生效）。Wiki 已按 v0.7 重改。
