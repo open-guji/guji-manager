@@ -745,8 +745,10 @@ def first_choice(cell: dict) -> tuple[str | None, str]:
 
 
 def char_schema_for(char: dict) -> str:
-    """按 char 里实际用到的写法取最低的 `$schema`：图片格／图列 v0.3，阙文推测字 v0.2，否则 v0.1（不再写 v0.4）。"""
+    """按 char 里实际用到的写法取最低的 `$schema`：带 u v0.6，无法识别字 v0.5，图片格／图列 v0.3，阙文推测字 v0.2，否则 v0.1（不再写 v0.4）。"""
     cells = [c for p in char.get("pages") or [] for col in p.get("columns") or [] for c in col.get("cells") or []]
+    if "u_max" in char or any("u" in c for c in cells):     # 带 u 的 char 只能是 v0.6（以前降成 v0.1，book-text 升版拦）
+        return CHAR_SCHEMA_URL_V06
     if any(c.get("unk") is not None for c in cells):
         return CHAR_SCHEMA_URL_V05
     has_fig = any(c.get("fig") is not None for c in cells) or any(

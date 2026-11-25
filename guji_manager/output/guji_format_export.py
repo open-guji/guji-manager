@@ -191,7 +191,11 @@ def _write_gaps(a, plist: list[int]) -> None:
 
     单立一个文件，不进 lines.md／char.json：那两样是纯字流，坐标口径（页:列:格）和 book-text 校验器都按它走，
     插一行注记会把格位算错。网站读这个文件，在 `after_page` 那张图之后画缺页卡、文字版插 `note` 那一行。"""
-    from .._cv import gap_note, gaps_for_pages, load_book
+    from .._cv import load_book
+    try:
+        from .._cv import gap_note, gaps_for_pages
+    except ImportError:         # 老 cv（史記 0.7.103 等 patch 线）没有册 yaml `gaps:`，自然也没有缺页可写
+        return
     gaps = gaps_for_pages(load_book(a.book).gaps, plist)
     path = Path(a.out) / f"{a.chapter}.gaps.json"
     if not gaps:
