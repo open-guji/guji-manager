@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：u 存量迁移抄人裁 `~u` 件时，把原件的补锚档（`feedback/anchors/<册>.jsonl`）也抄一行给抄件。cv 按事件 id 查补锚档，抄件查不到框，老人裁判 unanchored、seed_admit 报 human_unbound（全唐文 vj1 004 册 2,036 格）。新函数 `u_migrate.copy_anchor_patches`；全唐文 004–015 存量 9,935 条已补推（rev 1429779）。L0。
+
 - PATCH（11-25，CV0 u T1）：部分副本（`db pull --exclude`，执行机缺省排除 `feedback/lists/proofing/`）也能 `db push|sync --only`，只要范围和没拉的前缀不相交（相交、整体 push／sync 照旧拒）。执行机铺底后补身份账 `guji uid sync` 不再 push_failed（ZM／GM2 报 #17277 等 20 单）。L0。
 
 ## [0.6.16] - 2026-11-25

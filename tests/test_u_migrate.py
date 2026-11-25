@@ -1,4 +1,6 @@
 """存量迁移提案（T2）：裁定直接迁／宽松迁／清单，人裁按框，待审条目，守恒。只出提案不写库。"""
+import json
+
 from guji_manager import u_migrate as M
 from guji_manager.uid.ledger import Ledger, make_line
 
@@ -72,6 +74,10 @@ def test_apply_appends_only(tmp_path):
     he = make_event("h1", 3, "confirm", EventTarget(step="seed_admit", unit="cell", key=cell, anchor={"source_rev": "r"}),
                     {"v": "confirm", "shape": "玄"})
     el.append([he])
+    anc = tmp_path / "fb" / "anchors" / f"{B}.jsonl"
+    anc.parent.mkdir(parents=True, exist_ok=True)
+    patch = {"event": he.id, "key": cell, "anchor": {"bbox": [1, 2, 3, 4], "source": "backfill:x"}}
+    anc.write_text(json.dumps(patch) + "\n" + json.dumps({**patch, "event": "other"}) + "\n")
     items = tmp_path / "031.items.jsonl"
     st = P.ItemStore(items)
     st.add("3:1:3", {"why": ["x"]}, by="t", src="human:t")
@@ -88,6 +94,10 @@ def test_apply_appends_only(tmp_path):
     nh = list(el.read("h1~u"))[0]
     assert nh.target.anchor == {"source_rev": "r", "u": 3} and nh.ts == he.ts
     assert next(iter(P.ItemStore(items).items.values()))["u"] == 3
+    # ~u 抄件带上原件的补锚档（cv 按事件 id 查框；11-25 全唐文 004 human_unbound），再写一次不重复
+    ls = [json.loads(x) for x in anc.read_text().splitlines()]
+    assert ls[-1] == {**patch, "event": he.id + "~u"} and len(ls) == 3 and str(anc) in w["files"]
+    assert M.copy_anchor_patches(el, [(he.id, he.id + "~u", B)]) == set() and len(anc.read_text().splitlines()) == 3
 
 
 def test_rescue_and_close(tmp_path):

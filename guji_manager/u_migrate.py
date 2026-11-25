@@ -25,7 +25,9 @@
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
+from pathlib import Path
 
 from .uid.ledger import Ledger
 
@@ -220,6 +222,33 @@ def _copy(e, *, payload: dict | None = None, anchor_u: int | None = None):
     return Event.model_validate(d)
 
 
+def copy_anchor_patches(event_log, copies) -> set[str]:
+    """人裁 ``~u`` 抄件也要带上原件的补锚档（``feedback/anchors/<册>.jsonl``，按事件 id 查）：cv 绑定按 ``ev.id`` 查补锚档，
+    抄件 id 多了 ``~u`` 就查不到框，老裁决判 unanchored、人裁绑不上（11-25 全唐文 vj1 004 册 2,036 格 human_unbound）。
+    ``copies``＝[(原件 id, 抄件 id, 册)]；抄件已有的不重写（只追加）。→ 写过的文件。"""
+    root = Path(event_log.events_dir).parent / "anchors"
+    by_book: dict[str, dict[str, str]] = {}
+    for old, new, book in copies:
+        by_book.setdefault(str(book), {})[old] = new
+    files: set[str] = set()
+    for book, m in sorted(by_book.items()):
+        f = root / f"{book}.jsonl"
+        if not f.exists():
+            continue
+        raw = f.read_text(encoding="utf-8")
+        lines = [json.loads(x) for x in raw.splitlines() if x.strip()]
+        have = {d.get("event") for d in lines}
+        last = {d["event"]: d for d in lines if d.get("event") in m and m[d["event"]] not in have}  # cv 读档后者覆盖：取最后一行
+        add = [{**d, "event": m[e]} for e, d in last.items()]
+        if add:
+            with open(f, "a", encoding="utf-8") as fh:
+                if raw and not raw.endswith("\n"):
+                    fh.write("\n")
+                fh.writelines(json.dumps(d, ensure_ascii=False, separators=(",", ":")) + "\n" for d in add)
+            files.add(str(f))
+    return files
+
+
 def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, event_log) -> dict:
     """把 `plan` 的迁出真写进本地数据目录（只追加）。→ {裁定, 人裁, 待审条目, 裁定没抄, files}。"""
     from .ruling_write import screen
@@ -234,6 +263,8 @@ def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, eve
     if hs:
         event_log.append(hs)
         files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+        files |= copy_anchor_patches(event_log, [(e.id[:-len(SUFFIX)], e.id, e.target.book or e.target.key.split(":")[0])
+                                            for e in hs])
     n_items = 0
     by_file: dict[str, list[dict]] = {}
     for x in res["items"]:
@@ -404,6 +435,8 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
     if hs:
         event_log.append(hs)
         files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+        files |= copy_anchor_patches(event_log, [(e.id[:-len(SUFFIX)], e.id, e.target.book or e.target.key.split(":")[0])
+                                            for e in hs])
     at = P.now()
     rows = [{"kind": "u_void", "book": book, **v, "at": at, "by": "u-migrate"} for v in co["void"]]
     rows += [{"kind": "u_void", "book": book, "stream": "rulings", "id": None, "key": x.get("cell"),
