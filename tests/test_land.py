@@ -224,3 +224,16 @@ def test_sheet_conflict_rederives_from_merged_items(tmp_path, monkeypatch):
     assert [c[0] for c in calls] == ["sync", "pull", "sync", "sync"] and calls[1][2] is True
     cells = {c["cell"] for c in json.loads(sheet_p.read_text(encoding="utf-8"))["cells"]}
     assert cells == {"1:1:1", "7:7:7"}
+
+
+def test_alt_added_counts_as_change_and_digest_not_skipped(tmp_path, monkeypatch):
+    """出单时没有相似字（空）→ 补了 audit alt（有）：doc 级改动里 alt 要算有变、要写；digest 不同不被整册跳过。"""
+    st = _store(tmp_path, [_cell("1:1:1")])
+    alt = [{"c": "柳", "s": 0.9}]
+    plan = land.plan_book(st, [{**_cell("1:1:1"), "alt": alt}], src="land")
+    assert plan["改"] == ["1:1:1"]
+    assert land.alt_changed(st, plan["_store"], plan["改"]) == ["1:1:1"]
+    # 没变 alt 时不算
+    st2 = _store(tmp_path / "b", [{**_cell("1:1:1"), "alt": alt}])
+    plan2 = land.plan_book(st2, [{**_cell("1:1:1"), "alt": alt, "why": "R02"}], src="land")
+    assert land.alt_changed(st2, plan2["_store"], plan2["改"]) == []

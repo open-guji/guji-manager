@@ -21,6 +21,7 @@ manager = "guji_manager.hooks:register"
 
 [project.entry-points."guji.post_promote"]
 online_lists = "guji_manager.online_lists:on_promote"
+uid_ledger = "guji_manager.uid.promote:on_promote"
 
 [project.scripts]
 guji-manager = "guji_manager.cli:main"

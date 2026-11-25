@@ -81,6 +81,18 @@ def human_deduct(store: P.ItemStore, cells: list[dict], human: set[str]) -> tupl
     return keep, drop
 
 
+def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[str]:
+    """doc 级改动里相似字（``alt``）有变的格：旧条目没有 alt、新有（出单时 audit alt 没跑，网站显示「机器没定出字」），或内容变了。"""
+    out = []
+    for cell in cells:
+        o, n = old.find(cell), new.find(cell)
+        if not (o and n):
+            continue
+        if ((o[0].get("doc") or {}).get("alt") or []) != ((n[0].get("doc") or {}).get("alt") or []):
+            out.append(cell)
+    return out
+
+
 def human_cells(ws: Path, book: str) -> set[str]:
     """事件日志里这一册有人裁的格号（cv ``human_chars``：后到覆盖、过绑定表）；读不了就抛，不当「没有」。"""
     from ._cv import human_chars
@@ -267,8 +279,12 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     us = u_map(book, [c.get("cell") or c.get("a") or "" for c in res["cells"]])   # 册有字格身份账才有（T2），没账空
     plan = plan_book(store, res["cells"], src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
+    alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
+    if alt_chg:
+        structural.append("alt")
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "summary": summarize(plan), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
+    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg,
+           "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
            "needs_rev_bump_check": bool(plan["挪格"])}
@@ -314,6 +330,26 @@ def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6
         time.sleep(20)
 
 
+def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None = None) -> None:
+    """卡片文件（``reports/<册>/<册>.cards.alt.json``，``guji audit alt`` 的输出）缺待审格就先补出：
+    不补的话 land 出来的条目没有相似字，网站显示「机器没定出字」（QTW 11-24：全唐文 36 格）。出不来只告警，不拦（报缺几格）。"""
+    have = set(_E.load_cards(ws, book))
+    want = {f"{book}:{c}" if not c.startswith(f"{book}:") else c for c in cells}
+    have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in have}
+    if not (want - have_ids):
+        return
+    cmd = [sys.executable, "-c", "import sys; from guji_manager.cli import main; sys.argv[0]='guji'; main()",
+           "audit", "alt", book, "-w", str(ws)]
+    if recheck:
+        cmd += ["--extra", str(recheck)]
+    print(f"⚠ {book} 卡片缺 {len(want - have_ids)} 格相似字，先跑 guji audit alt", file=sys.stderr)
+    r = subprocess.run(cmd, env={**os.environ, "GUJI_WORKSPACE": str(ws)})
+    have_ids = {h if h.startswith(f"{book}:") else f"{book}:{h}" for h in _E.load_cards(ws, book)}
+    lack = want - have_ids
+    if r.returncode or lack:
+        print(f"⚠ {book} audit alt 退出 {r.returncode}，仍有 {len(lack)} 格没有相似字卡片（环境缺 torch／权重？）：这些格上线会没有候选字", file=sys.stderr)
+
+
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     """取新待审格并按 CV4 的次序并成完整条目 doc：pending_cells（带复审格、自检要放上单的格）→ 卡片字段 → 复审 → 自检
     → 待审原因 → 锚点原因 → 相似字字形图（按内容寻址）。返回 (res, 单图所在目录)。"""
@@ -328,6 +364,8 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
         res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + added)
     if a.no_enrich:
         return res, out_dir
+    if not getattr(a, "no_audit_alt", False):
+        ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], a.recheck)
     cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
     if rc:
         cells = _E.merge_recheck(cells, rc)
@@ -337,7 +375,10 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     if a.export_char and a.text_vdir:
         cells, _ = _E.anchor_reasons(cells, Path(a.export_char), Path(a.text_vdir), chapter_of(book))
     cells, alt_sprites = _E.alt_glyph_images(cells, out_dir)
-    return {**res, "cells": cells, "sprites": list(res.get("sprites") or []) + alt_sprites}, out_dir
+    # digest 纳入并好的 doc（卡片、相似字、成因…）：只看 cv 的格号＋图指纹，audit alt 补跑后会被误判「同上次」整册跳过
+    import hashlib
+    digest = hashlib.sha1((str(res.get("digest")) + json.dumps(cells, ensure_ascii=False, sort_keys=True)).encode()).hexdigest()
+    return {**res, "cells": cells, "digest": digest, "sprites": list(res.get("sprites") or []) + alt_sprites}, out_dir
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -353,6 +394,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--text-vdir", help="book-text 版本目录（<章>.punct.json／entity.json；算锚点类待审原因用）")
     p.add_argument("--no-publish", action="store_true", help="--apply 后不发站（缺省只发有变的册，一次一批）")
     p.add_argument("--no-human-deduct", action="store_true", help="不按事件日志里的人裁扣掉「条目里没有、但已有人裁」的新判格")
+    p.add_argument("--no-audit-alt", action="store_true", help="卡片缺格时不自动先跑 guji audit alt")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
