@@ -275,3 +275,19 @@ def test_hand_cell_gets_alt_but_nothing_else(tmp_path):
     doc = plan["_store"].find("5:5:5")[0]["doc"]
     assert doc["alt"] == alt and doc["note"] == "人写的备注" and "pending_reason" not in doc
     assert land.alt_changed(st, plan["_store"], plan["改"]) == ["5:5:5"]
+
+
+def test_load_cards_keys_by_bare_cell_and_old_alt_kept(tmp_path):
+    """review.cards 出的卡只有 id（册:格号）：按裸格号存，land 才找得到；新判没算出 alt 就保留条目里原有的，不冲掉。"""
+    from guji_manager import land_enrich as E
+    d = tmp_path / "reports" / "vol19"
+    d.mkdir(parents=True)
+    (d / "vol19.cards.alt.json").write_text(json.dumps([{"id": "vol19:86:8:19", "alt": [{"c": "柳"}]}, {"id": "vol19:1:1:1", "cell": "1:1:1"}]), encoding="utf-8")
+    cards = E.load_cards(tmp_path, "vol19")
+    assert set(cards) == {"86:8:19", "1:1:1"}
+    alt = [{"c": "柳", "s": 0.9}]
+    st = _store(tmp_path, [{**_cell("1:1:1"), "alt": alt}])
+    kept = land.keep_old_alt(st, [_cell("1:1:1")])
+    assert kept[0]["alt"] == alt
+    plan = land.plan_book(st, kept, src="land")
+    assert not plan["改"]                                  # alt 没被冲掉：没变
