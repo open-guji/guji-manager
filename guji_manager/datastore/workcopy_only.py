@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 from pathlib import Path
 
 from .scope import BLOB_TABLES, GS, classify, scan_files, sha256
@@ -34,6 +36,10 @@ from .workcopy import (
     read_state,
     write_state,
 )
+
+#: 推送撞上整库版本守卫（``d1conn.Stale``）时重读重试几次、每次等多久（秒，乘次数并加随机）
+STALE_TRIES = int(os.environ.get("GUJI_DB_STALE_TRIES") or 5)
+STALE_WAIT_S = float(os.environ.get("GUJI_DB_STALE_WAIT_S") or 2)
 
 #: 不许 ``--only`` 的前缀：字形库（行在文件间挪、要重建 glyph.db）、已发布版本清单（推时要核不可改）
 ONLY_DENY = (GS, "config/glyph-pack/", "config/corpus-pack/")
@@ -325,8 +331,18 @@ def push_only(conn, ws_dir: Path, only, *, actor: str | None, dry_run: bool = Fa
         images = {e: g_ for e, g_ in images.items() if g_}
         if images:
             up = {ext: (uploader(g_) if ext == "png" else uploader(g_, ext=ext)) for ext, g_ in sorted(images.items())}
-    rep = import_scans(conn, [sc], label=f"push-only:{ws}@{floor}", actor=actor, dry_run=dry_run,
-                       source="push", guard=guard, allow_delete=allow_delete, only_paths=set(changed))
+    for i in range(STALE_TRIES):
+        try:
+            rep = import_scans(conn, [sc], label=f"push-only:{ws}@{floor}", actor=actor, dry_run=dry_run,
+                               source="push", guard=guard, allow_delete=allow_delete, only_paths=set(changed))
+            break
+        except Exception as e:  # noqa: BLE001
+            # 提交时库版本变了（d1conn.Stale：守卫看的是整库 max(rev)，别的工作区、别的文件写入也会撞）：整批没写，
+            # 重读再推是安全的——guard 每次重新核范围内有没有人改（真改了抛 StaleBase，不重试），差分写本身幂等。
+            # 11-25 全唐文 uid 自检单多机同推 995ejelvk0，#17374 等一次撞上就失败（A30）
+            if type(e).__name__ != "Stale" or i == STALE_TRIES - 1:
+                raise
+            time.sleep(STALE_WAIT_S * (i + 1) * (1 + random.random()))
     out = rep.as_dict()
     out.update(only=list(only), pushed=changed, images=up, base_rev=floor)
     if not dry_run:

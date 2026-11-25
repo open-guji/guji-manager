@@ -30,3 +30,9 @@ def test_transient_prefix_is_distinct_and_delay_is_sane():
     assert not "环境：".startswith(S.TRANSIENT)
     lo, hi = S.TRANSIENT_DELAY_S
     assert 0 < lo < hi
+
+
+def test_book_config_error_is_not_env():
+    from guji_manager.jobs import runner as R
+    assert R._CONFIG_ERR.search("open_guji_cv.core.book_config.BookConfigError: 册 yaml：page_kinds: 未知页型 'table_cols'")
+    assert not R._CONFIG_ERR.search("CentralError: 500 http")
