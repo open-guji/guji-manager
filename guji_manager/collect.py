@@ -694,7 +694,9 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         # ZM vol01 88:1:12a（rebound 到 13a）、18a（迁移锚，旧格网）会落错格。
         same_ids = consistent_cells(draft)
         votes_now = vote_chars(draft)
-        _pg = sorted({int(str(c).split(":")[0]) for c in [*votes_now, *same_ids] if str(c).split(":")[0].isdigit()})
+        _ks = [str(c) for c in [*votes_now, *same_ids]]
+        # 格键是「页:列:格」才能取页；册启用 u 后键可能是 u（无冒号），取不出页就整册绑（慢但对）
+        _pg = sorted({int(k.split(":")[0]) for k in _ks}) if all(k.split(":")[0].isdigit() and ":" in k for k in _ks) else None
         if a.batch:
             _pg = None
         try:
