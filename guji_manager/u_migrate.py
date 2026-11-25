@@ -445,3 +445,45 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
         st.save()
         files.add(f)
     return {"人裁救回": len(hs), "作废": n_void, "转待审": n_rev, "撤下": n_wd, "files": sorted(files)}
+
+
+# ── 全库自检（11-25，GM2 核出「有账册每格最新人裁没 u、也没作废／转待审」8,226 格：
+#    根因是 migrate-plan 读事件走了 cv 的页表 rev 闸，换图源前的旧事件（cv 本就不采信）没进清单）──
+
+NOT_HUMAN_SOURCES = ("auto", "llm", "vision", "knn_infer")
+
+
+def is_human_cell(e, human_vs, counts_as_human) -> bool:
+    """GM2 口径：confirm、unit=cell、payload.v ∈ HUMAN_VS、算人裁、payload.source 不是 auto／llm／vision／knn_infer。"""
+    t = e.target
+    p = e.payload or {}
+    return (e.kind == "confirm" and t.unit == "cell" and p.get("v") in human_vs and counts_as_human(e)
+            and str(p.get("source") or "") not in NOT_HUMAN_SOURCES)
+
+
+def latest_by_key(evs, pre: str) -> dict:
+    """每格最新一条（按 ts、批次、序号；`~u` 抄件 ts 同原件、批次名在后，所以排在原件之后）。"""
+    out: dict = {}
+    for e in sorted((e for e in evs if str(e.target.key).startswith(pre)), key=lambda e: (e.ts, e.batch, e.seq)):
+        out[e.target.key] = e
+    return out
+
+
+def void_seen(event_log, book: str) -> set:
+    """u_void 里记过的人裁事件 id（作废和转待审都算有去向）。"""
+    import json
+    vp = void_path(event_log) / f"{book}.jsonl"
+    seen = set()
+    if vp.exists():
+        for line in vp.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                if d.get("stream") == "events" and d.get("id"):
+                    seen.add(d["id"])
+    return seen
+
+
+def unaccounted(latest: dict, seen: set) -> list:
+    """每格最新人裁没 u、也没记作废／转待审的 → [Event]。全库收尾后应为空。"""
+    return [e for k, e in sorted(latest.items())
+            if not isinstance((e.target.anchor or {}).get("u"), int) and e.id not in seen]

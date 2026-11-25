@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u 收尾补漏）：`guji uid migrate-plan` 改读原样事件：被 cv 页表 rev 闸挡掉的换图源前旧事件（cv 本就不采信、换算件另挂新格号），每格最新是它又没 u 的，`--close` 记档作废（此前漏了，GM2 核出殿本 8,180 格）。新命令 `guji uid check-u [册…]`：有账册每格最新人裁没 u、也没记作废／转待审的（GM2 口径：confirm、unit=cell、v∈HUMAN_VS、source 非 auto／llm／vision／knn_infer），应为 0，有则退出码 1。
 ## [0.6.11] - 2026-11-25
 
 - 发版缘由：字格 u 收尾（CV0 T1）：#951 标 main 给书已启用 u 的没账册首次入账；#952 中心库导入文件登记最后写（推一半重推补齐）、migrate-plan --close 缺条目文件写前报错。
