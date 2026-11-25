@@ -59,6 +59,27 @@ def detail_rows(old: P.ItemStore, new: P.ItemStore) -> list[dict]:
     return sorted(rows, key=lambda x: P.cell_sort_key(x["cell"]))
 
 
+def atomic_write(path: Path, text: str) -> None:
+    """先写临时文件再 rename：盘满写一半时不留 0 字节的状态文件（QTW 11-25 alt-tried.json）。"""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def read_json(path: Path, default=None):
+    """状态文件读不出来、是 0 字节或写坏了，就当没有（调用方重新生成），不报 JSONDecodeError 退出。"""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
 def write_detail(ws: Path, book: str, rows: list[dict]) -> Path:
     f = ws / "reports" / book / "_land" / "land-detail.tsv"
     f.parent.mkdir(parents=True, exist_ok=True)
@@ -216,13 +237,12 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
         out["uploaded"] = upload_sprites(sprites, files_dir)
     out["written"] = work.save()
     sheet = P.export_sheet(work, head)
-    sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
+    atomic_write(sheet_p, json.dumps(sheet, ensure_ascii=False))
     out["cells"] = len(sheet["cells"])
     if sync:
         rels = [str(P.items_path(data, text_id, chapter).relative_to(data)), str(sheet_p.relative_to(data))]
         marker = ws / "reports" / book / "_land" / "needs_sync.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({"rels": rels}), encoding="utf-8")      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
+        atomic_write(marker, json.dumps({"rels": rels}))      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
         out["synced"] = db_only(ws, "sync", rels) == 0
         if not out["synced"]:
             # 现行单（pending.json）是条目派生的文件：收单线等刚推过它，两边都改会 SyncConflict。以库为准重派生——
@@ -300,8 +320,9 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res) and not _sheet_stale_now(data, text_id, chapter):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     marker = ws / "reports" / book / "_land" / "needs_sync.json"
+    sheet_rel0 = str(P.sheet_path(data, text_id, chapter).relative_to(data))
     if apply and sync and marker.exists():                       # 上次本机写好了但没推成：先补推
-        rels = json.loads(marker.read_text(encoding="utf-8"))["rels"]
+        rels = (read_json(marker, {}) or {}).get("rels") or [items_rel, sheet_rel0]      # 标记坏了：重推本章两个文件
         if db_only(ws, "sync", rels):
             raise SystemExit(f"✗ {book} 上次没推成的条目文件这次还是推不上（--only {rels}）")
         marker.unlink(missing_ok=True)
@@ -353,8 +374,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
             out.update(apply_changes(ws, book, data=data, text_id=text_id, chapter=chapter, work=plan["_store"],
                                      sprites=list((res or {}).get("sprites") or []), files_dir=files_dir, sync=sync))
         f = landed_path(ws, book)
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"digest": digest, "pack": current_main(ws, book), "at": P.now()}), encoding="utf-8")
+        atomic_write(f, json.dumps({"digest": digest, "pack": current_main(ws, book), "at": P.now()}))
     return out
 
 
@@ -400,7 +420,7 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
 
     miss, noalt = lacking()
     tried_f = ws / "reports" / book / "_land" / "alt-tried.json"
-    tried = set(json.loads(tried_f.read_text(encoding="utf-8"))) if tried_f.exists() else set()
+    tried = set(read_json(tried_f, []) or [])
     noalt -= tried                                    # 试过一次仍没 alt 的格不反复跑 15 分钟
     if not (miss or noalt):
         return
@@ -434,8 +454,10 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
             return
         miss2, noalt2 = lacking()
     # 试过仍没 alt 的格记下来，下次不再为它们空跑
-    tried_f.parent.mkdir(parents=True, exist_ok=True)
-    tried_f.write_text(json.dumps(sorted(tried | noalt2), ensure_ascii=False), encoding="utf-8")
+    try:
+        atomic_write(tried_f, json.dumps(sorted(tried | noalt2), ensure_ascii=False))
+    except OSError as e:        # 盘满：不拦，下次重新试
+        print(f"⚠ {book} 写不了 {tried_f.name}（{e}）", file=sys.stderr)
     if rc or miss2 or noalt2:
         print(f"⚠ {book} audit alt 退出 {rc}，仍有 {len(miss2)} 格没卡片、{len(noalt2)} 格卡上没相似字（环境缺 torch／权重／原图？）：这些格上线会没有候选字：{sorted(miss2 | noalt2)[:8]}", file=sys.stderr)
 
