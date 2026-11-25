@@ -181,20 +181,23 @@ def load_votes(conn, site_book: str, site_vol: str) -> list[dict]:
 
 
 def apply(conn, fills: list[dict]) -> dict:
-    """逐条写（拿得到 rowcount）。→ {写入, 写时已变}。"""
+    """逐条写，``RETURNING key`` 数实际写了几条（经 Worker 拿不到 rowcount）。→ {写入, 写时已变}。
+
+    u 一律 ``CAST(? AS INTEGER)``：经 Worker 的 JSON 参数到 D1 会绑成 REAL，json_set 写出 ``16.0``，
+    虚拟列 ``u``（只认 json_type=integer）就是 NULL、下游 ``vote_u`` 也不认（11-25 线上踩过，已修回）。"""
     n = stale = 0
     for f in fills:
         keys = list(f["set"])
-        path_args = ", ".join("%s, %s" for _ in keys)
+        path_args = ", ".join("%s, CAST(%s AS INTEGER)" for _ in keys)
         params: list = []
         for k in keys:
             params += [f"$.{k}", int(f["set"][k])]
-        cur = conn.execute(
+        got = conn.execute(
             f"UPDATE web_inbox SET value = json_set(value, {path_args}), "
             f"seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM web_inbox) "
-            f"WHERE kind = %s AND key = %s AND value = %s",
-            params + [f["kind"], f["key"], f["old"]])
-        if cur.rowcount == 1:
+            f"WHERE kind = %s AND key = %s AND value = %s RETURNING key",
+            params + [f["kind"], f["key"], f["old"]]).fetchall()
+        if len(got) == 1:
             n += 1
         else:
             stale += 1

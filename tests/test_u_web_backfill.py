@@ -109,6 +109,7 @@ def test_db_roundtrip():
     assert v == {"vol": "028", "a": "3:1:2", "shown": "地", "choice": "none", "u": 2}
     assert got["cr:i:b:pi_1:x"].startswith('{"vol":"028","a":"3:1:2","shown":"地"')   # 原样保留、只在尾巴补字段
     assert json.loads(got["cs:b:028:1:3:1:1-3:1:3:x"])["u_start"] == 1
+    assert '"u_start":1,"u_end":3' in got["cs:b:028:1:3:1:1-3:1:3:x"]                 # 整数，不是 1.0
     assert "u" not in json.loads(got["cr:r:b:3:1:1:x"])
     meta = {k: (ts, seq, a) for k, ts, seq, a in be.db.execute("SELECT key, ts, seq, actor FROM web_inbox")}
     assert meta["cr:i:b:pi_1:x"][0] == 100 and meta["cr:i:b:pi_1:x"][2] == "edge"   # ts、actor 不动
