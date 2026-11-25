@@ -35,6 +35,17 @@ def cells_sha(store, book: str, page: int) -> str | None:
     return page_cells_sha(book, page, store)
 
 
+def chars_fresh(store, book: str, key: str) -> bool:
+    """这一页的 seed_admit 是不是在现行字块（cell_shrink）上跑的：manifest 里记的上游 char_index sha＝现行 cell_shrink 文件 sha。
+    只重切到 cell_shrink、没再跑识字时，seed_admit 是旧切分的结果，按格号取字会整列错位（11-25 试点 vol28 p3：「業」格拆半，
+    旧字把沿用 u 判给了后半小块），这时不取字、只按框对照。"""
+    try:
+        e = store.manifest(book, "seed_admit").get(key)
+        return bool(e) and e.upstream.get("char_index") == store.sha(book, "cell_shrink", key)
+    except Exception:  # noqa: BLE001 —— 拿不到 manifest：当它不新鲜
+        return False
+
+
 def from_products(store, book: str, page: int, *, with_chars: bool = True) -> PageCut | None:
     """读现行产物里这一页的切分；没有 Step3 产物 → None。"""
     from .._cv import Borders, cells_step, page_key, read_view
@@ -47,7 +58,7 @@ def from_products(store, book: str, page: int, *, with_chars: bool = True) -> Pa
     bd = store.read_raw(book, "border_detect", key)
     W = Borders.model_validate(bd["borders"]).width if bd else None
     chars: dict[str, str | None] = {}
-    if with_chars:
+    if with_chars and chars_fresh(store, book, key):
         try:
             from .._cv import page_slots
             chars = {s.id: s.char for s in page_slots(store, book, page, [])}
