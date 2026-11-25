@@ -332,3 +332,15 @@ def test_ensure_alt_cards_reruns_for_card_without_alt(tmp_path, monkeypatch):
     calls.clear()
     land.ensure_alt_cards(ws, "b", ["1:2:3"], None, need_alt=["1:2:3"])   # 已有 alt：不再跑
     assert not calls
+
+
+def test_resolved_recheck_cell_gets_alt_only(tmp_path):
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    r = s.put(None, op="open", by="x", at="2026-11-01", id="pi_1", cell="1:2:3", fp="f", state="resolved",
+              doc={"recheck": True, "review": "human"}, src="import:r11")
+    s.save()
+    s = P.ItemStore(s.path, "t", "001")
+    out = P.reconcile(s, [{"cell": "1:2:3", "review": "pending", "alt": [{"c": "字"}]}], src="land:b", fps={"1:2:3": "f"})
+    assert out["改"] == ["1:2:3"] and out["保持已裁"] == ["1:2:3"]
+    it = s.find("1:2:3")[0]
+    assert it["state"] == "resolved" and it["doc"]["alt"] and it["doc"]["review"] == "human"

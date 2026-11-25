@@ -329,6 +329,10 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             out["保持已裁"].append(cell)         # 已有人裁、图没变、机器没要求复审：不重开（r18 出单把刚落的人裁放回单上）
             if upd:                              # 格号挪了、指纹补上等照记，字段不动
                 upd.pop("doc", None)
+            old_doc = r.get("doc") or {}
+            if old_doc.get("recheck") and old_doc.get("alt") in (None, [], ()) and (c.get("alt") or doc_alt):
+                upd["doc"] = {**old_doc, "alt": c.get("alt") or doc_alt}     # 复审格已裁但仍挂在单上、没有候选字：只补 alt（QTW 11-25 004:92:4:14）
+                ops.append("doc")
         elif st != want:
             upd["state"] = want
             ops.append("reopen" if want == "open" else "state")

@@ -423,7 +423,10 @@ def hand_without_alt(ws: Path, book: str, text_id: str, chapter: str) -> list[st
     except (OSError, SystemExit):
         return []
     # 不再只认来源前缀：老单导入的手加格来源是 import:<rev>（QTW 11-25：6 个手加格没补上）；凡开着、没有候选字的条目都并进 extra
-    return sorted(r["cell"] for r in store.items.values() if r["state"] == "open" and not (r.get("doc") or {}).get("alt"))
+    # 已裁（resolved）但仍是复审格（doc.recheck）：照旧显示在单上，网站也要有候选字（QTW 11-25 004:92:4:14）
+    return sorted(r["cell"] for r in store.items.values()
+                  if (r["state"] == "open" or (r["state"] == "resolved" and (r.get("doc") or {}).get("recheck")))
+                  and not (r.get("doc") or {}).get("alt"))
 
 
 def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
