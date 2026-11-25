@@ -32,7 +32,8 @@ def test_plan(tmp_path):
         {"cell": f"{B}:4:1:1", "char": "洪", "ctx": {"left": "", "right": ""}},                            # 账行没记字
         {"cell": f"{B}:9:1:1", "char": "日", "ctx": {}},                                                   # 账上没这页
         {"cell": f"{B}:3:1:5", "char": "宇", "u": 5, "ctx": {}},                                           # 已有 u：不算
-        {"cell": f"{B}:3:1:1", "char": "天"},                                                              # 没窗口：证明不了
+        {"cell": f"{B}:3:1:1", "char": "某"},                                                              # 没窗口、字不同：清单
+        {"cell": f"{B}:3:1:2", "char": "地"},                                                              # 没窗口、字同：迁
     ]
     hum = [{"id": "h1", "cell": f"{B}:3:1:3", "shape": "玄"},
            {"id": "h2", "cell": f"{B}:3:1:3", "shape": "元"},
@@ -45,11 +46,11 @@ def test_plan(tmp_path):
     items = [{"id": "pi_a", "cell": "3:1:2"}, {"id": "pi_b", "cell": "7:1:1"}, {"id": "pi_c", "cell": "3:1:1", "u": 1}]
     r = M.plan(led, rulings=rul, humans=hum, items=items)
     got = sorted((x["cell"], x["u"], x["how"]) for x in r["rulings"])
-    assert got == [(f"{B}:3:1:1", 1, "宽松"), (f"{B}:3:1:2", 2, "直接"), (f"{B}:3:1:3", 3, "宽松"), (f"{B}:3:1:4", 4, "宽松")]
+    assert got == [(f"{B}:3:1:1", 1, "宽松"), (f"{B}:3:1:2", 2, "字同"), (f"{B}:3:1:2", 2, "直接"), (f"{B}:3:1:3", 3, "宽松"), (f"{B}:3:1:4", 4, "宽松")]
     assert all(x["payload"]["u"] == x["u"] for x in r["rulings"])
     assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6, "h4": 4, "h5": 3, "h6": 8, "h8": 9}
     assert [x["id"] for x in r["items"]] == ["pi_a"]
-    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 8, "迁出": 6, "没迁": 2},
+    assert r["守恒"] == {"rulings": {"迁前": 9, "迁出": 5, "没迁": 4}, "human": {"迁前": 8, "迁出": 6, "没迁": 2},
                          "items": {"迁前": 2, "迁出": 1, "没迁": 1}}
     why = {(x["类别"], x["键"]): x["理由"] for x in r["清单"]}
     assert "窗口对不上" in why[("裁定", f"{B}:3:1:5")] and "没记字" in why[("裁定", f"{B}:4:1:1")]

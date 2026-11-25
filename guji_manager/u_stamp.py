@@ -128,3 +128,79 @@ def stamp_human(evs: list, ref: Callable[[str], object] | None = None) -> int:
             t.anchor = {**(t.anchor or {}), "u": u}
             n += 1
     return n
+
+
+# ---- 写入一律以 u 为准（11-25 Sheldon「不要双写太久了，激进一点」）----
+# manager 里所有 `from ._cv import EventLog／RulingLog` 都拿到下面两个子类（`_cv._LOCAL` 登记）：
+# append 前先盖 u；册有字格身份账而写不出 u 的（格号不全、账上没这一格）整批报错，不再静默只写格号。
+# 格号照写（人读方便），身份以 u 为准。
+
+class UidRequired(RuntimeError):
+    """册有字格身份账，这条写不出 u。"""
+
+
+def _has_ledger(book: str, cache: dict) -> bool:
+    if book not in cache:
+        led = _ledger(book)
+        cache[book] = led is not None and led.exists
+    return cache[book]
+
+
+def require_u(evs: list) -> None:
+    """盖过 u 之后核：册有账的格级人裁（`unit=cell`）要有 `anchor.u`，按格的裁定（`payload.cell`）要有 `payload.u`。"""
+    cache: dict = {}
+    bad = []
+    for e in evs:
+        t = getattr(e, "target", None)
+        p = getattr(e, "payload", None) or {}
+        if getattr(e, "kind", None) == "ctx_ruling":
+            cell = p.get("cell")
+            if isinstance(cell, str) and cell and _has_ledger(cell.split(":", 1)[0], cache) and not isinstance(p.get("u"), int):
+                bad.append(f"{e.id}（裁定 {cell}）")
+        elif t is not None and t.unit == "cell" and t.key and _has_ledger(str(t.key).split(":", 1)[0], cache) \
+                and not isinstance((t.anchor or {}).get("u"), int):
+            bad.append(f"{e.id}（人裁 {t.key}）")
+    if bad:
+        raise UidRequired(f"{len(bad)} 条写不出字格永久编号 u（册有身份账，格号不全或账上没这一格），整批不写："
+                          f"{'、'.join(bad[:5])}{' …' if len(bad) > 5 else ''}。先 guji uid advance <册>")
+
+
+def _stamp_all(evs: list) -> list:
+    evs = list(evs)
+    ref = _cell_ref()
+    stamp_rulings([e for e in evs if getattr(e, "kind", None) == "ctx_ruling"], ref)
+    stamp_human([e for e in evs if getattr(e, "kind", None) != "ctx_ruling"], ref)
+    require_u(evs)
+    return evs
+
+
+def _guarded(base):
+    class Guarded(base):                      # type: ignore[misc, valid-type]
+        def append(self, events, *a, **k):
+            return super().append(_stamp_all(events), *a, **k)
+    Guarded.__name__ = Guarded.__qualname__ = base.__name__
+    Guarded.__doc__ = f"{base.__doc__ or ''}\n\n（manager：append 前盖字格永久编号 u，册有账写不出 u 的整批报错。）"
+    return Guarded
+
+
+def _cv_cls(name: str):
+    import importlib
+    try:
+        api = importlib.import_module("open_guji_cv.manager_api")
+        if name in getattr(api, "__all__", ()):
+            return getattr(api, name)
+    except ImportError:
+        pass
+    mod = {"EventLog": "open_guji_cv.feedback.events", "RulingLog": "open_guji_cv.feedback.rulings"}[name]
+    return getattr(importlib.import_module(mod), name)
+
+
+_CLS: dict = {}
+
+
+def __getattr__(name: str):
+    if name in ("EventLog", "RulingLog"):
+        if name not in _CLS:
+            _CLS[name] = _guarded(_cv_cls(name))
+        return _CLS[name]
+    raise AttributeError(name)

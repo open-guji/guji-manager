@@ -4,6 +4,9 @@
 
 ## [未发版]
 
+- MINOR（11-25，CV0 u T2，Sheldon「不要双写太久了，激进一点」）：**写入以 u 为准**。manager 里 `from ._cv import EventLog／RulingLog` 改拿 `u_stamp` 的子类，append 前统一盖字格永久编号 u（人裁 `target.anchor.u`、裁定 `payload.u`）；册有字格身份账而写不出 u 的（账上没这一格、格号不全）整批报错，不再静默只写格号。没账的册不变。
+- PATCH（11-25，CV0 u T2）：`guji uid migrate-plan` 存量迁移口径按全库实测补齐（#925 #929 #931 本 PR）：窗口按本书归一表比；人裁比字形或读作、先认锚里 cells_sha；没记窗口的裁定按字同／各版同格；`--write` 只追加（`~u` 抄件，ts、seq 不变）。殿本 99 册、全唐文 30 册、脈經、北行、史記 41 册已迁并推库。
+- MINOR（11-24／25，CV0 u T2）：裁定、人裁、待审条目、网站票、book-text 导出挂 u（#921 #924）：`u_stamp`、待审条目按 u 认、`cellvotes` 按 u 认票、`rulings-hits` 按 u 跟现格、`guji uid table`、swap 按 u 出表、导出 char v0.6／norm v0.3。没账的册逐字节同。
 - PATCH（11-25，CV0 u 推全库）：字格身份账改在**标 main 时**入账：新插件 `guji.post_promote` → `uid/promote.py`，有账的册标 main 后先 `db pull --only` 拉这册的账、取回该 main 包 `advance`、有新行就 `db push --only` 推回中心库（`GUJI_UID_ON_PROMOTE=0` 关、`GUJI_UID_AUTO_PUSH=0` 只入本机）。执行机（有 `GUJI_JOB_ID`）跑完不再在 `hooks.finished` 入账：执行机不推数据回库，入了也丢，还会弄脏下张单的 db pull。没账的册不变，L0。
 - PATCH（11-25，CV0 u 试点）：`guji uid advance` 只在本页 seed_admit 是在现行字块上跑的（manifest 上游 `char_index` sha＝现行 `cell_shrink` sha）时才取字；只重切到 cell_shrink、没重跑识字时旧字按格号会整列错位，误导拆格时谁沿用 u（试点 vol28 p3「業」格）。这时只按框对照。L0。
 - PATCH（11-25，CV0 u 试点）：`guji uid advance` 从产物取框改成与 book-text cord 同口径（`cell_shrink` 字框 `bbox_page` 优先，空格才用格四角外接框）。原先只用格框，与 book-text 建的账对照时 vol31 有 4,518 格 IoU 不够、靠中心距才配上；改后 32,611 格全按 IoU 对上。账里已有的行不受影响，L0。

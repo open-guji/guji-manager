@@ -9,7 +9,7 @@
   - 宽松证明：没记 `cells_sha` 或对不上时，用账上该页**现行**切分的字（账行 `chars`）核裁定窗口——
     格号前后各 2 字与裁定 `ctx.left` 末 2 字、`ctx.right` 首 2 字比（逐字按本书归一表 `charnorm.same`；页首页尾只比账行有字的一侧）：
     **两侧都同**，或**一侧同且裁定字＝账上这格的字**（manager 拿不到候选，用现行文本的字代替 cv 的「字在候选」），过了取现行 u；
-    裁定没记窗口（`ctx` 空）的证明不了，进清单；
+    裁定没记窗口（`ctx` 空，src-2 私用码记录等）：裁定字＝账上字迁（字同）；没字可比且账上各行这格同一个 u 迁（各版同格）；其余清单；
   - 其余进清单（理由：账上没这一页／格号不在账里／窗口对不上／账行没记字）。
 - **人裁**（每格最新一条算人裁的 confirm，`anchor` 没 u 的）：锚里 `cells_sha` 主段＝账上某行主段就取那行的 u（锚同切分）；
   否则人裁字（`shape` 字形或 `reading` 读作，任一）＝账上这格的字（按归一表）就迁；账上记的是文本字，「巳」形读「已」的要比 reading；
@@ -87,7 +87,20 @@ def plan_rulings(led: Ledger, rulings: list[dict], same=None) -> tuple[list[dict
             continue
         ctx = p.get("ctx") or {}
         if not (ctx.get("left") or ctx.get("right")):
-            left.append({"类别": "裁定", "键": cell, "理由": "裁定没记窗口，证明不了"})
+            # 没记窗口（src-2 私用码记录等）：裁定字＝账上字就迁；没字可比时账上该页各行这格都是同一个 u 也迁
+            have = (cur.get("chars") or {}).get(cell, "")
+            mine = p.get("char") or ""
+            u = int(cur["map"][cell])
+            if mine and have:
+                if same(mine, have):
+                    out.append({"cell": cell, "u": u, "how": "字同", "payload": {**p, "u": u}})
+                else:
+                    left.append({"类别": "裁定", "键": cell, "理由": f"没记窗口，裁定「{mine}」，账上这格是「{have}」"})
+                continue
+            if all(cell in d["map"] and int(d["map"][cell]) == u for d in led.lines if int(d["page"]) == pg):
+                out.append({"cell": cell, "u": u, "how": "各版同格", "payload": {**p, "u": u}})
+            else:
+                left.append({"类别": "裁定", "键": cell, "理由": "没记窗口、没字可比，且这格重切过"})
             continue
         l2, r2 = (ctx.get("left") or "")[-2:], (ctx.get("right") or "")[:2]
         wl, wr = w[0][-2:], w[1][:2]

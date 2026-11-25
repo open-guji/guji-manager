@@ -155,3 +155,42 @@ def test_add_with_u(tmp_path):
     s = _store(tmp_path)
     r = s.add("vol31:5:2:3", {"why": ["x"]}, by="t", src="human:t", u=101)
     assert r["u"] == 101 and r["cell"] == "5:2:3"
+
+
+# ── 写入以 u 为准：_cv 的 EventLog／RulingLog 换成盖 u 的子类（11-25） ──
+
+@pytest.fixture
+def strict(ledger, monkeypatch):
+    class _L:
+        exists = True
+    monkeypatch.setattr(U, "_ledger", lambda book: _L() if book in LEDGER else None)
+
+
+def test_cv_logs_are_guarded():
+    from guji_manager import _cv
+    assert _cv.EventLog.__module__ == "guji_manager.u_stamp" and _cv.RulingLog.__module__ == "guji_manager.u_stamp"
+    import open_guji_cv.feedback.events as ev
+    assert issubclass(_cv.EventLog, ev.EventLog)
+
+
+def test_guarded_append_stamps_and_writes(strict, tmp_path):
+    from guji_manager._cv import EventLog, RulingLog
+    log = EventLog(tmp_path)
+    assert log.append([_human("vol31:5:2:3"), _human("vol99:1:1:1")]) == 2      # 没账的册照旧
+    got = {e.target.key: (e.target.anchor or {}).get("u") for e in log.iter_all(raw=True)}
+    assert got == {"vol31:5:2:3": 101, "vol99:1:1:1": None}
+    rlog = RulingLog(tmp_path)
+    r = _ruling("vol31:6:1:1")
+    U._stamp_all([r])
+    assert r.payload["u"] == 200
+
+
+def test_guarded_append_refuses_without_u(strict, tmp_path):
+    from guji_manager._cv import EventLog
+    log = EventLog(tmp_path)
+    with pytest.raises(UidMissing):                       # 有账、账上没这一格：整批不写
+        log.append([_human("vol31:9:9:9")])
+    bad = _ruling("vol31:5")                              # 有账、格号不全：盖不上 u
+    with pytest.raises(U.UidRequired):
+        U._stamp_all([bad])
+    assert list(log.iter_all(raw=True)) == []
