@@ -131,12 +131,13 @@ def test_push_only_ok_when_others_wrote_outside_range(repo, conn, tmp_path, monk
 def test_push_only_cut_midway_retries_cleanly(repo, conn, tmp_path, monkeypatch):  # noqa: F811
     """大批分段提交时中途断了（11-25 全唐文账：source_files 已登记、events 只进一半，再推以为没改动）：
     文件登记放最后写，断了文件仍算没推，重推补齐。"""
-    from guji_manager.datastore import d1conn
+    from guji_manager.datastore import d1conn, workcopy_only
     from guji_manager.datastore.workcopy import local_changes
     from guji_manager.datastore.workcopy_only import push_only
     src, _cache, m = _two(repo, conn, tmp_path, monkeypatch)
     a, da = m["a"]
     monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    monkeypatch.setattr(workcopy_only, "STALE_TRIES", 1)                # 看断了之后的状态，不让推送自己重试补齐
     for i in range(2, 40):
         _add_event(da, f"evt_b_{i}", i)
     from guji_manager.datastore import importer
@@ -183,3 +184,89 @@ def test_push_only_on_partial_copy_ok_unless_range_hits_exclude(repo, conn, tmp_
             push_only(conn, a, bad, actor="t")
     with pytest.raises(SystemExit, match="部分副本"):
         push(conn, a, actor="t")
+
+
+def test_push_only_retries_on_stale(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    from guji_manager.datastore import importer, workcopy_only
+    src, _cache, m = _two(repo, conn, tmp_path, monkeypatch)
+    a, da = m["a"]
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    monkeypatch.setattr(workcopy_only, "STALE_WAIT_S", 0)
+    real, calls = importer.import_scans, []
+
+    class Stale(Exception):
+        pass
+
+    def flaky(*a_, **k):
+        calls.append(1)
+        if len(calls) < 3:
+            raise Stale("库在你读取之后被别人写过")
+        return real(*a_, **k)
+
+    monkeypatch.setattr(importer, "import_scans", flaky)
+    _add_event(da, "evt_b_2", 2)
+    assert workcopy_only.push_only(conn, a, ["feedback/events/"], actor="t")["pushed"] == [EV]
+    assert len(calls) == 3 and "evt_b_2" in {r["id"] for r in src.rows("events", "tws")}
+    calls.clear()
+    monkeypatch.setattr(workcopy_only, "STALE_TRIES", 2)
+    _add_event(da, "evt_b_3", 3)
+    with pytest.raises(Stale):
+        workcopy_only.push_only(conn, a, ["feedback/events/"], actor="t")
+
+
+def test_push_only_cut_midway_then_retry_completes(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """同上，但不关重试：中途撞 Stale 后自己重读重推补齐，自己写进去的半批不被当成别人改的。"""
+    from guji_manager.datastore import d1conn, importer, workcopy_only
+    from guji_manager.datastore.workcopy import local_changes
+    src, _cache, m = _two(repo, conn, tmp_path, monkeypatch)
+    a, da = m["a"]
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    monkeypatch.setattr(workcopy_only, "STALE_WAIT_S", 0)
+    for i in range(2, 40):
+        _add_event(da, f"evt_b_{i}", i)
+    monkeypatch.setattr(importer, "PIECE_BYTES", 2000)
+    monkeypatch.setattr(d1conn, "CHUNK_STMTS", 3)
+    real, calls = conn.backend.batch, []
+
+    def flaky(stmts, guard=None):
+        calls.append(1)
+        if len(calls) == 3:
+            raise d1conn.Stale("库在你读取之后被别人写过", *conn.backend.heads())
+        return real(stmts, guard)
+    monkeypatch.setattr(conn.backend, "batch", flaky)
+    assert workcopy_only.push_only(conn, a, ["feedback/events/"], actor="t")["pushed"] == [EV]
+    assert {f"evt_b_{i}" for i in range(2, 40)} <= {r["id"] for r in src.rows("events", "tws")}
+    assert local_changes(a) == []
+
+
+def test_push_only_retry_stops_when_range_changed_by_others(repo, conn, tmp_path, monkeypatch):  # noqa: F811
+    """撞 Stale 后重读：范围内文件这时已被别人推过，报 StaleBase（要 sync 合并），不覆盖。"""
+    from guji_manager.datastore import importer, workcopy_only
+    from guji_manager.datastore.workcopy import StaleBase, push
+    src, _cache, m = _two(repo, conn, tmp_path, monkeypatch)
+    (a, da), (b, db_) = m["a"], m["b"]
+    monkeypatch.setattr(workcopy_only, "STALE_WAIT_S", 0)
+    real, calls = importer.import_scans, []
+
+    class Stale(Exception):
+        pass
+
+    def flaky(*a_, **k):
+        calls.append(1)
+        if len(calls) == 1:                    # 第一次提交时撞上：这期间 b 推了同一个文件
+            monkeypatch.setattr(importer, "import_scans", real)
+            monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-b"))
+            _add_event(db_, "evt_b_9", 9)
+            push(conn, b, actor="b")
+            monkeypatch.setattr(importer, "import_scans", flaky)
+            monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+            raise Stale("库在你读取之后被别人写过")
+        return real(*a_, **k)
+
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home-a"))
+    monkeypatch.setattr(importer, "import_scans", flaky)
+    _add_event(da, "evt_b_2", 2)
+    with pytest.raises(StaleBase):
+        workcopy_only.push_only(conn, a, ["feedback/events/"], actor="a")
+    ids = {r["id"] for r in src.rows("events", "tws")}
+    assert "evt_b_9" in ids and "evt_b_2" not in ids

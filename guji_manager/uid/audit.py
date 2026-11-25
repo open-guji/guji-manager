@@ -81,7 +81,44 @@ def promoted_by(src, ws: str, m: dict) -> str | None:
     return rec.get("manager_version")
 
 
-def run(*, submit: bool = False, cv: str = "main", by: str = "uid-audit", say=print) -> dict:
+#: main 包标签开头的 cv 版本（cv0.7.104-c76-…）
+_LABEL_CV = re.compile(r"^cv(\d+\.\d+\.\d+)\b")
+
+
+def cv_for(label: str, fallback: str = "main", resolve=None, pinned: str | None = None) -> str:
+    """uidsync 单用哪版 cv，依次：册 yaml 声明的 ``cv_version``（``pinned``，册配置钉版本的老办法）→ 产出这个 main 包
+    的那版（标签开头的 cv 版本）→ ``fallback``。前两样都取 tag ``v<版本>``，解析不出（tag 不在、连不上）就往下退。
+    为什么不一律 main：各书 patch 线的册 yaml 可能用了 cv main 还不认的写法（全唐文 052／054 的
+    ``page_kinds: table_cols`` 只有 v0.7.104 与 dev 认，钉 main 的自检单准备时就报 BookConfigError，11-25 A30）。"""
+    if resolve is None:
+        from ..jobs.spec import resolve_cv as resolve
+    m = _LABEL_CV.match(label or "")
+    for v in (pinned, m.group(1) if m else None):
+        if not v:
+            continue
+        tag = "v" + str(v).strip().lstrip("v")
+        try:
+            resolve(tag)
+        except Exception:  # noqa: BLE001 —— tag 不在、连不上：往下退
+            continue
+        return tag
+    return fallback
+
+
+def pinned_cv(conn, ws: str, book: str) -> str | None:
+    """中心库里这册 yaml 钉的 ``cv_version``（没钉、读不到 → None）。"""
+    import yaml
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT raw FROM books WHERE ws = ? AND book = ?", (ws, book))
+        row = cur.fetchone()
+        v = (yaml.safe_load(row[0]) or {}).get("cv_version") if row and row[0] else None
+    except Exception:  # noqa: BLE001
+        return None
+    return str(v) if v else None
+
+
+def run(*, submit: bool = False, cv: str | None = None, by: str = "uid-audit", say=print) -> dict:
     from ..datastore import d1conn
     from ..datastore.packs import _client
     conn = d1conn.connect()
@@ -95,6 +132,7 @@ def run(*, submit: bool = False, cv: str = "main", by: str = "uid-audit", say=pr
             v = promoted_by(src, ws, m)
             m["manager_version"] = v
             m["old_manager"] = (_ver(v) or (0, 0, 0)) < MIN_MANAGER
+            m["pinned_cv"] = pinned_cv(conn, ws, m["book"])
             gaps.append(m)
             say(f"缺：{ws}/{m['book']} main {m['label']}（{m['promoted_at']} 标，manager {v or '未记版本（<0.6.16）'}）"
                 + ("；⚠ 旧 manager 标的，钩子不在" if m["old_manager"] and v else ""))
@@ -105,7 +143,9 @@ def run(*, submit: bool = False, cv: str = "main", by: str = "uid-audit", say=pr
     return {"workspaces": wss, "missing": gaps, "submitted": sub}
 
 
-def submit_jobs(gaps: list[dict], *, cv: str = "main", by: str = "uid-audit", say=print) -> list[dict]:
+def submit_jobs(gaps: list[dict], *, cv: str | None = None, by: str = "uid-audit", say=print,
+                resolve=None) -> list[dict]:
+    """给缺账的册交 uidsync 单。``cv`` 不给就按册用产出 main 包的那版（``cv_for``），给了就一律用它。"""
     from ..jobs import spec as SP
     from ..jobs import store as S
     out = []
@@ -116,7 +156,9 @@ def submit_jobs(gaps: list[dict], *, cv: str = "main", by: str = "uid-audit", sa
             if not bid:
                 say(f"跳过 {m['ws']}/{m['book']}：不知道书 ID")
                 continue
-            spec = SP.normalize({"kind": "uidsync", "book": m["book"], "cv": cv, "base": m["label"],
+            spec = SP.normalize({"kind": "uidsync", "book": m["book"], "cv": cv or cv_for(m["label"], resolve=resolve,
+                                                                        pinned=m.get("pinned_cv")),
+                                 "base": m["label"],
                                  "ws_glob": f"{bid}-*", "why": "字格身份账自检：main 包没入账"})
             row = S.submit(conn, spec, SP.spec_hash(spec), by=by, why=spec.get("why"), priority=50)
             out.append({"book": m["book"], "ws": m["ws"], "job": row["id"], "dup": row.get("dup_status")})

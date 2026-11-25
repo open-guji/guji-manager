@@ -173,10 +173,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--label", default=None, help="包标签（缺省现行 main）")
     q.add_argument("--local", action="store_true", help="用本机现行产物（已铺好这份包），不另取")
     q.add_argument("--no-push", action="store_true", help="只入本机账，不拉不推中心库")
+    q.add_argument("--reconfirm", action="store_true", help="这个包已对过账也再记一笔带时间的（重标 main 后自检才不报缺）")
 
     q = s.add_parser("audit", help="自检：有账的书每册现行 main 包入过账没有；--submit 给缺的交 uidsync 单")
     q.add_argument("--submit", action="store_true", help="给缺的册交 uidsync 单（同册同标签只跑一次）")
-    q.add_argument("--cv", default="main", help="uidsync 单用哪版 cv（缺省 main）")
+    q.add_argument("--cv", default=None, help="uidsync 单用哪版 cv（缺省按册用产出 main 包的那版，解析不出退回 main）")
 
     q = s.add_parser("advance", help="切字后入账（同一份切分重跑不动）")
     common(q)
@@ -245,6 +246,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--write", action="store_true", help="真写 feedback/anchors/<册>.jsonl（只追加）")
     q.add_argument("-o", "--out", default=None, help="补不了的清单（jsonl）")
     q.add_argument("-w", "--workspace", default=None)
+
+    q = s.add_parser("check-u-report", help="本机各工作区跑 check-u，非 0 通知 CV0 和该书项目（只报不改；执行方定时用）")
+    q.add_argument("--roots", nargs="+", default=None, help="找工作区的根目录（缺省 ~ 与当前目录）")
+    q.add_argument("--notify", action="store_true", help="非 0 且和上次不同就发通知")
 
     q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
     q.add_argument("book", help="cv 册（如 vol28）")
@@ -423,9 +428,10 @@ def cmd_check_u(a) -> None:
     for b in books:
         if not Ledger.load(b).exists:
             continue
-        bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), M.void_seen(log, b))
+        voided = M.void_seen(log, b)
+        bad = M.unaccounted(M.latest_by_key(raw, f"{b}:"), voided)
         # 第二项（11-25）：~u 抄件要有补锚档（cv 按事件 id 查框；缺了老人裁判 unanchored、seed_admit 报 human_unbound）
-        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:")]
+        mine = [e for e in raw if str(e.target.key).startswith(f"{b}:") and e.id not in voided]   # 记过作废的不用绑
         pid = M.anchor_patch_ids(fb, b)
         anc = M.missing_anchor_copies(mine, pid)
         nob = [e for e in M.boxless_copies(mine, pid) if e not in anc]     # 第三项：~u 抄件无框无档（guji uid anchor-fill 补）
@@ -480,6 +486,16 @@ def cmd_anchor_fill(a) -> None:
     _print(out)
 
 
+def cmd_checku_report(a) -> None:
+    from . import checku_report as R
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    guji = str(Path(sys.executable).with_name("guji"))
+    r = R.run(a.roots or [str(Path.home()), os.getcwd()], notify=a.notify, guji=guji, env=env)
+    _print({ws: {"total": x["total"], **({"error": x["error"]} if "error" in x else {})} for ws, x in r.items()})
+    if any(x["total"] for x in r.values()):
+        sys.exit(1)
+
+
 def cmd_tidy_recheck(a) -> None:
     """就地整理 u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）。"""
     from .. import u_migrate as M
@@ -506,7 +522,8 @@ def cmd_tidy_recheck(a) -> None:
 def cmd_sync(a) -> None:
     from .promote import sync
     ws = str(Path(a.workspace).resolve()) if a.workspace else os.environ.get("GUJI_WORKSPACE")
-    r = sync(a.book, a.label, ws, products="local" if a.local else a.products, push=not a.no_push)
+    r = sync(a.book, a.label, ws, products="local" if a.local else a.products, push=not a.no_push,
+             reconfirm=a.reconfirm)
     _print(r)
     if r["status"] in ("pull_failed", "push_failed"):
         sys.exit(1)
@@ -519,7 +536,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 

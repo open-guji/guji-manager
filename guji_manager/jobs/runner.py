@@ -37,6 +37,8 @@ REAP_EVERY = int(os.environ.get("GUJI_JOBS_REAP_EVERY", "5"))
 IDLE_BOARD_S = 300           # 空闲执行方刷新看板的节流（秒）
 #: rerun_prep.sh 里失败多半是网络／库的段（失败了换个会话重试）；其余段（钉子账、建字形库、语料校验…）是配置问题
 _PREP_ENV_PARTS = {"cv", "克隆工作区", "db-pull", "取原图", "模板索引", "基线包"}
+#: 准备脚本输出里这些错是配置问题（不是网络／库），换会话重试也一样
+_CONFIG_ERR = re.compile(r"\bBookConfigError\b")
 _TOKEN_RE = re.compile(r"(TOKEN|SECRET|KEY|PASS|DSN)[A-Z_]*=\S+|postgres(ql)?://\S+|Bearer \S+", re.I)
 
 
@@ -286,7 +288,9 @@ class Job:
             log = (self.dir / "run.log").read_text(encoding="utf-8", errors="replace")
             heads = re.findall(r"^== (\S+)", log, re.M)
             part = heads[-1] if heads else "?"
-            raise StageError("failed", f"准备「{part}」段失败：{e}", e.code, env=part in _PREP_ENV_PARTS) from None
+            # 网络／库段里报的配置错（册 yaml 写了这版 cv 不认的东西）换会话重试也必败，不算环境类（11-25 全唐文 052／054）
+            env = part in _PREP_ENV_PARTS and not _CONFIG_ERR.search(str(e))
+            raise StageError("failed", f"准备「{part}」段失败：{e}", e.code, env=env) from None
         m = re.search(r"^WS=(\S+)", out, re.M)
         self.ws = m.group(1) if m else self.ws
         m = re.search(r"^OVERRIDE=(.*)$", out, re.M)
@@ -336,7 +340,8 @@ class Job:
         """刚铺的底是 main 包：这册字格身份账要是没入过这份切分，就入账并推中心库（标 main 钩子会漏，11-25）。
         rerun／ab 里失败只记一笔、不挡；uidsync 单（``strict``）失败即单失败。"""
         label = self.spec["base"] if self.spec["base"] != "main" else None
-        args = ["uid", "sync", self.spec["book"], "-w", self.ws or "", "--local"] + (["--label", label] if label else [])
+        args = (["uid", "sync", self.spec["book"], "-w", self.ws or "", "--local"] + (["--label", label] if label else [])
+                + (["--reconfirm"] if strict else []))      # uidsync 单：包已对过也记一笔，自检才不重复交单
         try:
             out = self.guji(*args, write=True)
         except StageError as e:
@@ -837,6 +842,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                          seen={"session": session, "done": done}, reap_too=d1 and slow_tick)
                 if got is None:
                     _maybe_uid_audit(say)
+                    _maybe_uid_checku(say)
                     # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
@@ -921,6 +927,32 @@ def _maybe_uid_audit(say=print) -> None:
         say("；".join(tail[-6:]) if tail else f"字格身份账自检退出码 {r.returncode}")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"字格身份账自检没跑成：{e}")
+
+
+#: 人裁 check-u 定时报告（秒；缺省 0＝不跑）。只在一台执行方上开，免得每台各发一遍通知（11-25 主导线程定：只报不改）
+UID_CHECKU_S = int(os.environ.get("GUJI_UID_CHECKU_S", "0"))
+_uid_checku_next: float | None = None
+
+
+def _maybe_uid_checku(say=print) -> None:
+    global _uid_checku_next
+    if UID_CHECKU_S <= 0:
+        return
+    now = time.time()
+    if _uid_checku_next is not None and now < _uid_checku_next:
+        return
+    _uid_checku_next = now + UID_CHECKU_S
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    tok = _token("GUJI_DATA_TOKEN") or _token("GUJI_DATA_TOKEN_READ")
+    if tok:
+        env["GUJI_DATA_TOKEN"] = tok
+    try:
+        r = subprocess.run([str(VENV / "bin" / "guji"), "uid", "check-u-report", "--notify", "--roots", str(HOME.parent)],
+                           capture_output=True, text=True, timeout=3600, env=env)
+        tail = [x for x in (r.stdout + r.stderr).splitlines() if x.startswith(("check-u", "  通知"))]
+        say("；".join(tail[-8:]) if tail else f"人裁 check-u 报告退出码 {r.returncode}")
+    except (OSError, subprocess.SubprocessError) as e:
+        say(f"人裁 check-u 报告没跑成：{e}")
 
 
 ENV_STREAK_PAUSE = 3
