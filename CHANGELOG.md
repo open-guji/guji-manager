@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0「字块随包存 R2」，用户 11-25 定；要 cv 带 `core.derived.PAGE_FETCHER`（cv #1899），旧 cv 不装、照旧现算）：新 `datastore/patch_packs.py`。一页 `char_patch` 打一个 tar 存 `derived/patch/<ws>/<册>/<页>.<链指纹>.<日>.tar`（链指纹＝cell_shrink 及全部上游这一页指纹的合哈希，切分变了才换键、只重打变了的页）；`guji cache push-patches`（执行机 rerun／ab 单存产物包后自动跑，`GUJI_PATCH_PUSH=0` 关，失败不挡单）；启动时注册取件器，识字、定字缓存缺页时整页取回、逐文件核 sha 与戳（`GUJI_PATCH_FETCH=0` 关）；`guji cache gc-patches` 每页留最新那天＋7 天内，缺省只列、`--apply` 才删。
 ## [0.6.22] - 2026-11-25
 
 - 发版缘由：swap R1 闸放过身份账已作废格的刻例（#1010，W1 重切后换单带 --glyph-db 不再被拦）。

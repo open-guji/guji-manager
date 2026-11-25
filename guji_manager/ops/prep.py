@@ -183,3 +183,8 @@ def install_derived_fetcher() -> None:
     from .._cv import core_derived as derived
     from .._cv import fetch_derived
     derived.FETCHER = fetch_derived
+    try:                     # 字块按页从 R2 取（2026-11-25；cv 没有 PAGE_FETCHER 的旧版不装）
+        from ..datastore import patch_packs
+        patch_packs.install()
+    except Exception:  # noqa: BLE001 —— 取件只是提速，装不上就现算
+        pass

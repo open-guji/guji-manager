@@ -508,6 +508,19 @@ class Job:
         self.ev(f"已存包 {label}" + (f"（{m.group(2)}）" if m else ""))
         self.pushed = True
 
+    def push_patches(self) -> None:
+        """存产物包之后把这册 R2 上还没有的字块页包存上去（`datastore/patch_packs.py`，2026-11-25），
+        下次别的容器单跑识字、定字时整页取回，不再冷算。失败只记一笔，不挡单（字块包只是缓存）。"""
+        if os.environ.get("GUJI_PATCH_PUSH", "1") in ("0", "false", "no", "off"):
+            return
+        try:
+            out = self.guji("cache", "push-patches", "--book", self.spec["book"], "-w", self.ws or "", write=True)
+        except StageError as e:
+            self.ev(f"字块包没存上（不挡单）：{str(e)[:300]}")
+            return
+        m = re.search(r"字块包：(.+)", out)
+        self.ev(m.group(1).strip() if m else "字块包已存")
+
     # ── 总流程 ──
     def run(self) -> str:
         hb = threading.Thread(target=self._beat, daemon=True)
@@ -539,6 +552,8 @@ class Job:
                 self.step("compare", self.compare)
             if sp["output"].get("pack") and sp.get("book"):
                 self.step("push", self.push)
+                if sp["kind"] in ("rerun", "ab"):
+                    self.step("patches", self.push_patches)
         except Cancelled:
             outcome, err = "cancelled", ("租约已失：失联后这次领单已被收回，单已退回排队" if self.lease_lost else "有人要求停下")
         except StageError as e:
