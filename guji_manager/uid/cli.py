@@ -25,6 +25,7 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -212,6 +213,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--write", action="store_true",
                    help="真写本地数据目录（只追加）：裁定、人裁各抄一条带 u 的（id、批次加 ~u，ts、seq 不变）；待审条目追加补 u 的新版本。"
                         "推中心库另跑 guji db push --only（写入.json 列了文件）")
+    q.add_argument("--close", action="store_true",
+                   help="收口（u_migrate.rescue_human／close_out）：清单上的人裁按异体、列内近邻同字再救一批；其余裁定、人裁作废记档"
+                        "（feedback/lists/u_void/<册>.jsonl，原事件不动），字不同的人裁转待审条目（recheck），格号不在账的条目撤下。出 收口.tsv／收口.json")
+    q.add_argument("--review-items", default=None, help="转待审的条目写进哪个文件（缺省 --items 第一个）")
 
     q = s.add_parser("web-backfill", help="网站旧票（web_inbox 精校票、改字意见）按账补 u（缺省只出提案）")
     q.add_argument("book", help="cv 册（如 vol28）")
@@ -296,8 +301,41 @@ def cmd_migrate_plan(a) -> None:
     (out / "守恒.json").write_text(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "人裁迁出方式": res["人裁迁出方式"]},
                                              ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "人裁迁出方式": res["人裁迁出方式"], "out": str(out)}, ensure_ascii=False))
+    co = rescued = None
+    if a.close:
+        from .._cv import variant_group
+        vg: dict = {}
+
+        def variant(x, y):
+            if not x or not y or x == y:
+                return False
+            if x not in vg:
+                vg[x] = variant_group(x)
+            return y in vg[x]
+        taken = {int(h["u"]) for h in hum.values() if h.get("u") is not None} | {int(x["u"]) for x in res["human"]}
+        rescued, rest = M.rescue_human(led, res["清单"], same=load_norm(a.book).same, variant=variant, taken=taken)
+        co = M.close_out(led, rest, human_u=taken | {int(x["u"]) for x in rescued})
+        summ = {"人裁救回": dict(Counter(x["how"] for x in rescued)), "作废": dict(Counter(v["stream"] for v in co["void"])),
+                "转待审": len(co["review"]), "撤下": len(co["withdraw"])}
+        with open(out / "收口.tsv", "w", encoding="utf-8") as fh:
+            fh.write("去向\t类别\t键\t理由\n")
+            for x in rescued:
+                fh.write(f"救回\t人裁\t{x['cell']}\t{x['how']} → u{x['u']}{'（现 ' + x['now'] + '）' if x.get('now') else ''}\n")
+            for v in co["void"]:
+                fh.write(f"作废\t{'裁定' if v['stream'] == 'rulings' else '人裁'}\t{v['key']}\t{v['reason']}\n")
+            for r in co["review"]:
+                fh.write(f"转待审\t人裁\t{r['cell']}\t{r['detail']}\n")
+            for w_ in co["withdraw"]:
+                fh.write(f"撤下\t待审条目\t{w_['id']}\t{w_['reason']}\n")
+        (out / "收口.json").write_text(json.dumps(summ, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(json.dumps({"收口": summ}, ensure_ascii=False))
     if a.write:
         w = M.apply(res, ruling_events=rul_ev, human_events=hum_ev, ruling_log=store.log, event_log=EventLog())
+        if co is not None:
+            c = M.write_close(a.book, co, rescued=rescued, unscreened=w["裁定没抄"], human_events=hum_ev,
+                              event_log=EventLog(), review_file=a.review_items or ((a.items or [None])[0]))
+            w["收口"] = {k: v for k, v in c.items() if k != "files"}
+            w["files"] = sorted(set(w["files"]) | set(c["files"]))
         (out / "写入.json").write_text(json.dumps(w, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"写入": w}, ensure_ascii=False))
 

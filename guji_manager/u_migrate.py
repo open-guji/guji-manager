@@ -139,7 +139,7 @@ def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], 
         pg = _page_of(cell)
         cur = led.page(pg) if pg is not None else None
         if cur is None or cell not in cur["map"]:
-            left.append({"类别": "人裁", "键": cell, "理由": "格号不在现行账里"})
+            left.append({"类别": "人裁", "键": cell, "理由": "格号不在现行账里", "_h": h, "_why": "not_in_ledger"})
             continue
         u = int(cur["map"][cell])
         head = _sha_head(h.get("cells_sha"))
@@ -159,13 +159,14 @@ def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], 
             if any(same(x, have) for x in mine):
                 out.append({"id": h["id"], "cell": cell, "u": u, "how": "字同"})
             else:
-                left.append({"类别": "人裁", "键": cell, "理由": f"人裁「{'／'.join(dict.fromkeys(mine))}」，账上这格是「{have}」"})
+                left.append({"类别": "人裁", "键": cell, "理由": f"人裁「{'／'.join(dict.fromkeys(mine))}」，账上这格是「{have}」",
+                             "_h": h, "_why": "char_diff"})
             continue
         lines = [d for d in led.lines if int(d["page"]) == pg]
         if all(cell in d["map"] and int(d["map"][cell]) == u for d in lines):
             out.append({"id": h["id"], "cell": cell, "u": u, "how": "各版同格"})
             continue
-        left.append({"类别": "人裁", "键": cell, "理由": "没字可比，且这格重切过"})
+        left.append({"类别": "人裁", "键": cell, "理由": "没字可比，且这格重切过", "_h": h, "_why": "no_char_recut"})
     return out, left
 
 
@@ -179,7 +180,8 @@ def plan_items(led: Ledger, items: list[dict]) -> tuple[list[dict], list[dict]]:
         if r["cell"] in cur:
             out.append({"id": r["id"], "cell": r["cell"], "u": cur[r["cell"]], **({"_file": r["_file"]} if "_file" in r else {})})
         else:
-            left.append({"类别": "待审条目", "键": f"{r['id']}（{r['cell']}）", "理由": "格号不在现行账里"})
+            left.append({"类别": "待审条目", "键": f"{r['id']}（{r['cell']}）", "理由": "格号不在现行账里",
+                         "_id": r["id"], "_file": r.get("_file")})
     return out, left
 
 
@@ -246,3 +248,191 @@ def apply(res: dict, *, ruling_events: dict, human_events: dict, ruling_log, eve
         files.add(f)
     return {"裁定": len(ok), "人裁": len(hs), "待审条目": n_items,
             "裁定没抄": [{"cell": e.payload.get("cell"), "理由": m} for e, m in bad], "files": sorted(files)}
+
+
+# ── 收口（2026-11-25，主导线程「u 彻底收尾」）：清单上的再救一批，其余作废记档或转待审 ──────────────────────────────
+
+NEAR = 3          # 列内近邻：同页同列、前后各这么多格以内
+
+
+def _col_of(cell: str) -> str | None:
+    p = cell.split(":")
+    return ":".join(p[:3]) if len(p) == 4 else None
+
+
+def _neighbors(cur: dict, cell: str) -> list[str]:
+    """现行账行里与 cell 同页同列、读序前后 NEAR 格以内的格号，按离得近排。cell 不在账里时按格位数字找最近的位置。"""
+    col = _col_of(cell)
+    if col is None:
+        return []
+    keys = [k for k in cur["map"] if _col_of(k) == col]
+    if not keys:
+        return []
+    if cell in keys:
+        i = keys.index(cell)
+    else:
+        def pos(k):
+            try:
+                return int(k.split(":")[3].rstrip("ab"))
+            except ValueError:
+                return 0
+        try:
+            want = int(cell.split(":")[3].rstrip("ab"))
+        except ValueError:
+            return []
+        i = min(range(len(keys)), key=lambda j: abs(pos(keys[j]) - want))
+        keys.insert(i, cell)
+    out = []
+    for d in range(1, NEAR + 1):
+        for j in (i - d, i + d):
+            if 0 <= j < len(keys) and keys[j] != cell:
+                out.append(keys[j])
+    if cell not in cur["map"]:
+        keys.remove(cell)
+    return out
+
+
+def rescue_human(led: Ledger, left: list[dict], same=None, variant=None, taken: set | None = None) -> tuple[list[dict], list[dict]]:
+    """清单上的人裁再救一批。→ (迁出 [{id, cell, u, how}], 仍没迁)。
+
+    ⑤ 异体同：人裁字与账上这格的字是高置信异体（cv `variant_group`，如 愼／慎、說／説）→ 迁这格；
+    ⑥ 列内近邻同字：同页同列前后 NEAR 格内，账上字＝人裁字（归一表或异体）的格**只有一个** → 迁那格（切分挪过一两格、
+       九月旧格号＝列内顺序号的都靠这条）；那格的 u 已被别的人裁占了不算。"""
+    same = same or (lambda a, b: a == b)
+    variant = variant or (lambda a, b: False)
+    taken = set(taken or ())
+
+    def eq(a, b):
+        return bool(a) and bool(b) and (same(a, b) or variant(a, b))
+    out, rest = [], []
+    for x in left:
+        h = x.get("_h")
+        if h is None:
+            rest.append(x)
+            continue
+        cell = h["cell"]
+        pg = _page_of(cell)
+        cur = led.page(pg) if pg is not None else None
+        mine = [c for c in (h.get("shape"), h.get("reading")) if c]
+        if cur is None or not mine:
+            rest.append(x)
+            continue
+        chars = cur.get("chars") or {}
+        if cell in cur["map"] and any(variant(m, chars.get(cell, "")) for m in mine):
+            u = int(cur["map"][cell])
+            if u not in taken:
+                out.append({"id": h["id"], "cell": cell, "u": u, "how": "异体同"})
+                taken.add(u)
+                continue
+        hits = [k for k in _neighbors(cur, cell) if any(eq(m, chars.get(k, "")) for m in mine)
+                and int(cur["map"][k]) not in taken]
+        if len(hits) == 1:
+            u = int(cur["map"][hits[0]])
+            out.append({"id": h["id"], "cell": cell, "u": u, "how": "列内近邻同字", "now": hits[0]})
+            taken.add(u)
+            continue
+        rest.append(x)
+    return out, rest
+
+
+def close_out(led: Ledger, left: list[dict], *, human_u: set | None = None) -> dict:
+    """救不回来的清单怎么收：→ {void: [{stream, id, key, reason}], review: [{cell, u, h, detail}], withdraw: [{id, file}]}。
+
+    - 裁定：一律作废（窗口对不上＝上下文变了，需要时文意重跑会重判；格号不在账＝格已没了）；旧提示词版本的另在 `apply` 后记；
+    - 人裁「没字可比，且这格重切过」：判的是旧切分（切坏／非字等），切分已改 → 作废；
+    - 人裁格号不在现行账、列内也找不到同字 → 作废（九月旧格号或格已删）；
+    - 人裁字≠账上字、这格现在没有带 u 的人裁 → 转待审条目（pending_reason=recheck，让人对着现行切分重看）；已有带 u 的新人裁 → 作废；
+    - 待审条目格号不在现行账 → 撤下（withdrawn，不删）。"""
+    human_u = set(human_u or ())
+    void, review, withdraw = [], [], []
+    for x in left:
+        cat = x["类别"]
+        if cat == "裁定":
+            void.append({"stream": "rulings", "id": None, "key": x["键"], "reason": x["理由"]})
+        elif cat == "待审条目":
+            withdraw.append({"id": x["_id"], "file": x.get("_file"), "reason": x["理由"]})
+        else:
+            h, why = x["_h"], x.get("_why")
+            cell = h["cell"]
+            if why == "char_diff":
+                cur = led.page(_page_of(cell))
+                u = int(cur["map"][cell])
+                if u in human_u:
+                    void.append({"stream": "events", "id": h["id"], "key": cell, "reason": x["理由"] + "；这格已有带 u 的人裁"})
+                else:
+                    review.append({"cell": cell, "u": u, "h": h,
+                                   "detail": f"u 迁移挂不上：{x['理由']}（切分变过，原人裁可能判的是挪走的那格），请对着现行切分重看"})
+            else:
+                void.append({"stream": "events", "id": h["id"], "key": cell,
+                             "reason": x["理由"] + ("" if why == "no_char_recut" else "，列内近邻也找不到同字")})
+    return {"void": void, "review": review, "withdraw": withdraw}
+
+
+def void_path(event_log) -> "Path":
+    from pathlib import Path
+    return Path(event_log.events_dir).parent / "lists" / "u_void"
+
+
+def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[dict], human_events: dict, event_log,
+                review_file: str | None) -> dict:
+    """收口真写（只追加）：救回的人裁抄 `~u` 件；作废的记进 `feedback/lists/u_void/<册>.jsonl`（原事件不动）；
+    转待审的开条目；撤下的条目 op=withdraw。→ {人裁救回, 作废, 转待审, 撤下, files}。"""
+    import json
+    from pathlib import Path
+    from .review import pending_items as P
+    files: set[str] = set()
+    vp = void_path(event_log) / f"{book}.jsonl"
+    seen = set()                       # 重跑不重复记：已记过的 (stream, id, key)
+    if vp.exists():
+        for line in vp.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                seen.add((d.get("stream"), d.get("id"), d.get("key")))
+    co = {**co, "void": [v for v in co["void"] if (v["stream"], v["id"], v["key"]) not in seen],
+          "review": [r for r in co["review"] if ("events", r["h"]["id"], r["cell"]) not in seen]}
+    unscreened = [x for x in unscreened if ("rulings", None, x.get("cell")) not in seen]
+    hs = [_copy(human_events[x["id"]], anchor_u=x["u"]) for x in rescued]
+    if hs:
+        event_log.append(hs)
+        files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+    at = P.now()
+    rows = [{"kind": "u_void", "book": book, **v, "at": at, "by": "u-migrate"} for v in co["void"]]
+    rows += [{"kind": "u_void", "book": book, "stream": "rulings", "id": None, "key": x.get("cell"),
+              "reason": f"旧提示词版本，seed_admit 不认（{x.get('理由')}）", "at": at, "by": "u-migrate"} for x in unscreened]
+    n_void = len(rows)
+    rows += [{"kind": "u_review", "book": book, "stream": "events", "id": r["h"]["id"], "key": r["cell"], "u": r["u"],
+              "reason": r["detail"], "at": at, "by": "u-migrate"} for r in co["review"]]
+    if rows:
+        vp.parent.mkdir(parents=True, exist_ok=True)
+        with open(vp, "a", encoding="utf-8") as fh:
+            for r in rows:
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+        files.add(str(vp))
+    n_rev = n_wd = 0
+    if co["review"]:
+        if not review_file:
+            raise SystemExit("✗ 有人裁要转待审，但没给条目文件（--review-items）")
+        rf = Path(review_file)
+        st = P.ItemStore(rf, text_id=rf.parent.name, chapter=rf.name.split(".")[0])
+        for r in co["review"]:
+            h = r["h"]
+            doc = {"pending_reason": "recheck", "recheck": True, "detail": r["detail"],
+                   "note": r["detail"], "prior": {"human": h.get("shape") or h.get("reading"), "event": h["id"]}}
+            st.add(P.norm_cell(r["cell"]), doc, by="u-migrate", src="script:u-closeout", why="u 迁移挂不上", u=r["u"])
+            n_rev += 1
+        st.save()
+        files.add(str(rf))
+    by_file: dict[str, list[dict]] = {}
+    for w in co["withdraw"]:
+        if w.get("file"):
+            by_file.setdefault(w["file"], []).append(w)
+    for f, ws in by_file.items():
+        st = P.ItemStore(Path(f))
+        for w in ws:
+            r = st.items.get(w["id"])
+            if r is not None and r.get("state") not in ("withdrawn", "closed"):
+                st.withdraw(w["id"], by="u-migrate", why=f"u 迁移：{w['reason']}")
+                n_wd += 1
+        st.save()
+        files.add(f)
+    return {"人裁救回": len(hs), "作废": n_void, "转待审": n_rev, "撤下": n_wd, "files": sorted(files)}
