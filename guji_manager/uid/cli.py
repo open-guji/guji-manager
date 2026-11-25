@@ -259,7 +259,8 @@ def cmd_migrate_plan(a) -> None:
             continue
         an = t.anchor or {}
         hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"),
-                      "reading": (e.payload or {}).get("reading"), "u": an.get("u")}
+                      "reading": (e.payload or {}).get("reading"),
+                      "cells_sha": an.get("cells_sha"), "u": an.get("u")}
         hum_ev[e.id] = e
     items = []
     for f in a.items or []:
@@ -281,9 +282,9 @@ def cmd_migrate_plan(a) -> None:
         fh.write("类别\t键\t理由\n")
         for x in res["清单"]:
             fh.write(f"{x['类别']}\t{x['键']}\t{x['理由']}\n")
-    (out / "守恒.json").write_text(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"]},
+    (out / "守恒.json").write_text(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "人裁迁出方式": res["人裁迁出方式"]},
                                              ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "out": str(out)}, ensure_ascii=False))
+    print(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "人裁迁出方式": res["人裁迁出方式"], "out": str(out)}, ensure_ascii=False))
     if a.write:
         w = M.apply(res, ruling_events=rul_ev, human_events=hum_ev, ruling_log=store.log, event_log=EventLog())
         (out / "写入.json").write_text(json.dumps(w, ensure_ascii=False, indent=1), encoding="utf-8")
