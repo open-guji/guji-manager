@@ -188,6 +188,9 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
         if not (bid and ch):      # 认不出的册（试验册等）静默跳过，同 record_main
             return
         c = _cfg()
+        if os.environ.get("GUJI_AUTO_LAND", "0") == "1":      # 新收尾（land）：缺省关，开了就不再走旧的「重出线上单」
+            auto_land(book, bid, ws, c)
+            return
         missing = [n for n, ok in (("GUJI_DATA_TOKEN_PROD", bool(os.environ.get("GUJI_DATA_TOKEN_PROD"))),
                                    ("GUJI_DATA_TOKEN_READ", bool(os.environ.get("GUJI_DATA_TOKEN_READ"))),
                                    ("工作区", bool(ws)), ("book-text", os.path.isdir(c["book_text"])),
@@ -204,6 +207,33 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
         print(f"线上单自动重出已在后台起（5–10 分钟），日志 {log}")
     except Exception as e:  # noqa: BLE001
         print(f"（线上单自动重出没起来：{e}）")
+
+
+def land_argv(book: str, bid: str, ws: str, book_text: str, text_mode: str | None = None) -> list[str]:
+    """标 main 后自动收尾的命令行：`guji land <册> --apply`（对账待审条目、只推变了的册、发站）。
+    book-text 写回由 `GUJI_AUTO_LAND_TEXT` 定：缺省 `plan`＝只出计划（`--text`）；`apply`＝写回（`--text-apply`：独立 worktree、
+    local_check、推 dev，人裁账不平整册停）；`off`＝不碰 book-text。"""
+    mode = (text_mode or os.environ.get("GUJI_AUTO_LAND_TEXT", "plan")).lower()
+    argv = [*GUJI, "land", book, "-w", ws, "--text-id", bid, "--apply"]
+    if mode in ("plan", "apply") and book_text:
+        argv += ["--book-text", book_text, "--text-apply" if mode == "apply" else "--text"]
+    return argv
+
+
+def auto_land(book: str, bid: str, ws: str, c: dict) -> None:
+    """标 main 钩子里起 land（后台）。永远不抛；缺令牌／book-text 只是不起并说明。"""
+    missing = [n for n, ok in (("GUJI_DATA_TOKEN_PROD", bool(os.environ.get("GUJI_DATA_TOKEN_PROD"))),
+                               ("工作区", bool(ws))) if not ok]
+    if missing:
+        print(f"（标 main 后没自动 land：缺 {'、'.join(missing)}；换到有这些的机器上跑 `guji land {book} -w <工作区> --text-id {bid} --apply`）")
+        return
+    log_dir = os.path.join(ws, "reports", book, "_land")
+    os.makedirs(log_dir, exist_ok=True)
+    log = os.path.join(log_dir, "auto_land.log")
+    argv = land_argv(book, bid, ws, c.get("book_text") if os.path.isdir(c.get("book_text") or "") else "")
+    with open(log, "ab") as f:
+        subprocess.Popen(argv, stdout=f, stderr=subprocess.STDOUT, start_new_session=True, env={**os.environ, "GUJI_WORKSPACE": ws})
+    print(f"标 main 后已在后台起 land（{' '.join(argv[len(GUJI):])[:100]}…），日志 {log}")
 
 
 def _pypath(cv: str) -> str:

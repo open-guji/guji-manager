@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- MINOR（11-25，GM4）：标 main 钩子可自动起 `guji land`（`GUJI_AUTO_LAND=1`，**缺省关**，开了就不再走旧的「重出线上单」）：对账待审条目、只推变了的册、发站；book-text 写回由 `GUJI_AUTO_LAND_TEXT` 定：`plan`（缺省，只出计划）／`apply`（写回，人裁账不平整册停）／`off`。日志 `<工作区>/reports/<册>/_land/auto_land.log`。先在殿本 vol04 实测再全量开。L0。
+
 ## [0.6.21] - 2026-11-25
 
 - 发版缘由：char 导出作废号 into 目标不在本章时降成 gone（#998，史記 01 换单被 book-text 拦）。
