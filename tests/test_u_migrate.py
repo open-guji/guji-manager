@@ -145,3 +145,25 @@ def test_check_u_helpers(tmp_path):
     latest = M.latest_by_key(hum, f"{B}:")
     assert latest[f"{B}:1:1:1"].id == "a~u"
     assert [e.id for e in M.unaccounted(latest, {"c"})] == ["b"]
+
+
+def test_tidy_recheck(tmp_path):
+    from guji_manager.review import pending_items as P
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    st.add("80:6:3", {"pending_reason": "recheck", "prior": {"human": "偁", "event": "e1"}, "detail": "人裁"},
+           by="a", src="script:u-closeout", u=5)
+    st.put(None, op="open", by="T5", id="pi_b", cell="80:6:3", fp="", state="open", src="script:u-closeout-web",
+           doc={"pending_reason": "recheck", "prior": {"vote": "稱"}, "detail": "票"}, u=5, at="9999")
+    st.save()
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    assert M.tidy_recheck(st, {"80:6:3": "□"}) == {"并掉": 1, "补候选": 1}
+    st.save()
+    st = P.ItemStore(tmp_path / "x" / "001.items.jsonl")
+    live = [r for r in st.items.values() if r["state"] == "open"]
+    assert len(live) == 1
+    d = live[0]["doc"]
+    assert d["prior"] == {"human": "偁", "event": "e1", "vote": "稱"} and [x["c"] for x in d["alt"]] == ["偁", "稱"]
+    assert M.tidy_recheck(st, {"80:6:3": "□"}) == {"并掉": 0, "补候选": 0}      # 重跑不动
+    # 新开时同格已有活条目：并进去
+    M.add_recheck(st, "80:6:3", {"prior": {"human": "稱"}}, u=5, now_char="偁", by="a", src="script:u-closeout")
+    assert len([r for r in st.items.values() if r["state"] == "open"]) == 1
