@@ -291,3 +291,21 @@ def test_load_cards_keys_by_bare_cell_and_old_alt_kept(tmp_path):
     assert kept[0]["alt"] == alt
     plan = land.plan_book(st, kept, src="land")
     assert not plan["改"]                                  # alt 没被冲掉：没变
+
+
+def test_clean_book_cache_and_products(tmp_path):
+    for d in ("cache/b1", "products/b1", "_packs/x/b1"):
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "f").write_bytes(b"1")
+    land.clean_book(tmp_path, "b1")
+    assert not (tmp_path / "cache/b1").exists() and not (tmp_path / "_packs/x/b1").exists()
+    assert (tmp_path / "products/b1").exists()          # 默认不动 products
+    land.clean_book(tmp_path, "b1", products=True)
+    assert not (tmp_path / "products/b1").exists()
+
+
+def test_alt_pending_bypasses_digest_skip(tmp_path, monkeypatch):
+    monkeypatch.setattr(land, "hand_without_alt", lambda *a, **k: ["1:2:3"])
+    res = {"cells": [{"cell": "1:2:3", "alt": ["x"]}]}
+    assert land.alt_pending(tmp_path, "b", "t", "001", res)
+    assert not land.alt_pending(tmp_path, "b", "t", "001", {"cells": [{"cell": "1:2:3"}]})
