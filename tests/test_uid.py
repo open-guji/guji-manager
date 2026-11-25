@@ -250,6 +250,35 @@ def test_on_promote_pulls_advances_pushes(fb, monkeypatch):
     assert calls == ["pull", ("fetch", "L1")]
 
 
+def test_on_promote_first_entry_when_book_enabled(fb, monkeypatch):
+    """书已启用 u（账目录里有别册的账）而本册没账（没 book-text 的册）：标 main 时按 main 包首次入账；整书没账不碰。"""
+    from guji_manager.uid import promote
+    monkeypatch.setenv("GUJI_WORKSPACE", str(fb))
+    calls = []
+    monkeypatch.setattr(promote, "_db", lambda op, book, ws, env: (calls.append(op), (True, ""))[1])
+    monkeypatch.setattr("guji_manager.datastore.packs.fetch_products", lambda book, dest, label=None: calls.append(("fetch", label)))
+    import guji_manager.uid as U
+    monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 3, "u_max": 30, "via": {"new": 30}})
+    assert not U.book_enabled()
+    promote.on_promote("volB", "L1", str(fb))
+    assert calls == []
+    uid.init_from_book_text(B, *_char_cord({1: [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天")]}))
+    assert U.book_enabled() and not U.enabled("volB")
+    promote.on_promote("volB", "L1", str(fb))
+    assert calls == ["pull", ("fetch", "L1"), "push"]
+
+
+def test_advance_first_entry_without_ledger(fb, monkeypatch):
+    """没账的册直接 advance＝首次入账：读序 1..N 发号。"""
+    cut = [Cell("volQ:1:1:1", (1000, 100, 1040, 150), "天"), Cell("volQ:1:1:2", (1000, 200, 1040, 250), "地")]
+    monkeypatch.setattr(source, "product_pages", lambda store, book: [1])
+    monkeypatch.setattr(source, "cells_sha", lambda store, book, pg: "shaQ")
+    monkeypatch.setattr(source, "from_products", lambda store, book, pg, with_chars=True: source.PageCut(pg, "shaQ", cut, {}))
+    r = uid.advance("volQ", FakeStore(), booktext=None)
+    assert r["entered"] == 1 and r["u_max"] == 2
+    assert uid.Ledger.load("volQ").page(1)["map"] == {"volQ:1:1:1": 1, "volQ:1:1:2": 2}
+
+
 def _bt_scenario(fb, monkeypatch):
     """旧账：天 玄 黃（1..3）；book-text 改字工具补了「地」发 u=7（u_max=7），框在「天」「玄」之间。cv 重切也切出「地」。"""
     from guji_manager.uid import booktext as BT
