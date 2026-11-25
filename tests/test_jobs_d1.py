@@ -70,7 +70,8 @@ def test_heartbeat_cancel_finish_notify(conn):
     assert g["status"] == "succeeded" and g["finished_at"] is not None
     assert S.detail(conn, a["id"])["events"][-1]["msg"] == "完成"
     due = S.notify_due(conn)
-    assert due == [{"by": "A20", "jobs": [pytest.approx(due[0]["jobs"][0])]}] and due[0]["jobs"][0]["why"] is None
+    assert [g["by"] for g in due] == ["A20"] and [j["id"] for j in due[0]["jobs"]] == [a["id"]]
+    assert due[0]["jobs"][0]["why"] is None and due[0]["jobs"][0]["warns"] == []
     assert S.notify_due(conn) == []
     S.notify_undo(conn, [a["id"]])
     assert len(S.notify_due(conn)) == 1
