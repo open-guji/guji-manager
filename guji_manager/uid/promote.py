@@ -61,7 +61,7 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
         from ..datastore.packs import fetch_products
         with tempfile.TemporaryDirectory(prefix="uid-promote-") as tmp:
             fetch_products(book, Path(tmp), label=label)
-            r = advance(book, ProductStore(Path(tmp)))
+            r = advance(book, ProductStore(Path(tmp)), src="promote")
         if not r["entered"]:
             return
         print(f"字格身份账：{book} 按新 main 包{'首次' if first else ''}入账 {r['entered']} 页（u_max={r['u_max']}，{r['via']}）", file=sys.stderr)

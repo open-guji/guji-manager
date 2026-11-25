@@ -258,7 +258,10 @@ def test_on_promote_first_entry_when_book_enabled(fb, monkeypatch):
     monkeypatch.setattr(promote, "_db", lambda op, book, ws, env: (calls.append(op), (True, ""))[1])
     monkeypatch.setattr("guji_manager.datastore.packs.fetch_products", lambda book, dest, label=None: calls.append(("fetch", label)))
     import guji_manager.uid as U
-    monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 3, "u_max": 30, "via": {"new": 30}})
+    def adv(book, store, **k):
+        assert k.get("src") == "promote"                     # 钩子写的行 src＝promote
+        return {"entered": 3, "u_max": 30, "via": {"new": 30}}
+    monkeypatch.setattr(U, "advance", adv)
     assert not U.book_enabled()
     promote.on_promote("volB", "L1", str(fb))
     assert calls == []
@@ -274,8 +277,11 @@ def test_advance_first_entry_without_ledger(fb, monkeypatch):
     monkeypatch.setattr(source, "product_pages", lambda store, book: [1])
     monkeypatch.setattr(source, "cells_sha", lambda store, book, pg: "shaQ")
     monkeypatch.setattr(source, "from_products", lambda store, book, pg, with_chars=True: source.PageCut(pg, "shaQ", cut, {}))
-    r = uid.advance("volQ", FakeStore(), booktext=None)
+    monkeypatch.setenv("GUJI_ACTOR", "T-actor")
+    r = uid.advance("volQ", FakeStore(), booktext=None, src="promote")
     assert r["entered"] == 1 and r["u_max"] == 2
+    d = uid.Ledger.load("volQ").page(1)
+    assert d["src"] == "promote" and d["by"] == "T-actor"
     assert uid.Ledger.load("volQ").page(1)["map"] == {"volQ:1:1:1": 1, "volQ:1:1:2": 2}
 
 
