@@ -4,6 +4,8 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u T1）：字格身份账入账兜底，不再只靠标 main 那台机器（ZM 用旧 manager 给殿本 vol01–20 标 main 没入账）：新 `guji uid sync`（拉账 → main 包入账 → 推库；切分没变写一笔 page 0「已对过」记号）；执行机铺 main 底后先 sync（`uid` 步，失败不挡）；`guji uid audit [--submit]` 自检，空闲执行方每 4 小时跑（`GUJI_UID_AUDIT_S`，0 关），缺的交新任务类型 `uidsync`；标 main 指针记 `manager_version`，自检报出旧 manager 标的。账行记 `label`。L0。
+
 ## [0.6.15] - 2026-11-25
 
 - 发版缘由：身份账行分得出谁写的（#974：`by`、钩子 `src: promote`）。

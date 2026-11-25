@@ -247,7 +247,10 @@ def test_on_promote_pulls_advances_pushes(fb, monkeypatch):
     calls.clear()
     monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 0, "u_max": 9, "via": {}})
     promote.on_promote("volA", "L1", str(fb))
-    assert calls == ["pull", ("fetch", "L1")]
+    assert calls == ["pull", ("fetch", "L1"), "push"]          # 切分没变：记一笔「已对过」并推
+    calls.clear()
+    promote.on_promote("volA", "L1", str(fb))
+    assert calls == ["pull", ("fetch", "L1")]                  # 同一包再来：什么都不推
 
 
 def test_on_promote_first_entry_when_book_enabled(fb, monkeypatch):
@@ -398,3 +401,34 @@ def test_booktext_remote_when_no_local_repo(fb, tmp_path, monkeypatch):
     (d / "001.char.json").unlink()                       # 「断网」：raw 取不到，用缓存
     monkeypatch.setenv("GUJI_BOOK_TEXT_RAW", (tmp_path / "gone").as_uri())
     assert BT.load(B).u_max == 11
+
+
+def test_sync_marks_unchanged_pack_and_labels_lines(fb, monkeypatch):
+    """sync：入了页就给行记 label；包的切分没变（入 0 页）就写一笔 page 0「已对过」记号，只写一次；有改动才推。"""
+    from guji_manager.uid import promote
+    monkeypatch.setenv("GUJI_WORKSPACE", str(fb))
+    calls = []
+    monkeypatch.setattr(promote, "_db", lambda op, book, ws, env: (calls.append(op), (True, ""))[1])
+    uid.init_from_book_text(B, *_char_cord({1: [Cell(f"{B}:1:1:1", (1000, 100, 1040, 150), "天")]}))
+    import guji_manager.uid as U
+    monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 0, "u_max": 1, "via": {}})
+    r = promote.sync(B, "L1", str(fb), products="local")
+    assert r["status"] == "synced" and calls == ["pull", "push"]
+    d = uid.Ledger.load(B).lines[-1]
+    assert d["page"] == 0 and d["label"] == "L1" and d["map"] == {} and d["src"] == "sync"
+    assert uid.verify(uid.Ledger.load(B)) == []
+    calls.clear()
+    assert promote.sync(B, "L1", str(fb), products="local")["status"] == "unchanged" and calls == ["pull"]
+    assert promote.sync("volZ", "L1", None, products="local")["status"] in ("synced", "disabled")
+
+
+def test_audit_missing_by_pointer_time(monkeypatch):
+    """自检：账最晚一行早于 main 指针时间才算缺；没账的册不管。"""
+    from guji_manager.uid import audit as A
+    monkeypatch.setattr(A, "mains", lambda src, ws: {"01": ("L2", "20261125T102628Z"), "02": ("L3", "20261125T090000Z"),
+                                                    "03": ("L4", "20261125T090000Z")})
+    monkeypatch.setattr(A, "ledger_state", lambda conn, ws: {"01": "2026-11-25T10:00:00Z", "02": "2026-11-25T09:30:00Z"})
+    got = A.missing(None, None, "988g3f0wsu")
+    assert [(m["book"], m["label"]) for m in got] == [("01", "L2")]
+    assert A.book_id_of("siku-zongmu") == "96mid1ogzk" and A.book_id_of("988g3f0wsu") == "988g3f0wsu"
+    assert A._ver("0.6.8") < A.MIN_MANAGER <= A._ver("0.6.16")
