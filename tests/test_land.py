@@ -381,3 +381,24 @@ def test_zero_byte_state_files_are_ignored(tmp_path):
     c.parent.mkdir(parents=True)
     c.write_text("", encoding="utf-8")
     assert land._E.load_cards(tmp_path, "b") == {}
+
+
+def test_ensure_alt_cards_low_disk_and_warm_timeout(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "reports" / "b" / "b.cards.alt.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps([{"id": "b:1:2:3", "admit": True}]), encoding="utf-8")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if "warm" in cmd:
+            raise land.subprocess.TimeoutExpired(cmd, 1)
+        return type("R", (), {"returncode": 1})()
+
+    monkeypatch.setattr(land.subprocess, "run", fake_run)
+    monkeypatch.setattr(land, "MIN_FREE_GB", 10 ** 9)           # 盘不够：不补拉
+    land.ensure_alt_cards(tmp_path, "b", ["1:2:3"], None, need_alt=["1:2:3"])
+    assert not any("source" in c for c in calls) and "盘只剩" in capsys.readouterr().err
+    monkeypatch.setattr(land, "MIN_FREE_GB", 0)                 # warm 超时：清楚报错、不抛
+    land.ensure_alt_cards(tmp_path, "b", ["1:2:3"], None, need_alt=["1:2:3"])
+    assert "超过" in capsys.readouterr().err
