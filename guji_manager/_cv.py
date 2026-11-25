@@ -430,6 +430,9 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
 #: 已搬进本包的名字 → (guji_manager 内模块, 属性名)。先查这张表：模块已不在 cv，不再问 cv 门面。
 #: 老代码 `from ._cv import X` 照样能用；新代码直接 import 本包模块。
 _LOCAL: dict[str, tuple[str, str | None]] = {
+    # 写入以字格永久编号 u 为准（11-25）：append 前盖 u，册有账写不出 u 整批报错
+    "EventLog": ("u_stamp", "EventLog"),
+    "RulingLog": ("u_stamp", "RulingLog"),
     # 第 5 步排版输出：cv 原 report/ 的汇总与比对（2026-11-23 搬来）
     "write_diff_strips": ("output.strips", "write_diff_strips"),
     "write_variant_thumbs": ("output.strips", "write_variant_thumbs"),
