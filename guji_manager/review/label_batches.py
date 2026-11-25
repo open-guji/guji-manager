@@ -40,6 +40,7 @@ from pathlib import Path
 import numpy as np
 
 from .._cv import ProductMissing
+from ..colview import merged_windows
 
 SPACE_TR = "raw_page_px@top-right"
 CUTLINE_SHARD = "char-segmentation/touching-cuts"
@@ -390,7 +391,7 @@ def column_end_population(store, book: str, pages: list[int]) -> tuple[dict[str,
     pool: dict[str, list[dict]] = defaultdict(list)
     n_all, skipped = 0, defaultdict(int)
     for pg in pages:
-        wins = store.read(book, "column_warp", page_key(pg), "column_windows")
+        wins = merged_windows(store, book, page_key(pg))     # trim／triage 在 2c column_ends（cv #1869）
         if wins is None:
             continue
         try:                                        # 版心列（书口）不出卡，口径同 column_review

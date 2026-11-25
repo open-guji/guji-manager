@@ -17,7 +17,7 @@ from open_guji_cv.core import perf
 
 def test_hook_names_still_exist():
     missing = []
-    for modname, spec in cli_perf.PERF_HOOKS.items():
+    for modname, spec in cli_perf.all_hooks().items():
         mod = importlib.import_module(modname)
         missing += [f"{modname}.{n}" for n in spec.get("funcs", ()) if not callable(getattr(mod, n, None))]
         for cname, meths in spec.get("methods", {}).items():

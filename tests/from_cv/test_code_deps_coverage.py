@@ -63,6 +63,10 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
     ("open_guji_cv.steps.invert_detect", "open_guji_cv.utils.preclean"): "只解析预处理后的原图路径",
     ("open_guji_cv.steps.border_detect", "open_guji_cv.feedback.lookup"):
         "只读人裁逐列抬头（head-raise-columns）；裁决不进指纹、靠该页显式重跑生效，同 row_segment 读 manual-cells（#706）",
+    ("open_guji_cv.gates.cut_gate", "open_guji_cv.gates.column_gate"):
+        "只借 COLUMN_GATE_SPEC 的闸层次描述（GateSpec.levels），判据代码在 cut_gate 自己（cv #1872）",
+    ("open_guji_cv.gates.cut_gate", "open_guji_cv.steps.column_geometry"):
+        "只借拒收原因名常量 TABLE_COLUMN_REJECT；几何量经 column_geometry 产物读入，产物 sha 进上游指纹",
     ("open_guji_cv.steps.row_segment", "open_guji_cv.steps.context_decide"):
         "只借 corpus_fingerprint 算整理本文件指纹（roster_ref_fingerprint 进参数指纹），不影响切分",
 }

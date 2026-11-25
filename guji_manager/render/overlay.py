@@ -151,7 +151,7 @@ def overlay(book: str, step: str, page: int,
             xr = int(round(x_tr_to_tl(c["right_line"]["x_at_top"], W)))
             cv2.putText(img, f"c{c['col']}", (xr - 60, max(30, y0 - 10)), cv2.FONT_HERSHEY_SIMPLEX,
                         1.0, (0, 140, 255), 2)
-    elif step == "column_gate":
+    elif step in ("column_gate", "cut_gate"):
         gm = d["gate_manifest"]
         wins = (st.read_raw(book, "column_warp", page_key(page))
                 or st.read_raw(book, "column_crop", page_key(page)))

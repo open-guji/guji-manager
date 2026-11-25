@@ -396,6 +396,8 @@ def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6
         time.sleep(20)
 
 
+MIN_FREE_GB = float(os.environ.get("GUJI_LAND_MIN_FREE_GB", "3"))   # 补拉原图＋字块缓存前至少要有这么多空盘
+WARM_TIMEOUT = 3600      # source pull／cache warm 每步最多等这么久，超时清楚报错、不整趟退出
 ALT_TIMEOUT = 900        # 每册 audit alt 最多等这么久，出不来快速告警，别拖整趟
 
 
@@ -445,9 +447,19 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
     miss2, noalt2 = lacking()
     if (rc or miss2 or (noalt2 - tried)):
         # 清盘后原图／字块缓存没了：补拉再算一遍
+        import shutil
+        free = shutil.disk_usage(ws).free / 2 ** 30
+        if free < MIN_FREE_GB:
+            print(f"✗ {book} 仍缺相似字，但盘只剩 {free:.1f}G（补拉原图＋字块缓存要 ≥{MIN_FREE_GB:g}G）：不补拉，这册相似字缺的格先放着。"
+                  f"先清盘（land --disk-report），再单跑这册", file=sys.stderr)
+            return
         print(f"⚠ {book} 仍缺相似字：自动 source pull＋cache warm 后重算", file=sys.stderr)
         for sub in (["source", "pull", book, "-w", str(ws)], ["cache", "warm", "--book", book, "-w", str(ws)]):
-            subprocess.run([*base, *sub], env=env, timeout=ALT_TIMEOUT)
+            try:
+                subprocess.run([*base, *sub], env=env, timeout=WARM_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                print(f"✗ {book} {' '.join(sub[:2])} 超过 {WARM_TIMEOUT // 60} 分钟没完（盘慢或盘快满？）：放弃补拉，这册缺相似字的格先放着，修好后单跑这册", file=sys.stderr)
+                return
         miss, noalt = miss2, noalt2
         rc = run_once()
         if rc is None:

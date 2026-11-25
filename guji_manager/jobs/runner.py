@@ -304,6 +304,9 @@ class Job:
         human = re.search(r"人裁 \S+：.*", out)
         if human:
             self.ev(human.group(0)[:500])
+        parts = prep_parts(out)
+        if parts:            # 准备分段耗时进任务库（`guji perf top --remote` 拆 prep 用；prep 占执行机时约三成，11-25）
+            self.ev("准备分段：" + "，".join(f"{k} {v}s" for k, v in parts.items()), data={"prep_parts": parts})
         mark.write_text(json.dumps({"sig": sig, "ws": self.ws, "override": self.prep_override, "at": time.time()},
                                    ensure_ascii=False), encoding="utf-8")
 
@@ -575,6 +578,21 @@ _RUNNER_PATHS = ("scripts/rerun_prep.sh", "scripts/guji_jobs.sh")
 
 #: 准备脚本的副本目录（rerun_prep.sh 与它调用的 ensure_manager.sh 一起放这里）
 PREP_DIR = HOME / "prep"
+
+
+def prep_parts(out: str) -> dict[str, int]:
+    """准备脚本末尾「== 准备耗时」段（`rerun_prep.sh` 的 `t` 记的各段：cv、db-pull、取原图、模板索引…）→ {段: 秒}。
+    同名段（重试）累加；没有这一段（老脚本、dry）回空。"""
+    i = out.rfind("== 准备耗时")
+    if i < 0:
+        return {}
+    parts: dict[str, int] = {}
+    for line in out[i:].splitlines()[1:]:
+        m = re.match(r"^(\S+)\s+(\d+)s\s*$", line)
+        if not m:
+            break
+        parts[m.group(1)] = parts.get(m.group(1), 0) + int(m.group(2))
+    return parts
 
 
 def _prep_script() -> Path:

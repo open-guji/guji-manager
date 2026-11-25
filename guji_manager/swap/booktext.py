@@ -722,11 +722,20 @@ def structure_changed(old_char: dict, new_char: dict) -> bool:
 
 # ───────────────────────── R1 前置闸：字形库已 rekey ─────────────────────────
 
-def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int | str) -> dict:
+def retired_keys(old_char: dict, new_char: dict) -> set[str]:
+    """旧包里 u 在新包 ``u_retired``（gone／into）里的格号（不带册前缀）：重切后这格在身份账上已作废。"""
+    gone = {int(x["u"]) for x in new_char.get("u_retired") or [] if "u" in x}
+    return {a for a, x in _chars(old_char) if x.get("u") is not None and int(x["u"]) in gone} if gone else set()
+
+
+def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int | str, retired: set[str] | None = None) -> dict:
     """字形库刻例的键（`册:页:列:格`）是格号坐标，格号变了必须先 rekey（`ops/cell_rekey`），否则人裁刻例会投到别的块图（殿本 99:2:8 出两个「雯」）。
     只读核对：本册字形库实例的格键，不在**新包格集合**里的就是没跟上的（停）；在新包里、但对照表说它改了号的（旧号被别的块图占用）
     无法只靠键判断，只计数报出（``ambiguous``），要用 g 快照对比图字对（字形快速入库.md）。
-    返回 {ok, orphan: [键…], ambiguous: n, n_inst}。"""
+    ``retired``（旧格号集合，见 ``retired_keys``）：身份账已把这格的 u 作废（gone／into）的，是重切删掉的格，
+    库 id 留原键、读时由 cv ``bindings.rebind_library_shapes`` 按裁决事件换到现格，不是「没 rekey」——
+    不算 orphan，只计数（``retired``）。W1 重切后换单带了 --glyph-db 也不会被它拦。
+    返回 {ok, orphan: [键…], ambiguous: n, n_inst, retired: n}。"""
     import sqlite3
     from ..ops.cell_rekey import _split_instance
     bk = vol if isinstance(vol, str) else f"vol{vol:02d}"     # 册名（全唐文、史記是纯数字册名）；旧调用给整数＝殿本 volNN
@@ -738,7 +747,8 @@ def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int | str) -> dict:
         ids = [r[0] for r in c.execute("SELECT instance_id FROM instances")]
     finally:
         c.close()
-    orphan, amb, n = [], 0, 0
+    retired_full = {pre + k for k in retired or ()}
+    orphan, amb, n, n_ret = [], 0, 0, 0
     for iid in ids:
         sp = _split_instance(iid, bk)
         if sp is None:
@@ -746,10 +756,13 @@ def rekey_gate(glyph_db: Path | str, rows: list[dict], vol: int | str) -> dict:
         n += 1
         key = sp[1]
         if key not in new_cells:
-            orphan.append(iid)
+            if key in retired_full:
+                n_ret += 1
+            else:
+                orphan.append(iid)
         elif key in renamed_old:
             amb += 1
-    return {"ok": not orphan, "orphan": orphan, "ambiguous": amb, "n_inst": n}
+    return {"ok": not orphan, "orphan": orphan, "ambiguous": amb, "n_inst": n, "retired": n_ret}
 
 
 def open_pr(wt: Path, branch: str, title: str, body: str, base: str = "dev") -> str:
@@ -858,10 +871,12 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     if glyph_db:
         new_cord = _load(vdir / f"{ch}.cord.json")
         if old_cord and new_cord:
-            g = rekey_gate(glyph_db, cell_table(old_char, old_cord, new_char, new_cord), book)
+            g = rekey_gate(glyph_db, cell_table(old_char, old_cord, new_char, new_cord), book,
+                           retired=retired_keys(old_char, new_char))
             if not g["ok"]:
                 return {"status": "r1-stop", "why": f"字形库有 {len(g['orphan'])} 个刻例的格键不在新包里（没 rekey）：{g['orphan'][:5]}；先 rekey 再落"}
-            gate_note = f"R1 已核（实例 {g['n_inst']}，改号待核 {g['ambiguous']}）"
+            gate_note = (f"R1 已核（实例 {g['n_inst']}，改号待核 {g['ambiguous']}"
+                         + (f"，身份账已作废格的刻例 {g['retired']}（读时按事件换现格，不拦）" if g["retired"] else "") + "）")
     new_char["version"] = old_char.get("version", new_char.get("version"))
     (vdir / f"{ch}.char.json").write_text(dumps(new_char), encoding="utf-8", newline="\n")
     for t in ("norm", "fig"):
