@@ -228,3 +228,23 @@ def test_chars_fresh_only_when_seed_admit_on_current_cut():
     assert source.chars_fresh(Store("abc", "abc"), "vol28", "p0003")
     assert not source.chars_fresh(Store("abc", "def"), "vol28", "p0003")   # 重切后没重跑识字
     assert not source.chars_fresh(Store(None, "def"), "vol28", "p0003")    # 没有 seed_admit
+
+
+def test_on_promote_pulls_advances_pushes(fb, monkeypatch):
+    """标 main 后：有账的册先拉账、取包入账、有新行才推；没账的册不碰。"""
+    from guji_manager.uid import promote
+    monkeypatch.setenv("GUJI_WORKSPACE", str(fb))      # on_promote 会改它：用 monkeypatch 兜住，测完还原
+    calls = []
+    monkeypatch.setattr(promote, "_db", lambda op, book, ws, env: (calls.append(op), (True, ""))[1])
+    monkeypatch.setattr("guji_manager.datastore.packs.fetch_products", lambda book, dest, label=None: calls.append(("fetch", label)))
+    import guji_manager.uid as U
+    monkeypatch.setattr(U, "enabled", lambda book, root=None: book == "volA")
+    monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 2, "u_max": 9, "via": {}})
+    promote.on_promote("volB", "L1", str(fb))
+    assert calls == []
+    promote.on_promote("volA", "L1", str(fb))
+    assert calls == ["pull", ("fetch", "L1"), "push"]
+    calls.clear()
+    monkeypatch.setattr(U, "advance", lambda book, store, **k: {"entered": 0, "u_max": 9, "via": {}})
+    promote.on_promote("volA", "L1", str(fb))
+    assert calls == ["pull", ("fetch", "L1")]
