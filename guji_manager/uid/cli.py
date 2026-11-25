@@ -195,6 +195,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     common(q, products=False)
     q.add_argument("-o", "--out", required=True, help="输出目录")
     q.add_argument("--items", nargs="*", default=None, help="待审条目文件（<数据目录>/feedback/lists/pending/<书>/<章>.items.jsonl）")
+    q.add_argument("--write", action="store_true",
+                   help="真写本地数据目录（只追加）：裁定、人裁各抄一条带 u 的（id、批次加 ~u，ts、seq 不变）；待审条目追加补 u 的新版本。"
+                        "推中心库另跑 guji db push --only（写入.json 列了文件）")
 
 
 def cmd_table(a) -> None:
@@ -227,12 +230,15 @@ def cmd_migrate_plan(a) -> None:
         sys.exit(f"✗ {a.book} 没有字格身份账，先 guji uid init／advance")
     pre = f"{a.book}:"
     rul: dict[str, dict] = {}
+    rul_ev: dict[str, object] = {}
+    hum_ev: dict[str, object] = {}
     store = RulingStore()
     if store.log.events_dir.exists():
         for e in sorted((e for e in store.log.iter_all(raw=True) if e.kind == RULING_KIND), key=replay_key):
             p = e.payload or {}
             if str(p.get("cell") or "").startswith(pre):
                 rul[p["cell"]] = p
+                rul_ev[p["cell"]] = e
     hum: dict[str, dict] = {}
     for e in sorted(EventLog().iter_all(), key=lambda e: (e.ts, e.batch, e.seq)):
         t = e.target
@@ -240,7 +246,8 @@ def cmd_migrate_plan(a) -> None:
                 or (e.payload or {}).get("v") not in HUMAN_VS or not counts_as_human(e)):
             continue
         an = t.anchor or {}
-        hum[t.key] = {"id": e.id, "cell": t.key, "bbox": an.get("bbox"), "u": an.get("u")}
+        hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"), "u": an.get("u")}
+        hum_ev[e.id] = e
     items = []
     for f in a.items or []:
         cur: dict[str, dict] = {}
@@ -249,7 +256,8 @@ def cmd_migrate_plan(a) -> None:
                 r = json.loads(line)
                 cur[r["id"]] = r
         items += [{**r, "_file": f} for r in cur.values() if r.get("state") != "closed"]
-    res = M.plan(led, rulings=list(rul.values()), humans=list(hum.values()), items=items)
+    from ..charnorm import load_norm
+    res = M.plan(led, rulings=list(rul.values()), humans=list(hum.values()), items=items, same=load_norm(a.book).same)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     for name in ("rulings", "human", "items"):
@@ -263,6 +271,10 @@ def cmd_migrate_plan(a) -> None:
     (out / "守恒.json").write_text(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"]},
                                              ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({"守恒": res["守恒"], "裁定迁出方式": res["迁出方式"], "out": str(out)}, ensure_ascii=False))
+    if a.write:
+        w = M.apply(res, ruling_events=rul_ev, human_events=hum_ev, ruling_log=store.log, event_log=EventLog())
+        (out / "写入.json").write_text(json.dumps(w, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(json.dumps({"写入": w}, ensure_ascii=False))
 
 
 def cmd(a) -> None:

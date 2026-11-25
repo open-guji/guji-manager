@@ -23,25 +23,60 @@ def test_plan(tmp_path):
     rul = [
         {"cell": f"{B}:3:1:2", "cells_sha": "S1", "char": "地", "ctx": {"left": "x", "right": "y"}},     # 直接（旧切分的 sha 也认）
         {"cell": f"{B}:3:1:3", "char": "玄", "ctx": {"left": "某天地", "right": "黃宇某"}},                  # 宽松
-        {"cell": f"{B}:3:1:4", "char": "黃", "ctx": {"left": "地地", "right": "宇"}},                       # 窗口对不上
+        {"cell": f"{B}:3:1:4", "char": "黃", "ctx": {"left": "地地", "right": "宇"}},                       # 一侧同＋字同：宽松
+        {"cell": f"{B}:3:1:5", "char": "某", "ctx": {"left": "地黃", "right": ""}},                        # 一侧同、字不同：不迁
         {"cell": f"{B}:3:1:1", "char": "天", "ctx": {"left": "前頁", "right": "地玄"}},                     # 页首：只比右侧
         {"cell": f"{B}:4:1:1", "char": "洪", "ctx": {"left": "", "right": ""}},                            # 账行没记字
         {"cell": f"{B}:9:1:1", "char": "日", "ctx": {}},                                                   # 账上没这页
-        {"cell": f"{B}:3:1:5", "char": "宇", "u": 5},                                                      # 已有 u：不算
+        {"cell": f"{B}:3:1:5", "char": "宇", "u": 5, "ctx": {}},                                           # 已有 u：不算
+        {"cell": f"{B}:3:1:1", "char": "天"},                                                              # 没窗口：证明不了
     ]
-    hum = [{"id": "h1", "cell": f"{B}:3:1:3", "bbox": [1, 1, 10, 10]},
-           {"id": "h2", "cell": f"{B}:3:1:3", "bbox": [50, 50, 10, 10]},
+    hum = [{"id": "h1", "cell": f"{B}:3:1:3", "shape": "玄"},
+           {"id": "h2", "cell": f"{B}:3:1:3", "shape": "元"},
            {"id": "h3", "cell": f"{B}:4:1:1"},
            {"id": "h4", "cell": f"{B}:3:1:4"}]
     items = [{"id": "pi_a", "cell": "3:1:2"}, {"id": "pi_b", "cell": "7:1:1"}, {"id": "pi_c", "cell": "3:1:1", "u": 1}]
     r = M.plan(led, rulings=rul, humans=hum, items=items)
-    got = {x["cell"]: (x["u"], x["how"]) for x in r["rulings"]}
-    assert got == {f"{B}:3:1:2": (2, "直接"), f"{B}:3:1:3": (3, "宽松"), f"{B}:3:1:1": (1, "宽松")}
+    got = sorted((x["cell"], x["u"], x["how"]) for x in r["rulings"])
+    assert got == [(f"{B}:3:1:1", 1, "宽松"), (f"{B}:3:1:2", 2, "直接"), (f"{B}:3:1:3", 3, "宽松"), (f"{B}:3:1:4", 4, "宽松")]
     assert all(x["payload"]["u"] == x["u"] for x in r["rulings"])
     assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6}
     assert [x["id"] for x in r["items"]] == ["pi_a"]
-    assert r["守恒"] == {"rulings": {"迁前": 6, "迁出": 3, "没迁": 3}, "human": {"迁前": 4, "迁出": 2, "没迁": 2},
+    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 4, "迁出": 2, "没迁": 2},
                          "items": {"迁前": 2, "迁出": 1, "没迁": 1}}
     why = {(x["类别"], x["键"]): x["理由"] for x in r["清单"]}
-    assert "窗口对不上" in why[("裁定", f"{B}:3:1:4")] and "没记字" in why[("裁定", f"{B}:4:1:1")]
+    assert "窗口对不上" in why[("裁定", f"{B}:3:1:5")] and "没记字" in why[("裁定", f"{B}:4:1:1")]
+    assert why[("人裁", f"{B}:3:1:3")] == "人裁「元」，账上这格是「玄」"
     assert why[("人裁", f"{B}:3:1:4")] == "没框可比，且该页重切过"
+
+
+def test_apply_appends_only(tmp_path):
+    """真写：裁定、人裁抄一条带 u（id/批次加 ~u，ts/seq 不变），原文件不动；待审条目追加补 u 的一版。"""
+    from guji_manager._cv import RULING_KIND, EventLog, EventTarget, RulingLog, make_event
+    from guji_manager.review import pending_items as P
+    led = _led(tmp_path / "uid")
+    rl, el = RulingLog(tmp_path / "fb"), EventLog(tmp_path / "fb")
+    cell = f"{B}:3:1:3"
+    rp = {"source": "llm", "group": "O", "prompt_ver": "ctx-m1", "char": "玄", "other": False, "conf": "high", "why": "",
+          "model": "m", "cell": cell, "tok": {}, "ctx": {"left": "天地", "right": "黃宇", "hash": "h"}, "subclass": "Z"}
+    re_ = make_event("r1", 7, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=cell, book=B), rp, actor="model")
+    rl.append([re_])
+    he = make_event("h1", 3, "confirm", EventTarget(step="seed_admit", unit="cell", key=cell, anchor={"source_rev": "r"}),
+                    {"v": "confirm", "shape": "玄"})
+    el.append([he])
+    items = tmp_path / "031.items.jsonl"
+    st = P.ItemStore(items)
+    st.add("3:1:3", {"why": ["x"]}, by="t", src="human:t")
+    st.save()
+    st = P.ItemStore(items)
+    it = [{**r, "_file": str(items)} for r in st.items.values()]
+    before_r, before_h = rl.batch_path("r1").read_text(), el.batch_path("h1").read_text()
+    res = M.plan(led, rulings=[rp], humans=[{"id": he.id, "cell": cell, "shape": "玄"}], items=it)
+    w = M.apply(res, ruling_events={cell: re_}, human_events={he.id: he}, ruling_log=rl, event_log=el)
+    assert (w["裁定"], w["人裁"], w["待审条目"]) == (1, 1, 1)
+    assert rl.batch_path("r1").read_text() == before_r and el.batch_path("h1").read_text() == before_h
+    nr = list(rl.read("r1~u", raw=True))[0]
+    assert nr.payload["u"] == 3 and nr.ts == re_.ts and nr.seq == 7 and nr.id == re_.id + "~u"
+    nh = list(el.read("h1~u"))[0]
+    assert nh.target.anchor == {"source_rev": "r", "u": 3} and nh.ts == he.ts
+    assert next(iter(P.ItemStore(items).items.values()))["u"] == 3
