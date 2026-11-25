@@ -69,5 +69,5 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
             ok, msg = _db("push", book, ws, env)
             print(f"字格身份账：已推中心库 {_rel(book)}" if ok else
                   f"⚠ 字格身份账：推中心库失败（{msg}）；手跑 guji db push -w <工作区> --only {_rel(book)}", file=sys.stderr)
-    except Exception as e:  # noqa: BLE001
+    except (Exception, SystemExit) as e:  # noqa: BLE001 —— 不挡标 main
         print(f"⚠ 字格身份账：标 main 后入账失败（{book} {label}）：{e}", file=sys.stderr)

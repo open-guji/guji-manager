@@ -31,8 +31,21 @@ def product_pages(store, book: str) -> list[int]:
 
 
 def cells_sha(store, book: str, page: int) -> str | None:
-    from .._cv import page_cells_sha
     return page_cells_sha(book, page, store)
+
+
+def page_cells_sha(book: str, page: int, store) -> str | None:
+    """本页产物戳，口径同 cv ``feedback.rulings.page_cells_sha``（cv ≥0.7.103）：``bindings.page_state`` 的两份 sha 用「+」连。
+    旧 cv（如史記 0.7.98 线）没有这个函数时按同口径自算，标 main 入账不挑执行机的 cv 版本（11-25 史記 42 册首次实测挂在这）。"""
+    try:
+        from .._cv import page_cells_sha as f
+    except (ImportError, AttributeError):
+        f = None
+    if f is not None:
+        return f(book, page, store)
+    from .._cv import page_state
+    cells, patch = page_state(book, page, store)
+    return f"{cells}+{patch or ''}" if cells else None
 
 
 def chars_fresh(store, book: str, key: str) -> bool:
