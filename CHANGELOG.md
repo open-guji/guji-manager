@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.6.19] - 2026-11-25
+
+- 发版缘由：同包重标 main 记「已对过」（#991）；`guji uid check-u-report` 定时只报（#992）；uid 自检按册选 cv、--only 推库撞 Stale 重推（GM2 #990）。
+
 - PATCH（11-25，CV0 u T1）：新命令 `guji uid check-u-report [--notify]`，在本机找得到的各工作区跑 `check-u`（先 `db pull --only` 拉人裁、补锚档、身份账、作废记档）；结果非 0 而且和上次不同，就通知 CV0 和该书项目（`GUJI_UID_CHECKU_TO`／`GUJI_UID_CHECKU_PROJECTS`）。只报，不改人裁。执行方空闲时按 `GUJI_UID_CHECKU_S` 定时跑，缺省 0＝不跑，只在一台机器上开。check-u 的补锚档两项不再算已记作废的抄件。L0。
 
 - PATCH（11-25，CV0 u T1）：同一个包撤回又重标 main（殿本 9 册撤回 r15frame）时，账里已有这份切分，`uid sync` 判「unchanged」不写也不推。但 main 指针比账里最晚一行新，自检就一直报缺、一直交 uidsync 单。修法：标 main 钩子和 uidsync 单（`--reconfirm`）遇到已对过的包，再记一笔带时间的「已对过」并推。执行机开跑前的 uid 步不变。L0。
