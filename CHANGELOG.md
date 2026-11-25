@@ -4,6 +4,7 @@
 
 ## [未发版]
 
+- PATCH（11-25，CV0 u 推全库）：字格身份账改在**标 main 时**入账：新插件 `guji.post_promote` → `uid/promote.py`，有账的册标 main 后先 `db pull --only` 拉这册的账、取回该 main 包 `advance`、有新行就 `db push --only` 推回中心库（`GUJI_UID_ON_PROMOTE=0` 关、`GUJI_UID_AUTO_PUSH=0` 只入本机）。执行机（有 `GUJI_JOB_ID`）跑完不再在 `hooks.finished` 入账：执行机不推数据回库，入了也丢，还会弄脏下张单的 db pull。没账的册不变，L0。
 - PATCH（11-25，CV0 u 试点）：`guji uid advance` 只在本页 seed_admit 是在现行字块上跑的（manifest 上游 `char_index` sha＝现行 `cell_shrink` sha）时才取字；只重切到 cell_shrink、没重跑识字时旧字按格号会整列错位，误导拆格时谁沿用 u（试点 vol28 p3「業」格）。这时只按框对照。L0。
 - PATCH（11-25，CV0 u 试点）：`guji uid advance` 从产物取框改成与 book-text cord 同口径（`cell_shrink` 字框 `bbox_page` 优先，空格才用格四角外接框）。原先只用格框，与 book-text 建的账对照时 vol31 有 4,518 格 IoU 不够、靠中心距才配上；改后 32,611 格全按 IoU 对上。账里已有的行不受影响，L0。
 - MINOR（11-24，CV0「字格永久编号 u」T1）：字格身份账 `guji_manager/uid/`＋命令 `guji uid advance|init|show|verify`：每册 `feedback/uid/<册>.jsonl`（只追加，进中心库 events 表 stream=uid），切字后按框 IoU→中心距→拆→并→字序列对照继承 u；`guji pipeline` 跑完、该册有账时自动入账；`cell_ref()` 对有账的册返回 u（查不到报 `UidMissing`，不回退格号），没账的册照旧恒等。格式见 `doc/参考/字格身份账.md`。没账的册行为不变，cv 产物不动，L0。

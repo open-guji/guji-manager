@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 
 from .ops import prep
@@ -71,7 +72,9 @@ def finished(args, eng, steps: list[str], ok: bool) -> None:
 
 def _uid_advance(eng) -> None:
     """该册有字格身份账（启用了 u）就把现行切分入账（`guji uid advance`，同一份切分不动）。没账的册不碰。
-    入账失败只报不拦：之后 `cell_ref()` 查不到会报错，`guji uid verify --check-products` 也会列出来。"""
+    执行机（任务库单里，有 ``GUJI_JOB_ID``）不入：包标 main 时由 ``uid/promote.py`` 入账并推中心库。入账失败只报不拦：之后 `cell_ref()` 查不到会报错，`guji uid verify --check-products` 也会列出来。"""
+    if os.environ.get("GUJI_JOB_ID"):   # 执行机：跑出的包不推数据回中心库，本机账白入还会弄脏下张单的 db pull；改在标 main 时入（uid/promote.py）
+        return
     try:
         from . import uid
         if not uid.enabled(eng.book.id):
