@@ -87,10 +87,10 @@ def _raw_parser(sub, name: str, help_: str):
 
 def land_argv(rest: list[str]) -> list[str]:
     """``<管线> <册> -w <ws> --text-id <id> --land [cv 参数…]`` → ``land <册> -w <ws> --text-id <id> --apply --run <管线> <册> [cv 参数…]``。
-    ``--text-id`` 只给 land 用，不转给 cv。``--land`` 只出收尾计划，``--land-apply`` 才真写条目、推库、发站。"""
+    ``--text-id``、``--book-text`` 只给 land 用，不转给 cv（给了 ``--book-text`` 就连 book-text 一步：``--land`` 出计划、``--land-apply`` 写回）。``--land`` 只出收尾计划，``--land-apply`` 才真写条目、推库、发站。"""
     apply = "--land-apply" in rest
     args = [x for x in rest if x not in ("--land", "--land-apply")]
-    ws = tid = None
+    ws = tid = bt = None
     cv_args: list[str] = []
     i = 0
     while i < len(args):
@@ -102,13 +102,17 @@ def land_argv(rest: list[str]) -> list[str]:
         elif x == "--text-id" and i + 1 < len(args):
             tid = args[i + 1]
             i += 2
+        elif x == "--book-text" and i + 1 < len(args):         # 给了 book-text 仓：收尾顺带把包放行字写回文本（land_text）
+            bt = args[i + 1]
+            i += 2
         else:
             cv_args.append(x)
             i += 1
     if len(args) < 2 or not ws or not tid:
         print("✗ guji pipeline <管线> <册> -w <工作区> --text-id <书 ID> --land：缺册、-w 或 --text-id", file=sys.stderr)
         raise SystemExit(2)
-    return ["land", args[1], "-w", ws, "--text-id", tid, *(["--apply"] if apply else []), "--run", *cv_args]
+    text = ["--book-text", bt, "--text-apply" if apply else "--text"] if bt else []
+    return ["land", args[1], "-w", ws, "--text-id", tid, *(["--apply"] if apply else []), *text, "--run", *cv_args]
 
 
 def route(argv: list[str]) -> list[str] | None:

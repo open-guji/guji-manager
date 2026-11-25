@@ -237,3 +237,28 @@ def test_alt_added_counts_as_change_and_digest_not_skipped(tmp_path, monkeypatch
     st2 = _store(tmp_path / "b", [{**_cell("1:1:1"), "alt": alt}])
     plan2 = land.plan_book(st2, [{**_cell("1:1:1"), "alt": alt, "why": "R02"}], src="land")
     assert land.alt_changed(st2, plan2["_store"], plan2["改"]) == []
+
+
+def _char(cells):
+    return {"version": "1", "pages": [{"page": 1, "columns": [{"cells": [{"a": a, "c": c, **({"lacuna": True} if c == "□" else {})} for a, c in cells]}]}]}
+
+
+def test_text_plan_fills_blank_from_pack_and_keeps_human(tmp_path, monkeypatch):
+    """包放行（含人裁放行）的字补进 book-text 的 □；人裁字与包冲突时保人裁；没变的不进计划。"""
+    from guji_manager import land_text as T
+    from guji_manager.swap import booktext as B
+    old = _char([("1:1:1", "□"), ("1:1:2", "甲"), ("1:1:3", "乙")])
+    new = _char([("1:1:1", "巿"), ("1:1:2", "甲"), ("1:1:3", "丙")])
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    (exp / "001.char.json").write_text(json.dumps(new), encoding="utf-8")
+    monkeypatch.setattr(B, "_git", lambda *a, **k: "")
+    monkeypatch.setattr(B, "_bt_dir", lambda repo, tid: tmp_path / "bt" / tid)
+    monkeypatch.setattr(T, "_show_dev", lambda src, rel: old if rel.endswith(".char.json") else None)
+    monkeypatch.setattr(B, "load_human", lambda book: {"1:1:3": "乙"})
+    (tmp_path / "bt" / "t").mkdir(parents=True)
+    plan = T.text_plan(tmp_path, "vol01", text_id="t", book_text=tmp_path / "bt", pending={}, export=exp)
+    got = {c[0]: c for c in plan["changes"]}
+    assert got["1:1:1"][3] == "巿"                      # □ 补包字
+    assert "1:1:2" not in got                           # 没变
+    assert "1:1:3" not in got or got["1:1:3"][3] == "乙"   # 人裁最高，不被包改
