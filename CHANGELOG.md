@@ -4,6 +4,10 @@
 
 ## [未发版]
 
+## [0.6.20] - 2026-11-25
+
+- 发版缘由：史記线上待审单换新卡点（#995）：导出器配老 cv 不崩、带 u 的 char 保持 v0.6、无 rev 包旧单照换；配 cv 史記线 v0.7.107。
+
 - PATCH（11-25，CV0 u T1）：史記线上待审单换新三处卡点。① 导出器 `guji_manager.output.guji_format_export` 配老 cv（史記 0.7.103 patch 线，没有册 yaml `gaps:`）不再崩在最后写缺页文件那步（char／cord 已写完、u 都盖了）；cv 史記线 republish 改用本导出器后 char 带 u，book-text local_check 不再报标点／专名 u 对不上。② 标 main 自动重出（`online_lists.follow_main`）遇线上单没存 rev 包（手工出的旧单，史記 001–042）不再拒，按用户 11-25「线上单总是换最新的」照换，换完存 rev 包。③ `char_schema_for` 遇带 u 的 char 写 v0.6（republish 写待审首选字后以前降成 v0.1，book-text 升版拦）。④ 章号宽度：史記中心库基础配置补 `chapter_width: 3`（配置，不是代码；`chapter_of('12')` 现给 `012`）。L0。
 
 ## [0.6.19] - 2026-11-25
