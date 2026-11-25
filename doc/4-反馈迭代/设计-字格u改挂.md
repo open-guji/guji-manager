@@ -102,6 +102,8 @@
   网页票 `latest_votes`／`triage`／`latest_human` 按 u（带 u 的旧 rev 票也收，按 u 认的不再对框）；`guji uid table`；swap 按 u 出表；
   `guji uid migrate-plan`（`u_migrate.py`）。与 §二.7 的出入：宽松证明 manager 拿不到候选，改为「两侧 2 字都同」（页首页尾只比有字的一侧）；
   人裁按框 IoU≥0.5（没框只在该页没重切过时按格号）；票不在这里迁（网站 D1 的 u 列由 T5 按 `guji uid table`／现行账回填）。
+- 试点调口径（11-25，#925）：窗口按本书归一表比，「两侧同」或「一侧同且裁定字＝账上字」；没记窗口的进清单；
+  人裁改为「人裁字＝账上字」（`anchor.bbox` 是右上原点、图源换过，不比框）；加 `--write` 只追加（`~u` 抄件，ts、seq 不变）。
 
 ## 三、测试（先写，T1 合前用假账跑）
 
