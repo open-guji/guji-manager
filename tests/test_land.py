@@ -368,3 +368,16 @@ def test_sheet_stale_detects_missing_alt(tmp_path):
     sh.parent.mkdir(parents=True)
     sh.write_text(json.dumps({"cells": [{"id": it["id"], "cell": "1:2:3"}]}), encoding="utf-8")
     assert land.sheet_stale(tmp_path, "t", "001", s) == ["1:2:3"]
+
+
+def test_zero_byte_state_files_are_ignored(tmp_path):
+    f = tmp_path / "x" / "alt-tried.json"
+    f.parent.mkdir()
+    f.write_text("", encoding="utf-8")
+    assert land.read_json(f, []) == []
+    land.atomic_write(f, "[1]")
+    assert land.read_json(f) == [1] and not list(f.parent.glob("*.tmp"))
+    c = tmp_path / "reports" / "b" / "b.cards.alt.json"
+    c.parent.mkdir(parents=True)
+    c.write_text("", encoding="utf-8")
+    assert land._E.load_cards(tmp_path, "b") == {}
