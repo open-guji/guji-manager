@@ -9,8 +9,8 @@ import sys
 
 
 def append_rulings(log, evs):
-    from .u_stamp import stamp_rulings
-    stamp_rulings(evs)                     # 册有字格身份账时盖 payload.u（T2）；没账不动
+    from .u_stamp import stamp_strict
+    stamp_strict(evs)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）
     try:
         return log.append(evs)
     except Exception as e:  # cv 的 BadRequest 在不同版本里类路径不同，按类名认

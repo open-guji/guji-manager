@@ -160,8 +160,8 @@ def import_vision(path: Path, log: VisionLog | None = None, batch: str | None = 
     if pr.errors or dry_run:
         out["written"] = 0
         return out
-    from ..u_stamp import stamp_human
-    stamp_human(pr.events)      # 册有字格身份账时盖 target.anchor.u（T2）；没账不动
+    from ..u_stamp import stamp_strict
+    stamp_strict(pr.events)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）
     out["written"] = log.append(pr.events)
     if gold:
         out["gold"] = vision_gold(pr.events, gold_store)

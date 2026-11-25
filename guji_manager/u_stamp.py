@@ -6,7 +6,9 @@ u 来自 `cell_ref()`（T1 字格身份账）：册**有账**时返回 int，册
 - 裁定（`ctx_ruling`）：`payload.u`（cv `RulingStore` 按 (group, 册, payload.u) 查，T3）；
 - 人裁事件（`unit=cell`）：`target.anchor["u"]`（`EventTarget` 是 cv 的 pydantic 模型，多的字段会丢，只能放自由字典 anchor）。
 
-格号照旧写（双写期），u 只是**加**的字段。
+格号照写（人读方便），身份以 u 为准：册有账的写入一律带 u（写不出整批报错，见下「写入一律以 u 为准」），
+读的时候册有账而没带 u 的旧记录不再按格号作数（`current_cell` 返回 None）——2026-11-25 全库存量已补 u，
+补不上的记了作废（`feedback/lists/u_void/<册>.jsonl`）。册没账的书照旧按格号，行为不变。
 """
 from __future__ import annotations
 
@@ -81,16 +83,20 @@ def export_uids(book: str) -> dict | None:
 
 
 def current_cell(p: dict) -> str | None:
-    """裁定 payload → 它**现在**挂的格号：带 u 且册有账就按账反查（重切、补删字后格号变了也跟着走），
-    u 已作废／账里没有 → None；没带 u → 原 `cell`。"""
+    """裁定 payload（或 {cell, u}）→ 它**现在**挂的格号：带 u 且册有账就按账反查（重切、补删字后格号变了也跟着走），
+    u 已作废／账里没有 → None；册有账而**没带 u** → None（旧记录：存量迁移补不上 u 的已作废，不再按格号作数）；
+    册没账 → 原 `cell`。"""
     cell = p.get("cell")
     u = p.get("u")
-    if not (isinstance(u, int) and not isinstance(u, bool)) or not is_full_cell(cell):
+    if not is_full_cell(cell):
         return cell
     from .cell_ref import UidMissing, cell_of
     book = cell.split(":", 1)[0]
-    if _ledger(book) is None:
+    led = _ledger(book)
+    if led is None or not led.exists:
         return cell
+    if not (isinstance(u, int) and not isinstance(u, bool)):
+        return None
     try:
         return cell_of(u, book)
     except UidMissing:
@@ -163,6 +169,11 @@ def require_u(evs: list) -> None:
     if bad:
         raise UidRequired(f"{len(bad)} 条写不出字格永久编号 u（册有身份账，格号不全或账上没这一格），整批不写："
                           f"{'、'.join(bad[:5])}{' …' if len(bad) > 5 else ''}。先 guji uid advance <册>")
+
+
+def stamp_strict(evs: list) -> list:
+    """盖 u 并核（同 append 前的守卫）：给不经 manager 的 `EventLog`／`RulingLog` 子类、直接交 cv 写的路径用。"""
+    return _stamp_all(evs)
 
 
 def _stamp_all(evs: list) -> list:
