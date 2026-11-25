@@ -401,11 +401,39 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--text-vdir", help="book-text 版本目录（<章>.punct.json／entity.json；算锚点类待审原因用）")
     p.add_argument("--no-publish", action="store_true", help="--apply 后不发站（缺省只发有变的册，一次一批）")
     p.add_argument("--no-human-deduct", action="store_true", help="不按事件日志里的人裁扣掉「条目里没有、但已有人裁」的新判格")
+    p.add_argument("--text", action="store_true", help="对账后算 book-text 计划：包放行字与 book-text dev 逐格比（只读，出 reports/<册>/_land/text-plan.tsv）")
+    p.add_argument("--text-apply", action="store_true", help="计划里有字要改的册写回 book-text（独立 worktree、local_check、推 dev；1.x 开 PR）；隐含 --text")
+    p.add_argument("--book-text", help="book-text 仓目录（--text 用）")
     p.add_argument("--no-audit-alt", action="store_true", help="卡片缺格时不自动先跑 guji audit alt")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,
                    help="先跑 cv：其后的参数原样交 `guji-cv pipeline …`，跑完再收尾")
+
+
+def text_step(ws: Path, a, books: list[str], results: list[dict]) -> None:
+    """book-text 一步：导出 → 计划（只读）→（--text-apply）有改的册落文本。人裁最高、新覆盖旧的规则同 swap。"""
+    from . import land_text as T
+    from .datastore.workcopy import data_dir
+    from .swap import chapter_of
+    if not a.book_text:
+        raise SystemExit("✗ --text 要 --book-text <book-text 仓>")
+    by = {r["book"]: r for r in results}
+    for b in books:
+        ch = chapter_of(b)
+        store = P.ItemStore.open(data_dir(ws), a.text_id, ch)
+        exp = T.refresh_export(ws, b, chapter=ch)
+        plan = T.text_plan(ws, b, text_id=a.text_id, book_text=Path(a.book_text), pending=T.open_pending(store), export=exp)
+        r = by.get(b) or {}
+        r["text"] = {k: v for k, v in plan.items() if k != "changes"}
+        print(f"{b}\ttext\t{plan.get('status')}\t改 {plan.get('n', '-')} 格 {plan.get('counts', '')}\t{plan.get('table', plan.get('why', ''))}")
+        if plan.get("conflicts"):
+            print(f"  ⚠ {b} 新包与人裁冲突（保人裁，交书线确认）{len(plan['conflicts'])} 格：{plan['conflicts'][:5]}", file=sys.stderr)
+        if a.text_apply and plan.get("n"):
+            res = T.text_apply(ws, b, text_id=a.text_id, book_text=Path(a.book_text), pending=T.open_pending(store), export=exp,
+                               note=f"{b} land：包放行字写回文本（{plan['counts']}）")
+            r["text"]["apply"] = res
+            print(f"  {b} book-text 落文本：{res.get('status')} {res.get('why', '')} {res.get('commit', '')}")
 
 
 def cmd_land(a) -> int:
@@ -436,6 +464,8 @@ def cmd_land(a) -> int:
                  human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
         print(f"{b}\t{'有变' if r['changed'] else '没变'}\t{r['summary']}\t明细 {r.get('detail', '')}" + (f"\t按人裁扣掉 {len(r['deducted'])} 格 {r['deducted'][:5]}" if r.get("deducted") else "") + (f"\t已写 {r.get('written', 0)} 行" if a.apply else ""))
+    if (a.text or a.text_apply) and not a.pending_json:
+        text_step(ws, a, books, results)
     blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
     for b, v in blocked.items():
         print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)

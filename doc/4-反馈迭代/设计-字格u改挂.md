@@ -10,7 +10,7 @@
 - **u**：册内唯一正整数，发了不改不复用。账在 `<feedback>/uid/<册>.jsonl`（T1）。
 - **`cell_ref(cell_id)`**（T1 定签名）：册**有账**→ 返回 `int` u，查不到报 `UidMissing`（不回退格号）；册**没账**→ 恒等返回格号字符串。
   `cell_of(ref, book)`：int → 当前格号。`is_uid(ref)`。批量用 `uid.ledger.Ledger.load(book)`。
-- **只加不改**：格号（`cell`、`target.key`、`a`）照旧写，u 是**加**的字段（双写期）。没账的册行为与现在逐字节相同。
+- **格号照写、身份以 u 为准**（原「只加不改」双写期 11-24～11-25 已结束）：格号（`cell`、`target.key`、`a`）照写方便人读；册有账的写入一律带 u，写不出整批报错（`u_stamp`，#932 起）；读的时候册有账而没带 u 的旧记录不再按格号作数（`current_cell` 返回 None，11-25 收口）。没账的册行为与以前逐字节相同。
 - **裁定**：`payload.u`（int）。cv `RulingStore` 按 (group, 册, payload.u) 建索引（T3），册取 `payload.cell` 冒号前缀。
 - **人裁事件**：`target.anchor.u`（int）。`EventTarget` 是 cv 的 pydantic 模型，多余字段会被丢，故放进自由字典 `anchor`，不改 cv。
 - **待审条目**：条目加 `u`；单上每格（`pending.json` 的 `cells[]`）多带 `u`。
@@ -104,6 +104,13 @@
   人裁按框 IoU≥0.5（没框只在该页没重切过时按格号）；票不在这里迁（网站 D1 的 u 列由 T5 按 `guji uid table`／现行账回填）。
 - 试点调口径（11-25，#925）：窗口按本书归一表比，「两侧同」或「一侧同且裁定字＝账上字」；没记窗口的进清单；
   人裁改为「人裁字＝账上字」（`anchor.bbox` 是右上原点、图源换过，不比框）；加 `--write` 只追加（`~u` 抄件，ts、seq 不变）。
+
+- 收口（11-25，主导线程「u 彻底收尾」）：`guji uid migrate-plan --close`（`u_migrate.rescue_human`／`close_out`／`write_close`）。
+  清单上的人裁再救：⑤ 异体同（cv `variant_group` 高置信异体，如 愼／慎）、⑥ 列内近邻同字（同页同列前后 3 格内唯一同字，切分挪过一两格、九月旧格号都靠这条）；
+  其余：裁定一律作废（窗口变了，要时文意重跑重判；旧提示词版本 seed_admit 本来不认）、没字且重切过的人裁作废、格号不在账且近邻无同字的人裁作废、
+  字不同的人裁这格已有带 u 人裁就作废否则转待审条目（`pending_reason=recheck`、`src=script:u-closeout`）、格号不在账的待审条目撤下。
+  作废**不删原事件**，记进 `feedback/lists/u_void/<册>.jsonl`（每行 `kind=u_void`，转待审的记 `kind=u_review`；重跑按 (stream, id, key) 去重）。
+  读路径同时收紧：`current_cell` 对有账册里没 u 的记录返回 None（`latest_human`、`rulings-hits` 不再按格号认它们）；各写入点由「盖得上就盖」改为 `stamp_strict`（盖不上整批报错）。
 
 ## 三、测试（先写，T1 合前用假账跑）
 

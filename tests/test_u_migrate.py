@@ -88,3 +88,20 @@ def test_apply_appends_only(tmp_path):
     nh = list(el.read("h1~u"))[0]
     assert nh.target.anchor == {"source_rev": "r", "u": 3} and nh.ts == he.ts
     assert next(iter(P.ItemStore(items).items.values()))["u"] == 3
+
+
+def test_rescue_and_close(tmp_path):
+    led = _led(tmp_path)
+    hum = [{"id": "a", "cell": f"{B}:3:1:2", "shape": "坔"},      # 异体（假表）→ 救回本格 u2
+           {"id": "b", "cell": f"{B}:3:1:9", "shape": "黃"},      # 格号不在账、列内近邻有唯一「黃」→ u4
+           {"id": "c", "cell": f"{B}:3:1:1", "shape": "某"},      # 字不同、找不到 → 转待审
+           {"id": "d", "cell": f"{B}:3:1:5", "shape": "某"},      # 字不同、这格已有带 u 的人裁 → 作废
+           {"id": "e", "cell": f"{B}:5:1:1"}]                     # 没字、重切过 → 作废
+    res = M.plan(led, humans=hum, rulings=[{"cell": f"{B}:9:1:1", "char": "日", "ctx": {}}],
+                 items=[{"id": "pi_x", "cell": "9:9:9", "_file": "f.jsonl"}])
+    got, rest = M.rescue_human(led, res["清单"], variant=lambda x, y: {x, y} == {"坔", "地"}, taken={5})
+    assert {(x["id"], x["u"], x["how"]) for x in got} == {("a", 2, "异体同"), ("b", 4, "列内近邻同字")}
+    co = M.close_out(led, rest, human_u={5, 2, 4})
+    assert [r["h"]["id"] for r in co["review"]] == ["c"] and co["review"][0]["u"] == 1
+    assert {(v["stream"], v["id"]) for v in co["void"]} == {("events", "d"), ("events", "e"), ("rulings", None)}
+    assert co["withdraw"] == [{"id": "pi_x", "file": "f.jsonl", "reason": "格号不在现行账里"}]

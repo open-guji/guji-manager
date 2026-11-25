@@ -379,6 +379,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "canon_box_suspect": ("utils.binqc", "canon_box_suspect"),
     "page_occluded": ("steps.occlusion", "page_occluded"),
     "fold_compat": ("utils.cjk_compat", "fold_compat"),
+    "variant_group": ("variants", "variant_group"),          # u 迁移收口：高置信异体（11-25）
     "_cells_versions": ("feedback.bindings", "_cells_versions"),
     "evict_instance": ("clustering.audit", "evict_instance"),
     "V1_TWIN_COV": ("clustering.glyph_ledger", "V1_TWIN_COV"),

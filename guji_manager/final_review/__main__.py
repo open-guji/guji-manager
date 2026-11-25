@@ -222,8 +222,8 @@ def cmd_write(a) -> int:
             payload["ref_lead"] = {"layer": r.get("layer"), "lead": r.get("lead")}
         evs.append(make_event(a.batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
                               actor="model", ts=a.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
-    from ..u_stamp import stamp_rulings
-    stamp_rulings(evs)          # 册有字格身份账时盖 payload.u（T2）；没账不动
+    from ..u_stamp import stamp_strict
+    stamp_strict(evs)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）
     print(len(evs), log.append(evs))
     print(log.batch_path(a.batch))
     print("推库前按 push-safety：备份、pull 核账本非空、设 GUJI_ACTOR；放行后抽 30 格再核。")

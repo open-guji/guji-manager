@@ -53,7 +53,7 @@ vol28:9:1:-1                國        删         u794 并入 u795
 | 网站票 | D1 票表的 `u` 列 | `cellvotes` 按 u 分组；u 已作废的票挂起（`moved`） |
 | book-text | char v0.6 每格 `u`，顶层 `u_max`、`u_retired`；norm v0.3 条目带 `u` | 网站、标点专名按 u 挂 |
 
-**写入一律以 u 为准**（0.6.9）：manager 里所有写人裁事件、裁定的地方（`EventLog`／`RulingLog`）追加前自动盖 u。册有身份账而盖不上（账上没这一格、格号不全）的，**整批报错不写**，提示先 `guji uid advance <册>`。格号照写，方便人读。没账的册行为不变。
+**写入一律以 u 为准**（0.6.9）：manager 里所有写人裁事件、裁定的地方（`EventLog`／`RulingLog`）追加前自动盖 u。册有身份账而盖不上（账上没这一格、格号不全）的，**整批报错不写**，提示先 `guji uid advance <册>`。格号照写，方便人读。读的时候，册有账而没带 u 的旧记录不再按格号作数。没账的册行为不变。
 
 ## 存量迁移（2026-11-25 已对全库做完）
 
@@ -65,4 +65,6 @@ vol28:9:1:-1                國        删         u794 并入 u795
 
 每册出 `守恒.json`（迁前＝迁出＋没迁，对不上直接报错）和 `清单.tsv`（没迁的每条一行、写理由）。没迁的多是：九月旧格号（那时列内顺序号和现行格网号不同，本来就挂不上现格）、人裁字和现行文本不同而切分又变过的、旧提示词版本的裁定（seed_admit 本来就不认）。
 
-做法：先 `guji db pull`，`guji uid migrate-plan <册> --items <条目文件> --write`，再按 `写入.json` 列的文件 `guji db push --only …`（推库要设 `GUJI_ACTOR`）。
+**收口**（`--close`，同日做完）：清单上的人裁再按「高置信异体同字」「同页同列前后 3 格内唯一同字」救一批；其余裁定、没字或格已不在的人裁**作废**（不删原事件，记进 `feedback/lists/u_void/<册>.jsonl`），字和现行文本不同的人裁转成待审条目（`pending_reason=recheck`）让人对着现行切分重看，格号不在账的待审条目撤下。每册另出 `收口.tsv`。
+
+做法：先 `guji db pull`，`guji uid migrate-plan <册> --items <条目文件> --write --close`，再按 `写入.json` 列的文件 `guji db push --only …`（推库要设 `GUJI_ACTOR`）。

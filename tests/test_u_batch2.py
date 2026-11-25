@@ -50,7 +50,7 @@ def test_export_uids(led):
 def test_current_cell_follows_u(led):
     assert U.current_cell({"cell": f"{B}:5:2:1", "u": 1}) == f"{B}:5:2:2"      # 写时在 5:2:1，现在挪到 5:2:2
     assert U.current_cell({"cell": f"{B}:5:2:3", "u": 3}) is None              # 并掉了
-    assert U.current_cell({"cell": f"{B}:5:2:1"}) == f"{B}:5:2:1"              # 没 u 照旧
+    assert U.current_cell({"cell": f"{B}:5:2:1"}) is None                       # 册有账而没带 u：旧记录不再按格号作数
     assert U.current_cell({"cell": "vol02:1:1:1", "u": 5}) == "vol02:1:1:1"    # 没账照旧
 
 
