@@ -117,3 +117,30 @@ def test_db_roundtrip():
     # 重跑幂等：已有 u 的不再动
     res2 = B.plan_rows(B.Resolver(led), B.load_votes(conn, "b", "028"))
     assert res2["守恒"]["已有u"] == 5
+
+
+def test_vote_events():
+    src = lambda rev, *vs: {"v": "confirm", "source": f"网站精校意见（{rev}）；意见来源 {'、'.join(vs)}"}
+    rows = [
+        ("evt_A_1", src("028-r4", "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"), {"key": f"{V}:3:1:2"}),
+        ("evt_A_1~r", src("028-r4", "aaaaaaaaaaaaaaaa"), {"key": f"{V}:3:1:3"}),                    # rebase 后格号变了
+        ("evt_A_1~r~u", src("028-r4", "aaaaaaaaaaaaaaaa"), {"key": f"{V}:3:1:3", "anchor": {"u": 3}}),
+        ("evt_A_2", src("028-r4", "cccccccccccccccc"), {"key": f"{V}:4:1:1"}),                     # 没补 u
+        ("evt_B_1", {"v": "confirm", "source": "控制台"}, {"key": f"{V}:3:1:1", "anchor": {"u": 1}}),
+    ]
+    ev = B.vote_events([(i, json.dumps(p, ensure_ascii=False), json.dumps(t)) for i, p, t in rows])
+    assert ev[("028-r4", "3:1:2", "aaaaaaaaaaaaaaaa")]["u"] == 3
+    assert ev[("028-r4", "3:1:2", "bbbbbbbbbbbbbbbb")]["u"] == 3
+    assert "u" not in ev[("028-r4", "4:1:1", "cccccccccccccccc")]
+    assert len(ev) == 3
+    votes = [
+        _row("cellreview", "k1", {"vol": "028", "rev": "028-r4", "a": "3:1:2", "voter": "aaaaaaaaaaaaaaaaxx"}),            # 账上没字可核 → 事件
+        _row("cellreview", "k2", {"vol": "028", "rev": "028-r4", "a": "3:1:2", "voter": "bbbbbbbbbbbbbbbb", "shown": "地"}),  # 账配 u2、事件 u3 → 事件为准
+        _row("cellreview", "k3", {"vol": "028", "rev": "028-r4", "a": "4:1:1", "voter": "cccccccccccccccc", "shown": "x"}),   # 账：只切过一次照配
+        _row("cellreview", "k4", {"vol": "028", "rev": "028-r4", "a": "3:1:2", "voter": "cccccccccccccccc"}),               # 导过但无 u、账上也配不上
+    ]
+    events = {**ev, ("028-r4", "3:1:2", "cccccccccccccccc"): {"root": "evt_A_9"}}
+    r = B.plan_rows(_res(), votes, events)
+    got = {f["key"]: (f["set"]["u"], f["how"]) for f in r["fills"]}
+    assert got == {"k1": (3, "人裁事件"), "k2": (3, "人裁事件（账上按字配的是另一个 u）"), "k3": (10, "该页只切过一次")}
+    assert r["清单"][0]["理由"].startswith("已导成人裁 evt_A_9")

@@ -93,8 +93,48 @@ def _ends(text) -> tuple[str, str]:
     return (s[0], s[-1]) if s else ("", "")
 
 
-def plan_rows(res: Resolver, rows: list[dict]) -> dict:
-    """rows：web_inbox 行 {kind, key, value(str)}。→ {fills, 清单, 已有u, 守恒, 方式, 作废}。"""
+SRC_RE = re.compile(r"^网站精校意见（([^）]+)）；意见来源 (.+)$")
+
+
+def vote_events(rows) -> dict[tuple[str, str, str], dict]:
+    """网站票导成的人裁事件（payload.source＝「网站精校意见（<rev>）；意见来源 <voter 前 16 位>、…」）
+    → {(rev, 格号 a, voter16): {root, u?}}。
+
+    一张票导入后可能又被抄过：``~r``（第 7 轮换图源 rebase，格号换成新 rev 的）、``~u``（T2 补 u）、``~q`` 等；
+    同一个 root（id 第一个 ``~`` 之前）是一条链。格号取 root 那条（就是票上的格号），u 取链上最后一条带 ``anchor.u`` 的。
+    ``rows``：(id, payload, target)，payload／target 为 dict 或 JSON 串。"""
+    chain: dict[str, dict] = {}
+    for eid, pl, tg in rows:
+        pl = json.loads(pl) if isinstance(pl, str) else (pl or {})
+        tg = json.loads(tg) if isinstance(tg, str) else (tg or {})
+        m = SRC_RE.match(str(pl.get("source") or ""))
+        if not m:
+            continue
+        root = eid.split("~", 1)[0]
+        c = chain.setdefault(root, {"root": root})
+        if eid == root:
+            c["key"] = tg.get("key")
+            c["rev"], c["voters"] = m[1], [x.strip() for x in m[2].split("、") if x.strip()]
+        u = (tg.get("anchor") or {}).get("u")
+        if isinstance(u, int) and u > 0:
+            c["u"] = u
+    out: dict[tuple[str, str, str], dict] = {}
+    for c in chain.values():
+        if not c.get("key") or ":" not in c["key"]:
+            continue
+        a = c["key"].split(":", 1)[1]
+        for v in c["voters"]:
+            out[(c["rev"], a, v[:16])] = c
+    return out
+
+
+def plan_rows(res: Resolver, rows: list[dict], events: dict | None = None) -> dict:
+    """rows：web_inbox 行 {kind, key, value(str)}；``events``＝``vote_events`` 的结果（给了就用来配账上配不上的精校票）。
+    → {fills, 清单, 已有u, 守恒, 方式, 作废}。
+
+    精校票若已导成人裁事件（``events``）且那条事件链已补 u（T2），**以事件的 u 为准**（计「人裁事件」）；
+    导过但事件链没 u、账上也配不上的进清单，理由写「已导成人裁…」，与真正没处理过的票分开。"""
+    events = events or {}
     fills, left, had = [], [], 0
     how = Counter()
     retired = 0
@@ -112,6 +152,14 @@ def plan_rows(res: Resolver, rows: list[dict]) -> dict:
             u, why = res.resolve(a, hint)
             if u is not None and why == "字同" and not v.get("shown"):
                 why = "票字同"
+            ev = events.get((str(v.get("rev") or ""), a, str(v.get("voter") or "")[:16]))
+            if ev is not None and ev.get("u"):
+                # 已导成人裁、事件链有 u：以它为准（换图源的票走过几何 rebase，比按格号＋字核更可靠；11-25 实测 473 条里 2 条不一致）
+                why = "人裁事件" if u in (None, ev["u"]) else "人裁事件（账上按字配的是另一个 u）"
+                u = ev["u"]
+            elif u is None and ev is not None:
+                left.append({**base, "格": a, "理由": f"已导成人裁 {ev['root']}（事件链还没 u）；账上：{why}"})
+                continue
             if u is None:
                 left.append({**base, "格": a, "理由": why})
                 continue
@@ -178,6 +226,14 @@ def load_votes(conn, site_book: str, site_vol: str) -> list[dict]:
             [kind, site_book, site_vol]).fetchall()
         out += [{"kind": k, "key": key, "value": val} for k, key, val in rows]
     return out
+
+
+def load_vote_events(conn, ws: str, book: str) -> dict:
+    rows = conn.execute(
+        "SELECT id, payload, target FROM events WHERE ws = %s AND stream = 'events' AND kind = 'confirm' "
+        "AND book = %s AND json_extract(payload, '$.source') LIKE %s",
+        [ws, book, "网站精校意见%"]).fetchall()
+    return vote_events(rows)
 
 
 def apply(conn, fills: list[dict]) -> dict:
