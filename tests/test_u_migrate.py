@@ -14,6 +14,9 @@ def _led(tmp_path):
         make_line(B, 3, "S2", {k: i + 1 for i, k in enumerate(keys)}, chars=dict(zip(keys, "天地玄黃宇")),
                   boxes={keys[2]: [0, 0, 10, 10]}),
         make_line(B, 4, "T1", {f"{B}:4:1:1": 6}),
+        make_line(B, 5, "R1+x", {f"{B}:5:1:1": 7, f"{B}:5:1:2": 8}),
+        make_line(B, 5, "R2+y", {f"{B}:5:1:1": 9, f"{B}:5:1:2": 8},
+                  lineage=[{"u": 7, "gone": True}]),
     ])
     return lg
 
@@ -35,20 +38,23 @@ def test_plan(tmp_path):
            {"id": "h2", "cell": f"{B}:3:1:3", "shape": "元"},
            {"id": "h3", "cell": f"{B}:4:1:1"},
            {"id": "h4", "cell": f"{B}:3:1:4"},
-           {"id": "h5", "cell": f"{B}:3:1:3", "shape": "元", "reading": "玄"}]                           # 字形≠、读作＝账上字：迁
+           {"id": "h5", "cell": f"{B}:3:1:3", "shape": "元", "reading": "玄"},                          # 字形≠、读作＝账上字：迁
+           {"id": "h6", "cell": f"{B}:5:1:2"},                                                       # 没字、各版同 u：迁
+           {"id": "h7", "cell": f"{B}:5:1:1"},                                                       # 没字、这格重切过：清单
+           {"id": "h8", "cell": f"{B}:5:1:1", "cells_sha": {"row_segment": "R2"}}]                   # 锚同切分：取那行的 u                           # 字形≠、读作＝账上字：迁
     items = [{"id": "pi_a", "cell": "3:1:2"}, {"id": "pi_b", "cell": "7:1:1"}, {"id": "pi_c", "cell": "3:1:1", "u": 1}]
     r = M.plan(led, rulings=rul, humans=hum, items=items)
     got = sorted((x["cell"], x["u"], x["how"]) for x in r["rulings"])
     assert got == [(f"{B}:3:1:1", 1, "宽松"), (f"{B}:3:1:2", 2, "直接"), (f"{B}:3:1:3", 3, "宽松"), (f"{B}:3:1:4", 4, "宽松")]
     assert all(x["payload"]["u"] == x["u"] for x in r["rulings"])
-    assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6, "h5": 3}
+    assert {x["id"]: x["u"] for x in r["human"]} == {"h1": 3, "h3": 6, "h4": 4, "h5": 3, "h6": 8, "h8": 9}
     assert [x["id"] for x in r["items"]] == ["pi_a"]
-    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 5, "迁出": 3, "没迁": 2},
+    assert r["守恒"] == {"rulings": {"迁前": 8, "迁出": 4, "没迁": 4}, "human": {"迁前": 8, "迁出": 6, "没迁": 2},
                          "items": {"迁前": 2, "迁出": 1, "没迁": 1}}
     why = {(x["类别"], x["键"]): x["理由"] for x in r["清单"]}
     assert "窗口对不上" in why[("裁定", f"{B}:3:1:5")] and "没记字" in why[("裁定", f"{B}:4:1:1")]
     assert why[("人裁", f"{B}:3:1:3")] == "人裁「元」，账上这格是「玄」"
-    assert why[("人裁", f"{B}:3:1:4")] == "没字可比，且该页重切过"
+    assert why[("人裁", f"{B}:5:1:1")] == "没字可比，且这格重切过"
 
 
 def test_apply_appends_only(tmp_path):

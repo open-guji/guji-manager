@@ -11,8 +11,9 @@
     **两侧都同**，或**一侧同且裁定字＝账上这格的字**（manager 拿不到候选，用现行文本的字代替 cv 的「字在候选」），过了取现行 u；
     裁定没记窗口（`ctx` 空）的证明不了，进清单；
   - 其余进清单（理由：账上没这一页／格号不在账里／窗口对不上／账行没记字）。
-- **人裁**（每格最新一条算人裁的 confirm，`anchor` 没 u 的）：人裁字（`shape` 字形或 `reading` 读作，任一）＝账上这格的字（按归一表）就迁；账上记的是文本字，「巳」形读「已」的要比 reading；
-  没字可比（无字、图等）→ 只在该页账**只入过一次**（切分没变过）时按格号迁；其余进清单。
+- **人裁**（每格最新一条算人裁的 confirm，`anchor` 没 u 的）：锚里 `cells_sha` 主段＝账上某行主段就取那行的 u（锚同切分）；
+  否则人裁字（`shape` 字形或 `reading` 读作，任一）＝账上这格的字（按归一表）就迁；账上记的是文本字，「巳」形读「已」的要比 reading；
+  没字可比时账上该页各行这格都是同一个 u（各版同格）也迁；其余进清单。
   （人裁的 `anchor.bbox` 是 `raw_page_px@top-right` 右上原点、图源也可能换过，和账里 cord 框不在一个坐标系，不拿来比。）
 - **待审条目**：条目格号在账上该页现行 map 里 → 补 u（同 `reconcile(us=…)`）；不在 → 清单。
 
@@ -104,8 +105,18 @@ def plan_rulings(led: Ledger, rulings: list[dict], same=None) -> tuple[list[dict
     return out, left
 
 
+def _sha_head(sha) -> str | None:
+    """格锚 cells_sha 取主段：裁定、账行是 `行切分+…` 字符串，人裁锚是 {"row_segment": …} 字典。"""
+    if isinstance(sha, dict):
+        sha = sha.get("row_segment") or next(iter(sha.values()), None)
+    return str(sha).split("+")[0] if sha else None
+
+
 def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], list[dict]]:
-    """humans：本册每格最新一条人裁 {id, cell, shape?, u?}。→ (迁出 [{id, cell, u, how}], 清单)。"""
+    """humans：本册每格最新一条人裁 {id, cell, shape?, reading?, cells_sha?, u?}。→ (迁出 [{id, cell, u, how}], 清单)。
+
+    次序：① 锚里的 cells_sha 主段＝账上该页某一行的主段，且格在那一行 → 取那一行的 u（还没作废）；
+    ② 人裁字（字形或读作，按归一表）＝账上字 → 迁；不等 → 清单；③ 没字可比时，账上该页各行这格都是同一个 u → 迁；④ 其余清单。"""
     same = same or (lambda a, b: a == b)
     out, left = [], []
     for h in humans:
@@ -118,6 +129,17 @@ def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], 
             left.append({"类别": "人裁", "键": cell, "理由": "格号不在现行账里"})
             continue
         u = int(cur["map"][cell])
+        head = _sha_head(h.get("cells_sha"))
+        if head:
+            hit = None
+            for d in led.lines:
+                if int(d["page"]) == pg and _sha_head(d.get("cells_sha")) == head and cell in d["map"]:
+                    hit = d
+            if hit is not None:
+                hu = int(hit["map"][cell])
+                if led.cell_of(hu) is not None:
+                    out.append({"id": h["id"], "cell": cell, "u": hu, "how": "锚同切分"})
+                    continue
         have = (cur.get("chars") or {}).get(cell, "")
         mine = [x for x in (h.get("shape"), h.get("reading")) if x]
         if mine and have:
@@ -126,11 +148,11 @@ def plan_human(led: Ledger, humans: list[dict], same=None) -> tuple[list[dict], 
             else:
                 left.append({"类别": "人裁", "键": cell, "理由": f"人裁「{'／'.join(dict.fromkeys(mine))}」，账上这格是「{have}」"})
             continue
-        prev, _ = led.page_pair(pg)
-        if prev is None:
-            out.append({"id": h["id"], "cell": cell, "u": u, "how": "该页只切过一次"})
-        else:
-            left.append({"类别": "人裁", "键": cell, "理由": "没字可比，且该页重切过"})
+        lines = [d for d in led.lines if int(d["page"]) == pg]
+        if all(cell in d["map"] and int(d["map"][cell]) == u for d in lines):
+            out.append({"id": h["id"], "cell": cell, "u": u, "how": "各版同格"})
+            continue
+        left.append({"类别": "人裁", "键": cell, "理由": "没字可比，且这格重切过"})
     return out, left
 
 
@@ -164,6 +186,7 @@ def plan(led: Ledger, *, rulings: list[dict] = (), humans: list[dict] = (), item
             raise AssertionError(f"{name} 不守恒：{cons[name]}")
     res["守恒"] = cons
     res["迁出方式"] = dict(Counter(x["how"] for x in res["rulings"]))
+    res["人裁迁出方式"] = dict(Counter(x["how"] for x in res["human"]))
     return res
 
 
