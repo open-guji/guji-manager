@@ -101,7 +101,8 @@ def test_human_labels_use_bindings(tmp_path, monkeypatch):
     import open_guji_cv.feedback.bindings as BD
     import open_guji_cv.feedback.events as EV
     monkeypatch.setattr(EV, "iter_events_readonly", lambda log: iter(evs))
-    monkeypatch.setattr(EV, "counts_as_human", lambda ev: True)
+    import guji_manager.feedback.levels as LV
+    monkeypatch.setattr(LV, "counts_as_human", lambda ev: True)
     monkeypatch.setattr(EV, "EventLog", lambda: None)
     status = {"ev1": ("rebound", "vb:2:1:2"), "ev2": ("valid", "vb:2:1:9"), "ev3": ("review", "vb:2:1:3")}
     monkeypatch.setattr(BD, "compute_page", lambda book, page, events, **kw: [

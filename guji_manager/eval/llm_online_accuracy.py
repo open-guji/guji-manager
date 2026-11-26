@@ -48,7 +48,7 @@ def human_final_char(event) -> str | None:
     （`feedback/consumers.py::glyphdb_admit` 同一套兼容写法，不重新发明口径）。"""
     if event.kind not in ("confirm", "relabel"):
         return None
-    from .._cv import counts_as_human
+    from ..feedback.levels import counts_as_human
     if not counts_as_human(event):
         return None                  # 看图结论（overview#428）不当人裁真值
     payload = event.payload

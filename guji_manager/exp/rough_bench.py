@@ -65,7 +65,8 @@ def _split_key(key: str) -> tuple[str, int, int, int, str]:
 def human_labels(snapshot: Path, books, log=None) -> list[dict]:
     """人裁（`counts_as_human` 的格级 confirm，每格取最新）→ 绑到快照现行切分的标签行。"""
     from .._cv import compute_page
-    from .._cv import EventLog, counts_as_human, iter_events_readonly
+    from .._cv import EventLog, iter_events_readonly
+    from ..feedback.levels import counts_as_human
     from .._cv import ProductStore
     books = set(books)
     by_page: dict[tuple[str, int], list] = defaultdict(list)

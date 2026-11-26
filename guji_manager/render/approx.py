@@ -27,7 +27,8 @@ DEFAULT_APPROX_MODE = "sidecar"
 
 def approx_marks(book: str, log=None) -> dict[str, dict]:
     """`{字位 id: {"shape", "ids", "note"}}`：这本书现在仍标着近似的字位（后到覆盖）。"""
-    from .._cv import EventLog, counts_as_human
+    from .._cv import EventLog
+    from ..feedback.levels import counts_as_pin
     out: dict[str, dict] = {}
     pre = f"{book}:"
     try:
@@ -37,7 +38,7 @@ def approx_marks(book: str, log=None) -> dict[str, dict]:
     for e in evs:
         if e.kind != "confirm" or e.target.unit != "cell" or not e.target.key.startswith(pre):
             continue
-        if not counts_as_human(e):
+        if not counts_as_pin(e):
             continue                             # 看图结论不算人定的近似字（overview#428）
         p = e.payload or {}
         if p.get("v") not in ("confirm", "seg_defect") or not p.get("shape"):
