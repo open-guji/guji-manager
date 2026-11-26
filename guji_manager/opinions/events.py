@@ -4,11 +4,11 @@ revise 真写 book-text（非 dry-run、带 PR）后，对每个改了字／新�
 这样「读者意见被采纳」和别的人裁一样进事件流、进 ``events.u/level``，以后能当钉读。
 
 - 事件：kind=confirm，target{step:seed_admit, unit:cell, key:册:页:列:格, anchor}，
-  payload{v:confirm, shape:新字, source:opinion, opinion:<意见 id>, text_version, level, no_glyph}。
+  payload{v:confirm, shape:新字, source:opinion, opinion:<意见 id>, text_version, level, no_glyph_lib}。
 - level 明写：用户采纳（status=accepted）→ actor=user、level=human；规则自动采纳（auto_accepted）→ actor=model、level=ai。
 - 锚直接带全：{u, bbox 现行格框, cells_sha 现行切分戳, 有则 content_sha}；补锚档只兜底。
 - B′ 新增格：现行切分的身份账里要有这个 u（对得上 char 的新 u），没有就只留 book-text、不写事件（返回 skipped）。
-- no_glyph=True：用户只看文字没看字图，字形库重放跳过（写完另把两个字形库消费者记账兜底）。
+- no_glyph_lib=True（沿用审查卡「这张图不建库」的老标记，glyphdb_admit 与重建后重放都认）：用户只看文字没看字图，定字照用、不进字形库；写完另把字形库消费者记账兜底。
 - batch 名 ``opinion-<册>-<章>-<日期>``，不带「~」（带「~」的批次按口径算人裁）。
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ def build(book: str, vol: str, applied: list, statuses: dict, char: dict, cord: 
                 anchor["content_sha"] = ccell["content_sha"]
             col, slot = a.split(":")[1], a.split(":")[2]
             payload = {"v": "confirm", "shape": cell["c"], "source": "opinion", "opinion": ap.opinion,
-                       "text_version": text_version, "level": level, "no_glyph": True}
+                       "text_version": text_version, "level": level, "no_glyph_lib": True}
             out.events.append({
                 "batch": batch, "kind": "confirm", "actor": actor,
                 "target": {"step": "seed_admit", "unit": "cell", "key": f"{book}:{a}", "book": book,
@@ -120,6 +120,6 @@ def write(built: Built, log=None) -> int:
     for cons in GLYPH_CONSUMERS:
         try:
             log.mark_consumed(cons, evs, note="意见采纳：只看文字未看字图，不入字形库")
-        except Exception:  # noqa: BLE001 —— 消费者名在旧 cv 里可能没有；no_glyph 标记是主闸
+        except Exception:  # noqa: BLE001 —— 消费者名在旧 cv 里可能没有；no_glyph_lib 标记是主闸
             pass
     return n

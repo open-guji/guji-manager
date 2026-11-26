@@ -26,7 +26,7 @@ def test_human_and_ai_levels():
     assert [(e["actor"], e["payload"]["level"]) for e in b.events] == [("user", "human"), ("model", "ai")]
     e = b.events[0]
     assert e["target"]["anchor"] == {"u": 11, "bbox": [1, 2, 3, 4], "cells_sha": "S", "content_sha": "cs"}
-    assert e["target"]["key"] == "史記:3:2:5" and e["payload"]["shape"] == "甲" and e["payload"]["no_glyph"]
+    assert e["target"]["key"] == "史記:3:2:5" and e["payload"]["shape"] == "甲" and e["payload"]["no_glyph_lib"]
     assert "~" not in e["batch"]
     assert b.skipped and b.skipped[0][0] == "op_n"
 

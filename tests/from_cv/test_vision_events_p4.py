@@ -195,13 +195,10 @@ def test_vision_events_do_not_touch_human_paths(env):
 
 
 
-def test_no_glyph_events_not_in_glyph_store():
-    """`payload.no_glyph`（意见采纳：只看文字没看字图，GM4 11-26）：定字照用，不进字形库。"""
+def test_opinion_events_not_in_glyph_store():
+    """意见采纳写的裁定（只看文字没看字图，GM4 11-26）带 `no_glyph_lib`：算已裁，不进字形库。"""
     from guji_manager.feedback.consumers import glyphdb_admit
-    human = _ev("keben:1:1:3", {"v": "confirm", "shape": "曰"}, 1)
-    op_u = _ev("keben:1:1:4", {"v": "confirm", "shape": "曰", "source": "opinion", "level": "human",
-                               "no_glyph": True}, 2)
-    op_ai = _ev("keben:1:1:5", {"v": "confirm", "shape": "曰", "source": "opinion", "level": "ai",
-                                "no_glyph": True}, 3, actor="model")
-    res = glyphdb_admit([(human, None), (op_u, None), (op_ai, None)], dry_run=True)
-    assert res.added == 1 and res.skipped == 2
+    op = _ev("keben:1:1:4", {"v": "confirm", "shape": "曰", "source": "opinion", "level": "human",
+                             "no_glyph_lib": True}, 2)
+    res = glyphdb_admit([(op, None)], dry_run=False)
+    assert res.added == 0 and res.no_lib == 1

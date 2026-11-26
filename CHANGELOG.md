@@ -6,7 +6,7 @@
 
 ## [未发版]
 
-- PATCH（CV0 11-26，配 GM4 意见采纳写事件 #1062）：字形库消费器 `glyphdb_admit` 与重建后重放 `replay_after_rebuild` 跳过 `payload.no_glyph` 的 confirm（只看文字没看字图的裁定，定字照用、不进库）。原先只靠 `consumed/` 记账兜底，但重建后重放只认 `book_lib_sync gated` 记账，会把它们重放进库。
+- PATCH（CV0 11-26，配 GM4 意见采纳写事件 #1062）：意见采纳写的裁定事件改用现成的 `payload.no_glyph_lib`（审查卡「这张图不建库」的老标记，`glyphdb_admit` 与重建后重放都认：算已裁、不进库），不另造 `no_glyph`。原 `no_glyph` 没有任何消费者认，重建后重放还只认 `book_lib_sync gated` 记账，会把这类事件重放进库。
 - PATCH（GM4 11-26，待审与裁定整理第 6 步）：`opinions revise --write-events`（缺省关）：真写 book-text 后对每个改字／新增格写 confirm 裁定事件（payload.level 明写：用户采纳 human／规则自动采纳 ai；锚直接带 u、bbox、cells_sha、有则 content_sha；B′ 新格 u 不在现行切分账里就只留文本不写事件；payload.no_glyph 让字形库重放跳过；batch `opinion-<册>-<章>-<日期>` 不带「~」）。另修：revise 改 A／B 类格时 CELL_KEYS 漏了 `u`，会把 v0.6 char 格的 u 丢掉。
 
 ## [0.6.33] - 2026-11-26
