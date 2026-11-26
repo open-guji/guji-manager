@@ -129,6 +129,12 @@ EXISTING_GAPS: dict[str, set[str]] = {
 }
 
 
+# cv #1911（11-26，CV4）把 seed_admit 拆出 seed_admit_common／lanes／shapes（纯搬家，指纹不变），stroke_veto／wu_shape
+# 等的 import 随各遍搬进这些 helper。本测试只扫 Step 模块自己，不扫 helper，新 cv 上这几条登记就看不到了；理由照旧
+# （开这些开关前要把对应模块并入该册指纹）。旧 cv（patch 线）上仍在 seed_admit 里，保留。
+_SA_HELPERS = ("open_guji_cv.steps.seed_admit_common", "open_guji_cv.steps.seed_admit_lanes",
+               "open_guji_cv.steps.seed_admit_shapes")
+
 def _imports(mod_name: str) -> set[str]:
     mod = importlib.import_module(mod_name)
     path = Path(inspect.getsourcefile(mod))
@@ -186,7 +192,16 @@ def test_existing_gaps_only_shrink():
     assert not stale, f"EXISTING_GAPS 里这些已经不缺了，删掉：{stale}"
 
 
+def _moved_to_helper(m: str, i: str) -> bool:
+    """seed_admit 的登记条目：新 cv 上这个 import 搬进了 helper 模块（cv #1911）。"""
+    if m != "open_guji_cv.steps.seed_admit":
+        return False
+    return any(importlib.util.find_spec(h) and i in _imports(h) for h in _SA_HELPERS)
+
+
 def test_not_in_fp_entries_are_live():
     for (m, i), why in NOT_IN_FP.items():
         assert why.strip()
+        if i not in _imports(m) and _moved_to_helper(m, i):
+            continue
         assert i in _imports(m), f"{m} 已不 import {i}，删掉这条 NOT_IN_FP"

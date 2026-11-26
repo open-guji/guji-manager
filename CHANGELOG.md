@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2）：步内分段计时跟上 cv #1911（seed_admit 拆出 seed_admit_common／lanes／shapes，纯搬家）：`PERF_HOOKS` 加 `seed_admit_common._page_patch`，否则字块读取一段计不到（各处改经 `_C._page_patch` 调）。旧 cv 没这模块自动跳过。`tests/from_cv/test_code_deps_coverage` 的 NOT_IN_FP 死条目检查认 import 搬进 seed_admit helper 的（stroke_veto／wu_shape 等，新 cv 上 dev CI 原先红）。不动 cv 产物，L0。
+
 ## [0.6.24] - 2026-11-26
 
 - 发版缘由：身份账有字旧格不配给空格（#1018，主线程 11-26 定）。
