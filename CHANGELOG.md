@@ -8,6 +8,10 @@
 
 - PATCH（11-26，GM2，配 cv v0.9.6 钉子护栏）：wiki 切分检查与优化补「标 main 前跑 pins-stale」「升级后跑一次 pins-backfill-geom」；新待审原因 `manual_cells_remapped`（S05，钉子换算待核，一定人审，ui=confirm，priority 9）。cv row_segment 列旗 `manual_cells_remapped`（钉子按 geom 换算、角点位移 >3px）的列：出卡（`review.cards`）与按包现算（`reasons.book_cells`）都把这一列的格捞回待审（放行了也算），挂 doubt `manual_cells_remapped`。网站按 `pending_reason` 显示，不用改。不动 cv 产物，L0。
 - PATCH（11-26，CV1，CV0 批）：新命令 `seg pins-recheck <册…> [--write]`——没记几何底的老钉子在现行列图上逐条核（生效、在图内、不压墨、不跨两字、格外无墨、cell_shrink 同号字格；判据复用 cv seg_pins_check），全过补 geom，不过的列清单人核／重钉（退出 3）。`seg pins-stale` 另报「未生效」（钉子改了而该页 row_segment 没重跑，按格比，不比时间；GM2 提）。全唐文 053 实测 30 条：通过 15、不过 4（正是 outer_bar 错位的 76:4、76:5 等）、11 条本机没产物没核。不动 cv 产物，L0。
+
+## [0.6.37] - 2026-11-26
+
+- 发版缘由：钉状态流写入口 `guji pinstate`（#1082，配 cv #1930 的 pin_removed）。
 - PATCH（GM4 11-26，待审与裁定整理）：新命令 `guji pinstate remove|expire|reactivate`（`pin_state.py`）：写 `feedback/pins/<册>.state.jsonl`（事件形状，payload 带 v／pin_id／book／reason／level／by／at／events），cv #1930 的 pin_removed 读它；`datastore/scope.py` 把这类文件归入 events 表（stream=pin_state）、随 db sync 进中心库（`voids` 视图并入）。
 
 ## [0.6.36] - 2026-11-26
