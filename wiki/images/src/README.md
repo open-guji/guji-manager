@@ -19,3 +19,4 @@ await b.close()})();
 - `job-ls.png`、`pack-list.png`：`guji pipeline job ls`、`guji pipeline products pack list` 的输出（去掉了连库地址那一行）。
 - `web-read.png`、`web-proofing.png`：kaiyuanguji.com 阅读页、校对页。
 - `case-gallery.png`：五部书各取一页 R2 原图。
+- `uid-blank-cell.png`（2026-11-26）：史記 18 第 2 页原图（blob.open-guji.com 按页图 sha 取）裁第 5 列，叠身份账 `feedback/uid/18.jsonl` 里 03:19、10:49 两行的框与 u；③ 按 0.6.24 对照规则回放的结果。

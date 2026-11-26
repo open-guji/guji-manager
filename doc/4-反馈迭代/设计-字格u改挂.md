@@ -112,6 +112,11 @@
   作废**不删原事件**，记进 `feedback/lists/u_void/<册>.jsonl`（每行 `kind=u_void`，转待审的记 `kind=u_review`；重跑按 (stream, id, key) 去重）。
   读路径同时收紧：`current_cell` 对有账册里没 u 的记录返回 None（`latest_human`、`rulings-hits` 不再按格号认它们）；各写入点由「盖得上就盖」改为 `stamp_strict`（盖不上整批报错）。
 
+- 之后（11-25–26，PATCH）：0.6.17 部分副本 `--only` 推账；0.6.18 `~u` 抄件补锚档（`guji uid anchor-fill`）；0.6.19 同包重标 main 记「已对过」、`check-u-report` 定时只报；
+  0.6.20／0.6.21 导出器配老 cv、`u_retired` 的 into 目标不在本章降 gone；0.6.22 swap R1 闸放过已作废格刻例；
+  0.6.23 导出保 u 连续（对照 book-text 现行 char，旧版有、本次没导出的 u 记 gone）；0.6.24 入账时有字旧格不配给空格（空格＝字块无墨）。
+  全部用法与报错对照见 [字格身份账](../参考/字格身份账.md) 第七、九、十一节。
+
 ## 三、测试（先写，T1 合前用假账跑）
 
 - `tests/test_u_stamp.py`：有账盖 u、没账不动、有账缺格报错；人裁 `anchor.u`；同批多册。
