@@ -101,3 +101,15 @@ def test_break_follows_heading_restamps_u_and_sorts_without_offsets():
     assert out == [("1:1:1", "1:1:3")]
     assert pm[0]["anchor"] == "1:1:3" and pm[0]["u"] == 7
     assert [x["kind"] for x in pm] == ["break", "heading", "point"]      # 没有 char_offset 也按读序，不把 before 全挪前
+
+
+def test_restamp_moved_same_cell_dead_u():
+    """并账（retire-into）后同格换了新号：格位没动、旧 u 已不在 char 里 → 按格位重盖（ZM 11-26 vol15）。"""
+    a2u = L.a_to_u(_char("甲乙", us=[3, 9]))
+    before = {"punctuations": [{"anchor": "1:1:2", "u": 4}, {"anchor": "1:1:1", "u": 3}]}
+    after = {"punctuations": [{"anchor": "1:1:2", "u": 4}, {"anchor": "1:1:1", "u": 3}]}
+    assert L.restamp_moved(before, after, "punct", a2u) == 1
+    assert [p["u"] for p in after["punctuations"]] == [9, 3]
+    e0 = {"entities": [{"id": "x", "anchor": {"start": "1:1:1", "end": "1:1:2"}, "u_start": 3, "u_end": 4}]}
+    e1 = {"entities": [{"id": "x", "anchor": {"start": "1:1:1", "end": "1:1:2"}, "u_start": 3, "u_end": 4}]}
+    assert L.restamp_moved(e0, e1, "entity", a2u) == 1 and e1["entities"][0]["u_end"] == 9
