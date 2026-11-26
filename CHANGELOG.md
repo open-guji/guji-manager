@@ -7,6 +7,22 @@
 ## [未发版]
 
 - PATCH（11-26，CV2）：review-pages `cut_check` 1.2.0：`build --box N` 定卡片图高（px，缺省仍 220），一屏多放几格（Sheldon 看 L3 折线页 11-26 要卡片小些）。旧页、旧结果不变，L0。
+
+## [0.6.27] - 2026-11-26
+
+- 发版缘由：`db --only` 多路径（#1035）。
+- PATCH（11-26，CV0）：`db pull/push/sync --only` 一个 `--only` 后可跟多个路径（原先 `--only A B C` 只认 A，B、C 落进位置参数被静默丢掉，全唐文救回人裁的 ~u 抄件因此漏推）；pull/push/sync/status/diff/migrate/init 收到多余位置参数直接报错。
+
+## [0.6.26] - 2026-11-26
+
+- 发版缘由：推库闸（#1031）与 u 收口先用 cv 绑定认格、u_void 撤销（#1032）；救回全唐文 56、史記 5 格误作废人裁。
+- PATCH（11-26，CV0）：推库闸拦「册有字格身份账却没带 u」的新事件（格级人裁 `anchor.u`、按格裁定 `payload.u`；不经 manager 写的会绕过 append 前盖 u，史記「歲暫歸一」批 22 条）；`GUJI_DB_ALLOW_NO_U=1` 放行。新命令 `guji uid stamp <事件文件> [--write]`：按身份账给锚在同一份切分上的行就地补 u。`uid migrate-plan` 不再把 u_void 里记过作废的裁定、人裁抄回来。
+- PATCH（11-26，CV0）：u 收口误作废了「整列平移」的人裁（cv 按锚框顺移绑对了格、字与 book-text 同；全唐文 56、史記 5 格，T3 核出）。`uid migrate-plan --close` 先用 cv 绑定认格（`book_bindings`→`usable`，valid／rebound 的现格号在账、字同或异体、u 没被占 → 认这格 u），认不上才走异体／列内近邻／作废；`--bind-products` 指现行 main 包产物，`--no-bind` 关。u_void 新记档 `kind=u_unvoid` 撤销同 id 之前的作废／转待审（`u_migrate.unvoid`：抄 `~u` 件带锚档、记撤销、撤下这些人裁转出的 recheck 条目）。
+
+## [0.6.25] - 2026-11-26
+
+- 发版缘由：只动文档，合 main 让 Wiki 同步（#1028）。`doc/参考/字格身份账.md` 按 v0.6.24 重写；Wiki「字格永久编号 u 与身份账」重写（加史記 18 截图、常见问题），全流程、换单、收单、投票页改讲 u。
+
 - PATCH（11-25，CV0「字块随包存 R2」，用户 11-25 定；要 cv 带 `core.derived.PAGE_FETCHER`（cv #1899），旧 cv 不装、照旧现算）：新 `datastore/patch_packs.py`。一页 `char_patch` 打一个 tar 存 `derived/patch/<ws>/<册>/<页>.<链指纹>.<日>.tar`（链指纹＝cell_shrink 及全部上游这一页指纹的合哈希，切分变了才换键、只重打变了的页）；`guji cache push-patches`（执行机 rerun／ab 单存产物包后自动跑，`GUJI_PATCH_PUSH=0` 关，失败不挡单）；启动时注册取件器，识字、定字缓存缺页时整页取回、逐文件核 sha 与戳（`GUJI_PATCH_FETCH=0` 关）；`guji cache gc-patches` 每页留最新那天＋7 天内，缺省只列、`--apply` 才删。
 - PATCH（11-26，GM2）：步内分段计时跟上 cv #1911（seed_admit 拆出 seed_admit_common／lanes／shapes，纯搬家）：`PERF_HOOKS` 加 `seed_admit_common._page_patch`，否则字块读取一段计不到（各处改经 `_C._page_patch` 调）。旧 cv 没这模块自动跳过。`tests/from_cv/test_code_deps_coverage` 的 NOT_IN_FP 死条目检查认 import 搬进 seed_admit helper 的（stroke_veto／wu_shape 等，新 cv 上 dev CI 原先红）。不动 cv 产物，L0。
 - PATCH（11-26，GM2）：步内分段计时跟上 cv #1911（seed_admit 拆出 seed_admit_common／lanes／shapes，纯搬家）：`PERF_HOOKS` 加 `seed_admit_common._page_patch`，否则字块读取一段计不到（各处改经 `_C._page_patch` 调）。旧 cv 没这模块自动跳过。不动 cv 产物，L0。

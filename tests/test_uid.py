@@ -471,3 +471,25 @@ def test_audit_cv_for_uses_pack_cv_tag():
     assert cv_for("r15frame-a2", fallback="dev", resolve=ok) == "dev"   # 标签不带版本
     assert cv_for("cv0.7.104-c76", pinned="0.7.99", resolve=ok) == "v0.7.99"         # 册 yaml 钉的优先
     assert cv_for("cv0.7.104-c76", pinned="v9.9.9", resolve=lambda r: missing(r) if r == "v9.9.9" else ok(r)) == "v0.7.104"
+
+
+def test_lacks_u_and_stamp_lines(fb):
+    """推库闸：册有账却没带 u 的人裁／裁定判出来；uid stamp 只补锚在同一份切分上的（史記「歲暫歸一」批，11-26）。"""
+    import json as _j
+    from guji_manager.u_stamp import lacks_u
+    from guji_manager.uid.cli import stamp_lines
+    lg = Ledger.load(B)
+    lg.append([make_line(B, 3, "aaa+bbb", {f"{B}:3:1:1": 7, f"{B}:3:1:2": 8})])
+    has = lambda b: b == B
+    t = {"unit": "cell", "key": f"{B}:3:1:2", "anchor": {"cells_sha": {"row_segment": "aaa"}}}
+    assert lacks_u("confirm", t, {}, has) == f"{B}:3:1:2"
+    assert lacks_u("confirm", {**t, "anchor": {"u": 8}}, {}, has) is None
+    assert lacks_u("confirm", {**t, "key": "vol02:3:1:2"}, {}, has) is None          # 没账的册不管
+    assert lacks_u("ctx_ruling", {}, {"cell": f"{B}:3:1:1"}, has) == f"{B}:3:1:1"
+    assert lacks_u("uid_ledger", {"book": B}, {}, has) is None
+    ok = {"id": "e1", "kind": "confirm", "target": t, "payload": {}}
+    old = {"id": "e2", "kind": "confirm", "target": {**t, "anchor": {"cells_sha": {"row_segment": "zzz"}}}, "payload": {}}
+    lines = [_j.dumps(ok), _j.dumps(old), ""]
+    new, done, left = stamp_lines(lines, lambda b: Ledger.load(b))
+    assert [d["u"] for d in done] == [8] and [x["id"] for x in left] == ["e2"]
+    assert _j.loads(new[0])["target"]["anchor"]["u"] == 8 and new[1] == lines[1] and new[2] == ""

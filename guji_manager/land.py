@@ -401,6 +401,22 @@ WARM_TIMEOUT = 3600      # source pull／cache warm 每步最多等这么久，�
 ALT_TIMEOUT = 900        # 每册 audit alt 最多等这么久，出不来快速告警，别拖整趟
 
 
+def run_killing(cmd: list, env: dict, timeout: float) -> bool:
+    """跑子进程，超时连同它的孙进程（cache warm 的 worker）一起杀掉；返回 True＝在时限内结束（不论退出码）。"""
+    import signal
+    p = subprocess.Popen(cmd, env=env, start_new_session=True)
+    try:
+        p.wait(timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, AttributeError):
+            p.kill()
+        p.wait()
+        return False
+
+
 def _norm_id(book: str, c: str) -> str:
     return c if c.startswith(f"{book}:") else f"{book}:{c}"
 
@@ -423,7 +439,10 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
     miss, noalt = lacking()
     tried_f = ws / "reports" / book / "_land" / "alt-tried.json"
     tried = set(read_json(tried_f, []) or [])
+    stuck = noalt & tried
     noalt -= tried                                    # 试过一次仍没 alt 的格不反复跑 15 分钟
+    if stuck:                                         # 但每次都要说：别让「试过没出」变成静默（QTW 11-26：007 的 16 格、012 的 8 格）
+        print(f"⚠ {book} 有 {len(stuck)} 格试过仍算不出相似字（见 _land/alt-tried.json，删了它才会重试）：{sorted(stuck)[:8]}", file=sys.stderr)
     if not (miss or noalt):
         return
     # 总入口是 cv 的 cli_v2（manager 命令经入口点并进来；`guji-manager` 自己没有 audit）
@@ -454,11 +473,11 @@ def ensure_alt_cards(ws: Path, book: str, cells: list[str], recheck: str | None 
                   f"先清盘（land --disk-report），再单跑这册", file=sys.stderr)
             return
         print(f"⚠ {book} 仍缺相似字：自动 source pull＋cache warm 后重算", file=sys.stderr)
-        for sub in (["source", "pull", book, "-w", str(ws)], ["cache", "warm", "--book", book, "-w", str(ws)]):
-            try:
-                subprocess.run([*base, *sub], env=env, timeout=WARM_TIMEOUT)
-            except subprocess.TimeoutExpired:
-                print(f"✗ {book} {' '.join(sub[:2])} 超过 {WARM_TIMEOUT // 60} 分钟没完（盘慢或盘快满？）：放弃补拉，这册缺相似字的格先放着，修好后单跑这册", file=sys.stderr)
+        pages = sorted({int(c.split(":")[1]) for c in (miss2 | noalt2) if c.split(":")[1:2] and c.split(":")[1].isdigit()})
+        warm = ["cache", "warm", "--book", book, "-w", str(ws), *(["--pages", ",".join(map(str, pages))] if pages else [])]   # 只 warm 缺图的页，不整册
+        for sub in (["source", "pull", book, "-w", str(ws)], warm):
+            if not run_killing([*base, *sub], env, WARM_TIMEOUT):
+                print(f"✗ {book} {' '.join(sub[:2])} 超过 {WARM_TIMEOUT // 60} 分钟没完（盘慢或盘快满？）：已终止，放弃补拉，这册缺相似字的格先放着，修好后单跑这册", file=sys.stderr)
                 return
         miss, noalt = miss2, noalt2
         rc = run_once()
@@ -553,7 +572,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("land", help="出包后收尾：新待审格对账中心库条目（没变不动，变了就地覆盖）")
     p.add_argument("books", nargs="*", help="册名；经 guji pipeline … --land 来时由 cv 的册参数带入")
     p.add_argument("-w", "--workspace", required=True)
-    p.add_argument("--text-id", required=True, help="book-text 条目 id（全唐文 995ejelvk0、史記 988g3f0wsu、殿本 96mid1ogzk）")
+    p.add_argument("--text-id", default=None, help="book-text 条目 id（缺省按工作区取）；（全唐文 995ejelvk0、史記 988g3f0wsu、殿本 96mid1ogzk）")
     p.add_argument("--pending-json", help="直接给新待审格 json（{cells:[…]} 或数组）；只对一册用。缺省调 cv pending-cells")
     p.add_argument("--recheck", help="复审格清单 tsv（格号<TAB>说明<TAB>旧人裁 id<TAB>旧字<TAB>时间），并进条目 doc")
     p.add_argument("--no-pull", action="store_true", help="不先 db pull --only 拉这一册的条目文件")
@@ -644,6 +663,9 @@ def cmd_land(a) -> int:
     if a.disk_report:
         disk_report(ws, a.book_text)
         return 0
+    if not a.text_id:
+        from .collect import default_text_id
+        a.text_id = default_text_id(ws)
     os.environ["GUJI_WORKSPACE"] = str(ws)             # cv 的 products_root／缓存按它找，不让用户另外 export（QTW 11-24）
     if a.run:
         from .pipeline import run as cv_run
