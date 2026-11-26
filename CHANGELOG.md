@@ -7,6 +7,7 @@
 ## [未发版]
 
 - PATCH（11-25，CV0「字块随包存 R2」，用户 11-25 定；要 cv 带 `core.derived.PAGE_FETCHER`（cv #1899），旧 cv 不装、照旧现算）：新 `datastore/patch_packs.py`。一页 `char_patch` 打一个 tar 存 `derived/patch/<ws>/<册>/<页>.<链指纹>.<日>.tar`（链指纹＝cell_shrink 及全部上游这一页指纹的合哈希，切分变了才换键、只重打变了的页）；`guji cache push-patches`（执行机 rerun／ab 单存产物包后自动跑，`GUJI_PATCH_PUSH=0` 关，失败不挡单）；启动时注册取件器，识字、定字缓存缺页时整页取回、逐文件核 sha 与戳（`GUJI_PATCH_FETCH=0` 关）；`guji cache gc-patches` 每页留最新那天＋7 天内，缺省只列、`--apply` 才删。
+- PATCH（11-26，GM2）：`guji corpus verify／upload／fetch --vol` 不给 `--version` 时，总号缺省取**册 yaml 现钉的 `corpus:`**，yaml 没写才退回钉子账末行。钉子账只追加，末行可能是撤掉没用的号（W1 试跑后殿本、史記各册账末行 b35、yaml 已指回原号），原先会核／传错版本。COMPAT.md 记 0.6.22–0.6.23：cv 下限不因 W1 提高（原 #1006 想提到 0.9.2，用户 11-25 16:31 定已出 v0.1 的书不重跑、留在旧 patch 线，故撤）。不动 cv 产物，L0。
 
 ## [0.6.23] - 2026-11-26
 
