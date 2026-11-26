@@ -333,6 +333,9 @@ def cmd_db(args) -> None:
         from . import dbconfig
         _print(dbconfig.describe())
         return
+    if args.args and args.action in ("pull", "push", "sync", "status", "diff", "migrate", "init"):
+        # 多出的位置参数原先被静默吞掉：`--only A B C`（老写法只认 A）时 B、C 没推也不报（11-26 全唐文救回人裁漏推）
+        raise SystemExit(f"db {args.action} 不收这些参数：{args.args[:3]}（路径请放在 --only 后）")
     from ._cv import BlobCache, WorkerSource
     ws_dir = _ws_dir(args)
     need_ws = {"pull", "push", "sync", "migrate", "import", "init"}
@@ -471,8 +474,8 @@ def add_parser(sub) -> None:
     p.add_argument("--repair-gaps", action="store_true",
                    help="pull：库里某逐行文件缺了几行（旧 push 把同主键重复行覆盖丢了）、还原后 sha 对不上时，按库里现有的行还原并列在 "
                         "repaired；之后 db push 会把修好的文件推回去（史記 anchors/04.jsonl，2026-11-10）")
-    p.add_argument("--only", action="append", default=None, metavar="路径",
-                   help="pull/push/sync：只碰这些路径（可多次；目录以 / 结尾，否则是单个文件），范围外库里本机都不动，"
+    p.add_argument("--only", action="extend", nargs="+", default=None, metavar="路径",
+                   help="pull/push/sync：只碰这些路径（一个 --only 后可跟多个，也可多次；目录以 / 结尾，否则是单个文件），范围外库里本机都不动，"
                         "不碰字形库、不重建 glyph.db（例 feedback/lists/pending/<书>/001.items.jsonl）")
     p.add_argument("--no-rebuild", action="store_true", help="pull：不重建 glyph.db")
     p.add_argument("--force", action="store_true", help="pull：丢掉本地没推的改动")
