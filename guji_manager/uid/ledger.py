@@ -9,7 +9,8 @@
      "map": {"vol31:12:3:4": 1234, …},            # 完整格号 → u，键按读序
      "boxes": {"vol31:12:3:4": [x, y, w, h], …},  # cord 空间（左上原点），下次对照用
      "chars": {"vol31:12:3:4": "欽", …},          # 可无；字序列兜底用
-     "lineage": [{"u": 9, "split_from": 8}, {"u": 7, "into": 6}, {"u": 5, "gone": true}, {"u": 10, "new": true}],
+     "lineage": [{"u": 9, "split_from": 8}, {"u": 7, "into": 6}, {"u": 5, "gone": true}, {"u": 10, "new": true},
+                 {"u": 4, "revived": true}],             # revived：作废号复活（uid revive），盖过先前的 gone
      "via": {"iou": 300, "new": 1, …}}
 
 读法：一页的现行状态＝该页**最后一行**；cv 按「本页当前 cells_sha」找行，同 (page, cells_sha) 多行取最后一行，
@@ -145,7 +146,9 @@ class Ledger:
         out: dict[int, dict] = {}
         for d in self.lines:
             for x in d.get("lineage") or []:
-                if "into" in x:
+                if x.get("revived"):                  # uid revive：作废号复活回原格（看图确认新切漏了这格）
+                    out.pop(int(x["u"]), None)
+                elif "into" in x:
                     out[int(x["u"])] = {"u": int(x["u"]), "into": int(x["into"])}
                 elif x.get("gone"):
                     out[int(x["u"])] = {"u": int(x["u"]), "gone": True}

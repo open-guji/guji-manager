@@ -525,3 +525,26 @@ def test_retire_into_maps_old_cell(tmp_path):
     r = [x for x in t if x["old"] == "164:3:1"][0]
     assert r["new"] == "164:3:1" and r["kind"] == "同格" and not [x for x in t if x["kind"] == "新增"]
     assert retire_into_line(led, [(1, 3)])[0] is None             # 重记不重复
+
+
+def test_revive_gone_u(tmp_path):
+    """11-26 vol20 229:1:1：新切漏了页首「一」，旧 u 记了 gone；book-text 补回该格沿用旧 u → uid revive 让账上也复活。"""
+    from guji_manager.uid.cli import revive_line
+    from guji_manager.uid.ledger import Ledger, make_line, verify
+    B = "vol20"
+    led = Ledger.load(B, tmp_path)
+    led.append([make_line(B, 229, "S1", {f"{B}:229:1:1": 7, f"{B}:229:1:2": 8}),
+                make_line(B, 229, "S2", {f"{B}:229:1:2": 8}, boxes={f"{B}:229:1:2": [1, 2, 3, 4]},
+                          lineage=[{"u": 7, "gone": True}])])
+    assert led.retired() == {7: {"u": 7, "gone": True}}
+    assert revive_line(led, 8, "229:1:1")[0] is None                 # 现行的 u 不收
+    assert revive_line(led, 99, "229:1:1")[0] is None                # 没发过的不收
+    assert revive_line(led, 7, "229:1:2")[0] is None                 # 格已有 u 不收
+    d, probs = revive_line(led, 7, "229:1:1", box=[1581, 91, 105, 19], char="一", why="看图")
+    assert probs == [] and d["cells_sha"] == "S2" and d["page"] == 229
+    assert list(d["map"]) == [f"{B}:229:1:1", f"{B}:229:1:2"] and d["boxes"][f"{B}:229:1:1"] == [1581, 91, 105, 19]
+    led.append([d])
+    led = Ledger.load(B, tmp_path)
+    assert led.retired() == {} and led.cell_of(7) == f"{B}:229:1:1" and verify(led) == []
+    assert led.by_sha(229, "S2")["id"] == d["id"]                    # cv 按 cells_sha 找行取到复活后的
+    assert revive_line(led, 7, "229:1:1")[0] is None                 # 重记不重复
