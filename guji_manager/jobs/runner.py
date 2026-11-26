@@ -257,7 +257,7 @@ class Job:
         except (OSError, ValueError):
             last = {}
         if sp.get("book") and rev is not None and ws_head is not None and last.get("sig") == sig and last.get("ws") \
-                and Path(last["ws"]).is_dir():
+                and Path(last["ws"]).is_dir() and _has_source_images(last["ws"], sp["book"]):
             self.ws = last["ws"]
             self.prep_override = last.get("override") or {}
             self.ev(f"本会话已按同一配置备过（{sp['book']} cv {sp['cv'][:7]}），跳过准备")
@@ -406,9 +406,20 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "output", "pipeline", data={"tail": redact(tail)[-4000:]})
         # 页级失败不算成功（2026-11-09 Ops：人裁格字块图缺、human_chars 报错，页记 failed，单子却 succeeded）。
         # cv 的 pipeline 页失败时返回 0，只打「⚠ N 页失败」行；这里看到就判单子失败
+        first = _first_page_failures(out)
+        if first:
+            self.db(S.add_result, self.id, self.aid, "output", "first_failures",
+                    data={"lines": [redact(x) for x in first]})
+            self.log.write("[run] 各步第一条失败页：\n  " + "\n  ".join(first) + "\n")
+            self.log.flush()
         m = re.search(r"⚠ (\d+) 页失败[^\n]*", out)
         if m:
-            raise StageError("failed", f"pipeline 有 {m.group(1)} 页失败（页级失败不算成功）：{redact(m.group(0))[:300]}")
+            head = f"；最先：{redact(first[0])[:300]}" if first else ""
+            raise StageError("failed", f"pipeline 有 {m.group(1)} 页失败（页级失败不算成功）：{redact(m.group(0))[:300]}{head}")
+        # 一页都没跑不算成功（11-26 全唐文 055 #17657：复用准备后原图没了，13 步全「0 页」却存了包，
+        # 包里是旧底包原样换名，下一张从 row_segment 起的单 #17802 全册上游缺失）
+        if sp["pages"] == "all" and _zero_page_run(out):
+            raise StageError("failed", "pipeline 每一步都是「0 页」：本册一页都没跑（多半本机原图或页表缺），不存包；换会话重跑")
 
     def run_commands(self) -> None:
         for i, argv in enumerate(self.spec["run"]):
@@ -1035,6 +1046,39 @@ def _clean_blob_cache() -> int:
 
 def _say_clean(msg: str) -> None:
     print(msg, flush=True)
+
+
+_STEP_PAGES = re.compile(r"^== \S+ .*?：(\d+) 页", re.MULTILINE)
+_PAGE_FAIL = re.compile(r"^(?:\[\d+/\d+\]\s+\d+%\s+)?(\S+) (p\d+): ((?:失败|阻塞|✗|出错|报错).*)$")
+
+
+def _zero_page_run(out: str) -> bool:
+    """pipeline 输出里各步的「== 步 …：N 页」全是 0（至少有一行）→ True。"""
+    ns = [int(x) for x in _STEP_PAGES.findall(out)]
+    return bool(ns) and not any(ns)
+
+
+def _first_page_failures(out: str, limit: int = 8) -> list[str]:
+    """每步第一条失败／阻塞页的原文（按出现先后，最多 limit 条）。全页失败时日志尾巴只剩最后一步的阻塞行，
+    最先出事那一步的原因被冲掉（11-26 全唐文 #17802：row_segment 188 页全失败，尾巴里只见 seed_admit 阻塞）。"""
+    seen: dict[str, str] = {}
+    for ln in out.splitlines():
+        m = _PAGE_FAIL.match(ln.strip())
+        if m and m.group(1) not in seen:
+            seen[m.group(1)] = f"{m.group(1)} {m.group(2)}: {m.group(3)}"[:400]
+            if len(seen) >= limit:
+                break
+    return list(seen.values())
+
+
+def _has_source_images(ws: str, book: str) -> bool:
+    """本机工作区里这一册的原图（`guji source pull` 取到 data_full/<册>/）还在。
+    跳过准备前要核：原图被清掉后 `--pages all` 会解析成 0 页（11-26 全唐文 055 #17657）。"""
+    d = Path(ws) / "data_full" / book
+    try:
+        return d.is_dir() and any(f.is_file() for f in d.rglob("*"))
+    except OSError:
+        return False
 
 
 def _clean_book_artifacts(ws: str, book: str) -> int:
