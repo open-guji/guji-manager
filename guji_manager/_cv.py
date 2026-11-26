@@ -430,6 +430,13 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "VariantGraph": ("variants", "VariantGraph"),
     "gap_note": ("core.book", "gap_note"),
     "gaps_for_pages": ("core.book", "gaps_for_pages"),
+    # 钉子批量重核（seg_pin_recheck，CV1 11-26）：判据复用 cv seg_pins_check 第 1b／1c 节
+    "pin_geometry": ("eval.seg_screen", "pin_geometry"),
+    "page_pitch": ("eval.seg_screen", "page_pitch"),
+    "uncovered_ink": ("feedback.pins_check", "uncovered_ink"),
+    "seal_spans_col": ("feedback.pins_check", "seal_spans_col"),
+    "check_pin_vs_chars": ("feedback.pins_check", "check_pin_vs_chars"),
+    "get_judge": ("seg.cut_select", "get_judge"),
 }
 
 
