@@ -15,7 +15,7 @@ def test_l2_mid_with_l3_evidence():
                       {"url": "javascript:alert(1)", "quote": "bad"}]},
     ]
     d = summarize_trace(tr, CANDS)
-    assert d["char"] == "日" and len(d["why"]) <= 200
+    assert d["char"] == "日" and len(d["why"]) <= 400
     assert d["why"].startswith("L1 两路分歧(日/曰)")
     assert d["refs"] == [{"u": "https://zh.wikipedia.org/wiki/x", "t": "维基百科：魏方泰字日乾"}]
 
@@ -31,7 +31,7 @@ def test_out_of_candidates_gives_no_char():
 def test_refs_capped_and_why_truncated():
     ev = [{"url": f"https://e.com/{i}", "quote": "q" * 80} for i in range(9)]
     d = summarize_trace([{"level": "L3", "char": "日", "conf": "high", "why": "x" * 400, "evidence": ev}], CANDS)
-    assert len(d["refs"]) == 5 and len(d["why"]) == 200 and all(len(r["t"]) <= 60 for r in d["refs"])
+    assert len(d["refs"]) == 5 and len(d["why"]) == 400 and all(len(r["t"]) <= 60 for r in d["refs"])
 
 
 def test_empty_and_into_pending_fields(tmp_path):
@@ -45,3 +45,12 @@ def test_empty_and_into_pending_fields(tmp_path):
     out = pending_fields({"dian": dian})
     assert out["ctx"]["c"] == "日" and out["ctx"]["src"] == "punct_llm"
     assert dian_for(idx, cell="nope") is None
+
+
+def test_find_by_u_and_long_why(tmp_path):
+    p = tmp_path / "n.jsonl"
+    p.write_text(json.dumps({"book": "vol11", "u": 7, "cell": "11:3:5:14a",
+                             "trace": [{"level": "L3", "char": "已", "conf": "mid", "why": "甲" * 380}]}, ensure_ascii=False) + "\n",
+                 encoding="utf-8")
+    d = dian_for(load_notes(p), cell="x:y", book="vol11", u=7, cands=["已", "巳"])
+    assert d["char"] == "已" and 300 < len(d["why"]) <= 400

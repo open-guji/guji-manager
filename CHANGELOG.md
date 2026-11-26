@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（GM3 11-26，AI 分析摘要进待审单）：点校旁路 notes 的查证摘要 `dian.why` 上限 200→400 字（`dian_trace.WHY_MAX`、`proof_fields.CTX_WHY_MAX`），notes 新增按（册，u）挂（`load_notes`／`find_note`／`dian_for` 加 `book`、`u`，`dian_attach` 读卡上的 `book`、`u`）；新脚本 `tools/dianjiao/write_notes.py`（TSV→notes，放行、未放行、判不了都写）。新规：无论浅层或深搜、确定或不确定，AI 分析（判为何字、理由、出处、置信）都要写进 notes 并随待审单出；裁定库 `why`（cv 限 60 字）只作一句话。网站显示 `ctx.why`／`dnote` 不变，只是可能更长（已知会 Web）。
 ## [0.6.34] - 2026-11-26
 
 - 发版缘由：意见采纳写裁定事件（`opinions revise --write-events`，#1062／#1065）；db push 缺省不推字形库、全量扫描 --allow-delete 删得掉本地删掉的文件（#1061）。
