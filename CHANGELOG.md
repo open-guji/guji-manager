@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2）：执行方铺底后清这一册的本机派生物——`feedback/bindings/<册>/`（人裁绑定缓存，只按切分 sha＋事件签名判新鲜、不含算法版本）、`products/<册>/<步>.bak-*` 与 `<步>/_prev`（绑定拿它们找旧框）；存包不再打进 `<步>.bak-*`。缘由：11-26 史記 03 #17918 在 worker-46 上把 16 格没锚框的旧人裁落成 human，别处复算是 unanchored（本机残留）。绑定缓存本就不进中心库（scope 不收），清本机即可。不动 cv 产物，L0。
+
 - PATCH（11-26，CV1，CV0 批）：新命令 `seg pins-recheck <册…> [--write]`——没记几何底的老钉子在现行列图上逐条核（生效、在图内、不压墨、不跨两字、格外无墨、cell_shrink 同号字格；判据复用 cv seg_pins_check），全过补 geom，不过的列清单人核／重钉（退出 3）。`seg pins-stale` 另报「未生效」（钉子改了而该页 row_segment 没重跑，按格比，不比时间；GM2 提）。全唐文 053 实测 30 条：通过 15、不过 4（正是 outer_bar 错位的 76:4、76:5 等）、11 条本机没产物没核。不动 cv 产物，L0。
 - PATCH（GM4 11-26，待审与裁定整理）：新命令 `guji pinstate remove|expire|reactivate`（`pin_state.py`）：写 `feedback/pins/<册>.state.jsonl`（事件形状，payload 带 v／pin_id／book／reason／level／by／at／events），cv #1930 的 pin_removed 读它；`datastore/scope.py` 把这类文件归入 events 表（stream=pin_state）、随 db sync 进中心库（`voids` 视图并入）。
 
