@@ -87,6 +87,18 @@ reasons:
     ui: page
     detect: 页打 flag col_width_out_of_band（cv#929 border_detect_gate 1.3，送审不拦）
     legacy: {}
+  manual_cells_remapped:
+    code: S05
+    category: segmentation
+    route: human
+    owner: CV2
+    reviewer: human
+    priority: 9
+    label: 钉子换算待核
+    hint: 这一列是人钉的格，列图变了、钉子已自动换到新列图，有的格挪了 3px 以上；看格框还框不框得住字，字对就确认
+    ui: confirm
+    detect: cv v0.9.6 起 row_segment 列旗 manual_cells_remapped（钉子按 geom 换算、角点位移 >3px）；出单时这一列的格（含已放行的）捞回待审，挂 doubt manual_cells_remapped（manager v0.6.36）
+    legacy: {}
   seg_defect:
     code: S04
     category: segmentation

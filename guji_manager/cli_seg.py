@@ -55,7 +55,7 @@ def add_parser(sub) -> None:
     rl.add_argument("-w", "--workspace", default=None)
     rl.add_argument("--out", default="seg-ruler.tsv")
 
-    ps = ss.add_parser("pins-stale", help="钉子（manual-cells）的上游列图变了没有：stale＝列窗口变了、坐标必须重核（退出 3）；maybe＝只是 column_warp 指纹变了")
+    ps = ss.add_parser("pins-stale", help="钉子（manual-cells）的上游列图变了没有：stale＝列图几何变了、坐标必须重核（退出 3）；maybe＝只是 column_warp 指纹变了；另报「未生效」＝钉子改了而该页 row_segment 没重跑")
     ps.add_argument("books", nargs="*", help="只查这些册（缺省全部 active 钉子）")
     ps.add_argument("-w", "--workspace", default=None)
     ps.add_argument("--products", default="", help="产物根（缺省工作区 products；候选包 pack fetch --to 的目录）")
@@ -65,6 +65,14 @@ def add_parser(sub) -> None:
     pb.add_argument("-w", "--workspace", default=None)
     pb.add_argument("--products", default="", help="产物根（缺省工作区 products）")
     pb.add_argument("--write", action="store_true", help="写回 manual-cells 分片（之后 guji db sync）")
+
+    pr = ss.add_parser("pins-recheck", help="无几何底的老钉子在现行列图上逐条核（生效、在图内、不压墨、不跨两字、格外无墨）：全过补 geom（--write），不过的列清单重钉（退出 3）")
+    pr.add_argument("books", nargs="+", help="册 id（全唐文→史記→脉经；殿本冻结不动）")
+    pr.add_argument("-w", "--workspace", default=None)
+    pr.add_argument("--products", default="", help="产物根（缺省工作区 products）")
+    pr.add_argument("--cache", default="", help="列图缓存根（缺省工作区 cache）")
+    pr.add_argument("--no-judge", action="store_true", help="不加载 U-Net 归属裁判（压墨只当提示）")
+    pr.add_argument("--write", action="store_true", help="给通过的钉子补底写回 manual-cells 分片（之后 guji db sync）")
 
     pm = ss.add_parser("premain", help="标 main 前的硬检查（绝对、不比旧 main）：格高≥1.6倍、格数少于整理本字数、判空却有墨；命中退出 3，不许标 main")
     pm.add_argument("books", nargs="+", help="册 id")
@@ -99,6 +107,8 @@ def cmd_seg(args) -> None:
         _cmd_pins_stale(args)
     elif args.seg_cmd == "pins-backfill-geom":
         _cmd_pins_backfill(args)
+    elif args.seg_cmd == "pins-recheck":
+        _cmd_pins_recheck(args)
 
 
 def _cmd_pins_backfill(args) -> None:
@@ -128,23 +138,77 @@ def _cmd_pins_backfill(args) -> None:
 
 def _cmd_pins_stale(args) -> None:
     from . import seg_pin as sp
+    from .seg_pin_recheck import effective
+    from ._cv import ProductStore, page_key
+    from ._cv import steps as _s  # noqa: F401 —— 注册产物种类
     _use_ws(args)
-    store = None
-    if args.products:
-        from ._cv import ProductStore
-        store = ProductStore(Path(args.products))
+    store = ProductStore(Path(args.products)) if args.products else ProductStore()
     items = [r for r in sp.read_items(sp.items_path()) if r.get("status") == "active"
              and (not args.books or (r.get("anchor") or {}).get("book") in args.books)]
     n = {"ok": 0, "stale": 0, "maybe": 0, "unknown": 0}
+    idle = 0
+    pages: dict = {}
     print("钉子\t状态\t说明")
     for r in items:
         st, why = sp.basis_status(r, store)
         n[st] += 1
-        if st != "ok":
-            print(f"{r.get('id')}\t{st}\t{why}")
-    print(f"共 {len(items)} 条：" + "、".join(f"{k} {v}" for k, v in n.items() if v), file=sys.stderr)
+        # 钉子改了而该页 row_segment 没重跑（GM2 11-26）：比产物这一列与钉子的格，不比时间（取包会改时间）
+        a = r.get("anchor") or {}
+        k = (a.get("book"), int(a.get("page")))
+        if k not in pages:
+            try:
+                pages[k] = store.read(k[0], "row_segment", page_key(k[1]), "cells")
+            except Exception:  # noqa: BLE001
+                pages[k] = None
+        pc = pages[k]
+        eff = ""
+        if pc is not None:
+            ok, ewhy = effective((r.get("expected") or {}).get("cells") or [],
+                                 next((c for c in pc.columns if c.col == int(a.get("col"))), None))
+            if not ok:
+                idle += 1
+                eff = f"未生效：{ewhy}，需重跑 {a.get('book')} p{a.get('page')}"
+        if st != "ok" or eff:
+            print(f"{r.get('id')}\t{st}{'＋未生效' if eff else ''}\t" + "；".join(x for x in (why, eff) if x))
+    print(f"共 {len(items)} 条：" + "、".join(f"{k} {v}" for k, v in n.items() if v)
+          + (f"；未生效 {idle} 条（钉子改了而该页没重跑）" if idle else ""), file=sys.stderr)
     if n["stale"]:
         print("stale 的钉子坐标对不上现在的列图：guji seg pin <册:页:列> 重起稿看叠框图、重写（--write 会记新底）", file=sys.stderr)
+        raise SystemExit(3)
+
+
+def _cmd_pins_recheck(args) -> None:
+    from . import seg_pin as sp
+    from . import seg_pin_recheck as rc
+    from ._cv import ImageCache, ProductStore
+    _use_ws(args)
+    store = ProductStore(Path(args.products)) if args.products else ProductStore()
+    cache = ImageCache(Path(args.cache)) if args.cache else ImageCache()
+    judge = None
+    if not args.no_judge:
+        try:
+            from ._cv import get_judge
+            judge = get_judge()
+        except Exception:  # noqa: BLE001
+            judge = None
+    path = sp.items_path()
+    items = [r for r in sp.read_items(path) if rc.needs_recheck(r)
+             and (r.get("anchor") or {}).get("book") in args.books]
+    n = {"ok": 0, "fail": 0, "skip": 0}
+    print("钉子\t结果\t说明")
+    for r in items:
+        res = rc.recheck_item(r, store, cache, judge)
+        n[res.status] += 1
+        note = "；".join(res.problems or [])
+        if res.hints:
+            note += ("；" if note else "") + "提示：" + "；".join(res.hints)
+        print(f"{res.id}\t{ {'ok': '通过、补底', 'fail': '不过、要人核或重钉', 'skip': '没核'}[res.status] }\t{note}")
+        if res.status == "ok" and args.write:
+            sp.write_item(path, res.item)
+    print(f"共 {len(items)} 条没记几何底的钉子：通过 {n['ok']}、不过 {n['fail']}、没核 {n['skip']}"
+          + ("，通过的已补底（记得 guji db sync）" if args.write and n["ok"] else ("；加 --write 给通过的补底" if n["ok"] else ""))
+          + ("；不过的用 guji pipeline seg pin <册:页:列> 重钉" if n["fail"] else ""), file=sys.stderr)
+    if n["fail"]:
         raise SystemExit(3)
 
 
