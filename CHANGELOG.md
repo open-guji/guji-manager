@@ -1,6 +1,7 @@
 # Changelog
 
 版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]`
+- PATCH（11-26，CV0，W1 冻结期修复）：char-cord 导出保 u 连续——参考 book-text 现行同章 char（缺省自动找，`--prev-char` 指定、`--no-prev-char` 关），旧版格里有、本次没导出、作废表也没有的 u 补进 `u_retired`（gone，不复用），旧版作废的照抄；本次格里又出现旧作废 u 时警告。史記 18 卡 local_check：p2 列首新切出空格，身份账把旧「唐」u33 按框给了空格、导出丢格，u33 悬空。`uid.booktext` 加 `load_raw`。
 - PATCH（11-25，CV0，W1 冻结期修复）：`seg_pin.column_basis` 改读 `colview.merged_windows`——cv 切字五小步后 band／trim 在 2b／2c，原先只读 column_warp 的 `column_windows`，换到新 cv 后全部人工指定格钉子的 col_sha 都变、`basis_status` 误报 stale（全唐文切分 11-25 问）。拼回后 sha 与拆步前整份记录相同；column_warp 指纹变仍报 maybe。
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
