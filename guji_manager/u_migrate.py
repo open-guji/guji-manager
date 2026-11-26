@@ -684,6 +684,46 @@ def unvoid(book: str, rescued: list[dict], *, human_events: dict, event_log, ite
     return {"抄件": len(hs), "撤销": len(rows), "撤下条目": n_wd, "files": sorted(files)}
 
 
+def item_files(fb, chapter: str) -> list:
+    """这一章的待审条目文件（``feedback/lists/pending/<书>/<章>.items.jsonl``，各书目录都找）。"""
+    from pathlib import Path
+    root = Path(fb) / "lists" / "pending"
+    return sorted(root.glob(f"*/{chapter}.items.jsonl")) if root.exists() else []
+
+
+def live_items_without_u(path) -> list[dict]:
+    """条目文件里活着（open／resolved）却没 u 的条目（各取最新一版）。"""
+    import json
+    last: dict = {}
+    for line in open(path, encoding="utf-8"):
+        if line.strip():
+            d = json.loads(line)
+            last[d["id"]] = d
+    return [d for d in last.values() if d.get("state") in ("open", "resolved") and d.get("u") is None]
+
+
+def fill_items_u(path, book: str, *, by: str, write: bool = False) -> dict:
+    """活条目没 u 的按身份账补上（只追加一版，op=u-fill）；现行账里没这格的列出。→ {补, 缺格, 缺格列表}。"""
+    from pathlib import Path
+    from .review import pending_items as P
+    from .u_stamp import u_map_lenient
+    todo = live_items_without_u(path)
+    us, miss = u_map_lenient(book, [d["cell"] for d in todo])
+    n = 0
+    if write and us:
+        st = P.ItemStore(Path(path))
+        for d in todo:
+            u = us.get(d["cell"])
+            r = st.items.get(d["id"])
+            if u is not None and r is not None and r.get("u") is None:
+                st.put(r, op="u-fill", by=by, why="按字格身份账补 u", u=u)
+                n += 1
+        st.save()
+    else:
+        n = sum(1 for d in todo if d["cell"] in us)
+    return {"补": n, "缺格": len(miss), "缺格列表": miss}
+
+
 def unaccounted(latest: dict, seen: set) -> list:
     """每格最新人裁没 u、也没记作废／转待审的 → [Event]。全库收尾后应为空。"""
     return [e for k, e in sorted(latest.items())

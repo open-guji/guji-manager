@@ -68,6 +68,28 @@ def u_map(book: str, cells: Iterable[str], ref: Callable[[str], object] | None =
     return out
 
 
+def u_map_lenient(book: str, cells: Iterable[str], ref: Callable[[str], object] | None = None) -> tuple[dict[str, int], list[str]]:
+    """同 `u_map`，但现行账里没有的格不抛、列进第二项（开待审条目时用：缺几格不该挡整张单）。册没账 → ({}, [])。"""
+    from .uid.ledger import UidMissing
+    ref = ref or _cell_ref()
+    out: dict[str, int] = {}
+    miss: list[str] = []
+    for c in cells:
+        bare = str(c).split(":", 1)[1] if str(c).count(":") == 3 else str(c)
+        full = f"{book}:{bare}"
+        if not is_full_cell(full):
+            continue
+        try:
+            u = u_of(full, ref)
+        except UidMissing:
+            miss.append(bare)
+            continue
+        if u is None:
+            return {}, []
+        out[bare] = u
+    return out, miss
+
+
 def _ledger(book: str):
     from .cell_ref import _ledger as L
     return L(book)

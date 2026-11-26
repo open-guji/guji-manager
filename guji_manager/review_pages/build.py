@@ -299,7 +299,7 @@ def build(page_type: str, items: list[dict], book: str, out, per_page: int | Non
         stat = {"items": len(its), "pages": len({r["screen"] for r in its})}
     elif page_type == "cut_check":
         its = [dict(r, img=embed(r["img"])) for r in ct_mod.normalize(items, root)]
-        data = {"book": book, "items": its, "hint": hint}
+        data = {"book": book, "items": its, "hint": hint, "th": box}
         stat = {"items": len(its), "pages": len({r["screen"] for r in its})}
     elif page_type in ("gold_sample", "ref_check"):
         if page_type == "ref_check":

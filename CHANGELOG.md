@@ -6,6 +6,13 @@
 
 ## [未发版]
 
+## [0.6.28] - 2026-11-26
+
+- 发版缘由：换单开待审条目自动盖 u、uid items-u、check-u 报活条目没 u（#1039）。
+- PATCH（11-26，CV0）：`guji pending reconcile／import` 换单开条目时按字格身份账自动盖 u（`u_stamp.u_map_lenient`，账里缺格的不挡、报一行）；史記第二轮复审 r2 换单开的 304 条、总目 9 条原先没 u。新命令 `guji uid items-u [册…] [--write]`：活条目没 u 的按账补（追加 op=u-fill 一版）。`guji uid check-u` 加报「活条目没 u」（只报，不计入退出码）。
+
+- PATCH（11-26，CV2）：review-pages `cut_check` 1.2.0：`build --box N` 定卡片图高（px，缺省仍 220），一屏多放几格（Sheldon 看 L3 折线页 11-26 要卡片小些）。旧页、旧结果不变，L0。
+
 ## [0.6.27] - 2026-11-26
 
 - 发版缘由：`db --only` 多路径（#1035）。
