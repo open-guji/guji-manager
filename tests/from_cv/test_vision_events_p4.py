@@ -193,3 +193,12 @@ def test_vision_events_do_not_touch_human_paths(env):
     assert human_chars("keben", stale={}, bind=False) == {"keben:1:1:6": "日"}
     assert decided_cells("keben") == {"keben:1:1:6"}
 
+
+
+def test_opinion_events_not_in_glyph_store():
+    """意见采纳写的裁定（只看文字没看字图，GM4 11-26）带 `no_glyph_lib`：算已裁，不进字形库。"""
+    from guji_manager.feedback.consumers import glyphdb_admit
+    op = _ev("keben:1:1:4", {"v": "confirm", "shape": "曰", "source": "opinion", "level": "human",
+                             "no_glyph_lib": True}, 2)
+    res = glyphdb_admit([(op, None)], dry_run=False)
+    assert res.added == 0 and res.no_lib == 1
