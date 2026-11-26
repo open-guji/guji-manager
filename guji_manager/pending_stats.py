@@ -112,9 +112,10 @@ def load_db(ws: str, text: str, vols: set[int] | None):
     from ._cv import connect
     with connect() as con:
         cur = con.cursor()
-        cur.execute("select src_path, doc from files where ws=%s and src_path like %s", (ws, f"feedback/lists/proofing/{text}/%.pending.json"))
+        cur.execute("select src_path, doc, raw from files where ws=%s and src_path like %s", (ws, f"feedback/lists/proofing/{text}/%.pending.json"))
         lists = {}
-        for p, d in cur.fetchall():
+        for p, d, raw in cur.fetchall():
+            d = d if d is not None else raw   # 11-26：新写入的文件只有 raw，doc 为空
             n = Path(p).name[:3]
             if vols is None or int(n) in vols:
                 lists[n] = d if isinstance(d, dict) else json.loads(d)
