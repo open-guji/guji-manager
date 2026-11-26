@@ -93,7 +93,7 @@ def _fetch(rel: str, timeout: float = 30) -> bytes | None:
     return data
 
 
-def _remote(bid: str, ch: str, edition: str) -> BookTextState | None:
+def _remote(bid: str, ch: str, edition: str) -> tuple[dict, dict | None, str] | None:
     from ..online_lists import book_text_dir
     d = f"{book_text_dir('', bid).lstrip('/')}/{edition}"
     for c in chapter_names(ch):
@@ -101,16 +101,13 @@ def _remote(bid: str, ch: str, edition: str) -> BookTextState | None:
         if raw is None:
             continue
         kraw = _fetch(f"{d}/{c}.cord.json")
-        return from_char(json.loads(raw), json.loads(kraw) if kraw else None, f"{os.environ.get('GUJI_BOOK_TEXT_RAW') or RAW_BASE}/{d}/{c}.char.json")
+        return json.loads(raw), (json.loads(kraw) if kraw else None), f"{os.environ.get('GUJI_BOOK_TEXT_RAW') or RAW_BASE}/{d}/{c}.char.json"
     return None
 
 
-def load(book: str, ws: str | None = None, repo: str | None = None, edition: str = "default") -> BookTextState | None:
-    """按册配置找到 book-text 的 char＋cord；找不到返回 None。
-
-    找法：给了 ``repo``（``--book-text``）只看它；否则本机有 book-text 仓（``GUJI_BOOK_TEXT``，缺省同 ``online_lists``）就看本机，
-    本机没有仓才从 GitHub raw（main 分支）只取这一章的 char＋cord，缓存在 ``~/.cache/guji/book-text``（取不到网时用缓存）。
-    这样标 main 的机器不用另配 book-text（主线程 11-25）。"""
+def load_raw(book: str, ws: str | None = None, repo: str | None = None,
+             edition: str = "default") -> tuple[dict, dict | None, str] | None:
+    """按册配置找到 book-text 现行的 ``(char, cord, 路径)``；找不到返回 None。找法同 ``load``。"""
     try:
         from ..online_lists import _cfg, book_text_dir, ident
         bid, ch = ident(book, ws or os.environ.get("GUJI_WORKSPACE"))
@@ -127,9 +124,19 @@ def load(book: str, ws: str | None = None, repo: str | None = None, edition: str
         char = json.loads(cp.read_text(encoding="utf-8"))
         kp = d / f"{ch}.cord.json"
         cord = json.loads(kp.read_text(encoding="utf-8")) if kp.exists() else None
-        return from_char(char, cord, str(cp))
+        return char, cord, str(cp)
     except Exception:  # noqa: BLE001 —— 参考不到就照旧只看账（账从 book-text 建的册由 advance 报错）
         return None
+
+
+def load(book: str, ws: str | None = None, repo: str | None = None, edition: str = "default") -> BookTextState | None:
+    """按册配置找到 book-text 的 char＋cord；找不到返回 None。
+
+    找法：给了 ``repo``（``--book-text``）只看它；否则本机有 book-text 仓（``GUJI_BOOK_TEXT``，缺省同 ``online_lists``）就看本机，
+    本机没有仓才从 GitHub raw（main 分支）只取这一章的 char＋cord，缓存在 ``~/.cache/guji/book-text``（取不到网时用缓存）。
+    这样标 main 的机器不用另配 book-text（主线程 11-25）。"""
+    r = load_raw(book, ws, repo, edition)
+    return from_char(*r) if r else None
 
 
 def adopt(line: dict, cut, bt: BookTextState, known: set[int]) -> int:

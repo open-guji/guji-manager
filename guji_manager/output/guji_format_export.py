@@ -98,6 +98,10 @@ def main(argv=None) -> int:
     ap.add_argument("--no-fetch", action="store_true", help="裁图不取 R2 页图（只用本地）")
     ap.add_argument("--no-uid", action="store_true",
                     help="char-cord：册有字格身份账也不写 u（缺省有账就写 u、u_max、u_retired，char v0.6）")
+    ap.add_argument("--prev-char", default=None,
+                    help="char-cord 有身份账时：book-text 现行的同章 char.json，保 u 连续（旧版有、本次没导出的 u 记进 u_retired）；"
+                         "缺省按册配置自动找（GUJI_BOOK_TEXT 本机仓，没有就取 GitHub main）")
+    ap.add_argument("--no-prev-char", action="store_true", help="不参考 book-text 现行 char（首次出、或明知不要连续）")
     a = ap.parse_args(argv)
     if a.format == "char-cord" and not a.text_version:
         ap.error("--format char-cord 要给 --text-version：首次出写 0.1.0，已有的册写 book-text 上的现行版本"
@@ -144,7 +148,18 @@ def main(argv=None) -> int:
         uids = None if a.no_uid else export_uids(a.book)
         if uids is not None:
             print(f"   字格永久编号：账上 {len(uids['map'])} 格、u_max {uids['u_max']}、作废 {len(uids['u_retired'])} → char v0.6")
-        new, rep = cc.from_pages_json(pj, **conv, figure_regions=regions, prev_fig=load(a.prev_fig), uids=uids)
+        prev_char = None
+        if uids is not None and not a.no_prev_char:
+            if a.prev_char:
+                prev_char = load(a.prev_char)
+            else:
+                from ..uid.booktext import load_raw
+                got = load_raw(a.book)
+                prev_char = got[0] if got else None
+                print(f"   保 u 连续：参考 book-text 现行 {got[2]}" if got
+                      else "   保 u 连续：找不到 book-text 现行 char（首次出？），不参考")
+        new, rep = cc.from_pages_json(pj, **conv, figure_regions=regions, prev_fig=load(a.prev_fig), uids=uids,
+                                      prev_char=prev_char)
         pre = None
         if a.pending:
             import copy
@@ -160,6 +175,14 @@ def main(argv=None) -> int:
         if dg:
             print(f"   作废号 into 目标不在本章 char 里 {len(dg)} 条，降成 gone（号照样退役）："
                   + "、".join(f"{x['u']}→{x['into']}" for x in dg[:12]) + ("…" if len(dg) > 12 else ""))
+        ux = rep.get("u_unexported") or []
+        if ux:
+            print(f"   旧版有、本次没导出的 u {len(ux)} 个，记进 u_retired（gone，不复用）："
+                  + "、".join(map(str, ux[:20])) + ("…" if len(ux) > 20 else ""))
+        rv = rep.get("u_revived") or []
+        if rv:
+            print(f"   ⚠ 旧版已作废、本次又出现在格里的 u {len(rv)} 个（账与 book-text 不一致，请报 CV0）："
+                  + "、".join(map(str, rv[:20])))
         cc.write_files(new, a.out)
         _write_gaps(a, plist)
         st = cc.stats(new[f"{a.chapter}.char.json"], new[f"{a.chapter}.cord.json"])
