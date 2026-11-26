@@ -133,6 +133,7 @@ book-text 改字工具自己发过的号，入账时会被认领，不会撞号�
 | swap R1 闸报 orphan 刻例 | manager ≥0.6.22 |
 | 「找不到这册的 char.json」 | 设 `GUJI_BOOK_TEXT` 或让本机能连 GitHub；确知没有就加 `--no-book-text` |
 | `check-u` 非 0、seed_admit `human_unbound` 突增 | `guji uid anchor-fill --write` 后推库，重放 seed_admit；「没u没记档」的看清单，由人定作废还是转待审 |
+| 推库报「新事件的册有字格身份账却没带 u…拒收」 | 事件没经 manager 写（脚本直接用 cv 的 `EventLog`、手拼 jsonl）。`guji uid stamp <文件> --write` 补上再推（0.6.26） |
 | `uid sync` 返回 `push_failed` | 推库时别人写过，重跑即可 |
 
 ## 存量迁移（2026-11-25 已对全库做完）
