@@ -176,7 +176,8 @@ def replay_after_rebuild(db_path: str | Path, store_dir: str | Path, feedback_ro
             continue
         if e.kind == "confirm" and (e.payload.get("v") or "confirm") == "confirm":
             # 看图结论（source=vision，overview#428）同样不重放进库
-            if e.actor == "model" or not counts_as_pin(e) or e.payload.get("source") == "auto":
+            if (e.actor == "model" or not counts_as_pin(e) or e.payload.get("source") == "auto"
+                    or e.payload.get("no_glyph")):      # 只看文字没看字图的裁定不进库（GM4 11-26）
                 continue
             confirms.append(e)
         elif e.kind == "glyph_audit":

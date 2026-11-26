@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（CV0 11-26，配 GM4 意见采纳写事件 #1062）：字形库消费器 `glyphdb_admit` 与重建后重放 `replay_after_rebuild` 跳过 `payload.no_glyph` 的 confirm（只看文字没看字图的裁定，定字照用、不进库）。原先只靠 `consumed/` 记账兜底，但重建后重放只认 `book_lib_sync gated` 记账，会把它们重放进库。
+
 ## [0.6.33] - 2026-11-26
 
 - 发版缘由：`guji uid retire-into` 并账（#1059，ZM 殿本列末切矮格）。
