@@ -215,13 +215,54 @@ def column_basis(book: str, page: int, col: int, store=None) -> dict | None:
         return None
     ent = st.manifest(book, "column_warp").get(page_key(page))
     js = json.dumps(rec.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
-    return {"col_sha": hashlib.sha256(js.encode("utf-8")).hexdigest()[:16],
-            "cw_fp": getattr(ent, "fingerprint", None)}
+    out = {"col_sha": hashlib.sha256(js.encode("utf-8")).hexdigest()[:16],
+           "cw_fp": getattr(ent, "fingerprint", None)}
+    geom = column_geom(rec, (getattr(pw, "page_size", None) or (None,))[0])
+    if geom is not None:
+        out["geom"] = geom
+    return out
+
+
+#: 几何底的版本号（字段口径变了才加一）。
+GEOM_V = 1
+
+
+def _line(ln) -> list | None:
+    d = ln.model_dump(mode="json") if hasattr(ln, "model_dump") else dict(ln)
+    try:
+        return [round(float(d["x_at_top"]), 3), round(float(d["slope"]), 6),
+                None if d.get("k2") is None else round(float(d["k2"]), 6),
+                None if d.get("k3") is None else round(float(d["k3"]), 6),
+                None if d.get("y1") is None else round(float(d["y1"]), 3),
+                None if d.get("y2") is None else round(float(d["y2"]), 3)]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def column_geom(rec, page_w) -> dict | None:
+    """钉子坐标的几何底：列图坐标只由这几项决定（cv `steps/_warpmap.ColumnMapper.of`）——页宽、左右边线
+    （`x_at_top, slope, k2, k3, y1, y2`，三段折线 k2 非空）、矫正窗口上下界、是否逐行插值矫正（`ruled`）。
+    cv `row_segment` 套钉子前拿它重建当时的列图映射，跟现在的不同就把钉子换算到新列图（11-26 CV0 批）。
+    取不全 → None（不记，不挡写钉子）。"""
+    if rec is None or page_w is None:
+        return None
+    left, right = _line(getattr(rec, "left_line", None) or {}), _line(getattr(rec, "right_line", None) or {})
+    if left is None or right is None:
+        return None
+    try:
+        return {"v": GEOM_V, "page_w": int(page_w), "left": left, "right": right,
+                "top_y": round(float(rec.top_y), 3), "bottom_y": round(float(rec.bottom_y), 3),
+                "ruled": bool(getattr(rec, "ruled", False))}
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def basis_status(item: dict, store=None) -> tuple[str, str]:
-    """→ (状态, 说明)。状态：ok／stale（列窗口变了，坐标必须重核）／maybe（只是 column_warp 指纹变了）／
-    unknown（钉子没记底，或本机没有 column_warp 产物）。"""
+    """→ (状态, 说明)。状态：ok／stale（列图几何变了，坐标必须重核）／maybe（只是 column_warp 指纹变了）／
+    unknown（钉子没记底，或本机没有 column_warp 产物）。
+
+    记了几何底 `geom`（v0.6.35 起写钉子都记）的**只比 geom**：列图坐标只由它决定，列窗记录里别的字段
+    （文字带、剥边、判型）改了不影响钉子坐标，不再误报。没有 geom 的老钉子退回比整条列窗记录的 sha。"""
     old = (item.get("input") or {}).get("column_basis")
     a = item.get("anchor") or {}
     if not old:
@@ -229,11 +270,41 @@ def basis_status(item: dict, store=None) -> tuple[str, str]:
     now = column_basis(a.get("book"), int(a.get("page")), int(a.get("col")), store)
     if now is None:
         return "unknown", "本机没有 column_warp 产物（先 products pack fetch）"
+    if old.get("geom"):
+        if not now.get("geom"):
+            return "unknown", "本机 column_warp 产物取不出几何底"
+        if now["geom"] != old["geom"]:
+            diff = [k for k in ("page_w", "left", "right", "top_y", "bottom_y", "ruled")
+                    if now["geom"].get(k) != old["geom"].get(k)]
+            return "stale", "列图几何变了（" + "、".join(diff) + "），cv 重跑时会把钉子换算到新列图，位移大的送人核"
+        return "ok", ""
     if now["col_sha"] != old.get("col_sha"):
-        return "stale", "列窗口（框／文字带／剥边）变了，坐标对不上新列图"
+        return "stale", "列窗口（框／文字带／剥边）变了，坐标对不上新列图（老钉子没记几何底，比的是整条记录）"
     if old.get("cw_fp") and now["cw_fp"] != old["cw_fp"]:
         return "maybe", "column_warp 指纹变了（代码或参数），列窗口没变；看叠框图核一下"
     return "ok", ""
+
+
+def backfill_geom(item: dict, store=None) -> tuple[dict | None, str]:
+    """一次性回填（11-26 CV0）：没有 geom 的老钉子，**现行列窗记录与钉子当时的底一致**（col_sha 相同）才补 geom
+    ——这时现行几何就是当时的几何。→ (补好的新条目或 None, 说明)。不一致的不补（补了就把错坐标认成对的）。"""
+    old = (item.get("input") or {}).get("column_basis")
+    if not old:
+        return None, "没记上游底"
+    if old.get("geom"):
+        return None, "已有 geom"
+    a = item.get("anchor") or {}
+    now = column_basis(a.get("book"), int(a.get("page")), int(a.get("col")), store)
+    if now is None or not now.get("geom"):
+        return None, "本机没有 column_warp 产物"
+    if now["col_sha"] != old.get("col_sha"):
+        return None, "列窗口跟钉子当时的底不一致，不补（先 guji seg pin 重核）"
+    new = copy.deepcopy(item)
+    new["input"]["column_basis"] = {**old, "geom": now["geom"]}
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    new["history"] = [*(item.get("history") or []),
+                      {"ts": ts, "change": "updated", "why": "回填几何底 geom（列窗与当时的底一致）"}]
+    return new, ""
 
 
 # ── 读写本机数据 ──────────────────────────────────────────────────────────

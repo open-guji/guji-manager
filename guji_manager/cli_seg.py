@@ -60,6 +60,12 @@ def add_parser(sub) -> None:
     ps.add_argument("-w", "--workspace", default=None)
     ps.add_argument("--products", default="", help="产物根（缺省工作区 products；候选包 pack fetch --to 的目录）")
 
+    pb = ss.add_parser("pins-backfill-geom", help="一次性：给没记几何底的老钉子补 geom（只补列窗与钉子当时的底一致的；缺省只列，--write 才写）")
+    pb.add_argument("books", nargs="*", help="只补这些册（缺省全部 active 钉子）")
+    pb.add_argument("-w", "--workspace", default=None)
+    pb.add_argument("--products", default="", help="产物根（缺省工作区 products）")
+    pb.add_argument("--write", action="store_true", help="写回 manual-cells 分片（之后 guji db sync）")
+
     pm = ss.add_parser("premain", help="标 main 前的硬检查（绝对、不比旧 main）：格高≥1.6倍、格数少于整理本字数、判空却有墨；命中退出 3，不许标 main")
     pm.add_argument("books", nargs="+", help="册 id")
     pm.add_argument("--products", default="", help="产物根（缺省取 GUJI 的 products 根；候选包先 guji products pack fetch --to <根>）")
@@ -91,6 +97,33 @@ def cmd_seg(args) -> None:
         _cmd_premain(args)
     elif args.seg_cmd == "pins-stale":
         _cmd_pins_stale(args)
+    elif args.seg_cmd == "pins-backfill-geom":
+        _cmd_pins_backfill(args)
+
+
+def _cmd_pins_backfill(args) -> None:
+    from . import seg_pin as sp
+    _use_ws(args)
+    store = None
+    if args.products:
+        from ._cv import ProductStore
+        store = ProductStore(Path(args.products))
+    path = sp.items_path()
+    items = [r for r in sp.read_items(path) if r.get("status") == "active"
+             and (not args.books or (r.get("anchor") or {}).get("book") in args.books)]
+    done = 0
+    print("钉子\t结果")
+    for r in items:
+        new, why = sp.backfill_geom(r, store)
+        if new is None:
+            print(f"{r.get('id')}\t不补：{why}")
+            continue
+        done += 1
+        print(f"{r.get('id')}\t补 geom")
+        if args.write:
+            sp.write_item(path, new)
+    print(f"共 {len(items)} 条，可补 {done} 条" + ("，已写回（记得 guji db sync）" if args.write and done else
+                                              ("；加 --write 写回" if done else "")), file=sys.stderr)
 
 
 def _cmd_pins_stale(args) -> None:

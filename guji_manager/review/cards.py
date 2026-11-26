@@ -24,6 +24,7 @@ from .._cv import VISION_DOUBT, flag_active, vision_flags
 from .._cv import ProductStore
 from .._cv import BookLedger
 from .borrow_first import annotate, first_pick_mode, sort_disagree_first
+from .group_members import group_of
 from .shadow import SHADOW_THR, load_shadow, shadow_view
 from .._cv import parse_cells_spec  # noqa: F401  搬到 core（拆分 M3）
 from .._cv import decided_view, defect_only_cells, flagged_cells
@@ -453,6 +454,8 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
                     "ref": ref,
                     # 「义定形未定」的组内候选与三源证据（variant_form），卡片按它只列组内形
                     "form": (r.evidence or {}).get("form"),
+                    # 形近字组的组内全部字（cv #1921 evidence.group.members）；旧产物没有就是 None，卡片照旧
+                    "grp": group_of(r.evidence),
                     "doubts": _doubts,
                     "occluded": occluded,
                     # 靠近似例定的字（Step7 evidence.approx，overview#276）：卡片显示「近似」

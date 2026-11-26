@@ -6,6 +6,14 @@
 
 ## [未发版]
 
+## [0.6.35] - 2026-11-26
+
+- 发版缘由：待审单给形近字组的组内全部字出选择按钮（#1075，配 cv #1921）；GM3 AI 分析摘要进待审单（#1072）；钉子几何底 geom（#1071）；layer_u 并账后重盖（#1073）。均 PATCH。
+
+- PATCH（11-26，GM2，CV4 cv #1921 配套）：待审单给形近字组的组内全部字出选择按钮。卡上新增 `grp`（`{id, m:[字…]}`，读 Step7 `evidence.group.members`，`review/group_members.group_of`），`proof_fields` 写进 pending.json 新字段 `grp`；相似字 `alt` 把组员当近似字、并保证每个组员都在 alt 里（缺的补进去，`src=grp`，照旧按图排序，超 30 个从尾部丢非组员）；点校摘要把组员算作候选（判出的组员字当倾向字），仍在候选外的高／中把握字写成新字段 `dout`（网页当可选按钮、不预选；GM3 11-26 定候选外的字人审可直接选）；终审页 final_review 先读产物 members、没有再退回字组注册表，有 members 时每个组员都出按钮。旧产物没有 members：不出 `grp`、alt 与点校候选照旧。网站显示 `grp`／`dout` 由 Web 接，不接也能从 alt 点到组员。不动 cv 产物，L0。
+- PATCH（GM3 11-26，AI 分析摘要进待审单）：点校旁路 notes 的查证摘要 `dian.why` 上限 200→400 字（`dian_trace.WHY_MAX`、`proof_fields.CTX_WHY_MAX`），notes 新增按（册，u）挂（`load_notes`／`find_note`／`dian_for` 加 `book`、`u`，`dian_attach` 读卡上的 `book`、`u`）；新脚本 `tools/dianjiao/write_notes.py`（TSV→notes，放行、未放行、判不了都写）。新规：无论浅层或深搜、确定或不确定，AI 分析（判为何字、理由、出处、置信）都要写进 notes 并随待审单出；裁定库 `why`（cv 限 60 字）只作一句话。网站显示 `ctx.why`／`dnote` 不变，只是可能更长（已知会 Web）。
+- PATCH（11-26，CV1，CV0 批的钉子护栏第一步）：整列钉子写入时在 `input.column_basis` 另记几何底 `geom`（页宽、左右边线六项、矫正上下界、ruled，即 cv ColumnMapper 的全部入参；见 doc/参考/钉子上游底.md）；`seg pins-stale` 对有 geom 的钉子只比 geom。新命令 `seg pins-backfill-geom [册…] [--write]` 一次性给老钉子补 geom（只补现行列窗与当时 col_sha 一致的）。缘由：全唐文 031–060 outer_bar 把直线页变三段、列图挪了 10–32px，人钉坐标照旧套用切偏，pins-stale 不在管线里且比整条记录会误报。不动 cv 产物，L0。
+
 ## [0.6.34] - 2026-11-26
 
 - 发版缘由：意见采纳写裁定事件（`opinions revise --write-events`，#1062／#1065）；db push 缺省不推字形库、全量扫描 --allow-delete 删得掉本地删掉的文件（#1061）。

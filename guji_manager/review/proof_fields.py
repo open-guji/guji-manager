@@ -8,15 +8,18 @@
 - `pending_fields(card)`：册级 pending 用的全部字段（`img`／`ex` 由雪碧图脚本另加，这里不出）。
   卡上带了 `alt`（`review.alt_cands` 出待审单时算好的相似字，`guji audit alt`）就原样带出：
   `[{c, s, p, src}]`，按字块图相似度排好，`p`＝从哪个近似字查来，`src`＝哪几家（v/rt/zi/near/piv）。
+- `grp`：形近字组的组内全部字（cv #1921 起 Step7 `evidence.group.members`，如 己巳已、日曰目），
+  `{id, m:[字…]}`，网页给组内每个字出选择按钮。旧产物没有 members 就不出这个键，网页照旧只用别的候选。
 - `slim_fields(card)`：章 `proof.json` 瘦身形态，只带 `cls`／`why`／`conf`。
 """
 from __future__ import annotations
 
 from .cards import doubt_codes
+from .group_members import group_of  # noqa: F401  出单脚本也从这里取
 
 PROOF_FIELDS_SCHEMA = "guji-proof/0.2"
 LIB_TOP_N = 5
-CTX_WHY_MAX = 200
+CTX_WHY_MAX = 400   # 同 dian_trace.WHY_MAX（11-26 放宽）
 DIAN_SRC = "punct_llm"
 REFS_MAX = 5
 NO_DOUBT = ["none"]          # 无疑问码但仍待审时的占位
@@ -88,6 +91,9 @@ def pending_fields(card: dict) -> dict:
             out["ctx"] = {"c": dian["char"], "src": DIAN_SRC, **({"why": why} if why else {})}
         elif why:
             out["dnote"] = why         # 没有倾向字（弃权、字不在候选）时只带查证备注
+        if dian.get("out"):
+            # 点校判出的候选外字（高／中把握）：网页当可选按钮显示，不预选（GM3 11-26：候选外的字人审可直接选）
+            out["dout"] = [c for c in dian["out"] if isinstance(c, str) and len(c) == 1]
         refs = _refs(dian.get("refs"))
         if refs:
             out["refs"] = refs
@@ -105,6 +111,9 @@ def pending_fields(card: dict) -> dict:
     occ = card.get("occluded")
     if occ:
         out["occ"] = {"c": occ.get("char") or "", "ref_blank": bool(occ.get("ref_blank"))}
+    grp = card.get("grp")
+    if grp and grp.get("m"):
+        out["grp"] = {"id": grp.get("id") or "", "m": list(grp["m"])}
     alt = card.get("alt")
     if alt:
         out["alt"] = [{"c": a["c"], "s": _num(a.get("s"), 4), "p": a.get("p") or "", "src": a.get("src") or ""}
