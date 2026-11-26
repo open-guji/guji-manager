@@ -248,3 +248,30 @@ def test_bind_rescue_and_unvoid(tmp_path):
     assert states == ["open", "withdrawn"]
     w = M.unvoid(B, [{"id": he.id, "u": 3}], human_events={he.id: he}, event_log=el, items_files=[items], reason="x")
     assert (w["抄件"], w["撤销"], w["撤下条目"]) == (0, 0, 0)                      # 重跑不重复
+
+
+def test_fill_items_u(tmp_path, monkeypatch):
+    """11-26：换单开的条目没盖 u（史記 r2 304 条）→ items-u 按账补；账里没这格的列出不补。"""
+    from guji_manager import u_stamp
+    from guji_manager.review import pending_items as P
+    f = tmp_path / "lists" / "pending" / "x" / "028.items.jsonl"
+    st = P.ItemStore(f)
+    st.add("3:1:2", {"why": ["x"]}, by="t", src="rev:028-r2")
+    st.add("3:1:9", {"why": ["x"]}, by="t", src="rev:028-r2")
+    st.add("3:1:3", {"why": ["x"]}, by="t", src="rev:028-r2", u=3)
+    st.save()
+    m = {f"{B}:3:1:2": 2, f"{B}:3:1:3": 3}
+
+    def ref(cid):
+        from guji_manager.uid.ledger import UidMissing
+        if cid not in m:
+            raise UidMissing(cid)
+        return m[cid]
+    monkeypatch.setattr(u_stamp, "_cell_ref", lambda: ref)
+    assert len(M.live_items_without_u(f)) == 2
+    assert u_stamp.u_map_lenient(B, ["3:1:2", "3:1:9"], ref) == ({"3:1:2": 2}, ["3:1:9"])
+    r = M.fill_items_u(f, B, by="t", write=True)
+    assert (r["补"], r["缺格"], r["缺格列表"]) == (1, 1, ["3:1:9"])
+    assert [d["cell"] for d in M.live_items_without_u(f)] == ["3:1:9"]
+    assert M.fill_items_u(f, B, by="t", write=True)["补"] == 0
+    assert M.item_files(tmp_path, "028") == [f]
