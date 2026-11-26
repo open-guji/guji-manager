@@ -163,6 +163,19 @@ def write_mark(root: Path, book: str, label: str, how: str) -> None:
                                             ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _unchanged_since_fetch(root: Path, book: str) -> str | None:
+    """本机这册产物自上次取包（铺底）以来一页都没再跑过 → 那个包的标签；否则 None。
+    存出来的包就是铺底包原样换名（11-26 全唐文 055 #17657、史記 11/28/31/34：执行方空跑 0 页仍存包），
+    记进 manifest 的 `unchanged_from`，标 main 时拦。"""
+    try:
+        mk = json.loads((Path(root) / book / MARK).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if mk.get("how") == "fetch" and mk.get("label") and mk.get("digest") == products_digest(root, book):
+        return str(mk["label"])
+    return None
+
+
 def unpacked_note(root: Path, book: str) -> str | None:
     """本机这册产物有没存进产物包的新结果 → 一句提醒；没产物、或与最后存／取的包一致 → None。
     提醒只是提醒（不挡什么）：试跑、半截的结果本来就不该存。"""
@@ -196,6 +209,7 @@ def push_products(book: str, root: Path, label: str | None = None, steps: list[s
     check_label(label)
     ws = _ws_name()
     pre = f"{_prefix(ws, book)}/{label}"
+    unchanged = None if steps else _unchanged_since_fetch(root, book)
     data, nfiles, per = _tar_book(root, book, steps)
     parts = []
     for i in range(0, max(1, len(data)), PART_BYTES):
@@ -210,6 +224,8 @@ def push_products(book: str, root: Path, label: str | None = None, steps: list[s
            "pack_sha256": hashlib.sha256(data).hexdigest()}
     if purity is not None:
         man["purity"] = purity
+    if unchanged:
+        man["unchanged_from"] = unchanged
     _call(src, "PUT", f"{pre}/manifest.json", data=json.dumps(man, ensure_ascii=False, indent=1).encode("utf-8"),
           content_type="application/json", tries=3)
     if not steps:                       # 只打了几步的包不算整册存过
@@ -283,6 +299,9 @@ def promote(book: str, label: str, note: str = "", src=None, why: str | None = N
     if _bucket(src) == "main" and not is_formal(ver) and not (why or "").strip():
         raise ValueError(f"包 {label} 是 cv {ver or '未知版本'} 出的，不是正式版，不能标 main："
                          f"发正式 tag 后在它上面重跑再存；确要标加 --why \"<理由>\"")
+    if man.get("unchanged_from") and not (why or "").strip():
+        raise ValueError(f"包 {label} 与铺底包 {man['unchanged_from']} 的产物一字不差（取包后本册一页都没重跑，"
+                         f"多半是执行方空跑 0 页），不能标 main：重跑后再存；确要标加 --why \"<理由>\"")
     pur = man.get("purity")
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     from .. import __version__ as mgr_ver
@@ -291,6 +310,8 @@ def promote(book: str, label: str, note: str = "", src=None, why: str | None = N
         rec.update(cv_version=ver, cv_override=(why or "").strip() or None)
     if pur and pur.get("pure") is False:
         rec.update(impure=describe_purity(pur), impure_why=(why or "").strip() or None)
+    if man.get("unchanged_from"):
+        rec.update(unchanged_from=man["unchanged_from"], unchanged_why=(why or "").strip())
     _call(src, "PUT", f"{pre}/{MAIN_DIR}/{ts}-{label}.json", data=json.dumps(rec, ensure_ascii=False).encode("utf-8"),
           content_type="application/json", tries=3)
     return f"{pre}/{label}"

@@ -430,6 +430,20 @@ def sync_check_chars(old_slots: list[tuple[str, str]], new_char: dict, rows: lis
     return out
 
 
+def sync_fig_file(vdir: Path, ch: str) -> int:
+    """本章 fig.json 的框对齐 cord（见 guji_char_cord.sync_fig_boxes）；返回改了几张图。"""
+    from ..formats.guji_char_cord import dumps, sync_fig_boxes
+    fp = Path(vdir) / f"{ch}.fig.json"
+    char, cord = _load(Path(vdir) / f"{ch}.char.json"), _load(Path(vdir) / f"{ch}.cord.json")
+    if not (fp.exists() and char and cord):
+        return 0
+    fig = _load(fp)
+    n = sync_fig_boxes(char, cord, fig)
+    if n:
+        fp.write_text(dumps(fig), encoding="utf-8", newline="\n")
+    return n
+
+
 def declare_fig_file(vdir: Path, ch: str) -> bool:
     """本章有 NNN.fig.json 就在 index.json 本章条目补 ``fig_file``（校验器 F-OV-13；与 cv republish.copy_figs 同法）。
     返回是否改了 index。找不到本章条目不改（local_check 会报）。"""
@@ -883,6 +897,7 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
         p = export / f"{ch}.{t}.json"
         if p.exists():
             shutil.copyfile(p, vdir / f"{ch}.{t}.json")
+    sync_fig_file(vdir, ch)                     # 换过图源的书 cord 已换坐标：fig.json 的框跟着 cord（F-OV-13）
     declare_fig_file(vdir, ch)                  # F-OV-13：char 有图须声明 fig_file
     fd = export / "fig" / ch
     if fd.is_dir():
