@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2，配 cv v0.9.6 钉子护栏）：新待审原因 `manual_cells_remapped`（S05，钉子换算待核，一定人审，ui=confirm，priority 9）。cv row_segment 列旗 `manual_cells_remapped`（钉子按 geom 换算、角点位移 >3px）的列：出卡（`review.cards`）与按包现算（`reasons.book_cells`）都把这一列的格捞回待审（放行了也算），挂 doubt `manual_cells_remapped`。网站按 `pending_reason` 显示，不用改。不动 cv 产物，L0。
 - PATCH（11-26，GM2）：拉取还原逐行文件时，库里行号有空洞、末尾又超出 `n_lines`（导入删行不重排行号），但行数对上的，按行号紧排、sha 对上就用，不再报「库里有超出 n_lines 的行」（殿本 `instances/vol01.jsonl` 11-26 卡住 ZM 推库：空洞 8789／12708／12709，超出 14658–14660，紧排后与登记逐字节相同，库里数据没坏）。紧排对不上仍报错。L0。
 
 ## [0.6.35] - 2026-11-26

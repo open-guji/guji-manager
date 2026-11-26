@@ -63,6 +63,7 @@
 | S02 | [`seg_col_unaligned`](seg_col_unaligned/README.md) | 整列对不上 | 先改算法，改完剩下的并入 llm | A22 | 43 | 14 | 0 |
 | S03 | [`col_width_out_of_band`](col_width_out_of_band/README.md) | 列宽异常 | 先改算法，改完剩下的并入 llm | A22 | 0 | 0 | 0 |
 | S04 | [`seg_defect`](seg_defect/README.md) | 切坏格 | 一定人审 | A22 | 0 | 20 | 0 |
+| S05 | `manual_cells_remapped` | 钉子换算待核 | 一定人审 | CV2 | — | — | — |
 | V01 | [`variant_pair`](variant_pair/README.md) | 异体字 | 一定人审 | A24 | 260 | 122 | 2 |
 | V02 | [`variant_form_open`](variant_form_open/README.md) | 写法待定（原 Z06 `group_form_open`，11-07 改归异体类） | 先改算法，改完剩下的并入 llm | A24 | 4 | 0 | 0 |
 | X01 | [`ruling_conflict`](ruling_conflict/README.md) | 裁定有冲突 | 一定人审 | A31 | 6 | 0 | 0 |

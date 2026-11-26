@@ -33,6 +33,7 @@ class PendingReason(str, Enum):
     SEG_COL_UNALIGNED = "seg_col_unaligned"
     COL_WIDTH_OUT_OF_BAND = "col_width_out_of_band"
     SEG_DEFECT = "seg_defect"
+    MANUAL_CELLS_REMAPPED = "manual_cells_remapped"   # S05 2026-11-26：钉子按列图几何换算位移 >3px（cv v0.9.6）
     OCCLUDED_WITH_REF = "occluded_with_ref"
     OCCLUDED_NO_REF = "occluded_no_ref"
     HARD_PAIR = "hard_pair"

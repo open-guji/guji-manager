@@ -29,6 +29,9 @@ from .shadow import SHADOW_THR, load_shadow, shadow_view
 from .._cv import parse_cells_spec  # noqa: F401  搬到 core（拆分 M3）
 from .._cv import decided_view, defect_only_cells, flagged_cells
 
+#: cv row_segment 列旗：钉子按列图几何换算、位移 >3px（同 reasons.PIN_REMAPPED_DOUBT；reasons 引 cards，这里不能反引）
+PIN_REMAPPED = "manual_cells_remapped"
+
 
 def _ai_view(dr) -> tuple[list[dict] | None, dict | None]:
     """`DecisionRec.groups`/`ai` → 卡片要的精简视图（人审卡按 AI 首组预选，
@@ -358,6 +361,9 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
             continue
         # 坐标对位（align_ref `coord`，overview#195）：现役对位没给字的格用它补「整理本」一栏
         golds, coord = _align_ref_maps(st, book, pg)
+        # 钉子换算待核（cv v0.9.6 row_segment 列旗 manual_cells_remapped）：这一列的格捞回待审、挂 doubt
+        _rs = _read_view(st, book, "row_segment", page_key(pg), "cells")
+        remap_cols = {c.col for c in (_rs.columns if _rs else []) if PIN_REMAPPED in (c.flags or [])}
         mm = {r.id: r for cc in (m.columns if m else []) for r in cc.chars}
         dd = {r.id: r for cc in (d.columns if d else []) for r in cc.chars}
         for cc in a.columns:
@@ -366,6 +372,9 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
             for r in cc.chars:
                 _vf = vflags.get(r.id) if flag_active(vflags.get(r.id), r.char) else None
                 _doubts = (list(r.doubts or []) + [VISION_DOUBT]) if _vf else r.doubts
+                _remap = cc.col in remap_cols
+                if _remap:
+                    _doubts = list(_doubts or []) + [PIN_REMAPPED]
                 # 点名清单：只认 id，**不受 only / 顺序闸约束**——点名要看的就得出得来，
                 # 否则「这个字自动进库了」或「旁边切线没裁」会把它静默吞掉，人对着空面板
                 # 不知道是没问题还是没出卡。
@@ -386,7 +395,7 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
                     if ("excluded" in (r.doubts or []) and not _stale_shape(stale.get(r.id))
                             and not _unseen_excluded(r)):
                         continue
-                    if only == "review" and r.admit and not _vf:
+                    if only == "review" and r.admit and not (_vf or _remap):
                         continue
                     if only == "auto" and not r.admit:
                         continue
