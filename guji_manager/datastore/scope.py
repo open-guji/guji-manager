@@ -142,6 +142,8 @@ def classify(rel: str) -> str | None:
     if parts[0] == "feedback":
         if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid") and p.suffix == ".jsonl":
             return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）
+        if len(parts) == 3 and parts[1] == "pins" and p.name.endswith(".state.jsonl"):
+            return "events"                # 钉状态流（删钉／过期，GM4 11-26）：事件形状，stream=pin_state
         if len(parts) == 3 and parts[1] == "consumed" and p.suffix == ".jsonl":
             return "consumed"
         if len(parts) == 3 and parts[1] == "anchors" and p.suffix == ".jsonl":
@@ -232,7 +234,7 @@ def _pick(rec: dict, names: Iterable[str], conv=None) -> dict:
 def _events(rec, rel, line):
     tgt = rec.get("target") if isinstance(rec.get("target"), dict) else None
     cols = {
-        "stream": PurePosixPath(rel).parts[1],
+        "stream": "pin_state" if rel.endswith(".state.jsonl") else PurePosixPath(rel).parts[1],
         "book": _str(tgt.get("book")) if tgt else None,
         "batch": _str(rec.get("batch")), "seq": _int(rec.get("seq")),
         "kind": _str(rec.get("kind")), "actor": _str(rec.get("actor")),
