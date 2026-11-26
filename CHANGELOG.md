@@ -6,6 +6,10 @@
 
 ## [未发版]
 
+## [0.6.31] - 2026-11-26
+
+- 发版缘由：corpus 缺省号认运行覆盖（#1051，修 #1006 回归：执行机 rerun 单带 corpus 覆盖时语料校验读裸册 yaml）；待审清单 jsonl 逐行进 list_rows（#1052）。按用户「先升 PATCH」，cut_check 1.3.0（#1050）一并按 PATCH 发。
+
 - PATCH（11-26，GM4，files 清退路线第 1 步，ai-team `domain/GM/GM4/files表清退路线-2026-11-26.md`）：`feedback/lists/{web,opinions,freeze,ledger,u_void}/…jsonl` 不再整文件进 `files`，改逐行进新表 `list_rows`（主键 (ws, src_path, src_line)；列 dataset、book、name，id、u 由 raw 现算）。清单里有不是 json 对象的行，整文件仍进 `files`（scan 报问题）。拉取、`db verify` 照旧逐字节还原／核对（verify 认 `source_files.tbl`）。`central_gc` 读冻结登记改为 files 与 list_rows 都读（迁移期两处都可能有）。线上要先建表、Worker `/v1/files` 要认新表（guji-workspace-data 另一 PR）；各机升级后全量推一次把已有文件挪过来。L0。
 
 - PATCH（11-26，GM2）：`guji corpus verify／upload／fetch` 不写 `--version` 时，缺省号改读册的**生效配置**（合基础配置与运行覆盖 `GUJI_BOOK_OVERRIDE`），原先只读裸册 yaml（#1006 引入）——rerun_prep 换语料号走覆盖不改 yaml，「语料校验」便核成 yaml 里的旧号（11-26 #17727 殿本 vol03：覆盖 20、核成 19，报 CorpusDrift）。合不出生效配置才退回裸 yaml、再退回钉子账末行。不动 cv 产物，L0。
