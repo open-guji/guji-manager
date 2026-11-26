@@ -1183,8 +1183,26 @@ def auto_books(ws: Path, text_id: str) -> list[str]:
     return books
 
 
+def default_text_id(ws: Path) -> str:
+    """没给 --text-id 时按工作区取书 ID：workspace.yaml 的 text_id → 工作区目录名前缀（``995ejelvk0-quan-tang-wen``）→ 殿本。
+    （QTW 11-26：在全唐文工作区不带 --text-id 会按殿本收，收不到。）"""
+    import re
+    try:
+        import yaml
+        cfg = yaml.safe_load((Path(ws) / "workspace.yaml").read_text(encoding="utf-8")) or {}
+        if isinstance(cfg, dict) and cfg.get("text_id"):
+            return str(cfg["text_id"])
+    except Exception:  # noqa: BLE001
+        pass
+    m = re.match(r"([0-9a-z]{10})-", Path(ws).name)
+    return m.group(1) if m else DIANBEN_ID
+
+
 def cmd_collect(a) -> int:
     ws = Path(a.workspace).resolve()
+    if not a.text_id:
+        a.text_id = default_text_id(ws)
+        print(f"（未给 --text-id，按工作区取书 ID：{a.text_id}）")
     os.environ["GUJI_WORKSPACE"] = str(ws)
     if a.books == "auto":
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -1319,7 +1337,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("-w", "--workspace", required=True)
     p.add_argument("--book-text", required=True, help="book-text 检出（在它旁边建 <检出>-collect worktree，每册重置到 origin/dev）")
     p.add_argument("--worktree", default=None, help="book-text worktree 路径（缺省 <book-text>-collect）")
-    p.add_argument("--text-id", default=DIANBEN_ID, help="book-text 书 ID（缺省殿本）")
+    p.add_argument("--text-id", default=None, help="book-text 书 ID（缺省按工作区：workspace.yaml 的 text_id、目录名前缀，都没有才是殿本）")
     p.add_argument("--reviewer", default=os.environ.get("GUJI_REVIEWER", "sheldon"), help="裁决人（网站投票的人；缺省 sheldon）")
     p.add_argument("--batch", action="append", default=None,
                    help="另把早先写进库、还没进 book-text 的人裁批次也落了（可重复；只认人裁，过绑定表、每格取最新）")
