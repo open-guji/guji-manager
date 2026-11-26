@@ -39,3 +39,12 @@ def test_has_source_images(tmp_path):
     assert not R._has_source_images(str(tmp_path), "055")
     (tmp_path / "data_full" / "055" / "1.png").write_bytes(b"x")
     assert R._has_source_images(str(tmp_path), "055")
+
+
+def test_cancel_reason_names_who():
+    j = object.__new__(R.Job)
+    j.id = 1
+    j.db = lambda fn, *a: {"events": [{"stage": "claim", "msg": "x"}, {"stage": "cancel", "msg": "QTW 要求停下"}]}
+    assert j._cancel_reason() == "QTW 要求停下"
+    j.db = lambda fn, *a: (_ for _ in ()).throw(OSError("连不上"))
+    assert j._cancel_reason() == "有人要求停下"

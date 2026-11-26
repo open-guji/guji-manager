@@ -233,6 +233,17 @@ class Job:
         fn()
         self.ev("完成", secs=round(time.time() - t0, 1))
 
+    def _cancel_reason(self) -> str:
+        """「有人要求停下」带上是谁：取任务库里最近一条 cancel 事件（「QTW 要求停下」），取不到就照旧（11-26 执行方问 #17802 谁停的）。"""
+        try:
+            d = self.db(S.detail, self.id) or {}
+            ev = [e for e in d.get("events") or [] if e.get("stage") == "cancel"]
+            if ev and ev[-1].get("msg"):
+                return str(ev[-1]["msg"])[:200]
+        except Exception:               # noqa: BLE001
+            pass
+        return "有人要求停下"
+
     # ── 各阶段 ──
     def central_rev(self) -> int | None:
         """中心库当前 rev（字形库重建、语料更新都会推进它）。取不到返回 None，此时不复用准备。"""
@@ -566,7 +577,8 @@ class Job:
                 if sp["kind"] in ("rerun", "ab"):
                     self.step("patches", self.push_patches)
         except Cancelled:
-            outcome, err = "cancelled", ("租约已失：失联后这次领单已被收回，单已退回排队" if self.lease_lost else "有人要求停下")
+            outcome, err = "cancelled", ("租约已失：失联后这次领单已被收回，单已退回排队" if self.lease_lost
+                                         else self._cancel_reason())
         except StageError as e:
             outcome, err, code = e.outcome, f"{self.stage}：{e}", e.code
             if e.env or (self.stage in ("base", "push") and e.outcome == "failed"):
