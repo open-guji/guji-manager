@@ -42,7 +42,7 @@ def _schema_minor(url) -> int:
     import re
     m = re.search(r"/v0\.(\d+)\.json$", str(url or ""))
     return int(m.group(1)) if m else 0
-CELL_KEYS = ("a", "c", "lane", "lacuna", "guess", "guess_c", "zi")
+CELL_KEYS = ("a", "c", "u", "lane", "lacuna", "guess", "guess_c", "zi")
 APPLY_CLASSES = ("A", "B", "B′")
 
 
