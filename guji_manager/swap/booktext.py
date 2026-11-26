@@ -81,10 +81,18 @@ def cell_table_by_u(old_char: dict, new_char: dict) -> list[dict] | None:
     old_us = {x["u"] for _, x in oc}
     ret = {r["u"]: r for r in new_char.get("u_retired") or []}
     rows: list[dict] = []
+    taken: set = set()
     for a, x in oc:
         hit = new_by_u.get(x["u"])
+        r = ret.get(x["u"]) or {}
+        if hit is None and "into" in r and r["into"] in new_by_u and r["into"] not in old_us:
+            # 并账（guji uid retire-into）：旧 u 并进新包里的一格＝同一格换了号（标点、专名、人裁跟过去）
+            b, y = new_by_u[r["into"]]
+            taken.add(r["into"])
+            rows.append(dict(old=a, new=b, oc=x.get("c", ""), nc=y.get("c", ""), kind="同格" if a == b else "改号", iou=1.0,
+                             note=f"u{x['u']} 并入 u{r['into']}" + ("；改字" if x.get("c") != y.get("c") else "")))
+            continue
         if hit is None:
-            r = ret.get(x["u"]) or {}
             note = f"u{x['u']} " + (f"并入 u{r['into']}" if "into" in r else "删掉" if r.get("gone") else "新版没有")
             rows.append(dict(old=a, new="", oc=x.get("c", ""), nc="", kind="删", iou=0.0, note=note))
             continue
@@ -92,7 +100,7 @@ def cell_table_by_u(old_char: dict, new_char: dict) -> list[dict] | None:
         rows.append(dict(old=a, new=b, oc=x.get("c", ""), nc=y.get("c", ""), kind="同格" if a == b else "改号",
                          iou=1.0, note="按u" + ("；改字" if x.get("c") != y.get("c") else "")))
     rows += [dict(old="", new=b, oc="", nc=y.get("c", ""), kind="新增", iou=0.0, note=f"u{y['u']}")
-             for b, y in nc if y["u"] not in old_us]
+             for b, y in nc if y["u"] not in old_us and y["u"] not in taken]
     return rows
 
 

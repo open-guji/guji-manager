@@ -493,3 +493,35 @@ def test_lacks_u_and_stamp_lines(fb):
     new, done, left = stamp_lines(lines, lambda b: Ledger.load(b))
     assert [d["u"] for d in done] == [8] and [x["id"] for x in left] == ["e2"]
     assert _j.loads(new[0])["target"]["anchor"]["u"] == 8 and new[1] == lines[1] and new[2] == ""
+
+
+def test_retire_into_maps_old_cell(tmp_path):
+    """11-26 ZM：重切后旧 u 记了 gone、新格另发号；看图确认是同一格 → retire-into 并账，
+    对照表（账内、book-text 两种）把旧格当改号接到新格，标点／专名／人裁跟过去。"""
+    from guji_manager.swap.booktext import cell_table_by_u
+    from guji_manager.u_table import table_rows
+    from guji_manager.uid.cli import retire_into_line
+    from guji_manager.uid.ledger import Ledger, make_line, verify
+    B = "vol16"
+    led = Ledger.load(B, tmp_path)
+    led.append([make_line(B, 164, "S1", {f"{B}:164:3:1": 1, f"{B}:164:3:2": 2}, chars={f"{B}:164:3:1": "三"}),
+                make_line(B, 164, "S2", {f"{B}:164:3:1": 3, f"{B}:164:3:2": 2}, chars={f"{B}:164:3:1": "一"},
+                          lineage=[{"u": 1, "gone": True}, {"u": 3, "new": True}])])
+    d, probs = retire_into_line(led, [(1, 3), (2, 3), (3, 9)])
+    assert len(probs) == 2 and d["page"] == 0 and d["lineage"] == [{"u": 1, "into": 3, "was": "gone"}]
+    led.append([d])
+    led = Ledger.load(B, tmp_path)
+    assert led.retired()[1] == {"u": 1, "into": 3} and verify(led) == []
+    assert led.page_pair(164)[0]["cells_sha"] == "S1"             # 页的上一份／当前一份不受影响
+    rows = {r["旧格"] or r["新格"]: r for r in table_rows(led)}
+    assert rows[f"{B}:164:3:1"]["类别"] == "同格" and "并入 u3" in rows[f"{B}:164:3:1"]["说明"]
+    assert not any(r["类别"] == "新增" for r in table_rows(led))
+    def ch(cells):
+        return {"pages": [{"columns": [{"cells": cells}]}]}
+    old = ch([{"a": "164:3:1", "c": "三", "u": 1}, {"a": "164:3:2", "c": "經", "u": 2}])
+    new = {**ch([{"a": "164:3:1", "c": "一", "u": 3}, {"a": "164:3:2", "c": "經", "u": 2}]),
+           "u_retired": [{"u": 1, "into": 3}]}
+    t = cell_table_by_u(old, new)
+    r = [x for x in t if x["old"] == "164:3:1"][0]
+    assert r["new"] == "164:3:1" and r["kind"] == "同格" and not [x for x in t if x["kind"] == "新增"]
+    assert retire_into_line(led, [(1, 3)])[0] is None             # 重记不重复

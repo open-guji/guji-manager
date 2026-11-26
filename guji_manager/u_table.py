@@ -36,8 +36,11 @@ def table_rows(led: Ledger, pages: Iterable[int] | None = None) -> list[dict]:
         for k in d["map"]:
             now_line[k] = d
     old_us: set[int] = set()
+    merged: set[int] = set()
+    ret = led.retired()
     rows: list[dict] = []
     for prev, cur in pairs:
+        prev_us = {int(v) for v in prev["map"].values()}
         why = {}
         for x in cur.get("lineage") or []:
             if "into" in x:
@@ -49,6 +52,10 @@ def table_rows(led: Ledger, pages: Iterable[int] | None = None) -> list[dict]:
             old_us.add(u)
             oc = (prev.get("chars") or {}).get(k, "")
             new = now.get(u)
+            into = ret.get(u, {}).get("into")
+            if new is None and into is not None and now.get(into) is not None and into not in prev_us:
+                new = now[into]                                    # 并账：旧 u 并进现行某格 → 改号
+                merged.add(into)
             if new is None:
                 rows.append({"旧格": k, "新格": "", "旧字": oc, "新字": "", "类别": "删", "IoU": "",
                              "说明": f"u{u} " + (why.get(u) or "账里已没有")})
@@ -58,12 +65,12 @@ def table_rows(led: Ledger, pages: Iterable[int] | None = None) -> list[dict]:
             ob, nb = (prev.get("boxes") or {}).get(k), (nl.get("boxes") or {}).get(new)
             s = f"{iou(xywh_to_box(ob), xywh_to_box(nb)):.3f}" if ob and nb else ""
             rows.append({"旧格": k, "新格": new, "旧字": oc, "新字": nc, "类别": "同格" if k == new else "改号",
-                         "IoU": s, "说明": f"u{u}"})
+                         "IoU": s, "说明": f"u{u}" + (f" 并入 u{into}" if now.get(u) is None else "")})
     for prev, cur in pairs:
         split = {int(x["u"]): int(x["split_from"]) for x in cur.get("lineage") or [] if "split_from" in x}
         for k, u in cur["map"].items():
             u = int(u)
-            if u in old_us:
+            if u in old_us or u in merged:
                 continue
             nc = (cur.get("chars") or {}).get(k, "")
             rows.append({"旧格": "", "新格": k, "旧字": "", "新字": nc, "类别": "新增", "IoU": "",
