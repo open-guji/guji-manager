@@ -46,3 +46,14 @@ def test_dup_key_problems_only_for_changed_files():
           "x.png: 没有实例引用的刻例图，未入库"]
     got = dup_key_problems(pr, {"feedback/anchors/04.jsonl"})
     assert len(got) == 1 and "04.jsonl" in got[0]
+
+
+def test_stale_line_numbers_compacted_when_sha_matches():
+    """导入删行不重排行号：中间有空洞、末尾超出 n_lines，但行数对、紧排后 sha 对上——缺省就还原（殿本 vol01 11-26）。"""
+    texts, _, _, repaired = _texts(_Src({0: "L0", 1: "L1", 3: "L2", 4: "L3", 6: "L4"}), "ws", _files(), None)
+    assert texts["feedback/anchors/04.jsonl"] == b"L0\nL1\nL2\nL3\nL4\n" and not repaired
+
+
+def test_extra_lines_still_raise_when_compaction_mismatches():
+    with pytest.raises(MaterializeError, match="超出 n_lines"):
+        _texts(_Src({0: "L0", 1: "L1", 3: "L3", 4: "L2", 6: "L4"}), "ws", _files(), None)
