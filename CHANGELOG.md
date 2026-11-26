@@ -7,6 +7,8 @@
 ## [未发版]
 - PATCH（11-26，CV0，ZM 殿本列末切矮格）：新命令 `guji uid retire-into <册> 旧u:新u … [--why …] [--write]` 并账——重切后旧 u 记了 gone、新格另发了号，看图确认是同一格时，把旧 u 改记为并入新 u（册级一行 page=0，不动各页上一份／当前一份）。换单对照表（账内 `u_table`、book-text `cell_table_by_u`）把并进去的旧格当同格／改号接到新格，人裁、标点、专名跟过去，不再报「在新包里没有对应格」。新包 char 要在并账后重新导出（`u_retired` 才带 into）。
 
+- PATCH（11-26，GM2）：存包时本册产物与上次取的铺底包摘要一致（取包后一页没跑）就在 manifest 记 `unchanged_from`，`pack promote`／`push --main` 见到它拒标 main（给 `--why` 照标并记进指针）。缘由：执行方空跑 0 页仍存包，旧包换名后被标 main（11-26 全唐文 055、史記 11/28/31/34）。只拦新存的包，已有包 manifest 没这项不受影响。不动 cv 产物，L0。
+
 ## [0.6.31] - 2026-11-26
 
 - 发版缘由：corpus 缺省号认运行覆盖（#1051，修 #1006 回归：执行机 rerun 单带 corpus 覆盖时语料校验读裸册 yaml）；待审清单 jsonl 逐行进 list_rows（#1052）。按用户「先升 PATCH」，cut_check 1.3.0（#1050）一并按 PATCH 发。
