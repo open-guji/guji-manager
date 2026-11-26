@@ -4,6 +4,25 @@
 > 口径以 [待审单-人裁事件-book-text格子](https://github.com/open-guji/guji-manager/blob/dev/doc/00-总览/待审单-人裁事件-book-text格子.md) 总纲为准，本文只写**做法**。
 > 代码：`guji_manager/swap/booktext.py`；cv `republish.py` 的 `bump_book_text` 遇增删格自动调它。
 
+## 有字格永久编号 u 以后（现行，2026-11-25 起）
+
+book-text 每格都有 `u`（[字格永久编号 u 与身份账](字格永久编号u与身份账)）。新旧 char 都带 u 时，第 2 步的对照表**按 u 出**，不再按框猜：
+
+| 情况 | 对照表里 | 说明一栏 |
+|---|---|---|
+| 同一个 u，格号没变 | 同格 | 按u |
+| 同一个 u，格号变了 | 改号 | 按u |
+| 旧 u 不在新版，新版 `u_retired` 里写了 `into` | 删 | 并入 uN |
+| 旧 u 不在新版，`u_retired` 里是 `gone` | 删 | 按u |
+| 新 u 不在旧版 | 新增 | 按u |
+
+标点、专名、人裁按 u 跟格，挪锚只在 u 真没了的格上发生。要点：
+
+- **导出要带 u 且连续**：manager ≥0.6.23；cv 殿本线 v0.7.110、全唐文线 v0.7.111、史記线 v0.7.112，或 dev。旧 patch 线 `proof_cycle` 用 cv 自带导出器，不写 u，local_check 报「u 全丢」。
+- 0.6.23 起导出对照 book-text 现行 char：旧版有、这次没导出的 u 自动记 `u_retired`（gone），local_check 的 u 连续性不再报。例：史記 18 卡在 2:5:3「唐」u33，新导出写出 `u_retired=[{u:33, gone}]` 后通过。
+- R1 闸（刻例对位）：身份账已作废格上的刻例不算 orphan，只计数（manager ≥0.6.22）。
+- 下面「按框出对照表」的老路只在一边没 u 时走（说明一栏没有「按u」）。
+
 ## 一句话
 
 格号是切分的编号，不是字的身份。新包落 book-text 时，**先按新旧 cord 的框出一张「旧格→新格」对照表，字的取舍和标点专名挪锚都只认这张表**；

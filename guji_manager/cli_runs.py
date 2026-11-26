@@ -122,6 +122,10 @@ def cmd_cache(args) -> None:
                           full=getattr(args, "full", False))
         main_print(res)
         sys.exit(1 if res["bad_columns"] and not args.fix else 0)
+    elif args.action == "push-patches":
+        _cmd_cache_push_patches(args)
+    elif args.action == "gc-patches":
+        _cmd_cache_gc_patches(args)
     elif args.action == "build-rare-index":
         _cmd_cache_build_rare_index(args)
     elif args.action == "build-font-index":
@@ -135,6 +139,44 @@ def cmd_cache(args) -> None:
         m = build(data_root() / "emb-build", jobs=max(1, args.jobs or 1))
         print(f"清单 {emb_pack.EMB_DIR / (m['version'] + '.json')}；三个文件在 {data_root() / 'emb-build'}，"
               "传 R2：python scripts/build_hanzi_db.py --no-build --upload-emb")
+
+
+def _cmd_cache_push_patches(args) -> None:
+    """字块页包存 R2（`datastore/patch_packs.py`）：只存缓存戳对得上现行产物、R2 上还没有这个链指纹的页。"""
+    from ._cv import load_book, default_pipeline_id, load_pipeline, RunContext, ProductStore
+    from ._cv import steps as _s  # noqa: F401
+    from ._cv import ImageCache
+    from .datastore import patch_packs as PP
+    if not args.book:
+        print("必须给 --book"); sys.exit(1)
+    book = load_book(args.book)
+    pid = args.pipeline or default_pipeline_id(book)
+    ctx = RunContext(book, ProductStore(), ImageCache(), log=lambda _: None, pipeline=load_pipeline(pid))
+    res = PP.push_book(ctx, book.resolve_pages(args.pages), dry_run=args.dry_run)
+    print(("（试算，没传）" if args.dry_run else "") +
+          f"字块包：新存 {res['pushed']} 页 {res['bytes'] / 2**20:.1f} MB，已有 {res['already']}，"
+          f"没产物 {res['no_product']}，缓存不对版 {res['stale_cache']}，没字块 {res['no_files']}（共 {res['pages']} 页）")
+
+
+def _cmd_cache_gc_patches(args) -> None:
+    """清 R2 上的旧字块页包：每页留最新那天的，另留 --keep-days 天内的。缺省只列，--apply 才删。"""
+    from .datastore import patch_packs as PP
+    src = PP._src(write=args.apply)
+    if src is None:
+        print("缺令牌：列清单要 GUJI_DATA_TOKEN_READ，--apply 要 GUJI_DATA_TOKEN_PROD"); sys.exit(1)
+    objs = PP.list_objects(src)
+    drop = PP.gc_plan(objs, keep_days=args.keep_days)
+    tot, gone = sum(o.bytes for o in objs), sum(o.bytes for o in drop)
+    print(f"字块页包 {len(objs)} 个 {tot / 2**30:.2f} GB；可删 {len(drop)} 个 {gone / 2**30:.2f} GB"
+          f"（每页留最新那天，另留 {args.keep_days} 天内）")
+    if args.out:
+        Path(args.out).write_text("".join(f"{o.key}\t{o.bytes}\n" for o in drop), encoding="utf-8")
+        print(f"清单：{args.out}")
+    if args.apply and drop:
+        n = PP.gc_apply(src, drop)
+        print(f"已删 {n} 个")
+    elif drop:
+        print("（只列了清单；真删加 --apply）")
 
 
 def _cmd_cache_pull_rare_index(args) -> None:
@@ -410,10 +452,15 @@ def add_parser(sub) -> None:
     p.add_argument("--json", action="store_true")
     _add_override(p)
     p = sub.add_parser("cache", help="[v2] 图像缓存：usage | prune | get | column | verify | warm | "
+                                     "push-patches | gc-patches | "
                                      "build-rare-index | build-font-index | pull-rare-index | build-emb-pack")
     p.add_argument("action", choices=["usage", "prune", "get", "column", "verify", "warm",
+                                      "push-patches", "gc-patches",
                                       "build-rare-index", "build-font-index", "pull-rare-index",
                                       "build-emb-pack"])
+    p.add_argument("--dry-run", action="store_true", help="push-patches：只算不传")
+    p.add_argument("--apply", action="store_true", help="gc-patches：真删（缺省只列清单）")
+    p.add_argument("--keep-days", type=int, default=7, help="gc-patches：几天内传的都留，缺省 7")
     p.add_argument("--pipeline", default=None, help="verify：管线 id，缺省按册")
     p.add_argument("--pages", default="all", help="verify / warm：页表达式，缺省 all")
     p.add_argument("--fix", action="store_true", help="verify：把错位页的字块/列图缓存清掉，惰性重建")
@@ -434,7 +481,7 @@ def add_parser(sub) -> None:
     p.add_argument("--col", type=int, default=0, help="column：列号")
     p.add_argument("--y0", type=int, default=0)
     p.add_argument("--y1", type=int, default=0, help="column：裁到哪（0 = 到底）")
-    p.add_argument("--out", default="", help="get / column 的输出路径")
+    p.add_argument("--out", default="", help="get / column 的输出路径；gc-patches：可删清单写到这里")
 
 
 

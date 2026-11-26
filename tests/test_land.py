@@ -326,6 +326,7 @@ def test_ensure_alt_cards_reruns_for_card_without_alt(tmp_path, monkeypatch):
         return type("R", (), {"returncode": 0})()
 
     monkeypatch.setattr(land.subprocess, "run", fake_run)
+    monkeypatch.setattr(land, "run_killing", lambda cmd, env, timeout: (calls.append(cmd), True)[1])
     land.ensure_alt_cards(ws, "b", ["1:2:3"], None, need_alt=["1:2:3"])
     assert sum("audit" in c for c in calls) == 2 and any("source" in c for c in calls)
     assert land._E.load_cards(ws, "b")["1:2:3"].get("alt")
@@ -386,19 +387,43 @@ def test_zero_byte_state_files_are_ignored(tmp_path):
 def test_ensure_alt_cards_low_disk_and_warm_timeout(tmp_path, monkeypatch, capsys):
     f = tmp_path / "reports" / "b" / "b.cards.alt.json"
     f.parent.mkdir(parents=True)
-    f.write_text(json.dumps([{"id": "b:1:2:3", "admit": True}]), encoding="utf-8")
+    f.write_text(json.dumps([{"id": "b:7:2:3", "admit": True}]), encoding="utf-8")
     calls = []
 
     def fake_run(cmd, **kw):
-        calls.append(cmd)
-        if "warm" in cmd:
-            raise land.subprocess.TimeoutExpired(cmd, 1)
         return type("R", (), {"returncode": 1})()
 
+    def fake_kill(cmd, env, timeout):
+        calls.append(cmd)
+        return "warm" not in cmd                       # warm 超时
+
     monkeypatch.setattr(land.subprocess, "run", fake_run)
+    monkeypatch.setattr(land, "run_killing", fake_kill)
     monkeypatch.setattr(land, "MIN_FREE_GB", 10 ** 9)           # 盘不够：不补拉
-    land.ensure_alt_cards(tmp_path, "b", ["1:2:3"], None, need_alt=["1:2:3"])
-    assert not any("source" in c for c in calls) and "盘只剩" in capsys.readouterr().err
-    monkeypatch.setattr(land, "MIN_FREE_GB", 0)                 # warm 超时：清楚报错、不抛
-    land.ensure_alt_cards(tmp_path, "b", ["1:2:3"], None, need_alt=["1:2:3"])
+    land.ensure_alt_cards(tmp_path, "b", ["7:2:3"], None, need_alt=["7:2:3"])
+    assert not calls and "盘只剩" in capsys.readouterr().err
+    monkeypatch.setattr(land, "MIN_FREE_GB", 0)                 # warm 超时：清楚报错、不抛，且只 warm 缺图的页
+    land.ensure_alt_cards(tmp_path, "b", ["7:2:3"], None, need_alt=["7:2:3"])
     assert "超过" in capsys.readouterr().err
+    w = [c for c in calls if "warm" in c][0]
+    assert w[w.index("--pages") + 1] == "7"
+
+
+def test_run_killing_kills_group(tmp_path):
+    import sys
+    import time
+    t0 = time.time()
+    ok = land.run_killing([sys.executable, "-c", "import time,subprocess,sys; subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']); time.sleep(30)"], {}, 1)
+    assert not ok and time.time() - t0 < 10
+
+
+def test_default_text_id_from_workspace(tmp_path):
+    from guji_manager.collect import default_text_id
+    ws = tmp_path / "995ejelvk0-quan-tang-wen"
+    ws.mkdir()
+    assert default_text_id(ws) == "995ejelvk0"
+    (ws / "workspace.yaml").write_text("text_id: abc1234567\n", encoding="utf-8")
+    assert default_text_id(ws) == "abc1234567"
+    other = tmp_path / "ws"
+    other.mkdir()
+    assert default_text_id(other) == "96mid1ogzk"

@@ -50,14 +50,14 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
         "只在 stages 开时跑库匹配之后的分段判定（cv#1589，缺省 None＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "开着时 glyph_stages、near_route、shape_stage、groups.methods、ids_online、registry 的代码哈希＋形近字组表＋终判组模板库"
         "经 stages_sha 进参数指纹，改这些模块照样判过期",
-    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.stroke_veto"):
+    ("open_guji_cv.steps.seed_admit_shapes", "open_guji_cv.groups.stroke_veto"):   # cv #1911 起判官各遍搬进 seed_admit_shapes
         "只在 stroke_veto 开时跑笔画反向护栏（cv#1487，缺省空串＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "册开 stroke_veto 之前要把本模块并入该册指纹（随启用的 PR 补）",
-    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.wu_shape"):
+    ("open_guji_cv.steps.seed_admit_shapes", "open_guji_cv.groups.wu_shape"):
         "只在 group_flow_wu_shape 开时跑嗚鳴刻形判法（cv#1509，缺省空串＝关，旧指纹不变）；开着时模型文件 sha256 经 \"ws\" 段进参数指纹。"
         "但 wu_shape 模块代码本身不进指纹（同类 rr_shape 在 code_deps 里）——开它的书（全唐文）改了这个模块要手动判过期，"
         "或随下次本来就要变 seed_admit code_hash 的 PR 把它补进 code_deps（A31 11-14 登记，已告知 A20）",
-    ("open_guji_cv.steps.seed_admit", "open_guji_cv.groups.part_shape"):
+    ("open_guji_cv.steps.seed_admit_shapes", "open_guji_cv.groups.part_shape"):
         "只在 group_flow_part_shape 开时跑部件刻形判法（cv#1553，缺省空＝关，旧指纹不变）；开着时模型文件经 \"pt\" 段进参数指纹。"
         "模块代码本身不进指纹（同 wu_shape）——开它的书改了这个模块要手动判过期，或随下次本来就要变 seed_admit code_hash 的 PR 补进 code_deps（A31 11-15 登记）",
     ("open_guji_cv.steps.invert_detect", "open_guji_cv.utils.preclean"): "只解析预处理后的原图路径",
