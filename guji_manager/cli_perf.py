@@ -351,6 +351,16 @@ PERF_HOOKS: dict[str, dict] = {
                   # 第二轮：铁证闸逐格再匹配、字组流程与影子闸里面
                   "_iron_decide", "_page_patch", "_clf_ctx", "_hard_blocked", "_shadow_gate"),
     },
+    # cv #1911 把 seed_admit 拆成 common／lanes／shapes：从 seed_admit 调用的由上面按 seed_admit 名挂的钩子计时，
+    # 拆出的模块之间互相调用的在这里按各自模块名挂（标签 `seed_admit_lanes.xxx` 等）
+    "open_guji_cv.steps.seed_admit_common": {"funcs": ("_page_patch", "_hard_blocked")},
+    "open_guji_cv.steps.seed_admit_lanes": {
+        "funcs": ("_edge_pair_pass", "_follow_ref_pass", "_human_unbound_pass", "_pua_rule_pass", "_rare_ref_pass",
+                  "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass", "_symbol_ref_blank_pass"),
+    },
+    "open_guji_cv.steps.seed_admit_shapes": {
+        "funcs": ("_book_knn_pass", "_near_knn_pass", "_pair_shape_pass", "_rr_shape_pass"),
+    },
     "open_guji_cv.groups.flow": {"funcs": ("entry", "decide", "decide_joint", "_solve", "_pick_form",
                                            "_provisional", "_vis_try")},
     "open_guji_cv.shadow.gate": {"methods": {"ShadowGate": ("judge",)}},
