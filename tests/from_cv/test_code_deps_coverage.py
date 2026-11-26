@@ -159,13 +159,29 @@ def _is_pkg(name: str) -> bool:
     return bool(spec and spec.submodule_search_locations)
 
 
+#: Step 模块原样拆出去的几块（拆分登记在 cv `code_equiv.SPLITS`）：它们的 import 算 Step 模块自己的，
+#: NOT_IN_FP／EXISTING_GAPS 仍按 Step 模块名登记。cv#1911（CV4 2026-11-26）seed_admit 拆出 common／lanes／shapes。
+SPLIT_PARTS: dict[str, tuple[str, ...]] = {
+    "open_guji_cv.steps.seed_admit": ("open_guji_cv.steps.seed_admit_common", "open_guji_cv.steps.seed_admit_lanes",
+                                      "open_guji_cv.steps.seed_admit_shapes"),
+}
+
+
+def _family_imports(m: str) -> set[str]:
+    fam = (m, *SPLIT_PARTS.get(m, ()))
+    out: set[str] = set()
+    for x in fam:
+        out |= _imports(x)
+    return out - set(fam)
+
+
 def _gaps() -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for st in STEPS.values():
         m = type(st).__module__
         if not m.startswith("open_guji_cv."):    # 别的测试往 STEPS 里注册的假 Step（全量跑时才在）
             continue
-        miss = {i for i in _imports(m) - set(st.spec.code_deps) if (m, i) not in NOT_IN_FP}
+        miss = {i for i in _family_imports(m) - set(st.spec.code_deps) if (m, i) not in NOT_IN_FP}
         if miss:
             out.setdefault(m, set()).update(miss)
     return out
@@ -189,4 +205,4 @@ def test_existing_gaps_only_shrink():
 def test_not_in_fp_entries_are_live():
     for (m, i), why in NOT_IN_FP.items():
         assert why.strip()
-        assert i in _imports(m), f"{m} 已不 import {i}，删掉这条 NOT_IN_FP"
+        assert i in _family_imports(m), f"{m} 已不 import {i}，删掉这条 NOT_IN_FP"

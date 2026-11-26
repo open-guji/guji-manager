@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- 测试（只动 tests，L0）：`tests/from_cv/test_code_deps_coverage.py` 认 cv#1911 seed_admit 拆出的 `seed_admit_common`／`lanes`／`shapes`（新表 `SPLIT_PARTS`：拆出去几块的 import 算 Step 模块自己的，NOT_IN_FP／EXISTING_GAPS 仍按 seed_admit 登记）；修 #1911 后「seed_admit 已不 import groups.stroke_veto」的红（GM4 报，CV4 11-26）。
 ## [0.6.24] - 2026-11-26
 
 - 发版缘由：身份账有字旧格不配给空格（#1018，主线程 11-26 定）。
