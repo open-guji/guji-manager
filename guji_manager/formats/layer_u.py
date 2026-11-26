@@ -63,15 +63,16 @@ def restamp_moved(before: dict | None, after: dict | None, layer: str, a2u: dict
     if not a2u or before is None or after is None:
         return 0
     n = 0
+    live = set(a2u.values())
     if layer == "punct":
         for p0, p1 in zip(before.get("punctuations") or [], after.get("punctuations") or []):
-            if p0.get("anchor") != p1.get("anchor") and p1.get("anchor") in a2u and p1.get("u") != a2u[p1["anchor"]]:
+            if (p0.get("anchor") != p1.get("anchor") or (p1.get("u") is not None and p1.get("u") not in live)) and p1.get("anchor") in a2u and p1.get("u") != a2u[p1["anchor"]]:
                 restamp_punct(p1, a2u)
                 n += 1
     else:
         old = {x.get("id"): x.get("anchor") for x in before.get("entities") or []}
         for x in after.get("entities") or []:
-            if old.get(x.get("id")) != x.get("anchor"):
+            if old.get(x.get("id")) != x.get("anchor") or any(x.get(k) is not None and x.get(k) not in live for k in ("u_start", "u_end")):
                 u0 = (x.get("u_start"), x.get("u_end"))
                 restamp_entity(x, a2u)
                 n += (x.get("u_start"), x.get("u_end")) != u0
