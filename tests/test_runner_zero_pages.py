@@ -48,3 +48,25 @@ def test_cancel_reason_names_who():
     assert j._cancel_reason() == "QTW 要求停下"
     j.db = lambda fn, *a: (_ for _ in ()).throw(OSError("连不上"))
     assert j._cancel_reason() == "有人要求停下"
+
+
+def test_clear_local_derived(tmp_path):
+    (tmp_path / "feedback" / "bindings" / "03").mkdir(parents=True)
+    (tmp_path / "feedback" / "bindings" / "03" / "p0001.json").write_text("{}")
+    (tmp_path / "feedback" / "bindings" / "04").mkdir(parents=True)
+    rs = tmp_path / "products" / "03" / "row_segment"
+    (rs / "_prev").mkdir(parents=True)
+    (rs / "p0001.json").write_text("{}")
+    (tmp_path / "products" / "03" / "row_segment.bak-20261101").mkdir()
+    assert R._clear_local_derived(str(tmp_path), "03") == 3
+    assert (rs / "p0001.json").exists() and not (rs / "_prev").exists()
+    assert not (tmp_path / "products" / "03" / "row_segment.bak-20261101").exists()
+    assert not (tmp_path / "feedback" / "bindings" / "03").exists()
+    assert (tmp_path / "feedback" / "bindings" / "04").exists()
+    assert R._clear_local_derived(str(tmp_path), "../x") == 0
+
+
+def test_bindings_cache_not_synced_to_central():
+    """人裁绑定缓存是本机派生物，不进中心库（推不上去，旧算法的缓存也就不会传到别的机器）。"""
+    from guji_manager.datastore import scope
+    assert scope.classify("feedback/bindings/03/p0094.json") is None

@@ -6,6 +6,9 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2）：执行方铺底后清这一册的本机派生物——`feedback/bindings/<册>/`（人裁绑定缓存，只按切分 sha＋事件签名判新鲜、不含算法版本）、`products/<册>/<步>.bak-*` 与 `<步>/_prev`（绑定拿它们找旧框）；存包不再打进 `<步>.bak-*`。缘由：11-26 史記 03 #17918 在 worker-46 上把 16 格没锚框的旧人裁落成 human，别处复算是 unanchored（本机残留）。绑定缓存本就不进中心库（scope 不收），清本机即可。不动 cv 产物，L0。
+- PATCH（11-26，GM2）：`guji_jobs cancel` 也收 blocked 的单（依赖没成功、等人处理），照常记事件和操作人；原先只收 queued／running，CV0 撤钉弃用 cv 60ec7603 的 6 张 blocked 单只能直接改库。L0。
+
 ## [0.6.38] - 2026-11-26
 
 - 发版缘由：钉子护栏收尾——`seg pins-recheck` 无几何底老钉子批量重核补 geom、`pins-stale` 报「未生效」（#1085，CV1）；新待审原因 `manual_cells_remapped`（S05，读 row_segment 列旗出卡）与 wiki（#1086，GM2）。配 cv ≥ v0.9.6。均 PATCH。

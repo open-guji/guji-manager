@@ -124,7 +124,7 @@ def cancel(conn, job_id: int, by: str) -> str:
     t = _tag()
     res = conn.batch([
         (f"UPDATE job SET status = 'cancelled', finished_at = {NOW}, updated_at = {NOW}, mark = ?2"
-         " WHERE id = ?1 AND status = 'queued' RETURNING id", [job_id, t]),
+         " WHERE id = ?1 AND status IN ('queued', 'blocked') RETURNING id", [job_id, t]),
         (f"UPDATE job SET cancel_requested = 1, updated_at = {NOW}, mark = ?2"
          " WHERE id = ?1 AND status = 'running' RETURNING id", [job_id, t]),
         (_ev("id", "NULL", "cancel", "info",
