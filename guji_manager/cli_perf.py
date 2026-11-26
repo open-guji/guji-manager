@@ -351,6 +351,9 @@ PERF_HOOKS: dict[str, dict] = {
                   # 第二轮：铁证闸逐格再匹配、字组流程与影子闸里面
                   "_iron_decide", "_page_patch", "_clf_ctx", "_hard_blocked", "_shadow_gate"),
     },
+    # cv #1911（11-26，CV4）把 seed_admit 拆出 seed_admit_common／lanes／shapes，字块读取各处经 `_C._page_patch` 调，
+    # 换 seed_admit 上那个名字不再计到；要换 seed_admit_common 上的（旧 cv 没这模块，import 失败就跳过）
+    "open_guji_cv.steps.seed_admit_common": {"funcs": ("_page_patch",)},
     "open_guji_cv.groups.flow": {"funcs": ("entry", "decide", "decide_joint", "_solve", "_pick_form",
                                            "_provisional", "_vis_try")},
     "open_guji_cv.shadow.gate": {"methods": {"ShadowGate": ("judge",)}},
