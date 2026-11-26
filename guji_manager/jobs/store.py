@@ -296,9 +296,15 @@ def reap(conn) -> list[tuple[int, str]]:
             "UPDATE jobs.attempt SET finished_at=now(), outcome='lost' WHERE finished_at IS NULL"
             " AND lease_until < now() RETURNING id, job_id, worker"))
         for a in lost:
-            j = _one(conn.execute("SELECT attempts, max_attempts, status FROM jobs.job WHERE id=%s FOR UPDATE",
-                                  (a["job_id"],)))
+            j = _one(conn.execute("SELECT attempts, max_attempts, status, cancel_requested FROM jobs.job"
+                                  " WHERE id=%s FOR UPDATE", (a["job_id"],)))
             if j is None or j["status"] != "running":
+                continue
+            if j.get("cancel_requested"):      # 已有人要求停下：失联就记取消，不退回排队
+                conn.execute("UPDATE jobs.job SET status='cancelled', finished_at=now(), updated_at=now(),"
+                             " error='有人要求停下（执行会话失联，租约过期后记取消）' WHERE id=%s", (a["job_id"],))
+                out.append((a["job_id"], "cancelled"))
+                _event(conn, a["job_id"], a["id"], "reap", f"{a['worker']} 失联，已有人要求停下，记取消", level="warn")
                 continue
             n_lost = _one(conn.execute("SELECT count(*) AS n FROM jobs.attempt WHERE job_id=%s AND outcome='lost'",
                                        (a["job_id"],)))["n"]
