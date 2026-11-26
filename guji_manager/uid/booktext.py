@@ -157,7 +157,7 @@ def adopt(line: dict, cut, bt: BookTextState, known: set[int]) -> int:
         if nb is None:
             continue
         for bu, bb, bc in cand:
-            if bb is None:
+            if bb is None or (bc and ch.get(k) == ""):     # 有字的 book-text 格不让空格认领（同 match 第 0 条）
                 continue
             s = iou(nb, bb)
             if s >= IOU_MIN:
