@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2）：`guji db status／sync／push` 不再把本机不存在的 `workspace.yaml` 当成「未推」改动（SJ 报：它是工作区仓里的身份文件，base 里有、本机缺时原先算成删除）；推送扫描时缺它直接说明「-w 指对了吗、先在工作区仓 git pull」，不再 FileNotFoundError。不动 cv 产物，L0。
+
 - PATCH（11-26，GM2）：任务库 `reap` 修——在跑的单已被要求停下（cancel_requested）后执行会话失联、租约过期，原先退回排队、又被别的执行机领走白跑；现在记 **cancelled**（D1 与 PG 两种写法同改，事件「失联，已有人要求停下，记取消」）。11-26 全唐文 061–120 撤单后 #17696／#17701／#17704 又回到 queued 即此。另：`guji job submit／cancel／bump／retry` 没设 `GUJI_JOBS_WHO` 时提醒一句（否则署名记成主机名，云会话都是「vm」，事后查不出是谁）。不动 cv 产物，L0。
 
 ## [0.6.30] - 2026-11-26
