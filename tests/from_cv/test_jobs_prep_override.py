@@ -20,6 +20,9 @@ def _runner(tmp_path, monkeypatch, spec):
     r.db = lambda *a, **k: None
     r.central_rev = lambda: CENTRAL["rev"]          # 中心库 rev 由测试指定，不走网络
     monkeypatch.setattr(R, "_ws_remote_head", lambda repo: "0" * 40)   # 书仓 origin/main 由测试指定，不走网络
+    img = tmp_path / "data_full" / spec["book"]                     # 本机原图在（跳过准备要核，#17657）
+    img.mkdir(parents=True, exist_ok=True)
+    (img / "1.png").write_bytes(b"x")
     return r
 
 
