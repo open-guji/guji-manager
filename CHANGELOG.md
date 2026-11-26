@@ -6,6 +6,7 @@
 
 ## [未发版]
 - PATCH（11-26，CV0）：推库闸拦「册有字格身份账却没带 u」的新事件（格级人裁 `anchor.u`、按格裁定 `payload.u`；不经 manager 写的会绕过 append 前盖 u，史記「歲暫歸一」批 22 条）；`GUJI_DB_ALLOW_NO_U=1` 放行。新命令 `guji uid stamp <事件文件> [--write]`：按身份账给锚在同一份切分上的行就地补 u。`uid migrate-plan` 不再把 u_void 里记过作废的裁定、人裁抄回来。
+- PATCH（11-26，CV0）：u 收口误作废了「整列平移」的人裁（cv 按锚框顺移绑对了格、字与 book-text 同；全唐文 56、史記 5 格，T3 核出）。`uid migrate-plan --close` 先用 cv 绑定认格（`book_bindings`→`usable`，valid／rebound 的现格号在账、字同或异体、u 没被占 → 认这格 u），认不上才走异体／列内近邻／作废；`--bind-products` 指现行 main 包产物，`--no-bind` 关。u_void 新记档 `kind=u_unvoid` 撤销同 id 之前的作废／转待审（`u_migrate.unvoid`：抄 `~u` 件带锚档、记撤销、撤下这些人裁转出的 recheck 条目）。
 
 ## [0.6.25] - 2026-11-26
 

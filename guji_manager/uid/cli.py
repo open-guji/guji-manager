@@ -228,6 +228,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
                    help="收口（u_migrate.rescue_human／close_out）：清单上的人裁按异体、列内近邻同字再救一批；其余裁定、人裁作废记档"
                         "（feedback/lists/u_void/<册>.jsonl，原事件不动），字不同的人裁转待审条目（recheck），格号不在账的条目撤下。出 收口.tsv／收口.json")
     q.add_argument("--review-items", default=None, help="转待审的条目写进哪个文件（缺省 --items 第一个）")
+    q.add_argument("--bind-products", default=None,
+                   help="收口先用 cv 绑定认格（book_bindings）读哪份产物（现行 main 包的目录；缺省工作区产物）")
+    q.add_argument("--no-bind", action="store_true", help="收口不跑 cv 绑定认格（没装 cv／没产物时）")
 
     q = s.add_parser("tidy-recheck", help="u 迁移转待审的条目：同格并成一条、补候选字（现行字＋旧人裁字＋票字）")
     q.add_argument("book", help="cv 册（读身份账取现行字）")
@@ -283,6 +286,22 @@ def cmd_table(a) -> None:
               file=sys.stderr)
     else:
         sys.stdout.write(txt)
+
+
+def _cv_bound(book: str, products: str | None) -> dict[str, str]:
+    """cv 绑定（book_bindings → usable）：{事件 id: 现格号}。跑不了（没装 cv、没产物）就报一行、返回空（收口照旧）。"""
+    try:
+        from .._cv import EventLog, ProductStore, bindings_usable, book_bindings
+        rows = book_bindings(book, log=EventLog(), store=ProductStore(Path(products)) if products else None, refresh=True)
+    except Exception as ex:                 # noqa: BLE001
+        print(f"⚠ cv 绑定认格没跑成（{type(ex).__name__}: {ex}），收口不用这一步", file=sys.stderr)
+        return {}
+    out = {}
+    for eid, row in rows.items():
+        cell = bindings_usable(row)
+        if cell:
+            out[eid] = cell
+    return out
 
 
 def cmd_migrate_plan(a) -> None:
@@ -368,7 +387,12 @@ def cmd_migrate_plan(a) -> None:
                 vg[x] = variant_group(x)
             return y in vg[x]
         taken = {int(h["u"]) for h in hum.values() if h.get("u") is not None} | {int(x["u"]) for x in res["human"]}
-        rescued, rest = M.rescue_human(led, res["清单"], same=load_norm(a.book).same, variant=variant, taken=taken)
+        # ⓪ 先用 cv 绑定认格：「格号不在账」「字不同、切分变过」的人裁多是整列平移，cv 按锚框顺移绑对了（11-26 救回 61 格）
+        bound = {} if a.no_bind else _cv_bound(a.book, a.bind_products)
+        by_bind, left = M.bind_rescue(led, res["清单"], bound, same=load_norm(a.book).same, variant=variant, taken=taken)
+        rescued, rest = M.rescue_human(led, left, same=load_norm(a.book).same, variant=variant,
+                                       taken=taken | {int(x["u"]) for x in by_bind})
+        rescued = by_bind + rescued
         co = M.close_out(led, rest, human_u=taken | {int(x["u"]) for x in rescued})
         co["void"] += rev_void
         summ = {"人裁救回": dict(Counter(x["how"] for x in rescued)), "作废": dict(Counter(v["stream"] for v in co["void"])),

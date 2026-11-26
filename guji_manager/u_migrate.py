@@ -499,12 +499,7 @@ def write_close(book: str, co: dict, *, rescued: list[dict], unscreened: list[di
     from .review import pending_items as P
     files: set[str] = set()
     vp = void_path(event_log) / f"{book}.jsonl"
-    seen = set()                       # 重跑不重复记：已记过的 (stream, id, key)
-    if vp.exists():
-        for line in vp.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                d = json.loads(line)
-                seen.add((d.get("stream"), d.get("id"), d.get("key")))
+    seen = {(d.get("stream"), d.get("id"), d.get("key")) for d in void_rows(event_log, book)}   # 重跑不重复记（撤销了的不算）
     co = {**co, "void": [v for v in co["void"] if (v["stream"], v["id"], v["key"]) not in seen],
           "review": [r for r in co["review"] if ("events", r["h"]["id"], r["cell"]) not in seen]}
     unscreened = [x for x in unscreened if ("rulings", None, x.get("cell")) not in seen]
@@ -580,34 +575,113 @@ def latest_by_key(evs, pre: str) -> dict:
     return out
 
 
-def void_seen(event_log, book: str) -> set:
-    """u_void 里记过的人裁事件 id（作废和转待审都算有去向）。"""
+def void_rows(event_log, book: str) -> list[dict]:
+    """u_void 里现在有效的记档（按文件顺序）：``kind=u_unvoid`` 撤销同 id 在它之前的作废／转待审记档（11-26 救回顺移人裁）。"""
     import json
     vp = void_path(event_log) / f"{book}.jsonl"
-    seen = set()
+    rows: list[dict] = []
     if vp.exists():
         for line in vp.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 d = json.loads(line)
-                if d.get("stream") == "events" and d.get("id"):
-                    seen.add(d["id"])
-    return seen
+                if d.get("kind") == UNVOID:
+                    if d.get("id"):
+                        rows = [r for r in rows if r.get("id") != d["id"]]
+                else:
+                    rows.append(d)
+    return rows
+
+
+def void_seen(event_log, book: str) -> set:
+    """u_void 里记过的人裁事件 id（作废和转待审都算有去向；撤销了的不算）。"""
+    return {d["id"] for d in void_rows(event_log, book) if d.get("stream") == "events" and d.get("id")}
 
 
 def void_ids(event_log, book: str) -> tuple[set, dict]:
     """u_void 里记过的：(事件 id 集合, 裁定 {格号: 记档时间})。裁定作废记档不带 id，按格号＋时间认（记档前写的那条）。"""
-    import json
-    vp = void_path(event_log) / f"{book}.jsonl"
     ids, rul = set(), {}
-    if vp.exists():
-        for line in vp.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                d = json.loads(line)
-                if d.get("id"):
-                    ids.add(d["id"])
-                elif d.get("stream") == "rulings" and d.get("key"):
-                    rul[d["key"]] = max(rul.get(d["key"], ""), str(d.get("at") or ""))
+    for d in void_rows(event_log, book):
+        if d.get("id"):
+            ids.add(d["id"])
+        elif d.get("stream") == "rulings" and d.get("key"):
+            rul[d["key"]] = max(rul.get(d["key"], ""), str(d.get("at") or ""))
     return ids, rul
+
+
+UNVOID = "u_unvoid"
+
+
+def bind_rescue(led: Ledger, left: list[dict], bound: dict[str, str], *, same=None, variant=None,
+                taken: set | None = None) -> tuple[list[dict], list[dict]]:
+    """⓪ cv 绑定认格（11-26）：清单上的人裁先看 cv 绑定（``feedback.bindings.book_bindings`` → ``usable``，
+    status valid／rebound 的 bound）。绑到的格在现行账里、账上字＝人裁字（归一表或异体）、u 没被别的人裁占 → 认这格的 u。
+    整列平移、格号前后挪了的人裁（cv 按锚框顺移绑对了）靠这条，不再作废。``bound``＝{事件 id: 现格号}。
+    → (救回 [{id, cell, u, how, now}], 其余)。"""
+    same = same or (lambda a, b: a == b)
+    variant = variant or (lambda a, b: False)
+    taken = set(taken or ())
+    out, rest = [], []
+    for x in left:
+        h = x.get("_h")
+        cell = bound.get(h["id"]) if h else None
+        pg = _page_of(cell) if cell else None
+        cur = led.page(pg) if pg is not None else None
+        if cur is None or cell not in cur["map"]:
+            rest.append(x)
+            continue
+        now = (cur.get("chars") or {}).get(cell, "")
+        u = int(cur["map"][cell])
+        if u in taken or not any(c and now and (same(c, now) or variant(c, now)) for c in (h.get("shape"), h.get("reading"))):
+            rest.append(x)
+            continue
+        out.append({"id": h["id"], "cell": h["cell"], "u": u, "how": "cv 绑定", "now": cell})
+        taken.add(u)
+    return out, rest
+
+
+def unvoid(book: str, rescued: list[dict], *, human_events: dict, event_log, items_files=(), reason: str,
+           by: str = "u-migrate") -> dict:
+    """救回已作废／转待审的人裁（只追加）：抄 ``~u`` 件（带锚档）、u_void 记 ``u_unvoid`` 撤销、
+    撤下这些人裁转出来的 recheck 待审条目（条目 prior.event 全在救回之列、且没并进网页票的才撤）。
+    ``rescued``＝[{id, u, now?}]。→ {抄件, 撤销, 撤下条目, files}。"""
+    import json
+    from pathlib import Path
+    from .review import pending_items as P
+    files: set[str] = set()
+    have = {e.id for e in event_log.iter_all(raw=True) if e.id.endswith(SUFFIX)}
+    hs = [_copy(human_events[x["id"]], anchor_u=x["u"]) for x in rescued if x["id"] + SUFFIX not in have]
+    if hs:
+        event_log.append(hs)
+        files |= {str(event_log.batch_path(b)) for b in {e.batch for e in hs}}
+        files |= copy_anchor_patches(event_log, [(e.id[:-len(SUFFIX)], e.id, e.target.book or e.target.key.split(":")[0])
+                                            for e in hs])
+    live = void_seen(event_log, book)
+    at = P.now()
+    rows = [{"kind": UNVOID, "book": book, "stream": "events", "id": x["id"], "key": x.get("now") or x.get("cell"),
+             "u": x["u"], "reason": reason, "at": at, "by": by} for x in rescued if x["id"] in live]
+    if rows:
+        vp = void_path(event_log) / f"{book}.jsonl"
+        with open(vp, "a", encoding="utf-8") as fh:
+            for r in rows:
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+        files.add(str(vp))
+    ids = {x["id"] for x in rescued}
+    n_wd = 0
+    for f in items_files:
+        st = P.ItemStore(Path(f))
+        hit = 0
+        for r in list(st.items.values()):
+            p = (r.get("doc") or {}).get("prior") or {}
+            evs = [e for e in str(p.get("event") or "").split("／") if e]
+            if (r.get("state") in ("open", "resolved") and evs and set(evs) <= ids and not p.get("vote")
+                    and str(r.get("src") or "") in CLOSEOUT_SRC):
+                st.withdraw(r["id"], by=by, why=f"u 迁移：原人裁已按 cv 绑定救回（{reason}）")
+                hit += 1
+        if hit:
+            st.save()
+            files.add(str(f))
+            n_wd += hit
+    return {"抄件": len(hs), "撤销": len(rows), "撤下条目": n_wd, "files": sorted(files)}
 
 
 def unaccounted(latest: dict, seen: set) -> list:
