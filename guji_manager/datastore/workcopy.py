@@ -1115,6 +1115,8 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     rgate = RevGate(books_dir=data / "books")
     stale_ev = {r.key[1]: r.src_path for r in sc.rows
                 if r.tbl == "events" and not rgate.admits(r.cols.get("kind"), r.cols.get("target") or {})}
+    from ..u_stamp import NO_U_ENV, no_u_message, no_u_rows
+    no_u = {} if os.environ.get(NO_U_ENV) == "1" else no_u_rows(sc.rows, data)   # 册有账却没带 u 的新事件拒收
     if not creating and not shared_writer:
         from .._cv import push_problems
         problems = push_problems(ws_dir)
@@ -1141,6 +1143,11 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
         cur.execute("SELECT 1 FROM changes WHERE ws = %s AND rev > %s LIMIT 1", (sc.ws, base))
         if cur.fetchone():
             raise StaleBase(f"工作区 {sc.ws} 在 rev {base} 之后已有别人写入；先 guji db pull 再推")
+        if no_u:                                               # 库里已有的照留（存量走 uid migrate-plan），只拦这次新推的
+            cur.execute("SELECT id FROM events WHERE ws = %s AND id = ANY(%s)", (sc.ws, list(no_u)))
+            new_nu = sorted(set(no_u) - {r[0] for r in cur.fetchall()})
+            if new_nu:
+                raise SystemExit(no_u_message(new_nu, no_u))
         if stale_ev:                                           # 库里已有的旧事件照留，只拦这次新推的
             cur.execute("SELECT id FROM events WHERE ws = %s AND id = ANY(%s)", (sc.ws, list(stale_ev)))
             new = sorted(set(stale_ev) - {r[0] for r in cur.fetchall()})
