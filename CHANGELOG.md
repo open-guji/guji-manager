@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（GM4 11-26，待审与裁定整理第 6 步）：`opinions revise --write-events`（缺省关）：真写 book-text 后对每个改字／新增格写 confirm 裁定事件（payload.level 明写：用户采纳 human／规则自动采纳 ai；锚直接带 u、bbox、cells_sha、有则 content_sha；B′ 新格 u 不在现行切分账里就只留文本不写事件；payload.no_glyph 让字形库重放跳过；batch `opinion-<册>-<章>-<日期>` 不带「~」）。另修：revise 改 A／B 类格时 CELL_KEYS 漏了 `u`，会把 v0.6 char 格的 u 丢掉。
+
 ## [0.6.31] - 2026-11-26
 
 - 发版缘由：corpus 缺省号认运行覆盖（#1051，修 #1006 回归：执行机 rerun 单带 corpus 覆盖时语料校验读裸册 yaml）；待审清单 jsonl 逐行进 list_rows（#1052）。按用户「先升 PATCH」，cut_check 1.3.0（#1050）一并按 PATCH 发。
