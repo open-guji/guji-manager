@@ -29,3 +29,10 @@ def test_ensure_members_fills_missing_only():
     out = ensure_members([], ["日", "曰"], None, None)             # 排不了序：无分，保持组内顺序
     assert [(a["c"], a["s"]) for a in out] == [("日", None), ("曰", None)]
     assert pending_fields({"alt": out})["alt"][0]["s"] is None
+
+
+def test_ensure_members_keeps_members_within_cap():
+    from guji_manager.review.alt_cands import ALT_K
+    ranked = [{"c": chr(0x4e00 + i), "s": 0.9 - i * 0.001, "p": "", "src": "x"} for i in range(ALT_K)]
+    out = ensure_members(ranked, ["己", "巳"], np.array([1.0, 0.0]), lambda cs: {c: np.array([0.0, 1.0]) for c in cs})
+    assert len(out) == ALT_K and {"己", "巳"} <= {a["c"] for a in out}

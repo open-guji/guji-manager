@@ -50,7 +50,13 @@ def ensure_members(ranked: list[dict], members: list[str], q, vectors) -> list[d
         return ranked
     vec = vectors(miss) if q is not None else {}
     add = [{"c": c, "s": round(float(vec[c] @ q), 4) if c in vec else None, "p": "", "src": "group"} for c in miss]
-    return sorted(ranked + add, key=lambda a: (a["s"] is None, -(a["s"] or 0.0)))  # sorted 稳定：无分的保持组内顺序
+    out = sorted(ranked + add, key=lambda a: (a["s"] is None, -(a["s"] or 0.0)))  # sorted 稳定：无分的保持组内顺序
+    # 网站只收前 ALT_MAX(30) 个：超了就从尾部丢非组员，组员一个不丢
+    keep = set(members)
+    while len(out) > ALT_K and any(a["c"] not in keep for a in out):
+        i = max(i for i, a in enumerate(out) if a["c"] not in keep)
+        del out[i]
+    return out
 
 
 def pivots_of(card: dict, extra: Iterable[str] = ()) -> list[str]:
