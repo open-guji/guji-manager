@@ -261,6 +261,14 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
                     texts[p] = b
                     continue
             extra = [i for i in have if i >= n]
+            if extra and len(have) == n:
+                # 中间删过行、导入只删不重排行号（行号空洞＋末尾超出 n_lines）：按行号紧排，sha 对上就是原文
+                # （殿本 instances/vol01.jsonl 11-26：空洞 8789/12708/12709，超出 14658–14660，紧排后逐字节相同）
+                keep = [have[i] for i in sorted(have)]
+                b = ("\n".join(keep) + ("\n" if f["final_newline"] and keep else "")).encode("utf-8")
+                if len(b) == int(f["bytes"]) and sha256(b) == f["sha256"]:
+                    texts[p] = b
+                    continue
             if extra:
                 raise MaterializeError(f"{p}: 库里有超出 n_lines 的行 {sorted(extra)[:5]}")
             text = "\n".join(have.get(i, "") for i in range(n)) + ("\n" if f["final_newline"] else "")
