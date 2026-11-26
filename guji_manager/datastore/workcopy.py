@@ -1230,7 +1230,10 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
         res = {ext: (uploader(g) if ext == "png" else uploader(g, ext=ext))   # 只收图的 uploader 照旧能用
                for ext, g in sorted(images.items())}
         up = res["png"] if list(res) == ["png"] else res
-    only = {r.src_path for r in sc.rows if not r.src_path.startswith(skip_prefixes)} if skip_prefixes else None
+    only = None
+    if skip_prefixes:      # 本地整个删掉的文件也要比（库里那几行跟着删、受删除闸管），否则 --allow-delete 删不掉（GM2 11-26）
+        only = ({r.src_path for r in sc.rows if not r.src_path.startswith(skip_prefixes)}
+                | {c for c in changed if c not in cur_manifest})
     if incr:                                           # 只比这些文件的行；本地删掉的文件也在里面（库里那几行跟着删，受删除闸管）
         only = set(changed)
     rep = import_scans(conn, [sc], label=f"push:{sc.ws}@{base}", actor=actor, dry_run=dry_run,

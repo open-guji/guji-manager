@@ -108,6 +108,27 @@ def test_push_skip_prefixes_leaves_glyph_store_alone(repo, conn, tmp_path):  # n
         {k: v for k, v in base_before.items() if k.startswith(GS)}
 
 
+@pytest.mark.parametrize("full_scan", ["0", "1"])
+def test_push_skip_prefixes_still_deletes_removed_files(repo, conn, tmp_path, monkeypatch, full_scan):  # noqa: F811
+    """缺省推（不推字形库，skip_prefixes=(GS,)）时本地整个删掉的文件：不带 --allow-delete 拒推，带了库里跟着删
+    （11-26 删 45 个一次性清单：原先只比扫到的路径，--allow-delete 推完库里仍在）。"""
+    from guji_manager.datastore.workcopy import FULL_SCAN_ENV, FileDeleteRefused, data_dir, push
+    from guji_manager.datastore.scope import GS
+    monkeypatch.setenv(FULL_SCAN_ENV, full_scan)       # 全量扫描（GUJI_DB_FULL_SCAN=1）原先删不掉
+    src, files, cache, _ = _setup(repo, conn, tmp_path)
+    ws = _fresh(files, tmp_path / "ws", src, cache)
+    gone = data_dir(ws) / "books" / "vol03.yaml"
+    assert gone.exists()
+    gone.unlink()
+    with pytest.raises(FileDeleteRefused):
+        push(conn, ws, actor="t", skip_prefixes=(GS,))
+    out = push(conn, ws, actor="t", skip_prefixes=(GS,), allow_delete=True)
+    assert out["per_table"]["files"]["delete"] + out["per_table"].get("books", {}).get("delete", 0) >= 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM source_files WHERE src_path = %s", ("books/vol03.yaml",))
+        assert cur.fetchone() is None
+
+
 def test_not_migrated_workspace_is_refused(tmp_path):
     from guji_manager.datastore.workcopy import data_dir
     (tmp_path / "workspace.yaml").write_text("id: x\n")
