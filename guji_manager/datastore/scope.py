@@ -31,7 +31,14 @@ def fingerprint(row: Row) -> str:
     text = row.raw
     if row.tbl == "glyph_instances":
         text += "\n" + (row.cols.get("patch_sha") or "")
+    elif row.tbl == "source_files" and row.cols.get("tbl") in RECLASSIFIED:
+        text += "\n" + row.cols["tbl"]
     return sha256(text.encode("utf-8"))
+
+
+#: 文件从别的表改归到这些表（待审条目 files → pending_items，GM4 11-26）：source_files 的指纹带上表名，
+#: 文件内容没变也会把 source_files.tbl 改过来（还原按它找表）。只对这些表加，别的 source_files 行指纹不变、不必重推
+RECLASSIFIED = frozenset({"pending_items"})
 
 
 def r2_key(sha: str, ext: str = "png") -> str:
@@ -77,6 +84,9 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("anchor_patches_meta", ("src_path",), has_doc=False),
     TableSpec("corpus_files", ("src_path",), has_doc=False),
     TableSpec("verdicts", ("src_path", "id")),
+    # 待审条目（feedback/lists/pending/<书>/<章>.items.jsonl）一行一个版本，GM4 11-26 从 files 拆出来。
+    # 主键用行号不用 (id, ver)：两台机器各自追加同一条目的同一 ver 时合并后两行都留（workcopy 只追加合并），当前版本＝每条最后一行
+    TableSpec("pending_items", ("src_path", "src_line"), has_doc=False),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
     TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
@@ -108,6 +118,7 @@ GLYPH_FILES = {
 # 两张空表，这两类文件改当整文件进 files（kind=glyph_misc）
 
 GS = "output/glyph_store/"
+PENDING_SUFFIX = ".items.jsonl"
 
 
 def excluded(rel: str) -> bool:
@@ -135,6 +146,8 @@ def classify(rel: str) -> str | None:
             return "anchor_patches_meta"
         if len(parts) >= 3 and parts[1] == "verdicts" and p.suffix == ".jsonl":
             return "verdicts"
+        if len(parts) == 5 and parts[1] == "lists" and parts[2] == "pending" and p.name.endswith(PENDING_SUFFIX):
+            return "pending_items"
         if len(parts) >= 3 and parts[1] == "lists":
             return "files"
         if len(parts) == 3 and parts[1] == "candidates":
@@ -222,6 +235,19 @@ def _events(rec, rel, line):
     return (rel, rec["id"]), cols
 
 
+def _pending(rec, rel, line):
+    p = PurePosixPath(rel)
+    doc = rec.get("doc") if isinstance(rec.get("doc"), dict) else {}
+    cols = {
+        "item_id": _str(rec.get("id")), "ver": _int(rec.get("ver")),
+        "book": p.parts[3], "vol": p.name[:-len(PENDING_SUFFIX)],
+        "cell": _str(rec.get("cell")), "state": _str(rec.get("state")), "op": _str(rec.get("op")),
+        "src": _str(rec.get("src")), "actor": _str(rec.get("by")), "at": _str(rec.get("at")),
+        "why": _str(rec.get("why")), "recheck": 1 if doc.get("recheck") else 0,
+    }
+    return (rel, line), cols
+
+
 def _consumed(rec, rel, line):
     cols = _pick(rec, ("event", "ts", "note"))
     return (PurePosixPath(rel).stem, line), cols
@@ -253,6 +279,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "consumed": _consumed,
     "anchors": _anchors,
     "verdicts": _verdicts,
+    "pending_items": _pending,
     "glyph_sources": _glyph(
         ("source_id", "collection", "title", "volume", "edition_tag", "script_style", "era",
          "cols_per_page", "chars_per_col", "pipeline_version", "notes", "kind", "created_at"),
