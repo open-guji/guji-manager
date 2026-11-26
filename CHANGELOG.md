@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（GM3 11-26，AI 分析摘要进待审单）：点校旁路 notes 的查证摘要 `dian.why` 上限 200→400 字（`dian_trace.WHY_MAX`、`proof_fields.CTX_WHY_MAX`），notes 新增按（册，u）挂（`load_notes`／`find_note`／`dian_for` 加 `book`、`u`，`dian_attach` 读卡上的 `book`、`u`）；新脚本 `tools/dianjiao/write_notes.py`（TSV→notes，放行、未放行、判不了都写）。新规：无论浅层或深搜、确定或不确定，AI 分析（判为何字、理由、出处、置信）都要写进 notes 并随待审单出；裁定库 `why`（cv 限 60 字）只作一句话。网站显示 `ctx.why`／`dnote` 不变，只是可能更长（已知会 Web）。
 - PATCH（11-26，CV1，CV0 批的钉子护栏第一步）：整列钉子写入时在 `input.column_basis` 另记几何底 `geom`（页宽、左右边线六项、矫正上下界、ruled，即 cv ColumnMapper 的全部入参；见 doc/参考/钉子上游底.md）；`seg pins-stale` 对有 geom 的钉子只比 geom。新命令 `seg pins-backfill-geom [册…] [--write]` 一次性给老钉子补 geom（只补现行列窗与当时 col_sha 一致的）。缘由：全唐文 031–060 outer_bar 把直线页变三段、列图挪了 10–32px，人钉坐标照旧套用切偏，pins-stale 不在管线里且比整条记录会误报。不动 cv 产物，L0。
 
 ## [0.6.34] - 2026-11-26

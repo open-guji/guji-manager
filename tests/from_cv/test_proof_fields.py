@@ -57,8 +57,8 @@ def test_ctx_without_margin_is_omitted():
 
 
 def test_dian_hint_overrides_ctx_and_clips_why():
-    f = pending_fields(dict(CARD, dian={"char": "曰", "why": "某" * 300}))
-    assert f["ctx"]["c"] == "曰" and f["ctx"]["src"] == "punct_llm" and len(f["ctx"]["why"]) == 200
+    f = pending_fields(dict(CARD, dian={"char": "曰", "why": "某" * 500}))
+    assert f["ctx"]["c"] == "曰" and f["ctx"]["src"] == "punct_llm" and len(f["ctx"]["why"]) == 400
     assert "margin" not in f["ctx"]
 
 

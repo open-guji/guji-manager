@@ -13,7 +13,7 @@ trace 存放：`feedback/notes/<册>.jsonl`，每行 `{group, prompt_ver, ctx:{l
 - 倾向字 `char`：取最高一级里给出**候选内**字且 conf 为 high／mid、status 不是 not_found 的那一项；
   所有级都没有（弃权、low、字在候选外）则不给 `char`，网页只显示 `dnote`（`proof_fields` 已处理）。
   不预选：网页只提示。
-- `why`≤200 字：`L1 日/曰分歧；L2 mid：…；L3 已：…`，每级一句，超长从后截断；候选外真字（如「白」）写进 why。
+- `why`≤400 字：`L1 日/曰分歧；L2 mid：…；L3 已：…`，每级一句，超长从后截断；候选外真字（如「白」）写进 why。
 - `refs`：各级 evidence 的 url（仅 http/https，去重，高级别在前，最多 5 条），标题 `t`＝来源类型＋原句前 30 字，≤60 字。
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-WHY_MAX = 200
+WHY_MAX = 400          # 11-26 由 200 放宽：待审单要让人直接看到 AI 分析（判为何字、理由、出处），不必再搜
 REFS_MAX = 5
 _KIND = {"wikipedia": "维基百科", "other_book": "他书", "db": "数据库"}
 _LEVEL_ORDER = {"L1": 1, "L2": 2, "L3": 3}
@@ -114,11 +114,16 @@ def load_notes(path: str | Path) -> dict:
             idx[("hash", row.get("group"), h)] = row
         if row.get("cell"):
             idx[("cell", row["cell"])] = row
+        if row.get("u") is not None and row.get("book"):     # 字格永久编号 u（11-25 起以 u 为准）
+            idx[("u", str(row["book"]), int(row["u"]))] = row
     return idx
 
 
-def find_note(idx: dict, *, cell: str | None = None, group: str | None = None, ctx_hash: str | None = None) -> dict | None:
-    """先按（组，ctx 哈希）找（重切后仍命中），找不到再按格号。"""
+def find_note(idx: dict, *, cell: str | None = None, group: str | None = None, ctx_hash: str | None = None,
+              book: str | None = None, u: int | None = None) -> dict | None:
+    """先按（册，u）找，再按（组，ctx 哈希）（重切后仍命中），最后按格号。"""
+    if book is not None and u is not None and ("u", str(book), int(u)) in idx:
+        return idx[("u", str(book), int(u))]
     if group and ctx_hash and ("hash", group, ctx_hash) in idx:
         return idx[("hash", group, ctx_hash)]
     if cell:
@@ -127,9 +132,9 @@ def find_note(idx: dict, *, cell: str | None = None, group: str | None = None, c
 
 
 def dian_for(idx: dict, *, cell: str | None = None, group: str | None = None, ctx_hash: str | None = None,
-             cands: list[str] | None = None) -> dict | None:
+             cands: list[str] | None = None, book: str | None = None, u: int | None = None) -> dict | None:
     """出单脚本入口：找到该格的 trace 并摘要，供 `card["dian"] = dian_for(...)`。"""
-    row = find_note(idx, cell=cell, group=group, ctx_hash=ctx_hash)
+    row = find_note(idx, cell=cell, group=group, ctx_hash=ctx_hash, book=book, u=u)
     if not row:
         return None
     return summarize_trace(row.get("trace") or [], cands or row.get("cands"))

@@ -16,7 +16,7 @@ from .cards import doubt_codes
 
 PROOF_FIELDS_SCHEMA = "guji-proof/0.2"
 LIB_TOP_N = 5
-CTX_WHY_MAX = 200
+CTX_WHY_MAX = 400   # 同 dian_trace.WHY_MAX（11-26 放宽）
 DIAN_SRC = "punct_llm"
 REFS_MAX = 5
 NO_DOUBT = ["none"]          # 无疑问码但仍待审时的占位
