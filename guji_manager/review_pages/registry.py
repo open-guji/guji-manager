@@ -52,10 +52,10 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "切字 benchmark 银标抽查、整列验收；各列从右到左叠格框，点并字/劈字/框歪的格标红，整列没问题翻页记全对；"
              "结果用 colcheck-apply 导出（见 col_check.py）",
              options=("ok", "bad", "unsure"), doc_prefix="review_colcheck"),
-    PageType("cut_check", "逐格切线审查（一格一图带上下半格，点不准的切线）", "cut_check.tpl.html", "1.2.0",
+    PageType("cut_check", "逐格切线审查（一格一图带上下半格，点不准的切线）", "cut_check.tpl.html", "1.3.0",
              "切字 benchmark L2 层：字与字之间的切点；一屏原书一列，每格上下各带半个邻格、画上下切线，点图上半/下半标那条切线不准，"
              "列首尾与边框之间、左右宽窄不审；结果用 cutcheck-apply 导出（见 cut_check.py）",
-             options=("ok", "bad", "unsure"), doc_prefix="review_cutcheck"),
+             options=("ok", "bad", "unsure", "fix"), doc_prefix="review_cutcheck"),
     PageType("near_pair", "形近字对比卡（两字各摆库刻例，待审格居中）", "near_pair.tpl.html", "1.0.1",
              "L4 同字聚合后的形近对（畫/書、全/今、文/又…）；选 A/B/都不是/看不清/切分有问题，点即存；"
              "可带 near_shape 差异区高亮；结果经 `pair_audit` 出 relabel/confirm 事件",

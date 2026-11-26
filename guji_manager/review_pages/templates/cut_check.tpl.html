@@ -22,6 +22,11 @@
 .legend{font-size:12px;color:var(--muted);margin:4px 0 8px}
 .legend b.b{color:#2878dc}.legend b.r{color:#d33}
 .zoom{font-size:12px;margin-left:8px}
+.win svg.pe{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.win svg.pe polyline{fill:none;stroke:#e02020;stroke-width:2;vector-effect:non-scaling-stroke}
+.win svg.pe circle{fill:#fff;stroke:#e02020;stroke-width:2;vector-effect:non-scaling-stroke;cursor:grab}
+.cc.fix .win{border-color:#1a9e4b}.cc.fix svg.pe polyline{stroke:#1a9e4b}.cc.fix svg.pe circle{stroke:#1a9e4b}
+.qb button[data-v=fix]{display:none}.qb button[data-v=fix][aria-pressed="true"]{color:inherit;background:none}.cc.fix .qb button[data-v=fix]{display:block}
 </style>
 /*SHELL*/
 <script>
@@ -35,7 +40,7 @@ if(D.th)document.documentElement.style.setProperty("--th",D.th+"px");   // 1.2.0
 const screens=[];D.items.forEach(it=>{(screens[it.screen]=screens[it.screen]||[]).push(it)});
 const byId={};D.items.forEach(it=>byId[it.id]=it);
 const S=makeStore({key:"cut-check-"+D.book+"-v"+MAJOR,pageOf:k=>(byId[k]||{screen:0}).screen,
-  docOf:(k,raw)=>{const it=byId[k]||{};return {cell:k,vol:it.vol,label:raw.v||null,bad:raw.bad||[]}}});
+  docOf:(k,raw)=>{const it=byId[k]||{};return Object.assign({cell:k,vol:it.vol,label:raw.v||null,bad:raw.bad||[]},raw.poly?{poly:raw.poly}:{})}});
 const st=S.st;
 const lab=it=>{const r=S.raw(it.id);return r&&r.v?r:null};
 function toggleSide(it,side){
@@ -49,30 +54,55 @@ function paint(box,it){
   for(const e of box.querySelectorAll("[data-side]"))e.classList.toggle("wrong",bad.has(e.dataset.side));
   for(const b of box.querySelectorAll(".qb button[data-v]"))b.setAttribute("aria-pressed",String(b.dataset.v===r.v));
 }
+// 1.3.0：项带 poly（图内像素 [[x,y]…]）＝可改折线：拖圆点移点，点空白处加点，双击圆点删点；改过记 label=fix、存 poly。
+const NS="http://www.w3.org/2000/svg";
+function polyEdit(box,win,it){
+  const sv=document.createElementNS(NS,"svg");sv.setAttribute("class","pe");sv.setAttribute("viewBox",`0 0 ${it.iw} ${it.ih}`);sv.setAttribute("preserveAspectRatio","none");
+  const pl=document.createElementNS(NS,"polyline");sv.appendChild(pl);win.appendChild(sv);
+  const cur=()=>{const r=lab(it);return (r&&r.v==="fix"&&r.poly?r.poly:it.poly).map(p=>p.slice())};
+  let pts=cur(),drag=-1,moved=false;
+  const R=()=>Math.max(3,it.iw/45);
+  function draw(){pl.setAttribute("points",pts.map(p=>p.join(",")).join(" "));
+    sv.querySelectorAll("circle").forEach(c=>c.remove());
+    pts.forEach((p,k)=>{const c=document.createElementNS(NS,"circle");c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);c.setAttribute("r",R());c.dataset.k=k;sv.appendChild(c)})}
+  sv.__draw=()=>{pts=cur();draw()};
+  const at=e=>{const m=sv.getScreenCTM().inverse(),q=sv.createSVGPoint();q.x=e.clientX;q.y=e.clientY;const r=q.matrixTransform(m);return [Math.round(Math.min(it.iw,Math.max(0,r.x))*10)/10,Math.round(Math.min(it.ih,Math.max(0,r.y))*10)/10]};
+  const commit=()=>{pts.sort((a,b)=>b[0]-a[0]);S.set(it.id,{v:"fix",poly:pts.map(p=>p.slice())});paint(box,it);stat()};
+  sv.addEventListener("pointerdown",e=>{e.preventDefault();const t=e.target;sv.setPointerCapture(e.pointerId);moved=false;
+    if(t.tagName==="circle"){drag=+t.dataset.k;return}
+    const p=at(e);pts.push(p);pts.sort((a,b)=>b[0]-a[0]);drag=pts.indexOf(p);draw();moved=true});
+  sv.addEventListener("pointermove",e=>{if(drag<0)return;pts[drag]=at(e);moved=true;draw()});
+  sv.addEventListener("pointerup",()=>{if(drag>=0&&moved)commit();drag=-1});
+  sv.addEventListener("dblclick",e=>{if(e.target.tagName==="circle"&&pts.length>2){pts.splice(+e.target.dataset.k,1);draw();commit()}});
+  draw();
+}
 function card(it,i){
   const box=document.createElement("div");box.className="cc";
   const m=document.createElement("div");m.className="meta";m.textContent=(i+1)+(it.kind&&String(it.kind).startsWith("jiazhu")?" 夹注":"")+(it.note?" · "+it.note:"");box.appendChild(m);
   const win=document.createElement("div");win.className="win";win.style.aspectRatio=it.iw+"/"+it.ih;
   const im=document.createElement("img");im.src=it.img;im.alt="第 "+(i+1)+" 格";win.appendChild(im);
   const mid=(it.top!=null&&it.bottom!=null)?(it.top+it.bottom)/2:it.ih/2;
-  for(const [side,y] of [["top",it.top],["bottom",it.bottom]]){
+  for(const [side,y] of (it.poly?[]:[["top",it.top],["bottom",it.bottom]])){
     if(y==null)continue;
     const h=document.createElement("div");h.className="half";h.dataset.side=side;
     if(side==="top"){h.style.top="0";h.style.height=(mid/it.ih*100)+"%"}else{h.style.top=(mid/it.ih*100)+"%";h.style.bottom="0"}
     h.onclick=e=>{e.stopPropagation();toggleSide(it,side);paint(box,it);stat()};win.appendChild(h);
     const l=document.createElement("div");l.className="ln"+(it.noline?" off":"");l.dataset.side=side;l.style.top=(y/it.ih*100)+"%";win.appendChild(l);
   }
+  if(it.poly)polyEdit(box,win,it);
   box.appendChild(win);
   const qb=document.createElement("div");qb.className="qb";
+  if(it.poly){const b=document.createElement("button");b.type="button";b.dataset.v="fix";b.textContent="还原成原线";
+    b.onclick=()=>{S.clear(it.id);const w=box.querySelector(".win svg.pe");w&&w.__draw();paint(box,it);stat()};qb.appendChild(b)}
   for(const [v,t] of [["unsure","看不出"]]){const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
     b.onclick=()=>{const r=lab(it);if(r&&r.v===v)S.clear(it.id);else S.set(it.id,{v});paint(box,it);stat()};qb.appendChild(b)}
   box.appendChild(qb);paint(box,it);return box;
 }
 const NP=()=>Math.max(1,screens.length);
 function stat(){
-  const n={ok:0,bad:0,unsure:0};for(const it of D.items){const r=lab(it);if(r)n[r.v]++}
-  const got=n.ok+n.bad+n.unsure;
-  $("stat").textContent=`已审 ${st.seen}/${NP()} 屏 · 已定 ${got}/${D.items.length} 格（全对 ${n.ok}、有错 ${n.bad}、看不出 ${n.unsure}）`;
+  const n={ok:0,bad:0,unsure:0,fix:0};for(const it of D.items){const r=lab(it);if(r)n[r.v]++}
+  const got=n.ok+n.bad+n.unsure+n.fix;
+  $("stat").textContent=`已审 ${st.seen}/${NP()} 屏 · 已定 ${got}/${D.items.length} 格（全对 ${n.ok}、有错 ${n.bad}、看不出 ${n.unsure}${n.fix?`、改了线 ${n.fix}`:""}）`;
   $("bar").style.width=(got/Math.max(1,D.items.length)*100)+"%";
 }
 function render(){
@@ -85,7 +115,7 @@ function render(){
   $("sub").textContent=`${D.book} · ${D.items.length} 格 · 模板 ${D.tpl_version}`;
   $("hint").innerHTML="";const h=document.createElement("span");
   h.textContent=D.hint||"一屏是原书一列，一格一张小图（上下各带半个邻格），蓝线是这格的上、下切线。只看字与字之间的切线准不准：切进了邻字的笔画、或把本字的笔画切掉了，就点图的上半（上切线）或下半（下切线）标红，再点取消。列首字与边框、列尾字与边框之间不画线不看，左右宽窄也不看。看不清点「看不出」。整屏都对不用点，点「本页没问题，下一页」时没点的格记作全对。每点一下就存后台。";
-  const lg=document.createElement("div");lg.className="legend";lg.innerHTML=D.items.every(x=>x.noline)?"图里的<b class=r>红线</b>＝切线（折线）　点不准的那半边会铺红底":"<b class=b>蓝线</b>切线　<b class=r>红</b>＝你标的不准的切线";
+  const lg=document.createElement("div");lg.className="legend";lg.innerHTML=D.items.some(x=>x.poly)?"<b class=r>红线</b>＝切线（折线），可拖圆点、点空白加点、双击圆点删点，改过变<b style='color:#1a9e4b'>绿</b>":D.items.every(x=>x.noline)?"图里的<b class=r>红线</b>＝切线（折线）　点不准的那半边会铺红底":"<b class=b>蓝线</b>切线　<b class=r>红</b>＝你标的不准的切线";
   $("hint").append(h,lg);
   for(const id of ["prev","prev2"])$(id).disabled=st.page===0;
   for(const id of ["next","next2"])$(id).textContent=st.page===NP()-1?"本页没问题，完成":"本页没问题，下一页";
@@ -94,7 +124,7 @@ function render(){
 function exportAll(){
   const labels=[],unconfirmed=[];
   for(const it of D.items){const r=lab(it);
-    if(r)labels.push({cell:it.id,label:r.v,bad:r.bad||[],how:S.how(it.id)});else unconfirmed.push(it.id)}
+    if(r)labels.push(Object.assign({cell:it.id,label:r.v,bad:r.bad||[],how:S.how(it.id)},r.poly?{poly:r.poly}:{}));else unconfirmed.push(it.id)}
   return {page_type:TPL.type,tpl_version:TPL.version,book:D.book,pages_seen:st.seen,labels,unconfirmed};
 }
 function next(){
