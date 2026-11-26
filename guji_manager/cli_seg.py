@@ -55,7 +55,7 @@ def add_parser(sub) -> None:
     rl.add_argument("-w", "--workspace", default=None)
     rl.add_argument("--out", default="seg-ruler.tsv")
 
-    ps = ss.add_parser("pins-stale", help="钉子（manual-cells）的上游列图变了没有：stale＝列窗口变了、坐标必须重核（退出 3）；maybe＝只是 column_warp 指纹变了")
+    ps = ss.add_parser("pins-stale", help="钉子（manual-cells）的上游列图变了没有：stale＝列窗口变了、坐标必须重核（退出 3）；maybe＝只是 column_warp 指纹变了；unapplied＝钉子新钉或改过、本页 row_segment 产物没用上（退出 3，从 row_segment 重跑该页）")
     ps.add_argument("books", nargs="*", help="只查这些册（缺省全部 active 钉子）")
     ps.add_argument("-w", "--workspace", default=None)
     ps.add_argument("--products", default="", help="产物根（缺省工作区 products；候选包 pack fetch --to 的目录）")
@@ -136,15 +136,38 @@ def _cmd_pins_stale(args) -> None:
     items = [r for r in sp.read_items(sp.items_path()) if r.get("status") == "active"
              and (not args.books or (r.get("anchor") or {}).get("book") in args.books)]
     n = {"ok": 0, "stale": 0, "maybe": 0, "unknown": 0}
+    m = {"ok": 0, "unapplied": 0, "unknown": 0}
+    st_store = store
+    if st_store is None:
+        from ._cv import ProductStore
+        st_store = ProductStore()
+    from ._cv import resolved_manual_cells
+    pins_of: dict[str, tuple[dict, str]] = {}
     print("钉子\t状态\t说明")
     for r in items:
         st, why = sp.basis_status(r, store)
         n[st] += 1
         if st != "ok":
             print(f"{r.get('id')}\t{st}\t{why}")
-    print(f"共 {len(items)} 条：" + "、".join(f"{k} {v}" for k, v in n.items() if v), file=sys.stderr)
+        # 钉子改了、该页 row_segment 没重跑（11-26 CV1 交 GM2）：只比内容与 manifest 软指纹，不比时间戳
+        book = (r.get("anchor") or {}).get("book")
+        if book not in pins_of:
+            pins = resolved_manual_cells(book)
+            pins_of[book] = (pins, sp.book_pins_fingerprint(pins))
+        pins, fp = pins_of[book]
+        old = ((r.get("input") or {}).get("column_basis") or {}).get("geom")
+        geom_same = None if st == "unknown" or not old else st == "ok"
+        ast, awhy = sp.applied_status(r, st_store, pins, fp, geom_same)
+        m[ast] += 1
+        if ast == "unapplied":
+            print(f"{r.get('id')}\tunapplied\t{awhy}")
+    print(f"共 {len(items)} 条：" + "、".join(f"{k} {v}" for k, v in n.items() if v)
+          + "；用进产物：" + "、".join(f"{k} {v}" for k, v in m.items() if v), file=sys.stderr)
     if n["stale"]:
         print("stale 的钉子坐标对不上现在的列图：guji seg pin <册:页:列> 重起稿看叠框图、重写（--write 会记新底）", file=sys.stderr)
+    if m["unapplied"]:
+        print("unapplied 的钉子没用进本页产物：从 row_segment 起重跑这些页再标 main", file=sys.stderr)
+    if n["stale"] or m["unapplied"]:
         raise SystemExit(3)
 
 

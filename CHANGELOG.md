@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM2，CV1 交办）：`seg pins-stale` 新报 `unapplied`——钉子新钉或改过、本页 row_segment 产物没用上（产物列没 `manual_cells` 旗；或 manifest 软指纹 `manual_cells_fingerprint` 与本册现行钉子指纹不同且这一列格号／坐标对不上），退出 3。只比内容不比时间戳，不动指纹。wiki 切分检查与优化补「标 main 前跑 pins-stale」「升级后跑一次 pins-backfill-geom」。不动 cv 产物，L0。
 - PATCH（11-26，GM2）：拉取还原逐行文件时，库里行号有空洞、末尾又超出 `n_lines`（导入删行不重排行号），但行数对上的，按行号紧排、sha 对上就用，不再报「库里有超出 n_lines 的行」（殿本 `instances/vol01.jsonl` 11-26 卡住 ZM 推库：空洞 8789／12708／12709，超出 14658–14660，紧排后与登记逐字节相同，库里数据没坏）。紧排对不上仍报错。L0。
 
 ## [0.6.35] - 2026-11-26

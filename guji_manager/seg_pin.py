@@ -285,6 +285,62 @@ def basis_status(item: dict, store=None) -> tuple[str, str]:
     return "ok", ""
 
 
+#: 钉子换算后、cv 不打 `manual_cells_remapped` 的最大角点位移（cv `row_segment.MANUAL_REMAP_FLAG_PX`）；比坐标时留这么多余量。
+REMAP_TOL_PX = 3.5
+
+
+def book_pins_fingerprint(pins: dict) -> str:
+    """本册钉子内容指纹，口径同 cv `RowSegmentStep.book_params` 写进 manifest `soft.manual_cells_fingerprint` 的值
+    （按 `页:列` 排序后整表取 sha，文件里条目重排、改别的书都不变）。`pins`＝`resolved_manual_cells(book)`。"""
+    import hashlib
+    blob = json.dumps(sorted((f"{pg}:{c}", v) for (pg, c), v in pins.items()), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def _cell_sig(c) -> tuple:
+    g = (lambda k: c.get(k)) if isinstance(c, dict) else (lambda k: getattr(c, k, None))
+    return (int(g("slot")), g("sub") or "", g("kind") or "char")
+
+
+def applied_status(item: dict, store, pins: dict, book_fp: str, geom_same: bool | None) -> tuple[str, str]:
+    """钉子有没有用进本页 row_segment 产物 → (状态, 说明)。不看时间戳（跨机不可比），只看内容：
+
+    1. 产物这一列没有 `manual_cells` 旗 → `unapplied`（有钉子、产物没用上）；
+    2. manifest 记的 `soft.manual_cells_fingerprint` 与本册现行钉子指纹相同 → `ok`（钉子没改过；文件只是重排不算改）；
+    3. 指纹不同（本册某条钉子改过）→ 逐格比这一列：格号／小注／kind 要一致；坐标在几何底没变时逐格相等，
+       几何底变了按换算余量比，打了 `manual_cells_remapped` 的列（已送人核）不比坐标。对不上 → `unapplied`。
+    → 状态：ok／unapplied／unknown（本机没有 row_segment 产物）。`geom_same`：钉子几何底与现行列窗一致与否（None＝不知道）。"""
+    from ._cv import page_key
+    a = item.get("anchor") or {}
+    book, page, col = a.get("book"), int(a.get("page")), int(a.get("col"))
+    key = page_key(page)
+    try:
+        pc = store.read(book, "row_segment", key, "cells")
+    except Exception:  # noqa: BLE001 —— 没产物／读不了都当不知道
+        pc = None
+    if pc is None:
+        return "unknown", "本机没有 row_segment 产物"
+    cc = next((c for c in pc.columns if c.col == col), None)
+    if cc is None or "manual_cells" not in (cc.flags or []):
+        return "unapplied", "有钉子、本页 row_segment 产物没用上：从 row_segment 重跑本页"
+    ent = store.manifest(book, "row_segment").get(key)
+    if ent is not None and (ent.soft or {}).get("manual_cells_fingerprint") == book_fp:
+        return "ok", ""
+    want = pins.get((page, col)) or []
+    have = list(cc.cells or [])
+    if sorted(map(_cell_sig, want)) != sorted(map(_cell_sig, have)):
+        return "unapplied", "钉子改过（格号／小注不同），本页 row_segment 没重跑：从 row_segment 重跑本页"
+    if "manual_cells_remapped" in (cc.flags or []):
+        return "ok", ""
+    tol = 0.05 if geom_same else REMAP_TOL_PX
+    by = {_cell_sig(c): c for c in have}
+    for w in want:
+        h = by.get(_cell_sig(w))
+        if h is None or any(abs(float(w[k]) - float(getattr(h, k))) > tol for k in ("y0", "y1", "x0", "x1")):
+            return "unapplied", "钉子坐标改过，本页 row_segment 没重跑：从 row_segment 重跑本页"
+    return "ok", ""
+
+
 def backfill_geom(item: dict, store=None) -> tuple[dict | None, str]:
     """一次性回填（11-26 CV0）：没有 geom 的老钉子，**现行列窗记录与钉子当时的底一致**（col_sha 相同）才补 geom
     ——这时现行几何就是当时的几何。→ (补好的新条目或 None, 说明)。不一致的不补（补了就把错坐标认成对的）。"""
