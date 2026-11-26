@@ -79,12 +79,17 @@ def from_products(store, book: str, page: int, *, with_chars: bool = True) -> Pa
             chars = {}
     # 框口径同 book-text cord（formats/guji_page_cv）：字框（cell_shrink 的 bbox_page）优先，没有再用格的四角外接框
     ink: dict[str, list] = {}
+    inked: set[str] = set()
     chars_idx = read_view(store, book, "cell_shrink", key, "char_index") if W else None
     if chars_idx is not None:
         for col in chars_idx.columns:
             for ch in col.chars:
+                if ch.cell_type != "empty":
+                    inked.add(ch.id)
                 if ch.bbox_page is not None and ch.cell_type != "empty":
                     ink[ch.id] = tr_bbox_to_xywh(ch.bbox_page, W)
+    # 空格（c=""）：字块里没墨的格；只在识字新鲜（chars 有）时标，免得 cell_shrink 与切分不同步时误判（uid.match 第 0 条）
+    blank = chars_idx is not None and bool(chars)
     out: list[Cell] = []
     boxes: dict[str, list] = {}
     for col in sorted(cells.columns, key=lambda c: c.col):
@@ -93,7 +98,7 @@ def from_products(store, book: str, page: int, *, with_chars: bool = True) -> Pa
             b = ink.get(cid) or (tr_bbox_to_xywh(quad_bounds(c.quad_page), W) if (c.quad_page and W) else None)
             if b:
                 boxes[cid] = b
-            out.append(Cell(cid, xywh_to_box(b), chars.get(cid)))
+            out.append(Cell(cid, xywh_to_box(b), "" if blank and cid not in inked and not chars.get(cid) else chars.get(cid)))
     return PageCut(page, sha, out, boxes)
 
 
