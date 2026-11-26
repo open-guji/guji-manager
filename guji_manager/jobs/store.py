@@ -243,12 +243,12 @@ def results(conn, job_id: int, kind: str | None = None) -> list[dict]:
 
 @_routed
 def cancel(conn, job_id: int, by: str) -> str:
-    """排队的直接取消；在跑的置 cancel_requested，执行方下次心跳时停掉子进程。"""
+    """排队、blocked 的直接取消；在跑的置 cancel_requested，执行方下次心跳时停掉子进程。"""
     with conn.transaction():
         j = _one(conn.execute("SELECT status FROM jobs.job WHERE id=%s FOR UPDATE", (job_id,)))
         if j is None:
             return "没有这条"
-        if j["status"] == "queued":
+        if j["status"] in ("queued", "blocked"):     # blocked：依赖没成功、等人处理的单也能撤（11-26 CV0 撤 60ec7603 单）
             conn.execute("UPDATE jobs.job SET status='cancelled', finished_at=now(), updated_at=now() WHERE id=%s",
                          (job_id,))
             _event(conn, job_id, None, "cancel", f"{by} 取消（还没开跑）")
