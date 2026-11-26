@@ -150,6 +150,8 @@ def manifest(ws_dir: Path, data: Path) -> dict[str, str]:
 def scan(ws_dir: Path, data: Path, only: set[str] | None = None):
     """``only`` 给了就只扫这些文件（增量推，见 ``push``）；workspace.yaml 总要带上（scan_files 要读工作区 id）。"""
     from .scope import scan_files
+    if not (Path(ws_dir) / WS_YAML).exists():
+        raise SystemExit(f"工作区 {ws_dir} 没有 {WS_YAML}（工作区身份文件，在工作区仓里）：-w 指对了吗？先在工作区仓 git pull 取回")
     items = [(WS_YAML, (lambda: (Path(ws_dir) / WS_YAML).read_bytes()))]
     items += [(rel, (lambda p=p: p.read_bytes())) for rel, p in _walk(data) if only is None or rel in only]
     return scan_files(items, Path(ws_dir).name)
@@ -171,7 +173,7 @@ def write_state(data: Path, **kw) -> None:
 #: 增量推（只扫、只比改了的文件）适用的表：主键里带 src_path，或一个文件就对应一组固定的主键（consumed 一个消费者一个文件、
 #: books 一册一个 yaml、workspaces）。字形库各表主键是实例 id 等、行会在文件间挪，照旧全量比。
 INCREMENTAL_TABLES = frozenset({"workspaces", "source_files", "books", "events", "consumed", "anchors",
-                                "verdicts", "pending_items", "files", *BLOB_TABLES})
+                                "verdicts", "pending_items", "list_rows", "files", *BLOB_TABLES})
 FULL_SCAN_ENV = "GUJI_DB_FULL_SCAN"
 
 
@@ -187,7 +189,10 @@ def incremental_ok(paths) -> bool:
 
 
 def _diff(base: dict[str, str], cur: dict[str, str]) -> list[str]:
-    return sorted(k for k in set(base) | set(cur) if base.get(k) != cur.get(k))
+    """两份清单不同的路径。``cur`` 里没有 workspace.yaml 不算改动：它是工作区身份文件、在工作区仓里（不在数据目录），
+    本机缺它推不掉也不该推删除（SJ 11-26：status 把本机不存在的 workspace.yaml 列成「未推」）；推送时 ``scan`` 另行报错。"""
+    return sorted(k for k in set(base) | set(cur)
+                  if base.get(k) != cur.get(k) and not (k == WS_YAML and k not in cur))
 
 
 ALLOW_GLYPH_SHRINK_ENV = "GUJI_ALLOW_GLYPH_SHRINK"      # 设 1：确要缩小字形库（人为清理）时放行

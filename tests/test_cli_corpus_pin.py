@@ -71,3 +71,17 @@ def test_vol_default_pin_follows_book_yaml_not_ledger_tail(ws, monkeypatch):
     assert cli_glyph._vol_current_pin(ws, "vol05", load_pins) == 4          # 没 yaml：退回账末行
     (books / "vol05.yaml").write_text("id: vol05\ncorpus: 3\n", encoding="utf-8")
     assert cli_glyph._vol_current_pin(ws, "vol05", load_pins) == 3          # yaml 为准
+
+
+def test_vol_default_pin_honors_run_override(ws, monkeypatch):
+    """rerun_prep 换语料号走 GUJI_BOOK_OVERRIDE、不改 yaml：verify 缺省号要认覆盖（#17727 用了 yaml 的旧号）。"""
+    from open_guji_cv.core.book_config import OVERRIDE_ENV
+    from guji_manager._cv import load_pins
+    books = ws / "books"
+    books.mkdir()
+    monkeypatch.setattr("guji_manager._cv.books_dir", lambda w=None: books, raising=False)
+    (books / "vol05.yaml").write_text("id: vol05\ncorpus: 3\n", encoding="utf-8")
+    monkeypatch.delenv(OVERRIDE_ENV, raising=False)
+    assert cli_glyph._vol_current_pin(ws, "vol05", load_pins) == 3
+    monkeypatch.setenv(OVERRIDE_ENV, json.dumps({"corpus": 4}))
+    assert cli_glyph._vol_current_pin(ws, "vol05", load_pins) == 4

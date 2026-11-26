@@ -418,6 +418,23 @@ CREATE TABLE IF NOT EXISTS pending_items (
   PRIMARY KEY ("ws", "src_path", "src_line"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
+CREATE TABLE IF NOT EXISTS list_rows (
+  "ws" TEXT NOT NULL,
+  "src_path" TEXT NOT NULL,
+  "src_line" INTEGER NOT NULL,
+  "dataset" TEXT NOT NULL,
+  "book" TEXT,
+  "name" TEXT NOT NULL,
+  "raw" TEXT NOT NULL,
+  "rev" INTEGER NOT NULL,
+  "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  "row_sha" TEXT,
+  -- feedback/lists 下的 jsonl 清单一行一条（web／opinions／freeze／ledger／u_void），GM4 11-26；id、u 由 raw 现算
+  "id" TEXT GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.id') = 'text' THEN json_extract(raw, '$.id') END) VIRTUAL,
+  "u" INTEGER GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.u') = 'integer' THEN json_extract(raw, '$.u') END) VIRTUAL,
+  PRIMARY KEY ("ws", "src_path", "src_line"),
+  FOREIGN KEY (ws) REFERENCES workspaces(ws)
+);
 CREATE TABLE IF NOT EXISTS verdicts (
   "ws" TEXT NOT NULL,
   "src_path" TEXT NOT NULL,
@@ -439,6 +456,7 @@ CREATE INDEX IF NOT EXISTS consumed_event ON consumed (ws, consumer, event);
 CREATE INDEX IF NOT EXISTS events_ws_batch ON events (ws, batch);
 CREATE INDEX IF NOT EXISTS events_ws_book ON events (ws, book);
 CREATE INDEX IF NOT EXISTS events_ws_id ON events (ws, id);
+CREATE INDEX IF NOT EXISTS list_rows_ds ON list_rows (ws, dataset, book, name, src_line);
 CREATE INDEX IF NOT EXISTS pending_items_item ON pending_items (ws, src_path, item_id, src_line);
 CREATE INDEX IF NOT EXISTS pending_items_u ON pending_items (ws, book, u) WHERE u IS NOT NULL;
 CREATE INDEX IF NOT EXISTS glyph_instances_label ON glyph_instances (ws, label) WHERE (label IS NOT NULL);

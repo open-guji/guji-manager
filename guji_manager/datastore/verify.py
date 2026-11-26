@@ -91,6 +91,8 @@ def _verify_ws(cur, reader, d, files) -> dict:
             continue
         if f["sha"] != bsha or f["bytes"] != len(data):
             mism.append(f"{rel}: source_files 记的 sha/字节数与提交不符")
+        if tbl == "list_rows" and f["tbl"] == "files":
+            tbl = "files"              # 清单里有不是 json 的行：scan 时整文件退回 files（GM4 11-26）
         if tbl in ("workspaces", "books", "files"):
             if rel not in whole:
                 mism.append(f"{rel}: {tbl} 里没有")

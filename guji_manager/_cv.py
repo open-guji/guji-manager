@@ -107,6 +107,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "core_model_pack": ("core.model_pack", None),
     "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
     "book_config_layers": ("core.book_config", "layers"),   # guji job precheck：钉子来自哪一层（2026-11-17）
+    "book_config_effective": ("core.book_config", "effective_book_dict"),   # corpus 缺省号认运行覆盖（2026-11-26）
     "lib_pins_expand": ("core.lib_pins", "expand_layer"),
     "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
@@ -123,6 +124,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "JysRuleBackend": ("groups.backends", "JysRuleBackend"),
     "RrImageBackend": ("groups.backends", "RrImageBackend"),
     "counts_as_human": ("feedback.events", "counts_as_human"),
+    "counts_as_pin": ("feedback.events", "counts_as_pin"),   # cv b161293 事件分级（GM4）
+    "event_level": ("feedback.events", "event_level"),
     "BookLedger": ("variant_ledger", "BookLedger"),
     "has_products": ("utils.bootstrap", "has_products"),
     "ImageCache": ("products.cache", "ImageCache"),

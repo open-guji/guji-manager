@@ -131,3 +131,52 @@ def test_materialize_restores_pending_file(repo, conn, tmp_path):
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
     assert (out / PEND[2:]).read_bytes() == f[PEND]
     assert (out / "feedback/lists/x.txt").read_bytes() == f["W/feedback/lists/x.txt"]
+
+
+# ---- list_rows（files 清退路线）----
+
+LST = "W/feedback/lists/opinions/96mid1ogzk/opinions.jsonl"
+FRZ = "W/feedback/lists/freeze/vol01.jsonl"
+
+
+def _lists():
+    f = _base()
+    f[LST] = (_line(id="op_1", book="96mid1ogzk", u=5) + "\n\n" + _line(id="op_2", book="96mid1ogzk") + "\n").encode()
+    f[FRZ] = (_line(book="vol01", pack="p1") + "\n").encode()
+    f["W/feedback/lists/stale_verdicts.tsv"] = b"a\tb\n"
+    f["W/feedback/lists/web/96mid1ogzk/bad.jsonl"] = b'{"a":1}\nnot json\n'
+    return f
+
+
+def test_classify_list_rows():
+    from guji_manager.datastore.scope import classify
+    assert classify("feedback/lists/opinions/96mid1ogzk/opinions.jsonl") == "list_rows"
+    assert classify("feedback/lists/web/96mid1ogzk/items.jsonl") == "list_rows"
+    assert classify("feedback/lists/freeze/vol01.jsonl") == "list_rows"
+    assert classify("feedback/lists/u_void/vol02.jsonl") == "list_rows"
+    assert classify("feedback/lists/opinions/96mid1ogzk/text_versions.json") == "files"
+    assert classify("feedback/lists/stale_verdicts.tsv") == "files"
+    assert classify("feedback/lists/proofing/vol03/001.pending.json") == "files"
+
+
+def test_list_rows_import_verify_and_materialize(repo, conn, tmp_path):
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _lists()
+    c1 = _commit(repo, f, "c1")
+    rep = import_commit(conn, repo, c1)
+    assert rep.per_table["list_rows"]["insert"] == 3          # 空行不入库；坏 json 的文件整份进 files
+    rows = conn.execute("SELECT dataset, book, name, id, u FROM list_rows ORDER BY src_path, src_line").fetchall()
+    assert [tuple(r) for r in rows] == [("freeze", None, "vol01", None, None),
+                                        ("opinions", "96mid1ogzk", "opinions", "op_1", 5),
+                                        ("opinions", "96mid1ogzk", "opinions", "op_2", None)]
+    left = {r[0] for r in conn.execute("SELECT src_path FROM files WHERE kind = 'list'")}
+    assert left == {"feedback/lists/stale_verdicts.tsv", "feedback/lists/web/96mid1ogzk/bad.jsonl", "feedback/lists/x.txt"}
+    assert verify_commit(conn, repo, c1)["ok"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
+    for rel in (LST, FRZ, "W/feedback/lists/web/96mid1ogzk/bad.jsonl"):
+        assert (out / rel[2:]).read_bytes() == f[rel]         # 含空行、逐字节

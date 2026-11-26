@@ -743,6 +743,17 @@ def test_cut_check_screens_and_labels(tmp_path):
     assert [(r["id"], r["label"], r["bad"]) for r in out] == [("a", "ok", []), ("b", "bad", ["bottom", "top"])]
 
 
+def test_cut_check_poly_items_and_fix_label(tmp_path):
+    """1.3.0：项带 poly＝可改折线；没有 top/bottom 也不跳过；改过的结果 label=fix 带 poly。"""
+    from guji_manager.review_pages import cut_check as ct
+    img = tmp_path / "a.png"; img.write_bytes(PNG)
+    rows = ct.normalize([dict(id="p1", vol="v", page=3, col=1, img=str(img), top=None, bottom=None, poly=[[1, 0.5], [0, 0.4]])])
+    assert rows[0]["poly"] == [[1.0, 0.5], [0.0, 0.4]]
+    docs = [dict(page_type="cut_check", cell="p1", label="fix", poly=[[1, 0.6], [0, 0.4]], how="click", t=3)]
+    out = ct.label_rows(ct.labels_from_docs(docs))
+    assert out[0]["label"] == "fix" and out[0]["poly"] == [[1, 0.6], [0, 0.4]]
+
+
 def test_col_check_custom_screen(tmp_path):
     from guji_manager.review_pages import col_check as cc
     img = tmp_path / "c.png"; img.write_bytes(PNG)
