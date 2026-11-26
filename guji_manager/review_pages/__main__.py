@@ -69,7 +69,7 @@ def main(argv=None):
     p.add_argument("--no-rest-ok", action="store_true", help="char_card：不要「本页其余都对」，没点的格不算对（难认字页）")
     p.add_argument("--root", help="glyph_quality：items 里图路径的相对根（dataset 分片目录）")
     p.add_argument("--all-crops", action="store_true", help="glyph_quality：信封里已有标签的字块也上页（复核用）")
-    p.add_argument("--box", type=int, help="glyph_quality：字块放大框边长（px，缺省 120）")
+    p.add_argument("--box", type=int, help="glyph_quality：字块放大框边长（px，缺省 120）；cut_check：卡片图高（px，缺省 220，一屏放更多格就调小）")
     p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
     p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
     p = sub.add_parser("expand"); p.add_argument("--cards", required=True); p.add_argument("--results", required=True)

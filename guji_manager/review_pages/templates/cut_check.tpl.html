@@ -31,6 +31,7 @@ const D=/*DATA*/null;
 // 一屏＝原书一列，一格一张小图（上下各带半个邻格），蓝线＝这格的上、下切线（列首、列尾与边框之间那条不画）。
 // 点图的上半＝上切线不准，下半＝下切线不准（标红），再点取消。整屏没问题翻页时没点的格记作全对（how=page_ok）。
 const MAJOR=D.tpl_version.split(".")[0];
+if(D.th)document.documentElement.style.setProperty("--th",D.th+"px");   // 1.2.0：--box 定卡片图高
 const screens=[];D.items.forEach(it=>{(screens[it.screen]=screens[it.screen]||[]).push(it)});
 const byId={};D.items.forEach(it=>byId[it.id]=it);
 const S=makeStore({key:"cut-check-"+D.book+"-v"+MAJOR,pageOf:k=>(byId[k]||{screen:0}).screen,
