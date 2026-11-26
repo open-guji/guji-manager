@@ -5,6 +5,10 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+
+## [0.6.29] - 2026-11-26
+
+- 发版缘由：事件级别统一口径 feedback.levels（#1042）。
 - PATCH（11-26，CV0）：事件级别统一口径（GM4 批量规则）。新模块 `feedback.levels`：`event_level`（先认 `payload.level`；无则 actor≠model 算 human，actor=model 按批次名 `~` 前缀查 9 个人授意批次，其余算 ai）、`counts_as_pin`（human 或 ai＝原 cv `counts_as_human` 的集合）、`counts_as_human`（只认 human）。字形库入库、已裁、对勘状态、近似字、插图、冻结计数、人裁冲突、u 迁移改用 `counts_as_pin`，行为不变；llm 在线准确率真值、rough_bench 标签改用严格的 `counts_as_human`，AI 钉不再当人裁真值。不经 `_cv`，钉 0.7.x 的执行机同口径。L0。
 
 ## [0.6.28] - 2026-11-26
