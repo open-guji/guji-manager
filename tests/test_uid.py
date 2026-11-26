@@ -69,6 +69,20 @@ def test_delete_char_gone():
     assert {"u": 2, "gone": True} in m.lineage
 
 
+def test_text_cell_not_matched_to_blank():
+    """有字旧格不配给空格（史記 18 p2，11-26）：列首新切出空格、框与旧「唐」IoU 更大，u 仍跟字走；c=None（不知道字）照旧按框配。"""
+    old = [Cell(f"{B}:2:5:1", (700, 330, 900, 470), "唐"), Cell(f"{B}:2:5:2", (700, 470, 900, 610), "國")]
+    pu = {old[0].id: 33, old[1].id: 34}
+    new = [Cell(f"{B}:2:5:1", (700, 323, 900, 440), ""),            # 空格：IoU 与旧「唐」最大
+           Cell(f"{B}:2:5:2", (700, 409, 900, 570), "唐"),
+           Cell(f"{B}:2:5:3", (700, 533, 900, 678), "國")]
+    m = match_page(old, pu, new, Ctr(34))
+    assert m.map == {new[0].id: 35, new[1].id: 33, new[2].id: 34}
+    unknown = [Cell(new[0].id, new[0].box, None), new[1], new[2]]
+    m2 = match_page(old, pu, unknown, Ctr(34))
+    assert m2.map[new[0].id] == 33                                   # 不知道字：照旧按框（有墨的待审格不受影响）
+
+
 def test_split_half_cells_first_read_keeps_u():
     """一格拆成夹注两半 a/b：先读的 a 沿用原 u，b 发新号记 split_from。"""
     old = [Cell(f"{B}:2:3:5", (1000, 100, 1040, 150), "注")]
