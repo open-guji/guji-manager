@@ -396,6 +396,30 @@ def test_uids_retired_into_missing_target_becomes_gone():
     assert cc.validate(char, "char") == []
 
 
+def test_uids_prev_char_keeps_u_continuity():
+    """旧版 char 有、本次没导出、作废表里也没有的 u → 补 {u, gone}；旧版作废的照抄；没导出的页不算（史記 18，11-26）。"""
+    pj = _pj(True)
+    cv_as = [c["a"] for p in pj["pages"] for c in p["cells"]]
+    umap = {a: 10 + i for i, a in enumerate(cv_as)}
+    pg = pj["pages"][0]["page"]
+    pg = pg["index"] if isinstance(pg, dict) else pg
+    prev = {"u_retired": [{"u": 2, "gone": True}, {"u": 4, "into": 10}, {"u": 5, "gone": True}],
+            "pages": [{"page": pg, "columns": [{"col": 1, "cells": [{"a": "x", "c": "唐", "u": 7}, {"a": "y", "c": "國", "u": 10}]}]},
+                      {"page": 9999, "columns": [{"col": 1, "cells": [{"a": "z", "c": "史", "u": 8}]}]}]}
+    files, rep = cc.from_pages_json(pj, version="1.0.0", prev_char=prev,
+                                    uids={"map": umap, "u_max": 99, "u_retired": [{"u": 3, "into": 10}, {"u": 5, "gone": True}]})
+    char = files["003.char.json"]
+    assert char["u_retired"] == [{"u": 2, "gone": True}, {"u": 3, "into": 10}, {"u": 4, "into": 10},
+                                 {"u": 5, "gone": True}, {"u": 7, "gone": True}]
+    assert rep["u_unexported"] == [7] and rep["u_revived"] == []          # u8 在没导出的页上，不动
+    assert cc.validate(char, "char") == []
+    _, rep2 = cc.from_pages_json(pj, version="1.0.0", prev_char={"u_retired": [{"u": 10, "gone": True}], "pages": []},
+                                 uids={"map": umap, "u_max": 99, "u_retired": []})
+    assert rep2["u_revived"] == [10]
+    files3, _ = cc.from_pages_json(pj, version="1.0.0", uids={"map": umap, "u_max": 99, "u_retired": []})
+    assert "u_retired" not in files3["003.char.json"]                      # 不给 prev_char、账上无作废：照旧不写
+
+
 def test_uids_absent_is_byte_identical():
     a, _ = cc.from_pages_json(_pj(True), version="1.0.0")
     b, _ = cc.from_pages_json(_pj(True), version="1.0.0", uids=None)

@@ -327,7 +327,8 @@ def _box_ok(b) -> bool:
 
 def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = None, version: str = "0.1.0",
                     keys: str = "cv", chapter: str | None = None, figure_regions: dict[int, list[dict]] | None = None,
-                    prev_fig: dict | None = None, uids: dict | None = None) -> tuple[dict[str, dict], dict]:
+                    prev_fig: dict | None = None, uids: dict | None = None,
+                    prev_char: dict | None = None) -> tuple[dict[str, dict], dict]:
     """`guji-pages/0.1` → (`{NNN.char.json, NNN.cord.json, NNN.norm.json[, NNN.fig.json]}`, 报告)。
 
     `zi`/`norm` 是 F3 同章的 `zi.json`（`guji-zi/0.1`）/`norm.json`（`guji-norm/0.1`），没有就当空。
@@ -337,6 +338,9 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
     `uids`：字格永久编号（T2，册有字格身份账才给）`{"map": {CV 格号(页:列:格[ab]): u}, "u_max": int, "u_retired": [...]}`。
     给了就每格写 `u`、顶层写 `u_max`（`u_retired` 非空才写）、`$schema` 升 char v0.6，norm 条目带 `u`、升 norm v0.3；
     有格查不到 u 就报错（不写半截）。插图块占掉的格连 u 一起去掉，记进报告 `u_dropped`。不给＝与以前逐字节相同。
+    `prev_char`：book-text 现行的同章 char.json（有 `uids` 才看）。保 u 连续：旧版格里有、本次没导出、作废表里也没有的 u
+    一律补 `{u, gone}`（报告 `u_unexported`；不复用）；旧版 `u_retired` 有、本次没有的照抄（into 目标不在本次的降 gone）；
+    本次格里出现了旧版已作废的 u 记报告 `u_revived`（史記 18，11-26：空格占了旧 u，字格另发新号）。
     报告 `{pages, cells, boxed, dropped: {regions, columns, cells, marks}, rekeyed, figures: {inline, block, kept, dropped_cells}}`。
     pages.json 的格没盖满 `n_chars`（有字没框，字只在 lines.md 里）就报错——纯转换补不出那些字。
     """
@@ -518,18 +522,34 @@ def from_pages_json(pj: dict, *, zi: dict | None = None, norm: dict | None = Non
             "version": version, **head}
     if uids is not None:
         char["u_max"] = int(uids.get("u_max") or max(umap.values(), default=0))
-        if uids.get("u_retired"):
-            # into 的目标 u 不在本次 char 里（身份账有、产物没出这格：空列、插图块占掉、目标又作废…）→ 降成 {u, gone}，
-            # char 对外不留悬空引用；u 照样退役、不复用。降了几条记进报告 `u_retired_dangling`（史記 01，11-25）。
-            live = {c["u"] for p in char_pages for col in p["columns"] for c in col["cells"] if "u" in c}
-            ret, dangling = [], []
-            for x in uids["u_retired"]:
-                if "into" in x and x["into"] not in live:
-                    dangling.append(dict(x))
-                    x = {"u": x["u"], "gone": True}
-                ret.append(dict(x))
+        # into 的目标 u 不在本次 char 里（身份账有、产物没出这格：空列、插图块占掉、目标又作废…）→ 降成 {u, gone}，
+        # char 对外不留悬空引用；u 照样退役、不复用。降了几条记进报告 `u_retired_dangling`（史記 01，11-25）。
+        live = {c["u"] for p in char_pages for col in p["columns"] for c in col["cells"] if "u" in c}
+        src = [dict(x) for x in uids.get("u_retired") or []]
+        unexported, revived = [], []
+        if prev_char is not None:
+            have = {int(x["u"]) for x in src}
+            old_ret = [dict(x) for x in prev_char.get("u_retired") or [] if isinstance(x, dict) and "u" in x]
+            revived = sorted({int(x["u"]) for x in old_ret} & live)
+            src += [x for x in old_ret if int(x["u"]) not in have and int(x["u"]) not in live]
+            have |= {int(x["u"]) for x in src}
+            pages_out = {int(p["page"]) for p in char_pages}      # 只导了几页时，别的页的旧 u 不算没导出
+            old_live = {int(c["u"]) for p in prev_char.get("pages") or [] if int(p.get("page") or 0) in pages_out
+                        for col in p.get("columns") or [] for c in col.get("cells") or [] if isinstance(c.get("u"), int)}
+            unexported = sorted(old_live - live - have)
+            src += [{"u": u, "gone": True} for u in unexported]
+            src.sort(key=lambda x: int(x["u"]))
+        ret, dangling = [], []
+        for x in src:
+            if "into" in x and x["into"] not in live:
+                dangling.append(dict(x))
+                x = {"u": x["u"], "gone": True}
+            ret.append(x)
+        if ret:
             char["u_retired"] = ret
-            rep["u_retired_dangling"] = dangling
+        rep["u_retired_dangling"] = dangling
+        rep["u_unexported"] = unexported
+        rep["u_revived"] = revived
     char["pages"] = char_pages
     has_block = any(m["kind"] == "figure" for p in cord_pages for m in p.get("marks", []))
     cord = {"$schema": CORD_SCHEMA_URL_V02 if has_block else CORD_SCHEMA_URL, **head, "pages": cord_pages}
