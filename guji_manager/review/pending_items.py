@@ -362,12 +362,13 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
     return out
 
 
-def import_sheet(store: ItemStore, doc: dict, *, by: str = "", fps: dict[str, str] | None = None) -> dict:
+def import_sheet(store: ItemStore, doc: dict, *, by: str = "", fps: dict[str, str] | None = None,
+                 us: dict[str, int] | None = None) -> dict:
     """从现行整张单导入（迁移第 1 步）：`cells[]` 逐格对条目，`withdrawn[]` 记成撤下。`src=import:<rev>`。
     已经导入过的再导一遍只动有变化的（可重复执行）。"""
     rev = doc.get("rev") or "?"
     src = f"import:{rev}"
-    res = reconcile(store, doc.get("cells") or [], src=src, fps=fps, by=by, close_missing=False)
+    res = reconcile(store, doc.get("cells") or [], src=src, fps=fps, by=by, close_missing=False, us=us)
     for c in doc.get("withdrawn") or []:
         cell = norm_cell(c.get("cell") or "")
         live = [r for r in store.find(cell) if r["cell"] == cell and r["state"] != "closed"]

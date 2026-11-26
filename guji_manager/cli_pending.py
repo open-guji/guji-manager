@@ -207,6 +207,19 @@ def _audit(a, data: Path, text_id: str, chapter: str) -> int:
     return 1 if any(f.block for f in fs) else 0
 
 
+def _item_us(a, doc: dict) -> dict[str, int] | None:
+    """册有字格身份账：单上各格 → u（开／对条目时盖 u；11-26 史記 r2 换单开的 304 条没 u）。没账或读不到 → None（照旧认单上自带的 u）。"""
+    book = getattr(a, "book", None)
+    if not book:
+        return None
+    from .u_stamp import u_map_lenient
+    us, miss = u_map_lenient(book, [c.get("cell") or "" for c in doc.get("cells") or []])
+    if miss:
+        print(f"⚠ {book} 现行身份账里没有 {len(miss)} 格（如 {miss[:3]}），这几条不盖 u；切字后没入账就先 guji uid advance {book}",
+              file=sys.stderr)
+    return us or None
+
+
 def cmd_pending(a) -> int:
     data, text_id, chapter, ws = _loc(a)
     a.text_id_resolved = text_id
@@ -242,13 +255,16 @@ def cmd_pending(a) -> int:
             sheet = P.sheet_path(data, text_id, chapter)
             if not sheet.exists():
                 sys.exit(f"✗ 没有现行单：{sheet}")
-            res = P.import_sheet(store, json.loads(sheet.read_text(encoding="utf-8")), by=by, fps=fps)
+            doc = json.loads(sheet.read_text(encoding="utf-8"))
+            us = _item_us(a, doc)
+            res = P.import_sheet(store, doc, by=by, fps=fps, us=us)
         else:
             if not a.sheet:
                 sys.exit("✗ reconcile 要 --sheet <新出的 pending.json>")
             doc = json.loads(Path(a.sheet).read_text(encoding="utf-8"))
+            us = _item_us(a, doc)
             res = P.reconcile(store, doc.get("cells") or [], src=a.src or f"rev:{doc.get('rev') or '?'}", fps=fps,
-                              by=by, close_missing=not a.keep_missing)
+                              by=by, close_missing=not a.keep_missing, us=us)
         print(json.dumps({k: (len(v) if isinstance(v, list) else v) for k, v in res.items()}, ensure_ascii=False))
         if res.get("撤下仍判待审"):
             print(f"ⓘ 人工撤下、机器仍判待审 {len(res['撤下仍判待审'])} 格（保持撤下）：{' '.join(res['撤下仍判待审'][:20])}")

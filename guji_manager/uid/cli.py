@@ -249,6 +249,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("-v", "--verbose", action="store_true", help="0 的册也列")
     q.add_argument("-w", "--workspace", default=None)
 
+    q = s.add_parser("items-u", help="待审条目活着却没 u 的按身份账补 u（缺省只报；--write 追加 op=u-fill 一版）")
+    q.add_argument("books", nargs="*", help="册（缺省：有账的全部册）")
+    q.add_argument("--write", action="store_true")
+    q.add_argument("-w", "--workspace", default=None)
+
     q = s.add_parser("anchor-fill", help="~u 人裁抄件补锚档：原件有档的照抄；无框无档的按身份账取 u 在现行切分的框（缺省只报数）")
     q.add_argument("books", nargs="*", help="册（缺省：有 ~u 抄件的全部册）")
     q.add_argument("--write", action="store_true", help="真写 feedback/anchors/<册>.jsonl（只追加）")
@@ -549,11 +554,42 @@ def cmd_check_u(a) -> None:
         rows += [f"{b}\t{e.target.key}\t{e.id}\t抄件无框无档" for e in nob]
         if bad or anc or nob or a.verbose:
             print(f"{b}\t{len(bad)}" + (f"\t缺补锚档 {len(anc)}" if anc else "") + (f"\t无框无档 {len(nob)}" if nob else ""))
+    # 第四项（11-26，只报不计入退出码）：待审条目活着却没 u（换单开条目没盖 u；guji uid items-u --write 补）
+    from .._cv import chapter_of
+    n_item = 0
+    for b in books:
+        if not Ledger.load(b).exists:
+            continue
+        ch = chapter_of(b, None)
+        k = sum(len(M.live_items_without_u(f)) for f in (M.item_files(fb, ch) if ch else []))
+        if k:
+            n_item += k
+            print(f"{b}\t活条目没u {k}")
+    if n_item:
+        print(f"ⓘ 待审条目活着却没 u {n_item} 条（只报；guji uid items-u --write 补）")
     if a.out:
         Path(a.out).write_text("册\t格\t事件\t问题\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
     print(f"合计 {total}" + (f"（其中 ~u 抄件绑不上格 {n_anc}：guji uid anchor-fill 补）" if n_anc else ""))
     if total:
         sys.exit(1)
+
+
+def cmd_items_u(a) -> None:
+    from .. import u_migrate as M
+    from .._cv import EventLog, chapter_of
+    _ws(a)
+    fb = Path(EventLog().events_dir).parent
+    books = a.books or sorted(p.stem for p in (fb / "uid").glob("*.jsonl"))
+    by = os.environ.get("GUJI_ACTOR", "") or "u-fill"
+    tot = Counter()
+    for b in books:
+        ch = chapter_of(b, None)
+        for f in (M.item_files(fb, ch) if ch else []):
+            r = M.fill_items_u(f, b, by=by, write=a.write)
+            if r["补"] or r["缺格"]:
+                print(f"{b}\t{f.relative_to(fb.parent)}\t补 {r['补']}" + (f"\t现行账没这格 {r['缺格']}：{r['缺格列表'][:5]}" if r["缺格"] else ""))
+            tot.update({k: v for k, v in r.items() if k != "缺格列表"})
+    print(json.dumps({"补": tot["补"], "缺格": tot["缺格"], "write": a.write}, ensure_ascii=False))
 
 
 def cmd_anchor_fill(a) -> None:
@@ -643,7 +679,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
