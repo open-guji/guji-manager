@@ -2,6 +2,8 @@
 
 规则（CV0 设计「字格永久编号 u」方案·拆并，guji-format spec 02 §4.10）按下面的顺序走，前一档配上的格后一档不再看：
 
+0. **有字旧格不配给空格**（11-26）：旧格有字、新格是空格（``c == ""``，字块里没墨）的一对在第 1、2 档不配，拆时也不让空格沿用；
+   空格只接空格或发新号。只影响以后的入账，已发出的 u 不改。
 1. **框 IoU**：同页格框 IoU ≥ ``IOU_MIN``（0.5）一对一，按 IoU 从大到小贪心配（口径同 ``swap/booktext.cell_table``）。
 2. **中心距**：剩下的细字（如「一」）框小、IoU 不够：中心距 < 0.6×较大边、且同字（两边都有字时；有一边没字则要同格号）的，
    按中心距从近到远配。比 ``swap/booktext.cell_table`` 严一点：两边有字时不认「同号异字」，补字后整列顺移会骗过它。
@@ -34,7 +36,7 @@ class Cell:
     """一格：完整格号、框（左上原点 ``[x0, y0, x1, y1]``，可无）、字（可无）。列表顺序＝读序。"""
     id: str
     box: tuple[float, float, float, float] | None = None
-    c: str | None = None
+    c: str | None = None          # None＝不知道；""＝空格（切出了格、没有墨）
 
 
 @dataclass
@@ -103,6 +105,11 @@ def match_page(prev: Sequence[Cell], prev_u: dict[str, int], new: Sequence[Cell]
 
     boxed_p = [p for p in prev if p.box]
     boxed_n = [n for n in new if n.box]
+    # 有字旧格不配给空格（CV0 主线程 11-26，史記 18 p2：列首新切出空格，旧「唐」u33 按框配给了空格，挂在 u33 上的人裁跟到空格上）。
+    # 「空格」＝新格 ``c == ""``：切出了格、字块里没有墨（cell_shrink 无这格或 cell_type empty，见 ``source.from_products``）。
+    # ``c is None`` 是「不知道字」（识字不新鲜、待审没出字），照旧按框配——那些格有墨，是同一个字格。
+    def text_to_blank(p: Cell, n: Cell) -> bool:
+        return bool(p.c) and n.c == ""
 
     # 1. 框 IoU
     cand = sorted(((iou(p.box, n.box), p.id, n.id) for p in boxed_p for n in boxed_n
@@ -110,7 +117,7 @@ def match_page(prev: Sequence[Cell], prev_u: dict[str, int], new: Sequence[Cell]
     for s, pid, nid in cand:
         if s < IOU_MIN:
             break
-        if pid in rev or nid in pair:
+        if pid in rev or nid in pair or text_to_blank(P[pid], N[nid]):
             continue
         link(nid, pid, "iou", s)
 
@@ -120,7 +127,7 @@ def match_page(prev: Sequence[Cell], prev_u: dict[str, int], new: Sequence[Cell]
         if p.id in rev:
             continue
         for n in boxed_n:
-            if n.id in pair:
+            if n.id in pair or text_to_blank(p, n):
                 continue
             if p.c and n.c:              # 两边都有字：要同字（同号不算——补字后整列顺移，同号的常常不是同一个字）
                 if p.c != n.c:
@@ -154,7 +161,8 @@ def match_page(prev: Sequence[Cell], prev_u: dict[str, int], new: Sequence[Cell]
                 unlink(keep)
             halves = all(k[-1:].isalpha() for k in kids)     # 拆成夹注 a/b 半格：照规范，先读的一半沿用
             same = [] if halves else [k for k in kids if p.c and N[k].c == p.c and p.c not in NO_TEXT]
-            keep = same[0] if len(same) == 1 else kids[0]
+            inked = [k for k in kids if not text_to_blank(p, N[k])]    # 有字旧格拆开：沿用给有字的那半
+            keep = same[0] if len(same) == 1 else (inked or kids)[0]
             link(keep, p.id, "split")
         for k in kids:
             if k != keep:
