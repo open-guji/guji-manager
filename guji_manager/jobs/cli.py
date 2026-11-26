@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -27,6 +28,14 @@ from .._cv import jobs_store as S
 
 _ICON = {"queued": "…", "running": "▶", "succeeded": "✓", "failed": "✗", "blocked": "■", "cancelled": "–",
          "duplicate": "="}
+
+
+def _actor() -> str:
+    """写操作（交单、取消、插队、重排）的署名；没设 GUJI_JOBS_WHO 时记成主机名（云会话都是「vm」，事后查不出是谁），提醒一句。"""
+    if not os.environ.get("GUJI_JOBS_WHO"):
+        print("⚠ 没设 GUJI_JOBS_WHO：这次操作在任务库里记成主机名「%s」，事后看不出是谁；"
+              "请先 export GUJI_JOBS_WHO=<你的名字>（如 QTW）" % S.who(), file=sys.stderr)
+    return S.who()
 
 
 def add_parser(sub) -> argparse.ArgumentParser:
@@ -323,7 +332,7 @@ def cmd_job(a) -> None:
             print("指纹", h)
             return
         db = S.DB()
-        row = db(S.submit, spec, h, by=S.who(), why=spec.get("why"), priority=a.priority,
+        row = db(S.submit, spec, h, by=_actor(), why=spec.get("why"), priority=a.priority,
                  depends_on=a.after, again=a.again)
         if row["status"] == "duplicate":
             print(f"= #{row['id']} 与 #{row['duplicate_of']}（{row['dup_status']}）同一配置，不另跑；"
@@ -435,11 +444,11 @@ def cmd_job(a) -> None:
         if not any(w["online"] for w in rows):
             print("（没有在线的执行方）")
     elif act == "cancel":
-        print(db(S.cancel, a.id, S.who()))
+        print(db(S.cancel, a.id, _actor()))
     elif act == "bump":
-        print("已改" if db(S.bump, a.id, a.priority, S.who()) else "✗ 只有排队中的能改优先级")
+        print("已改" if db(S.bump, a.id, a.priority, _actor()) else "✗ 只有排队中的能改优先级")
     elif act == "retry":
-        print("已重新排队" if db(S.retry, a.id, S.who()) else "✗ 只有失败、拦下、取消的能重排")
+        print("已重新排队" if db(S.retry, a.id, _actor()) else "✗ 只有失败、拦下、取消的能重排")
     elif act == "work":
         from .runner import work
         work(once=a.once, only=a.id, idle_minutes=a.idle, kinds=a.kinds.split(",") if a.kinds else None,

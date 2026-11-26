@@ -120,6 +120,18 @@ def test_stale_finish_after_reap_only_logs(conn):
     assert att2["n"] == 2 and j2["attempts"] == 2
 
 
+def test_reap_cancel_requested_becomes_cancelled(conn):
+    """在跑的单被要求停下后执行会话失联（整机暂停）：租约过期记取消，不退回排队（11-26 全唐文撤单后又被领走）。"""
+    a = _sub(conn, "h1")
+    j, att = S.claim(conn, "w1")
+    S.cancel(conn, a["id"], "QTW")
+    _set(conn, "UPDATE attempt SET lease_until = '2000-01-01T00:00:00.000Z' WHERE id = ?", att["id"])
+    assert S.reap(conn) == [(a["id"], "cancelled")]
+    g = S.get(conn, a["id"])
+    assert g["status"] == "cancelled" and g["finished_at"] is not None and "要求停下" in g["error"]
+    assert "记取消" in S.detail(conn, a["id"])["events"][-1]["msg"]
+    assert S.claim(conn, "w2") is None
+
 def test_reap_exhausts_after_free_lost(conn):
     a = _sub(conn, "h1")
     for i in range(4):

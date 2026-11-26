@@ -172,14 +172,17 @@ def _reap_stmts(t: str, free: int) -> list[tuple[str, list]]:
     return [
         (f"UPDATE attempt SET finished_at = {NOW}, outcome = 'lost', mark = ?1"
          f" WHERE finished_at IS NULL AND lease_until < {NOW} RETURNING id, job_id, worker", [t]),
-        (f"UPDATE job SET status = CASE WHEN {exhausted} THEN 'failed' ELSE 'queued' END,"
-         f" finished_at = CASE WHEN {exhausted} THEN {NOW} ELSE finished_at END,"
-         f" error = CASE WHEN {exhausted} THEN '执行会话失联 ' || attempts || ' 次（租约过期）' ELSE error END,"
-         f" stage = CASE WHEN {exhausted} THEN stage ELSE NULL END, updated_at = {NOW}, mark = ?1"
+        # 已有人要求停下（cancel_requested）的单失联：记 cancelled，不退回排队（11-26 全唐文撤单后又被领走）
+        (f"UPDATE job SET status = CASE WHEN cancel_requested THEN 'cancelled' WHEN {exhausted} THEN 'failed' ELSE 'queued' END,"
+         f" finished_at = CASE WHEN cancel_requested OR {exhausted} THEN {NOW} ELSE finished_at END,"
+         f" error = CASE WHEN cancel_requested THEN '有人要求停下（执行会话失联，租约过期后记取消）'"
+         f" WHEN {exhausted} THEN '执行会话失联 ' || attempts || ' 次（租约过期）' ELSE error END,"
+         f" stage = CASE WHEN cancel_requested OR {exhausted} THEN stage ELSE NULL END, updated_at = {NOW}, mark = ?1"
          " WHERE status = 'running' AND id IN (SELECT job_id FROM attempt WHERE mark = ?1)"
          " RETURNING id, status", [t, free]),
         (_ev("a.job_id", "a.id", "reap", "warn",
-             "a.worker || CASE WHEN j.status = 'queued' THEN ' 失联，租约过期，退回排队' ELSE ' 失联，次数用完' END",
+             "a.worker || CASE WHEN j.status = 'queued' THEN ' 失联，租约过期，退回排队'"
+             " WHEN j.status = 'cancelled' THEN ' 失联，已有人要求停下，记取消' ELSE ' 失联，次数用完' END",
              "FROM attempt a JOIN job j ON j.id = a.job_id AND j.mark = ?1 WHERE a.mark = ?1"), [t]),
         (f"UPDATE job SET status = 'blocked', finished_at = {NOW}, updated_at = {NOW}, mark = ?1,"
          " error = (SELECT '依赖 ' || group_concat('#' || d.id || '（' || d.status || '）', '、') || ' 没成功，不跑'"
