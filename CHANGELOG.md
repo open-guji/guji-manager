@@ -6,7 +6,14 @@
 
 ## [未发版]
 
+## [0.6.37] - 2026-11-26
+
+- 发版缘由：钉状态流写入口 `guji pinstate`（#1082，配 cv #1930 的 pin_removed）。
 - PATCH（GM4 11-26，待审与裁定整理）：新命令 `guji pinstate remove|expire|reactivate`（`pin_state.py`）：写 `feedback/pins/<册>.state.jsonl`（事件形状，payload 带 v／pin_id／book／reason／level／by／at／events），cv #1930 的 pin_removed 读它；`datastore/scope.py` 把这类文件归入 events 表（stream=pin_state）、随 db sync 进中心库（`voids` 视图并入）。
+
+## [0.6.36] - 2026-11-26
+
+- 发版缘由：拉取还原逐行文件时行号空洞＋超出 n_lines 但紧排 sha 对上就还原（#1079，殿本 vol01 卡住 ZM 推库）。PATCH。
 
 - PATCH（11-26，GM2）：拉取还原逐行文件时，库里行号有空洞、末尾又超出 `n_lines`（导入删行不重排行号），但行数对上的，按行号紧排、sha 对上就用，不再报「库里有超出 n_lines 的行」（殿本 `instances/vol01.jsonl` 11-26 卡住 ZM 推库：空洞 8789／12708／12709，超出 14658–14660，紧排后与登记逐字节相同，库里数据没坏）。紧排对不上仍报错。L0。
 
