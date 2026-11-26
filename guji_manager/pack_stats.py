@@ -50,11 +50,12 @@ _RULED = ("confirm", "seg_defect", "damaged", "not_a_char", "figure")
 def human_ruled_keys(book: str) -> set[str] | None:
     """这册格上有人裁事件的格键（`vol01:87:7:4a`）；读不到事件日志返回 None（不扣）。"""
     try:
-        from ._cv import EventLog, counts_as_human, iter_events_readonly
+        from ._cv import EventLog, iter_events_readonly
+        from .feedback.levels import counts_as_pin
         pre, out = f"{book}:", set()
         for e in iter_events_readonly(EventLog()):
             t = e.target
-            if e.kind != "confirm" or t.unit != "cell" or not t.key.startswith(pre) or not counts_as_human(e):
+            if e.kind != "confirm" or t.unit != "cell" or not t.key.startswith(pre) or not counts_as_pin(e):
                 continue
             if (e.payload or {}).get("v") in _RULED:
                 out.add(t.key)

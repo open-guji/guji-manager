@@ -42,7 +42,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .._cv import counts_as_human
+from .levels import counts_as_pin
 
 
 def _parse(ts: str | None) -> datetime | None:
@@ -97,7 +97,7 @@ def latest_candidate_verdicts(log) -> dict:
     """每格最新一条 `admit_candidate`（人裁）：{target.key: event}。"""
     latest: dict = {}
     for e in sorted(log.iter_all(), key=lambda x: (x.ts, x.order)):
-        if e.kind != CANDIDATE_KIND or e.actor == "model" or not counts_as_human(e):
+        if e.kind != CANDIDATE_KIND or e.actor == "model" or not counts_as_pin(e):
             continue
         if (e.payload or {}).get("v") not in ("admit", "reject", "unclear"):
             continue
@@ -176,7 +176,7 @@ def replay_after_rebuild(db_path: str | Path, store_dir: str | Path, feedback_ro
             continue
         if e.kind == "confirm" and (e.payload.get("v") or "confirm") == "confirm":
             # 看图结论（source=vision，overview#428）同样不重放进库
-            if e.actor == "model" or not counts_as_human(e) or e.payload.get("source") == "auto":
+            if e.actor == "model" or not counts_as_pin(e) or e.payload.get("source") == "auto":
                 continue
             confirms.append(e)
         elif e.kind == "glyph_audit":

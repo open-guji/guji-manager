@@ -145,17 +145,17 @@ def payload_of(choice: str, char: str = "", alt: str = "", unk: str = "") -> dic
 
 
 def latest_human(events) -> dict[str, object]:
-    """每格最后一条算人裁的 confirm（`counts_as_human`），key → Event。``events`` 是 Event 的可迭代。
+    """每格最后一条算钉的 confirm（`feedback.levels.counts_as_pin`：人裁＋AI 钉），key → Event。``events`` 是 Event 的可迭代。
     带 `target.anchor.u` 且册有字格身份账的（T2）：key 用这个 u **现在**的格号（重切、补删字后格号变了也跟着走）；
     u 已作废的不算任何一格的人裁。"""
-    from .._cv import counts_as_human
+    from .levels import counts_as_pin
     from ..u_stamp import current_cell
     last: dict[str, object] = {}
     for e in events:
         t = e.target
         if e.kind != "confirm" or t.unit != "cell" or (e.payload or {}).get("v") not in HUMAN_VS:
             continue
-        if not counts_as_human(e):
+        if not counts_as_pin(e):
             continue
         key = current_cell({"cell": t.key, "u": (t.anchor or {}).get("u")})
         if key is None:

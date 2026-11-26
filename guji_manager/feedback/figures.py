@@ -59,13 +59,14 @@ def figure_cells(book: str, exclusions_path: str | Path | None = None, log=None)
             out[k] = UnkDesc(unk) if unk else _alt_of(r)
     if not out:
         return out
-    from .._cv import EventLog, counts_as_human, iter_events_readonly, replay_key
+    from .._cv import EventLog, iter_events_readonly, replay_key
+    from .levels import counts_as_pin
     try:
         evs = sorted(iter_events_readonly(log or EventLog()), key=replay_key)
     except FileNotFoundError:
         return out
     for e in evs:
-        if e.kind != "confirm" or e.target.key not in out or not counts_as_human(e):
+        if e.kind != "confirm" or e.target.key not in out or not counts_as_pin(e):
             continue
         p = e.payload or {}
         if p.get("v") == "figure":
@@ -84,7 +85,8 @@ def region_key(book: str, page: int) -> str:
 
 def resolved_figure_regions(book: str, log=None) -> dict[int, list[dict]]:
     """本册各页的插图块：`{页: [{box, col, span, alt, fig?}, …]}`。每页取最新一条 `figure_region`。"""
-    from .._cv import EventLog, counts_as_human, iter_events_readonly, replay_key
+    from .._cv import EventLog, iter_events_readonly, replay_key
+    from .levels import counts_as_pin
     try:
         evs = sorted(iter_events_readonly(log or EventLog()), key=replay_key)
     except FileNotFoundError:
@@ -92,7 +94,7 @@ def resolved_figure_regions(book: str, log=None) -> dict[int, list[dict]]:
     pre = f"figure:{book}:"
     last: dict[int, list[dict]] = {}
     for e in evs:
-        if e.kind != "figure_region" or not e.target.key.startswith(pre) or not counts_as_human(e):
+        if e.kind != "figure_region" or not e.target.key.startswith(pre) or not counts_as_pin(e):
             continue
         tail = e.target.key[len(pre):]
         if not tail.isdigit():

@@ -16,7 +16,8 @@ from pathlib import Path
 from .._cv import Anchor, GoldItem
 from .._cv import GoldStore
 from .._cv import is_symbol
-from .._cv import Event, EventLog, counts_as_human, replay_key
+from .._cv import Event, EventLog, replay_key
+from .levels import counts_as_pin
 from .routes import Destination, RouteTable
 from .._cv import imread as cv_imread
 
@@ -396,11 +397,11 @@ def glyphdb_admit(events, db_path: str | None = None,
     # 撤票（2026-10-26）：同一格人裁过几次以最后一次为准——后来判切坏／非字／破损的，库里更早的人裁刻例要撤。
     withdraws = [(e, d) for e, d in events
                  if (e.kind == "not_a_char" or (e.kind == "confirm" and e.payload.get("v") in _WITHDRAW_V))
-                 and counts_as_human(e)]
+                 and counts_as_pin(e)]
     # 看图结论（`source="vision"`，overview#428）不进库：字形库只收人定的字，模型判错一个就钉死
-    # 一个错范本。口径见 `events.counts_as_human`（码位统一／乱码还原这类人裁的机械更正照旧进）。
+    # 一个错范本。口径见 `feedback.levels.counts_as_pin`（码位统一／乱码还原这类人裁的机械更正照旧进）。
     admits = [(e, d) for e, d in events
-              if e.kind == "confirm" and (e.payload.get("v") or "confirm") == "confirm" and counts_as_human(e)]
+              if e.kind == "confirm" and (e.payload.get("v") or "confirm") == "confirm" and counts_as_pin(e)]
     # 放行格回库（`ops/lib_backfill.py`，2026-11-17）：机器刻例的事件带 `backfill` 标，可以重放。
     # `db sync` 遇到两边都改了字形库会取库里的、让本地新事件重新消费一遍；没有这一支，本机刚回的库就丢了。
     backfills = [(e, d) for e, d in events if _is_backfill(e)]

@@ -20,14 +20,14 @@ def _bare(cell: str) -> str:
 
 
 def collect_events(book: str, log) -> list:
-    """本册格级定字人裁（confirm／seg_defect 带字，counts_as_human），按 (ts, batch, seq) 排。"""
-    from ._cv import counts_as_human
+    """本册格级定字人裁（confirm／seg_defect 带字，counts_as_pin：人裁＋AI 钉，AI 后写盖过人裁的也报），按 (ts, batch, seq) 排。"""
+    from .feedback.levels import counts_as_pin
     out = []
     for e in log.iter_all():
         if e.kind != "confirm" or e.target.unit != "cell" or not e.target.key.startswith(f"{book}:"):
             continue
         p = e.payload or {}
-        if p.get("v") not in ("confirm", "seg_defect") or not p.get("shape") or not counts_as_human(e):
+        if p.get("v") not in ("confirm", "seg_defect") or not p.get("shape") or not counts_as_pin(e):
             continue
         out.append(e)
     return sorted(out, key=lambda e: (e.ts, e.batch, e.seq))
