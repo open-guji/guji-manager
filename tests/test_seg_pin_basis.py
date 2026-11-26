@@ -66,3 +66,35 @@ def test_column_basis_reads_merged_windows():
     want = hashlib.sha256(json.dumps(full.model_dump(mode="json"), ensure_ascii=False,
                                      sort_keys=True).encode("utf-8")).hexdigest()[:16]
     assert sp.column_basis("vol01", 66, 1, Store())["col_sha"] == want
+
+
+def _geom(x=10.0):
+    return {"v": 1, "page_w": 100, "left": [x, 0.0, None, None, None, None],
+            "right": [x + 50, 0.0, None, None, None, None], "top_y": 5.0, "bottom_y": 90.0, "ruled": False}
+
+
+def test_basis_status_geom_only(monkeypatch):
+    """记了 geom 的只比 geom：列窗记录别的字段变了（col_sha 变）不报 stale；几何变了才报。"""
+    monkeypatch.setattr(sp, "column_basis", lambda *a, **k: {"col_sha": "z", "cw_fp": "f9", "geom": _geom()})
+    assert sp.basis_status(_item({"col_sha": "a", "cw_fp": "f1", "geom": _geom()}))[0] == "ok"
+    st, why = sp.basis_status(_item({"col_sha": "z", "cw_fp": "f9", "geom": _geom(12.0)}))
+    assert st == "stale" and "left" in why and "right" in why
+
+
+def test_column_geom():
+    from types import SimpleNamespace as NS
+    ln = NS(model_dump=lambda mode=None: {"x_at_top": 1.23456, "slope": 0.01, "k2": None, "k3": None,
+                                          "y1": None, "y2": None})
+    g = sp.column_geom(NS(left_line=ln, right_line=ln, top_y=3.0, bottom_y=9.0, ruled=False), 4296)
+    assert g == {"v": 1, "page_w": 4296, "left": [1.235, 0.01, None, None, None, None],
+                 "right": [1.235, 0.01, None, None, None, None], "top_y": 3.0, "bottom_y": 9.0, "ruled": False}
+    assert sp.column_geom(None, 4296) is None
+
+
+def test_backfill_geom(monkeypatch):
+    monkeypatch.setattr(sp, "column_basis", lambda *a, **k: {"col_sha": "a", "cw_fp": "f", "geom": _geom()})
+    new, _ = sp.backfill_geom(_item({"col_sha": "a", "cw_fp": "f"}))
+    assert new["input"]["column_basis"]["geom"] == _geom() and new["history"][-1]["change"] == "updated"
+    assert sp.backfill_geom(_item({"col_sha": "b"}))[0] is None          # 列窗不一致不补
+    assert sp.backfill_geom(_item({"col_sha": "a", "geom": _geom()}))[0] is None
+    assert sp.backfill_geom(_item(None))[0] is None
