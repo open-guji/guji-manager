@@ -427,3 +427,12 @@ def test_default_text_id_from_workspace(tmp_path):
     other = tmp_path / "ws"
     other.mkdir()
     assert default_text_id(other) == "96mid1ogzk"
+
+
+def test_sync_fig_boxes_follows_rebased_cord():
+    from guji_manager.formats import guji_char_cord as cc
+    char = {"pages": [{"page": 158, "columns": [{"col": 4, "cells": [{"a": "158:4:19", "c": "□", "fig": "f1"}]}]}]}
+    cord = {"pages": [{"page": 158, "cells": [{"a": "158:4:19", "box": [1039, 2106, 96, 117]}], "marks": []}]}
+    fig = {"figures": [{"id": "f1", "kind": "inline", "page": 158, "box": [1039, 2107, 96, 117]}]}
+    assert cc.sync_fig_boxes(char, cord, fig) == 1 and fig["figures"][0]["box"] == [1039, 2106, 96, 117]
+    assert cc.sync_fig_boxes(char, cord, fig) == 0

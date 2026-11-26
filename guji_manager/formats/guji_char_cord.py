@@ -714,6 +714,33 @@ def check_fig(char: dict, cord: dict, fig: dict | None) -> list[str]:
     return errs
 
 
+def sync_fig_boxes(char: dict, cord: dict, fig: dict) -> int:
+    """fig.json 里每张图的 `page`／`box` 对齐 cord 现在的坐标（原地改，返回改了几张）。
+    换过图源的书，cord 拷进 book-text 前已换到网站页图坐标（republish.rebase_cord），fig.json 若是从导出原样拷的，
+    框还在旧页图坐标上，F-OV-13 报「图的页／框与 cord 不一致」（ZM 11-26 殿本 vol19：f158-4-19、f158-6-9）。
+    图的裁图文件（sha256／width／height）是旧页图上裁的，不动。"""
+    box_of = {(p["page"], c["a"]): c["box"] for p in cord["pages"] for c in p["cells"]}
+    mark_of = {m["fig"]: (p["page"], m["box"]) for p in cord["pages"] for m in p.get("marks", []) if m["kind"] == "figure"}
+    cell_of: dict[str, tuple[int, str]] = {}
+    for p in char["pages"]:
+        for col in p["columns"]:
+            for c in col["cells"]:
+                if c.get("fig") is not None:
+                    cell_of[c["fig"]] = (p["page"], c["a"])
+    n = 0
+    for f in fig.get("figures") or []:
+        if f["id"] in mark_of:
+            pg, box = mark_of[f["id"]]
+        elif f["id"] in cell_of and cell_of[f["id"]] in box_of:
+            pg, box = cell_of[f["id"]][0], box_of[cell_of[f["id"]]]
+        else:
+            continue
+        if f.get("page") != pg or list(f.get("box") or []) != list(box):
+            f["page"], f["box"] = pg, list(box)
+            n += 1
+    return n
+
+
 def _strip_book(x: str) -> str:
     parts = str(x).split(":")
     return ":".join(parts[1:]) if len(parts) == 4 else str(x)
