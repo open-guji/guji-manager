@@ -97,6 +97,63 @@ def cmd_init(a) -> None:
     _print(init_from_book_text(a.book, char, cord, dry_run=a.dry_run, store=store))
 
 
+def retire_into_line(led, pairs: list[tuple[int, int]], *, why: str = "", by: str | None = None) -> tuple[dict | None, list[str]]:
+    """并账记录：旧 u（须已作废、不在现行账里）→ 新 u（须在现行账里）。写成册级一行（page=0、map 空、lineage 记 into），
+    不动各页的「上一份／当前一份」（换单对照表照旧按页配对）。``retired()`` 取最后一次记的，所以会盖过原先的 gone。
+    → (账行或 None, 问题)。"""
+    from .ledger import make_line
+    cur = set(led.current().values())
+    ret = led.retired()
+    probs, lin = [], []
+    for old, new in pairs:
+        if old in cur:
+            probs.append(f"u{old} 还在现行账里（{led.cell_of(old)}），不能并")
+        elif old not in ret and old > led.u_max():
+            probs.append(f"u{old} 账里没发过")
+        elif new not in cur:
+            probs.append(f"u{new} 不在现行账里")
+        elif ret.get(old, {}).get("into") == new:
+            probs.append(f"u{old} 已并入 u{new}（不用再记）")
+        else:
+            lin.append({"u": old, "into": new, "was": "gone" if ret.get(old, {}).get("gone") else
+                        (f"into:{ret[old]['into']}" if old in ret else "untracked")})
+    if not lin:
+        return None, probs
+    d = make_line(led.book, 0, None, {}, lineage=lin, src="retire-into", by=by,
+                  via={"retire_into": len(lin)})
+    d["id"] = d["id"] + "-ri" + "-".join(str(x["u"]) for x in lin)[:40]
+    if why:
+        d["why"] = why
+    return d, probs
+
+
+def cmd_retire_into(a) -> None:
+    from .ledger import Ledger, verify
+    _ws(a)
+    led = Ledger.load(a.book)
+    if not led.exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账")
+    try:
+        pairs = [tuple(int(x) for x in p.split(":")) for p in a.pairs]
+    except ValueError:
+        sys.exit("✗ 参数写成 旧u:新u，如 26626:34455")
+    d, probs = retire_into_line(led, pairs, why=a.why)
+    for p in probs:
+        print(f"⚠ {p}", file=sys.stderr)
+    if d is None:
+        sys.exit(1 if probs else 0)
+    for x in d["lineage"]:
+        print(f"u{x['u']}（原 {x['was']}）→ 并入 u{x['into']}（现 {led.cell_of(x['into'])}）")
+    if not a.write:
+        print("（干跑；加 --write 真写）")
+        return
+    led.append([d])
+    errs = verify(Ledger.load(a.book))
+    print(json.dumps({"写": 1, "并": len(d["lineage"]), "verify": errs[:5]}, ensure_ascii=False))
+    if errs:
+        sys.exit(1)
+
+
 def cmd_show(a) -> None:
     from .ledger import Ledger
     _ws(a)
@@ -199,6 +256,13 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--with-products", action="store_true",
                    help="对上现行产物：某页格号集合与 char 一致就记该页 cells_sha（cv 能直接用这一行）")
     q.add_argument("--dry-run", action="store_true")
+
+    q = s.add_parser("retire-into", help="并账：已作废（gone）的旧 u 改记为并进现行某格的 u（重切后同一格换了号、自动没认上时用；缺省只报）")
+    q.add_argument("book", help="cv 册（如 vol16）")
+    q.add_argument("pairs", nargs="+", metavar="旧u:新u", help="如 26626:34455（可多对）")
+    q.add_argument("--why", default="", help="说明（看图确认等），记进账行")
+    q.add_argument("--write", action="store_true", help="真写（只追加一行册级记录 page=0）；推库另跑 db push --only feedback/uid/<册>.jsonl")
+    q.add_argument("-w", "--workspace", default=None)
 
     q = s.add_parser("show", help="看账：全册概况／一页／一格／一个 u 的来历")
     common(q, products=False)
@@ -682,7 +746,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "retire-into": cmd_retire_into, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
