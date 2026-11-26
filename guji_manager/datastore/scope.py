@@ -38,7 +38,7 @@ def fingerprint(row: Row) -> str:
 
 #: 文件从别的表改归到这些表（待审条目 files → pending_items，GM4 11-26）：source_files 的指纹带上表名，
 #: 文件内容没变也会把 source_files.tbl 改过来（还原按它找表）。只对这些表加，别的 source_files 行指纹不变、不必重推
-RECLASSIFIED = frozenset({"pending_items"})
+RECLASSIFIED = frozenset({"pending_items", "list_rows"})
 
 
 def r2_key(sha: str, ext: str = "png") -> str:
@@ -87,6 +87,8 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     # 待审条目（feedback/lists/pending/<书>/<章>.items.jsonl）一行一个版本，GM4 11-26 从 files 拆出来。
     # 主键用行号不用 (id, ver)：两台机器各自追加同一条目的同一 ver 时合并后两行都留（workcopy 只追加合并），当前版本＝每条最后一行
     TableSpec("pending_items", ("src_path", "src_line"), has_doc=False),
+    # 其余 feedback/lists 下的 jsonl 清单（读者反馈、意见池、冻结登记、台账、作废记档）一行一条，GM4 11-26（files 清退路线）
+    TableSpec("list_rows", ("src_path", "src_line"), has_doc=False),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
     TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
@@ -119,6 +121,8 @@ GLYPH_FILES = {
 
 GS = "output/glyph_store/"
 PENDING_SUFFIX = ".items.jsonl"
+#: 逐行进 list_rows 的清单目录（feedback/lists/<目录>/…jsonl）。proofing 是导出物、别的是一次性清单，不在此列
+LIST_ROW_DATASETS = frozenset({"web", "opinions", "freeze", "ledger", "u_void"})
 
 
 def excluded(rel: str) -> bool:
@@ -148,6 +152,9 @@ def classify(rel: str) -> str | None:
             return "verdicts"
         if len(parts) == 5 and parts[1] == "lists" and parts[2] == "pending" and p.name.endswith(PENDING_SUFFIX):
             return "pending_items"
+        if (len(parts) >= 4 and parts[1] == "lists" and parts[2] in LIST_ROW_DATASETS
+                and p.suffix == ".jsonl"):
+            return "list_rows"
         if len(parts) >= 3 and parts[1] == "lists":
             return "files"
         if len(parts) == 3 and parts[1] == "candidates":
@@ -248,6 +255,13 @@ def _pending(rec, rel, line):
     return (rel, line), cols
 
 
+def _list_row(rec, rel, line):
+    p = PurePosixPath(rel)
+    # web/<书>/x.jsonl、opinions/<书>/x.jsonl 的书在第四段；freeze/<册>.jsonl 等没有书目录
+    book = p.parts[3] if len(p.parts) >= 5 else None
+    return (rel, line), {"dataset": p.parts[2], "book": book, "name": p.stem}
+
+
 def _consumed(rec, rel, line):
     cols = _pick(rec, ("event", "ts", "note"))
     return (PurePosixPath(rel).stem, line), cols
@@ -280,6 +294,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "anchors": _anchors,
     "verdicts": _verdicts,
     "pending_items": _pending,
+    "list_rows": _list_row,
     "glyph_sources": _glyph(
         ("source_id", "collection", "title", "volume", "edition_tag", "script_style", "era",
          "cols_per_page", "chars_per_col", "pipeline_version", "notes", "kind", "created_at"),
@@ -341,6 +356,9 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
             continue
         data = read()
         fsha = sha256(data)
+        if tbl == "list_rows" and not _all_json_lines(data):
+            res.problems.append(f"{rel}: 有不是 json 的行，整文件进 files")
+            tbl = "files"
         if tbl in BLOB_TABLES:
             rows.append(Row(tbl, (rel,), {"sha256": fsha, "bytes": len(data)}, fsha, rel))
             continue
@@ -410,6 +428,17 @@ def _check_cross_file_ids(res: ScanResult) -> None:
         res.problems.append(
             f"events: {len(dup)} 个事件 id 出现在不止一个文件里（两份都入库）："
             + "；".join(" + ".join(f) for f in files))
+
+
+def _all_json_lines(data: bytes) -> bool:
+    """list_rows 的文件每个非空行都得是 json 对象（否则整文件退回 files）。"""
+    try:
+        for line in data.decode("utf-8").split("\n"):
+            if line.strip() and not isinstance(json.loads(line), dict):
+                return False
+    except (UnicodeDecodeError, ValueError):
+        return False
+    return True
 
 
 def _is_utf8(data: bytes) -> bool:
