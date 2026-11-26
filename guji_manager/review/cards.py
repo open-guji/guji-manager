@@ -24,6 +24,7 @@ from .._cv import VISION_DOUBT, flag_active, vision_flags
 from .._cv import ProductStore
 from .._cv import BookLedger
 from .borrow_first import annotate, first_pick_mode, sort_disagree_first
+from .alt_cands import group_members_of
 from .shadow import SHADOW_THR, load_shadow, shadow_view
 from .._cv import parse_cells_spec  # noqa: F401  搬到 core（拆分 M3）
 from .._cv import decided_view, defect_only_cells, flagged_cells
@@ -449,6 +450,9 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
                     "admit": r.admit, "channel": r.channel, "char": r.char,
                     # 己/已/巳：按上下文定的建议字（utils/ji_yi_si.py），卡片可直接点
                     "jys": (r.evidence or {}).get("ji_yi_si"),
+                    # 形近字组流程的组内全部字（cv#1921 起 evidence.group.members；旧产物没有就不带）：
+                    # 出相似字时保证每个组员都有选字按钮（review/alt_cands.group_members）
+                    **({"group_members": _gm} if (_gm := group_members_of(r.evidence)) else {}),
                     # 整理本在这一位印的字（页对齐给的）；form = 本书惯刻的形（账本 preferred，≠整理本字时才有）
                     "ref": ref,
                     # 「义定形未定」的组内候选与三源证据（variant_form），卡片按它只列组内形

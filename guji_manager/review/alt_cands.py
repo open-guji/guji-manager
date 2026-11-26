@@ -27,6 +27,32 @@ ALT_K = 30                    # 每格最多给几个
 ALT_SHOW = 10                 # 前端缺省展开几个（用户 10-19 定）
 
 
+def group_members_of(evidence: dict | None) -> list[str]:
+    """`evidence.group.members`（形近字组流程写的组内全部字，如 己已巳 → 己巳已）→ 去重的单字列表。
+
+    没有 members（旧产物）返回空表，调用方按旧行为走。"""
+    m = ((evidence or {}).get("group") or {}).get("members")
+    if isinstance(m, str):
+        m = list(m)
+    out: list[str] = []
+    for c in m or ():
+        if isinstance(c, str) and len(c) == 1 and c not in out:
+            out.append(c)
+    return out
+
+
+def ensure_members(ranked: list[dict], members: list[str], q, vectors) -> list[dict]:
+    """组内每个字都要在 alt 里有按钮：排序结果里缺的组员补进去（`src="group"`，分数同样用图与字模板的余弦），
+    再整体按分数排；渲染不出模板的字分数记 None，排在最后。已有的不动。"""
+    have = {a["c"] for a in ranked}
+    miss = [c for c in members if c not in have]
+    if not miss:
+        return ranked
+    vec = vectors(miss) if q is not None else {}
+    add = [{"c": c, "s": round(float(vec[c] @ q), 4) if c in vec else None, "p": "", "src": "group"} for c in miss]
+    return sorted(ranked + add, key=lambda a: (a["s"] is None, -(a["s"] or 0.0)))  # sorted 稳定：无分的保持组内顺序
+
+
 def pivots_of(card: dict, extra: Iterable[str] = ()) -> list[str]:
     """卡 → 近似字列表（去重保序）。"""
     out: list[str] = []
@@ -49,6 +75,8 @@ def pivots_of(card: dict, extra: Iterable[str] = ()) -> list[str]:
     put(jys.get("char") if isinstance(jys, dict) else jys)
     put((card.get("occluded") or {}).get("char"))
     put(card.get("char"))
+    for c in card.get("group_members") or ():
+        put(c)
     for c in extra:
         put(c)
     return out
@@ -173,8 +201,9 @@ def alt_for_cards(book: str, cards: list[dict], *, k: int = ALT_K, zi=None, bank
     bank = bank or TemplateBank()
     if not bank.available:
         if log:
-            log("CNN 不可用（缺 torch 或 checkpoint），不出 alt")
-        return {}
+            log("CNN 不可用（缺 torch 或 checkpoint），不出 alt（只出组内字按钮）")
+        return {c["id"]: ensure_members([], list(c["group_members"]), None, bank.vectors)
+                for c in cards if c.get("group_members")}
     ns = _book_norm_stroke(book)
     out: dict[str, list[dict]] = {}
     no_img = 0
@@ -187,14 +216,16 @@ def alt_for_cards(book: str, cards: list[dict], *, k: int = ALT_K, zi=None, bank
                 img = ctx.image("char_patch", key)
             except Exception:  # noqa: BLE001 — 切不出就当没图，与缓存缺图同口径
                 img = None
-        if img is None:
-            no_img += 1
-            continue
-        q = bank.embed(normalize_patch(img, stroke_width=ns))
+        q = bank.embed(normalize_patch(img, stroke_width=ns)) if img is not None else None
         if q is None:
+            no_img += img is None
+            if c.get("group_members"):       # 排不了序也要有组内字的按钮（分数空，按组内顺序）
+                out[c["id"]] = ensure_members([], list(c["group_members"]), None, bank.vectors)
             continue
         piv = pivots_of(c, (extra_pivots or {}).get(c["id"], ()))
         ranked = _with_symbols(q, piv, bank, zi, k)
+        if c.get("group_members"):
+            ranked = ensure_members(ranked, list(c["group_members"]), q, bank.vectors)
         if ranked:
             out[c["id"]] = ranked
         if log and (i + 1) % 100 == 0:
