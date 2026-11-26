@@ -17,14 +17,20 @@ def _vol_current_pin(ws, vol, load_pins):
     """册现行的语料总号：以册 yaml 的 ``corpus:`` 为准（钉子账只追加，末行可能是撤掉没用的号，
     如 W1 试跑后殿本、史記各册账末行 b35 而 yaml 已指回原号，GM2 11-26）；yaml 没写才退回账末行。"""
     from ._cv import books_dir
-    try:
-        import yaml
-        p = Path(books_dir(ws)) / f"{vol}.yaml"
-        n = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("corpus") if p.exists() else None
+    p = Path(books_dir(ws)) / f"{vol}.yaml"
+    if p.exists():
+        n = None
+        try:   # 生效配置：合基础配置与运行覆盖 GUJI_BOOK_OVERRIDE（rerun_prep 换语料号走覆盖不改 yaml，11-26 #17727）
+            from ._cv import book_config_effective
+            n = book_config_effective(p).get("corpus")
+        except Exception:  # noqa: BLE001 —— 合不出生效配置就读裸 yaml
+            try:
+                import yaml
+                n = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("corpus")
+            except Exception:  # noqa: BLE001 —— 读不出 yaml 就按老办法
+                n = None
         if n is not None:
             return int(n)
-    except Exception:  # noqa: BLE001 —— 读不出 yaml 就按老办法
-        pass
     rows = load_pins(ws, vol)
     return rows[-1]["n"] if rows else None
 
