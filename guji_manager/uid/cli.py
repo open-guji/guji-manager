@@ -154,6 +154,81 @@ def cmd_retire_into(a) -> None:
         sys.exit(1)
 
 
+def revive_line(led, u: int, cell: str, *, box: list | None = None, char: str | None = None,
+                why: str = "", by: str | None = None) -> tuple[dict | None, list[str]]:
+    """复活：已作废（gone）的 u 回到 ``cell``（新切分漏切了这格，看图确认后人工补回）。抄这一页现行最后一行
+    （cells_sha 不变，cv 照旧按它找行），map 里插入这格（按读序），lineage 记 ``{u, revived: true}``；
+    ``retired()`` 遇 revived 把它从作废号里拿掉。→ (账行或 None, 问题)。"""
+    from .ledger import _CELL, make_line
+    full = cell if cell.startswith(led.book + ":") else f"{led.book}:{cell}"
+    m = _CELL.match(full)
+    probs: list[str] = []
+    if not m:
+        return None, [f"不是格号：{cell}"]
+    page = int(m["page"])
+    cur, ret = led.current(), led.retired()
+    if u in cur.values():
+        probs.append(f"u{u} 还在现行账里（{led.cell_of(u)}），不用复活")
+    elif u > led.u_max():
+        probs.append(f"u{u} 账里没发过")
+    elif u not in ret:
+        probs.append(f"u{u} 没记作废")
+    elif "into" in ret[u]:
+        probs.append(f"u{u} 已并入 u{ret[u]['into']}，要先确认不是同一格；复活只收 gone 的")
+    if full in cur:
+        probs.append(f"{full} 现行已有 u{cur[full]}")
+    last = led.page(page)
+    if last is None:
+        probs.append(f"第 {page} 页没有账行")
+    if probs:
+        return None, probs
+
+    def key(k):
+        x = _CELL.match(k)
+        return (int(x["col"]), int(x["slot"]), x["sub"])
+    umap = dict(sorted({**last["map"], full: int(u)}.items(), key=lambda kv: key(kv[0])))
+    boxes = dict(last.get("boxes") or {})
+    if box:
+        boxes[full] = list(box)
+    chars = dict(last.get("chars") or {})
+    if char:
+        chars[full] = char
+    d = make_line(led.book, page, last.get("cells_sha"), umap, boxes=boxes or None, chars=chars or None,
+                  lineage=[{"u": int(u), "revived": True, "cell": full}], src="revive", by=by,
+                  via={"revive": 1, "from": last["id"]})
+    if why:
+        d["why"] = why
+    return d, []
+
+
+def cmd_revive(a) -> None:
+    from .ledger import Ledger, verify
+    _ws(a)
+    led = Ledger.load(a.book)
+    if not led.exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账")
+    try:
+        u, cell = a.target.split(":", 1)
+        u = int(u)
+        box = [int(x) for x in a.box.split(",")] if a.box else None
+    except ValueError:
+        sys.exit("✗ 参数写成 u:页:列:格，如 37207:229:1:1；--box 写 x,y,w,h")
+    d, probs = revive_line(led, u, cell, box=box, char=a.char, why=a.why)
+    for p in probs:
+        print(f"⚠ {p}", file=sys.stderr)
+    if d is None:
+        sys.exit(1)
+    print(f"u{u} 复活到 {d['lineage'][0]['cell']}（第 {d['page']} 页，cells_sha 同现行行 {d['cells_sha']}）")
+    if not a.write:
+        print("（干跑；加 --write 真写）")
+        return
+    led.append([d])
+    errs = verify(Ledger.load(a.book))
+    print(json.dumps({"写": 1, "verify": errs[:5]}, ensure_ascii=False))
+    if errs:
+        sys.exit(1)
+
+
 def cmd_show(a) -> None:
     from .ledger import Ledger
     _ws(a)
@@ -262,6 +337,15 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("pairs", nargs="+", metavar="旧u:新u", help="如 26626:34455（可多对）")
     q.add_argument("--why", default="", help="说明（看图确认等），记进账行")
     q.add_argument("--write", action="store_true", help="真写（只追加一行册级记录 page=0）；推库另跑 db push --only feedback/uid/<册>.jsonl")
+    q.add_argument("-w", "--workspace", default=None)
+
+    q = s.add_parser("revive", help="复活：已作废（gone）的 u 回到原格（新切分漏切了这格、看图确认后人工补回；缺省只报）")
+    q.add_argument("book", help="cv 册（如 vol20）")
+    q.add_argument("target", metavar="u:页:列:格", help="如 37207:229:1:1")
+    q.add_argument("--box", default=None, help="这格的框 x,y,w,h（cord 空间，可取旧 cord）")
+    q.add_argument("--char", default=None, help="这格的字（记进账行 chars，字序列兜底用）")
+    q.add_argument("--why", default="", help="说明（看图确认等），记进账行")
+    q.add_argument("--write", action="store_true", help="真写（追加该页一行）；推库另跑 db push --only feedback/uid/<册>.jsonl")
     q.add_argument("-w", "--workspace", default=None)
 
     q = s.add_parser("show", help="看账：全册概况／一页／一格／一个 u 的来历")
@@ -746,7 +830,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "retire-into": cmd_retire_into, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "retire-into": cmd_retire_into, "revive": cmd_revive, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 
