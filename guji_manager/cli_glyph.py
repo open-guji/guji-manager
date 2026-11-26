@@ -12,6 +12,22 @@ from pathlib import Path
 from ._cv import cli_v2   # 共用辅助现取（测试 monkeypatch cli_v2 照样生效）
 
 
+
+def _vol_current_pin(ws, vol, load_pins):
+    """册现行的语料总号：以册 yaml 的 ``corpus:`` 为准（钉子账只追加，末行可能是撤掉没用的号，
+    如 W1 试跑后殿本、史記各册账末行 b35 而 yaml 已指回原号，GM2 11-26）；yaml 没写才退回账末行。"""
+    from ._cv import books_dir
+    try:
+        import yaml
+        p = Path(books_dir(ws)) / f"{vol}.yaml"
+        n = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("corpus") if p.exists() else None
+        if n is not None:
+            return int(n)
+    except Exception:  # noqa: BLE001 —— 读不出 yaml 就按老办法
+        pass
+    rows = load_pins(ws, vol)
+    return rows[-1]["n"] if rows else None
+
 def cmd_recheck(args) -> None:
     """Step5-a 点名重算：按字 / 判档 / 命中条目已撤，把格写进 manifest 的格级失效。
     只标不跑——跑还是 `guji pipeline <p> <book> --from glyph_match`，只重算点名格。"""
@@ -203,8 +219,7 @@ def cmd_corpus(args) -> None:
         from ._cv import load_pins
         v = args.version
         if not v and args.vol:
-            rows = load_pins(ws, args.vol)
-            v = rows[-1]["n"] if rows else None
+            v = _vol_current_pin(ws, args.vol, load_pins)
         v = v or (cp.versions(ws) or [0])[-1]
         try:
             res = (cp.upload_blobs(ws, v, args.vol, execute=args.execute, all_items=args.all)
@@ -257,10 +272,9 @@ def cmd_corpus(args) -> None:
     elif args.action == "verify":
         vs = cp.versions(ws)
         v = args.version
-        if not v and args.vol:                        # 册：总号缺省取钉子账最新一行
+        if not v and args.vol:                        # 册：总号缺省取册 yaml 现钉的，没写再退回钉子账最新一行
             from ._cv import load_pins
-            rows = load_pins(ws, args.vol)
-            v = rows[-1]["n"] if rows else None
+            v = _vol_current_pin(ws, args.vol, load_pins)
         v = v or (vs[-1] if vs else 0)
         try:
             r = cp.verify(ws, v, args.vol)
