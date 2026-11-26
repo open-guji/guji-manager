@@ -477,11 +477,40 @@ def cmd_revise(args) -> None:
     _print("\n---- PR 正文 ----\n" + V.pr_body(res, args.book))
     if res.problems and not args.dry_run:
         raise SystemExit(2)
+    if args.write_events and not args.dry_run:
+        _write_adopt_events(args, root, st, res)
     if args.log_applied and not args.dry_run:
         for op, _rev in todo:
             st.log(op.id, "applied", {"text_version": res.new_version, "pr": args.pr})
         st.save()
         _print(f"log 记 applied {len(todo)} 条（{st.backend.describe()}）")
+
+
+def _write_adopt_events(args, root, st, res) -> None:
+    """意见采纳写裁定事件（第 6 步，缺省关）：见 opinions/events.py。"""
+    from pathlib import Path
+    from .opinions import events as E
+    from .uid.ledger import Ledger
+    from .opinions.textsrc import BookText, vol_key
+    bt = BookText(args.book, root)
+    v3 = vol_key(args.vol)
+    char = json.loads(bt.text(f"{v3}.char.json"))
+    cord = json.loads(bt.text(f"{v3}.cord.json") or "{}")
+    statuses = st.statuses()
+    cells_sha_of = None
+    try:
+        from .uid import source
+        from ._cv import ProductStore
+        store = ProductStore(Path(args.products)) if getattr(args, "products", None) else ProductStore()
+        cells_sha_of = lambda pg: source.cells_sha(store, args.book, pg)  # noqa: E731
+    except Exception as e:  # noqa: BLE001
+        _print(f"  取不到产物库，锚不带 cells_sha（补锚档兜底）：{e}")
+    built = E.build(args.book, v3, res.applied, statuses, char, cord, text_version=res.new_version,
+                    ledger=Ledger.load(args.book), cells_sha_of=cells_sha_of)
+    for k, why in built.skipped:
+        _print(f"  不写事件 {k}：{why}")
+    n = E.write(built)
+    _print(f"写裁定事件 {n} 条（batch {built.events[0]['batch'] if built.events else '-'}）")
 
 
 # ---------------- auto（自动化调和器，设计见 book-text docs/design/2026-10-修订流程自动化设计.md）----------------
@@ -682,6 +711,9 @@ def add_parser(sub) -> None:
                    help="阙文带推测字的写法：guess-c（缺省，char v0.2 guess_c，悬停出推测字）／lacuna（推测字只进 CHANGES）／guess-char（残字写法）")
     p.add_argument("--bump-script", default=None, help="缺省 <book-text>/scripts/book-text/bump_original.py")
     p.add_argument("--only", default="", help="只套这些意见（逗号分隔 id）")
+    p.add_argument("--write-events", action="store_true",
+                   help="改完对每个改字／新增格写 confirm 裁定事件（level 明写：用户采纳 human、规则自动采纳 ai；缺省关）")
+    p.add_argument("--products", default=None, help="产物库根（--write-events 取 cells_sha 用；缺省现行工作区）")
     p.add_argument("--log-applied", action="store_true", help="改完在意见池 log 记 applied（PR 合了再用）")
     p.set_defaults(func=cmd_revise)
 
