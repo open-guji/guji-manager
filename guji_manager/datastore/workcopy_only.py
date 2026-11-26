@@ -283,6 +283,8 @@ def push_only(conn, ws_dir: Path, only, *, actor: str | None, dry_run: bool = Fa
     rgate = RevGate(books_dir=data / "books")
     stale_ev = {r.key[1]: r.src_path for r in sc.rows
                 if r.tbl == "events" and not rgate.admits(r.cols.get("kind"), r.cols.get("target") or {})}
+    from ..u_stamp import NO_U_ENV, no_u_message, no_u_rows
+    no_u = {} if os.environ.get(NO_U_ENV) == "1" else no_u_rows(sc.rows, data)   # 册有账却没带 u 的新事件拒收
     if any(c.startswith(("books/", "corpus/", "config/")) for c in changed):
         from .._cv import push_problems
         problems = push_problems(ws_dir)
@@ -308,6 +310,11 @@ def push_only(conn, ws_dir: Path, only, *, actor: str | None, dry_run: bool = Fa
             raise StaleBase(f"范围内这些文件库里有人改过（如 {sorted(set(stale))[:3]}）；先 guji db sync --only")
         cur.execute("SELECT 1 FROM changes WHERE ws = %s AND rev > %s LIMIT 1", (ws, g))
         others["any"] = cur.fetchone() is not None
+        if no_u:                                               # 库里已有的照留（存量走 uid migrate-plan），只拦这次新推的
+            cur.execute("SELECT id FROM events WHERE ws = %s AND id = ANY(%s)", (ws, list(no_u)))
+            new_nu = sorted(set(no_u) - {r[0] for r in cur.fetchall()})
+            if new_nu:
+                raise SystemExit(no_u_message(new_nu, no_u))
         if stale_ev:
             cur.execute("SELECT id FROM events WHERE ws = %s AND id = ANY(%s)", (ws, list(stale_ev)))
             new = sorted(set(stale_ev) - {r[0] for r in cur.fetchall()})

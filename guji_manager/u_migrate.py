@@ -594,6 +594,22 @@ def void_seen(event_log, book: str) -> set:
     return seen
 
 
+def void_ids(event_log, book: str) -> tuple[set, dict]:
+    """u_void 里记过的：(事件 id 集合, 裁定 {格号: 记档时间})。裁定作废记档不带 id，按格号＋时间认（记档前写的那条）。"""
+    import json
+    vp = void_path(event_log) / f"{book}.jsonl"
+    ids, rul = set(), {}
+    if vp.exists():
+        for line in vp.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                if d.get("id"):
+                    ids.add(d["id"])
+                elif d.get("stream") == "rulings" and d.get("key"):
+                    rul[d["key"]] = max(rul.get(d["key"], ""), str(d.get("at") or ""))
+    return ids, rul
+
+
 def unaccounted(latest: dict, seen: set) -> list:
     """每格最新人裁没 u、也没记作废／转待审的 → [Event]。全库收尾后应为空。"""
     return [e for k, e in sorted(latest.items())

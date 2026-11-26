@@ -235,6 +235,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--write", action="store_true", help="真写（只追加新版本）；缺省只报数")
     q.add_argument("-w", "--workspace", default=None)
 
+    q = s.add_parser("stamp", help="事件文件里册有账却没带 u 的行就地补 u（只补锚在同一份切分上的；推库闸拦下时用，缺省只报）")
+    q.add_argument("files", nargs="+", help="事件文件（feedback/events/*.jsonl、feedback/rulings/*.jsonl）")
+    q.add_argument("--write", action="store_true", help="真改文件（只给没带 u 的行加 u，别的行逐字节不动）")
+    q.add_argument("-w", "--workspace", default=None)
+
     q = s.add_parser("check-u", help="自检：有账册每格最新人裁没 u、也没记作废／转待审的；~u 人裁抄件缺补锚档的（都应为 0；有则退出码 1）")
     q.add_argument("books", nargs="*", help="册（缺省：事件里出现的、有账的全部册）")
     q.add_argument("-o", "--out", default=None, help="清单写到这个 tsv")
@@ -302,6 +307,13 @@ def cmd_migrate_plan(a) -> None:
                 rul_ev[p["cell"]] = e
     hum: dict[str, dict] = {}
     log = EventLog()
+    # 收口时记过作废／转待审的（u_void）不再配 u：重跑 migrate-plan 不把作废的旧裁定、人裁抄回来（史記 08，11-26）
+    voided, rul_void = M.void_ids(log, a.book)
+    def _iso(t) -> str:
+        return t.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(t, "strftime") else str(t)
+    for c in [c for c, e in rul_ev.items() if e.id in voided or _iso(e.ts) <= rul_void.get(c, "")]:
+        rul.pop(c, None)
+        rul_ev.pop(c, None)
     raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
     gated = {e.id for e in log.iter_all() if M.is_human_cell(e, HUMAN_VS, counts_as_human)}
     for e in sorted((e for e in raw if e.id in gated), key=lambda e: (e.ts, e.batch, e.seq)):
@@ -309,6 +321,9 @@ def cmd_migrate_plan(a) -> None:
         if not str(t.key).startswith(pre):
             continue
         an = t.anchor or {}
+        if e.id in voided:
+            hum.pop(t.key, None)
+            continue
         hum[t.key] = {"id": e.id, "cell": t.key, "shape": (e.payload or {}).get("shape"),
                       "reading": (e.payload or {}).get("reading"),
                       "cells_sha": an.get("cells_sha"), "u": an.get("u")}
@@ -411,6 +426,74 @@ def cmd_web_backfill(a) -> None:
         summ["写"] = B.apply(conn, res["fills"])
     (out / "结果.json").write_text(json.dumps(summ, ensure_ascii=False, indent=1), encoding="utf-8")
     _print(summ)
+
+
+def stamp_lines(lines: list[str], ledger_of) -> tuple[list[str], list[dict], list[dict]]:
+    """一个事件文件的各行 → (新各行, 补上 [{id, cell, u}], 补不上 [{id, cell, why}])。
+
+    只补「锚在同一份切分上」的：人裁锚 `cells_sha` 主段＝账上该页某行主段（`u_migrate.plan_human` 的「锚同切分」），
+    裁定 `payload.cells_sha` 命中账行（`plan_rulings` 的「直接」）。别的（锚是旧切分、没锚）不猜，列出来交
+    `guji uid migrate-plan`。没带 u 的判定同推库闸（`u_stamp.lacks_u`）。`ledger_of(册)` → `Ledger`（没账 → None）。"""
+    from .. import u_migrate as M
+    from ..u_stamp import lacks_u
+    cache: dict = {}
+
+    def led(book):
+        if book not in cache:
+            lg = ledger_of(book)
+            cache[book] = lg if lg is not None and lg.exists else None
+        return cache[book]
+    out, done, left = [], [], []
+    for line in lines:
+        if not line.strip():
+            out.append(line)
+            continue
+        e = json.loads(line)
+        cell = lacks_u(e.get("kind"), e.get("target"), e.get("payload"), lambda b: led(b) is not None)
+        if not cell:
+            out.append(line)
+            continue
+        lg = led(cell.split(":", 1)[0])
+        if e.get("kind") == "ctx_ruling":
+            got, _ = M.plan_rulings(lg, [e["payload"]])
+            hit = [x for x in got if x["how"] == "直接"]
+            if hit:
+                e["payload"]["u"] = hit[0]["u"]
+        else:
+            an = (e.get("target") or {}).get("anchor") or {}
+            got, _ = M.plan_human(lg, [{"id": e.get("id"), "cell": cell, "cells_sha": an.get("cells_sha")}])
+            hit = [x for x in got if x["how"] == "锚同切分"]
+            if hit:
+                e["target"].setdefault("anchor", {})
+                e["target"]["anchor"]["u"] = hit[0]["u"]
+        if hit:
+            done.append({"id": e.get("id"), "cell": cell, "u": hit[0]["u"]})
+            out.append(json.dumps(e, ensure_ascii=False))
+        else:
+            left.append({"id": e.get("id"), "cell": cell, "why": "锚不在账上的同一份切分（或没锚）：用 guji uid migrate-plan"})
+            out.append(line)
+    return out, done, left
+
+
+def cmd_stamp(a) -> None:
+    from .ledger import Ledger
+    _ws(a)
+    tot_done, tot_left = 0, 0
+    for f in a.files:
+        p = Path(f)
+        lines = p.read_text(encoding="utf-8").split("\n")
+        new, done, left = stamp_lines(lines, Ledger.load)
+        tot_done += len(done)
+        tot_left += len(left)
+        print(f"{f}：补 u {len(done)}、补不上 {len(left)}")
+        for x in left[:20]:
+            print(f"   ✗ {x['id']}（{x['cell']}）：{x['why']}")
+        if a.write and done:
+            p.write_text("\n".join(new), encoding="utf-8")
+    if not a.write and tot_done:
+        print("（只报数；加 --write 真改）")
+    if tot_left:
+        sys.exit(1)
 
 
 def cmd_check_u(a) -> None:
@@ -536,7 +619,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 

@@ -171,6 +171,56 @@ def require_u(evs: list) -> None:
                           f"{'、'.join(bad[:5])}{' …' if len(bad) > 5 else ''}。先 guji uid advance <册>")
 
 
+def lacks_u(kind, target: dict | None, payload: dict | None, has_ledger) -> str | None:
+    """一行事件（库表列的 dict 形态）是不是「册有账却没带 u」的格级人裁／按格裁定；是 → 格号，否 → None。
+
+    推库闸（``datastore.workcopy.push``／``push_only``）用：不经 manager 写的事件（直接用 cv ``EventLog``、手拼 jsonl）
+    绕过了 append 前盖 u，推库时在这里拦下（史記「歲暫歸一」批 11-25）。``has_ledger(册) -> bool``。"""
+    t = target or {}
+    p = payload or {}
+    if kind == "ctx_ruling":
+        cell = p.get("cell")
+        if isinstance(cell, str) and ":" in cell and has_ledger(cell.split(":", 1)[0]) and not isinstance(p.get("u"), int):
+            return cell
+        return None
+    key = t.get("key")
+    if t.get("unit") == "cell" and isinstance(key, str) and ":" in key and has_ledger(key.split(":", 1)[0]) \
+            and not isinstance((t.get("anchor") or {}).get("u"), int):
+        return key
+    return None
+
+
+def no_u_rows(rows, data) -> dict[str, tuple[str, str]]:
+    """扫描出的行里「册有账却没带 u」的事件：``{事件 id: (文件, 格号)}``。账看 ``<数据目录>/feedback/uid/<册>.jsonl`` 在不在。"""
+    from pathlib import Path
+    root = Path(data) / "feedback" / "uid"
+    cache: dict[str, bool] = {}
+
+    def has(book: str) -> bool:
+        if book not in cache:
+            cache[book] = (root / f"{book}.jsonl").exists()
+        return cache[book]
+    out = {}
+    for r in rows:
+        if r.tbl != "events":
+            continue
+        cell = lacks_u(r.cols.get("kind"), r.cols.get("target"), r.cols.get("payload"), has)
+        if cell:
+            out[r.key[1]] = (r.src_path, cell)
+    return out
+
+
+NO_U_ENV = "GUJI_DB_ALLOW_NO_U"
+
+
+def no_u_message(new: list[str], found: dict) -> str:
+    f, cell = found[new[0]]
+    files = sorted({found[i][0] for i in new})
+    return (f"{len(new)} 条新事件的册有字格身份账却没带 u（不经 manager 写的？manager 的 EventLog／RulingLog 会自动盖 u），"
+            f"中心库拒收。如 {new[:3]}（{f}，格 {cell}）。补法：`guji uid stamp {' '.join(files[:3])} --write`"
+            f"（按身份账给同一份切分上的行就地补 u，补不上的列出来）后再推；确要照推设 {NO_U_ENV}=1")
+
+
 def stamp_strict(evs: list) -> list:
     """盖 u 并核（同 append 前的守卫）：给不经 manager 的 `EventLog`／`RulingLog` 子类、直接交 cv 写的路径用。"""
     return _stamp_all(evs)
