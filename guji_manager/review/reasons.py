@@ -319,11 +319,16 @@ def _near_form(c: Cell, x: Context) -> bool:
 
 
 #: 每条原因的判法；按 yaml 的 priority 依次试。没有判法的原因（如 col_width_out_of_band 还没接）永远不中。
+#: 钉子换算待核（cv row_segment 列旗，cards 出卡时挂到这一列每格的 doubts）
+PIN_REMAPPED_DOUBT = "manual_cells_remapped"
+
+
 RULES: dict[R, Callable[[Cell, Context], bool]] = {
     R.RULING_CONFLICT: lambda c, x: "src_code_conflict" in c.codes,
     R.VISION_FLAGGED: lambda c, x: "vision_flag" in c.codes,
     R.MACHINE_CHANGED: lambda c, x: c.recheck and c.note.startswith(MACHINE_CHANGED_NOTE) and MACHINE_OVERRULE_MARK in c.note,
     R.RECHECK: lambda c, x: c.recheck,
+    R.MANUAL_CELLS_REMAPPED: lambda c, x: PIN_REMAPPED_DOUBT in c.codes,
     R.SEG_DEFECT: lambda c, x: c.cls == "seg_defect" or c.src == SELFCHECK_SRC
         or bool(c.codes & {"seg_defect", JIAZHU_UNEVEN, EVICT_REVIEW}) or (c.frag and not c.ref),
     R.OCCLUDED_WITH_REF: lambda c, x: _occluded(c) and c.has_ref and not _occluded_hard_ref(c),
@@ -613,7 +618,7 @@ def _frag_ids(root: Path, name: str) -> set[str]:
 
 
 def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[str, Cell]:
-    """全册没放行的格（排除名单除外）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。
+    """全册没放行的格（排除名单除外；钉子换算待核列 `manual_cells_remapped` 的格放行了也算）→ `Cell`。格号不带册前缀（同 `causes.book_causes`）。
 
     给了 `bigrams` 就顺手把全册整理本字（按页、按列序连起来）的相邻二字计数加进去，给 `ref_suspect` 用。"""
     root = Path(products_dir) / book
@@ -633,6 +638,8 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
         by_design = _ref_by_design(root, f.name)
         frags = _frag_ids(root, f.name)
         bleeds = _bleed_ids(root, f.name)
+        rs = _load_layer(root / "row_segment" / f.name, "cells") or {}
+        remap_cols = {int(c["col"]) for c in rs.get("columns") or [] if PIN_REMAPPED_DOUBT in (c.get("flags") or [])}
         seq = [(ch["id"], (ref.get(ch["id"], (None, None))[0] or "□")) for col in seed.get("columns", [])
                for ch in col.get("chars", []) if "excluded" not in (ch.get("doubts") or [])]
         at = {cid: i for i, (cid, _) in enumerate(seq)}
@@ -644,13 +651,14 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                    if "excluded" not in (ch.get("doubts") or []) and ref.get(ch["id"], (None,))[0]
                    and not ref_missing(ref[ch["id"]][0])]
             agree = sum(hit) / len(hit) if hit else None
+            remap = int(col.get("col", -1)) in remap_cols
             for ch in col.get("chars", []):
-                if ch.get("admit") or "excluded" in (ch.get("doubts") or []):
+                if (ch.get("admit") and not remap) or "excluded" in (ch.get("doubts") or []):
                     continue
                 cid = ch["id"]
                 r, op = ref.get(cid, (None, None))
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
-                                                 doubts=list(ch.get("doubts") or []), evidence=dict(ch.get("evidence") or {}),
+                                                 doubts=list(ch.get("doubts") or []) + ([PIN_REMAPPED_DOUBT] if remap else []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
                                                  col_agree=agree, page_kind=kind, ref_by_design=by_design, frag=cid in frags, bleed=cid in bleeds)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
