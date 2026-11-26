@@ -349,6 +349,9 @@ class Job:
         out = self.guji(*args, outcome="failed")
         m = re.search(r"已取：(\S+)", out)
         self.ev(f"铺底包 {m.group(1) if m else label}")
+        n = _clear_local_derived(self.ws or "", self.spec["book"])
+        if n:
+            self.ev(f"清本机派生物 {n} 处（人裁绑定缓存、切分旧备份），按刚铺的底重算")
 
     def uid_sync(self, strict: bool = False) -> None:
         """刚铺的底是 main 包：这册字格身份账要是没入过这份切分，就入账并推中心库（标 main 钩子会漏，11-25）。
@@ -1081,6 +1084,28 @@ def _first_page_failures(out: str, limit: int = 8) -> list[str]:
             if len(seen) >= limit:
                 break
     return list(seen.values())
+
+
+def _clear_local_derived(ws: str, book: str) -> int:
+    """铺底后清这一册在本机的派生物，免得结果随机器而变（11-26 史記 03 #17918：worker-46 上
+    16 格没锚框的旧人裁被落成 human，别处复算是 unanchored）：
+    - ``feedback/bindings/<册>/``：人裁绑定按页缓存，只按切分 sha＋事件签名判新鲜，不含 cv 版本，换 cv 后会沿用旧算法的结果；
+    - ``products/<册>/<步>.bak-*``、``<步>/_prev``：绑定会拿它们找「当时那一版」的框，本机残留的旧备份会让旧人裁绑上。
+    都可重建。返回清掉的处数。"""
+    if not ws or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book or ""):
+        return 0
+    root = Path(ws)
+    hits = [root / "feedback" / "bindings" / book]
+    prod = root / "products" / book
+    if prod.is_dir():
+        hits += [d for d in prod.iterdir() if d.is_dir() and ".bak-" in d.name]
+        hits += [d / "_prev" for d in prod.iterdir() if d.is_dir()]
+    n = 0
+    for d in hits:
+        if d.is_dir() and not d.is_symlink():
+            shutil.rmtree(d, ignore_errors=True)
+            n += 1
+    return n
 
 
 def _has_source_images(ws: str, book: str) -> bool:

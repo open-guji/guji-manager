@@ -79,7 +79,8 @@ def _tar_book(root: Path, book: str, steps: list[str] | None) -> tuple[bytes, in
     base = Path(root) / book
     if not base.is_dir():
         raise FileNotFoundError(f"没有产物目录 {base}")
-    avail = sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
+    # `<步>.bak-*` 是手工备份，不是一步的产物：不进包，免得随铺底带到别的机器（11-26 史記 03）
+    avail = sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith(".") and ".bak-" not in p.name)
     use = steps or avail
     missing = [s for s in use if s not in avail]
     if missing:

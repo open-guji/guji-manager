@@ -170,6 +170,16 @@ def test_retry_bump_cancel_queued(conn):
     assert S.get(conn, a["id"])["status"] == "queued"
 
 
+def test_cancel_blocked(conn):
+    """依赖没成功、标 blocked 的单也能撤，记事件和操作人（11-26 CV0 撤钉 60ec7603 的单只能直接改库）。"""
+    a = _sub(conn, "h1")
+    _set(conn, "UPDATE job SET status = 'blocked' WHERE id = ?", a["id"])
+    assert S.cancel(conn, a["id"], "CV0") == "已取消"
+    assert S.get(conn, a["id"])["status"] == "cancelled"
+    ev = [e for e in S.detail(conn, a["id"])["events"] if e["stage"] == "cancel"]
+    assert ev and ev[-1]["msg"].startswith("CV0 取消")
+
+
 def test_results_events_and_board(conn):
     a = _sub(conn, "h1")
     j, att = S.claim(conn, "w1")
