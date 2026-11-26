@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（GM4 11-26，待审与裁定整理第 6 步）：`opinions revise --write-events`（缺省关）：真写 book-text 后对每个改字／新增格写 confirm 裁定事件（payload.level 明写：用户采纳 human／规则自动采纳 ai；锚直接带 u、bbox、cells_sha、有则 content_sha；B′ 新格 u 不在现行切分账里就只留文本不写事件；payload.no_glyph 让字形库重放跳过；batch `opinion-<册>-<章>-<日期>` 不带「~」）。另修：revise 改 A／B 类格时 CELL_KEYS 漏了 `u`，会把 v0.6 char 格的 u 丢掉。
+
 ## [0.6.33] - 2026-11-26
 
 - 发版缘由：`guji uid retire-into` 并账（#1059，ZM 殿本列末切矮格）。
@@ -18,7 +20,6 @@
 - PATCH（11-26，GM2，#1056）：任务库执行方——`--pages all` 而各步全是「0 页」判失败、不存包（原先记成功并把底包原样换名存包）；同会话跳过准备前先核本机原图 `data_full/<册>` 还在，没了就重新准备；各步第一条失败／阻塞页原文写进日志、任务结果 `first_failures` 并带进 job.error（全页失败时日志尾巴只剩最后一步的阻塞行）；被叫停的单 error 写明谁叫停（取最近 cancel 事件，如「QTW 要求停下」）。不动 cv 产物，L0。
 - PATCH（11-26，GM2，#1058）：存包时本册产物与上次取的铺底包摘要一致（取包后一页没跑）就在 manifest 记 `unchanged_from`，`pack promote`／`push --main` 见到它拒标 main（给 `--why` 照标并记进指针）。缘由：执行方空跑 0 页仍存包，旧包换名后被标 main（11-26 全唐文 055、史記 11/28/31/34）。只拦新存的包，已有包不受影响。不动 cv 产物，L0。
 - PATCH（11-26，ZM，#1055）：swap booktext：换过图源的书 fig.json 的框跟 cord 对齐（F-OV-13，殿本 vol19）。
-- PATCH（GM4 11-26，待审与裁定整理第 6 步）：`opinions revise --write-events`（缺省关）：真写 book-text 后对每个改字／新增格写 confirm 裁定事件（payload.level 明写：用户采纳 human／规则自动采纳 ai；锚直接带 u、bbox、cells_sha、有则 content_sha；B′ 新格 u 不在现行切分账里就只留文本不写事件；payload.no_glyph 让字形库重放跳过；batch `opinion-<册>-<章>-<日期>` 不带「~」）。另修：revise 改 A／B 类格时 CELL_KEYS 漏了 `u`，会把 v0.6 char 格的 u 丢掉。
 
 ## [0.6.31] - 2026-11-26
 
