@@ -124,6 +124,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "JysRuleBackend": ("groups.backends", "JysRuleBackend"),
     "RrImageBackend": ("groups.backends", "RrImageBackend"),
     "counts_as_human": ("feedback.events", "counts_as_human"),
+    "counts_as_pin": ("feedback.events", "counts_as_pin"),   # cv b161293 事件分级（GM4）
+    "event_level": ("feedback.events", "event_level"),
     "BookLedger": ("variant_ledger", "BookLedger"),
     "has_products": ("utils.bootstrap", "has_products"),
     "ImageCache": ("products.cache", "ImageCache"),
