@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-26，CV1，CV0 批的钉子护栏第一步）：整列钉子写入时在 `input.column_basis` 另记几何底 `geom`（页宽、左右边线六项、矫正上下界、ruled，即 cv ColumnMapper 的全部入参；见 doc/参考/钉子上游底.md）；`seg pins-stale` 对有 geom 的钉子只比 geom。新命令 `seg pins-backfill-geom [册…] [--write]` 一次性给老钉子补 geom（只补现行列窗与当时 col_sha 一致的）。缘由：全唐文 031–060 outer_bar 把直线页变三段、列图挪了 10–32px，人钉坐标照旧套用切偏，pins-stale 不在管线里且比整条记录会误报。不动 cv 产物，L0。
+
 ## [0.6.34] - 2026-11-26
 
 - 发版缘由：意见采纳写裁定事件（`opinions revise --write-events`，#1062／#1065）；db push 缺省不推字形库、全量扫描 --allow-delete 删得掉本地删掉的文件（#1061）。
