@@ -151,7 +151,10 @@ def db_refs(conn, jobs_conn=None) -> dict:
     ``jobs`` 为 None 表示任务库读不了（``--apply`` 据此拒删）。
     """
     freeze: set[str] = set()
-    for _ws, _path, raw, _doc in _file_rows(conn, "feedback/lists/freeze/%"):
+    lines = [raw for _ws, _path, raw, _doc in _file_rows(conn, "feedback/lists/freeze/%")]       # 迁移前的整文件行
+    lines += [r[0] for r in conn.execute(                                                          # 逐行表（GM4 11-26 起）
+        "SELECT raw FROM list_rows WHERE src_path LIKE %s", ("feedback/lists/freeze/%",))]
+    for raw in lines:
         for line in (raw or "").splitlines():
             try:
                 p = json.loads(line).get("pack")

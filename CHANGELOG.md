@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-26，GM4，files 清退路线第 1 步，ai-team `domain/GM/GM4/files表清退路线-2026-11-26.md`）：`feedback/lists/{web,opinions,freeze,ledger,u_void}/…jsonl` 不再整文件进 `files`，改逐行进新表 `list_rows`（主键 (ws, src_path, src_line)；列 dataset、book、name，id、u 由 raw 现算）。清单里有不是 json 对象的行，整文件仍进 `files`（scan 报问题）。拉取、`db verify` 照旧逐字节还原／核对（verify 认 `source_files.tbl`）。`central_gc` 读冻结登记改为 files 与 list_rows 都读（迁移期两处都可能有）。线上要先建表、Worker `/v1/files` 要认新表（guji-workspace-data 另一 PR）；各机升级后全量推一次把已有文件挪过来。L0。
+
 - PATCH（11-26，GM2）：`guji corpus verify／upload／fetch` 不写 `--version` 时，缺省号改读册的**生效配置**（合基础配置与运行覆盖 `GUJI_BOOK_OVERRIDE`），原先只读裸册 yaml（#1006 引入）——rerun_prep 换语料号走覆盖不改 yaml，「语料校验」便核成 yaml 里的旧号（11-26 #17727 殿本 vol03：覆盖 20、核成 19，报 CorpusDrift）。合不出生效配置才退回裸 yaml、再退回钉子账末行。不动 cv 产物，L0。
 - MINOR（11-26，CV2）：review-pages `cut_check` 1.3.0：项可带 `poly`（图内像素折线），卡片上画可改的折线——拖点、点空白加点、双击删点，改过记 `label=fix` 并存 `poly`，`cutcheck-apply` 导出带 `poly`；用于 L3 折线金标人直接改线。旧项不受影响。
 - PATCH（11-26，GM2）：`guji db status／sync／push` 不再把本机不存在的 `workspace.yaml` 当成「未推」改动（SJ 报：它是工作区仓里的身份文件，base 里有、本机缺时原先算成删除）；推送扫描时缺它直接说明「-w 指对了吗、先在工作区仓 git pull」，不再 FileNotFoundError。不动 cv 产物，L0。
