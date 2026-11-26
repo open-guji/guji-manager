@@ -83,7 +83,10 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
             ev = c.get("evidence", {})
             grp = ev.get("group") or {}
             spec = groups.get(r["group"]) if r["group"] else None
-            members = "".join(sorted(spec.members)) if spec else None
+            # 组内全部字：产物带 evidence.group.members（cv #1921）就用它，旧产物退回字组注册表
+            ev_members = grp.get("members")
+            ev_members = ev_members if isinstance(ev_members, str) else "".join(ev_members or ())
+            members = ev_members or ("".join(sorted(spec.members)) if spec else None)
             cands: dict[str, list[str]] = {}
 
             def add(ch, s):
@@ -99,7 +102,7 @@ def build_cells(pkg, sel: list[dict], sort_fn, groups, width=20):
                 if s.get("char"):
                     add(s["char"], "解法:" + str(s.get("solver")))
             for ch in (members or ""):
-                if ch in cands or r["cls"] == "Z":
+                if ch in cands or r["cls"] == "Z" or ev_members:   # 产物带全组时每个组员都出按钮
                     add(ch, "组成员")
             gd = ev.get("guard") or g.get("guard")
             if gd:

@@ -21,7 +21,7 @@ def attach_dian(cards: list[dict], idx: dict) -> tuple[list[dict], int]:
         if c.get("dian"):
             continue
         d = dian_for(idx, cell=c.get("id"), group=c.get("group"), ctx_hash=c.get("ctx_hash"),
-                   book=c.get("book"), u=c.get("u"))
+                   book=c.get("book"), u=c.get("u"), extra_cands=(c.get("grp") or {}).get("m"))
         if d:
             c["dian"] = d
             n += 1

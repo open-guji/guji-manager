@@ -6,6 +6,8 @@
 
 1. **近似字（pivot）**从卡上取，按优先级：整理本字 → 本书惯刻形 → 上下文字 → 库前 3 →
    义定形未定的组内形 → 己已巳建议 → 引擎定的字；`extra_pivots` 可再追加（如 5-b 前几名）。
+   组员（形近字组的组内全部字 `card["grp"]`，cv #1921）也当近似字，且**每个组员保证在 alt 里**
+   （`ensure_members`，排序照旧按图）；旧产物没有组员就是原来的行为。
 2. **池子**＝各近似字的异体族（自建汉字关系库 `hanzi`，本机字统网缓存照并）＋形近表，见
    `clustering.variant_sources.family_pool`。
 3. **排序**＝字块图与各字字体模板的 CNN embedding 余弦（与 5-b 同一个模型、同一套模板），
@@ -25,6 +27,27 @@ from .._cv import SYM_MIN  # 字块图与符号模板余弦门槛（设计 4.3 �
 
 ALT_K = 30                    # 每格最多给几个
 ALT_SHOW = 10                 # 前端缺省展开几个（用户 10-19 定）
+
+
+def members_of(card: dict) -> list[str]:
+    """卡上的形近字组组员（`card["grp"]["m"]`，cv #1921 起有；旧产物没有返回空表，按旧行为走）。"""
+    return list((card.get("grp") or {}).get("m") or ())
+
+
+def ensure_members(ranked: list[dict], members: list[str], q, vectors) -> list[dict]:
+    """组内每个字都要在 alt 里有按钮：排序结果里缺的组员补进去（`src="grp"`，分数同样用图与字模板的余弦），
+    再整体按分数排；渲染不出模板的字分数记 None，排在最后。已有的不动。超出 ALT_K 时从尾部丢非组员。"""
+    have = {a["c"] for a in ranked}
+    miss = [c for c in members if c not in have]
+    if not miss:
+        return ranked
+    vec = vectors(miss) if q is not None and vectors is not None else {}
+    add = [{"c": c, "s": round(float(vec[c] @ q), 4) if c in vec else None, "p": "", "src": "grp"} for c in miss]
+    out = sorted(ranked + add, key=lambda a: (a["s"] is None, -(a["s"] or 0.0)))  # 稳定排序：无分的保持组内顺序
+    keep = set(members)
+    while len(out) > ALT_K and any(a["c"] not in keep for a in out):
+        del out[max(i for i, a in enumerate(out) if a["c"] not in keep)]
+    return out
 
 
 def pivots_of(card: dict, extra: Iterable[str] = ()) -> list[str]:
@@ -49,6 +72,8 @@ def pivots_of(card: dict, extra: Iterable[str] = ()) -> list[str]:
     put(jys.get("char") if isinstance(jys, dict) else jys)
     put((card.get("occluded") or {}).get("char"))
     put(card.get("char"))
+    for c in members_of(card):
+        put(c)
     for c in extra:
         put(c)
     return out
@@ -187,14 +212,14 @@ def alt_for_cards(book: str, cards: list[dict], *, k: int = ALT_K, zi=None, bank
                 img = ctx.image("char_patch", key)
             except Exception:  # noqa: BLE001 — 切不出就当没图，与缓存缺图同口径
                 img = None
-        if img is None:
-            no_img += 1
-            continue
-        q = bank.embed(normalize_patch(img, stroke_width=ns))
+        q = bank.embed(normalize_patch(img, stroke_width=ns)) if img is not None else None
         if q is None:
+            no_img += img is None
+            if members_of(c):           # 排不了序也要有组内字的按钮（分数空，按组内顺序）
+                out[c["id"]] = ensure_members([], members_of(c), None, None)
             continue
         piv = pivots_of(c, (extra_pivots or {}).get(c["id"], ()))
-        ranked = _with_symbols(q, piv, bank, zi, k)
+        ranked = ensure_members(_with_symbols(q, piv, bank, zi, k), members_of(c), q, bank.vectors)
         if ranked:
             out[c["id"]] = ranked
         if log and (i + 1) % 100 == 0:

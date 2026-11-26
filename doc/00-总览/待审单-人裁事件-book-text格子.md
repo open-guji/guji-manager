@@ -50,7 +50,7 @@
 - **关键信息**：
   - 单头：`rev`、`cv_version`／`cv_commit`（出单用的产物）、`source_rev`（页表版本）
   - 每格：`cell`（同 book-text 的 `a`）、`review`、`why`（待审原因码，`pending_reason` 枚举，真源 manager `review/pending_reasons.yaml`）、
-    候选（`stale` 旧人裁失效前的字、`ref`／`refc` 参校本、`lib_top` 字形库前几名、`alt` 相似字、`ctx` 上下文）、
+    候选（`stale` 旧人裁失效前的字、`ref`／`refc` 参校本、`lib_top` 字形库前几名、`alt` 相似字（形近字组组员保证在内）、`ctx` 上下文、`grp` 形近字组组内全部字 `{id, m}`（cv #1921 起有，旧单没有）、`dout` 点校判出的候选外字，只作可选不预选）、
     `recheck`／`note`／`prior`（复审说明与旧人裁）、`img`／`ex`（字块图、同字例子）、`dian`／`sent`（点校倾向字、带标点句子，只提示）
   - **首选字** `first_choice` 由候选现算：`stale` → 参校本 → `lib_top[0]` → `alt[0]` → `ctx`（与网站候选排序一致）
 - **谁写、多快**：机器每轮出单（`republish.py prep/push`）按新单逐格对条目（没变的不动、人工撤下的不放回）；人随时 `guji feedback pending withdraw/restore/note/add`、`republish.py edit-cell／add-cell` 改单格，不换 rev；网站票按条目记，换单不丢票（网站发版后生效）。**改单不动 book-text**。条目真源 `feedback/lists/pending/<书>/<章>.items.jsonl`（manager ≥ v0.4.35、cv ≥ v0.6.37）。
