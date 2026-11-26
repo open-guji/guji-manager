@@ -206,3 +206,45 @@ def test_u_anchor_fill(tmp_path, monkeypatch):
     copies = [NS(id="a~u", target=NS(anchor={"u": 4})), NS(id="x~u", target=NS(anchor={"bbox": [1]})),
               NS(id="y~u", target=NS(anchor={"u": 1})), NS(id="z", target=NS(anchor={}))]
     assert [e.id for e in M.boxless_copies(copies, {"y~u"})] == ["a~u"]
+
+
+def test_bind_rescue_and_unvoid(tmp_path):
+    """11-26：收口先用 cv 绑定认格（整列平移的人裁不再作废）；已作废的人裁救回＝抄 ~u、u_void 记撤销、撤下转出的 recheck 条目。"""
+    from guji_manager._cv import EventLog, EventTarget, make_event
+    from guji_manager.review import pending_items as P
+    led = _led(tmp_path / "uid")
+    left = [{"类别": "人裁", "_h": {"id": "a", "cell": f"{B}:3:2:3", "shape": "玄"}},    # 格号不在账，cv 绑到 3:1:3「玄」→ u3
+            {"类别": "人裁", "_h": {"id": "b", "cell": f"{B}:3:1:1", "shape": "某"}},    # cv 绑到 3:1:2「地」，字不同 → 不认
+            {"类别": "人裁", "_h": {"id": "c", "cell": f"{B}:3:1:4", "shape": "黃"}},    # u4 已被占 → 不认
+            {"类别": "人裁", "_h": {"id": "d", "cell": f"{B}:3:1:5", "shape": "宇"}}]    # 没绑定 → 留给后面
+    got, rest = M.bind_rescue(led, left, {"a": f"{B}:3:1:3", "b": f"{B}:3:1:2", "c": f"{B}:3:1:4"}, taken={4})
+    assert [(x["id"], x["u"], x["how"], x["now"]) for x in got] == [("a", 3, "cv 绑定", f"{B}:3:1:3")]
+    assert [x["_h"]["id"] for x in rest] == ["b", "c", "d"]
+    # 救回已作废的
+    fb = tmp_path / "fb"
+    el = EventLog(fb / "events")
+    cell = f"{B}:3:2:3"
+    he = make_event("h1", 3, "confirm", EventTarget(step="seed_admit", unit="cell", key=cell, anchor={"source_rev": "r"}),
+                    {"v": "confirm", "shape": "玄"})
+    el.append([he])
+    vp = M.void_path(el) / f"{B}.jsonl"
+    vp.parent.mkdir(parents=True)
+    vp.write_text(json.dumps({"kind": "u_review", "book": B, "stream": "events", "id": he.id, "key": cell, "u": 9}) + "\n"
+                  + json.dumps({"kind": "u_void", "book": B, "stream": "events", "id": "zz", "key": "k"}) + "\n")
+    items = tmp_path / "x" / "003.items.jsonl"
+    st = P.ItemStore(items)
+    st.add("3:2:3", {"pending_reason": "recheck", "prior": {"human": "玄", "event": he.id}}, by="u", src="script:u-closeout", u=9)
+    st.add("3:1:1", {"pending_reason": "recheck", "prior": {"human": "某", "event": f"{he.id}／other"}},
+           by="u", src="script:u-closeout", u=1)                                   # 并了别的人裁 → 不撤
+    st.save()
+    assert M.void_seen(el, B) == {he.id, "zz"}
+    w = M.unvoid(B, [{"id": he.id, "u": 3, "now": f"{B}:3:1:3"}], human_events={he.id: he}, event_log=el,
+                 items_files=[items], reason="cv 绑定顺移")
+    assert (w["抄件"], w["撤销"], w["撤下条目"]) == (1, 1, 1)
+    assert M.void_seen(el, B) == {"zz"} and M.void_ids(el, B)[0] == {"zz"}
+    nh = list(el.read("h1~u"))[0]
+    assert nh.target.anchor == {"source_rev": "r", "u": 3} and nh.target.key == cell
+    states = sorted(r["state"] for r in P.ItemStore(items).items.values())
+    assert states == ["open", "withdrawn"]
+    w = M.unvoid(B, [{"id": he.id, "u": 3}], human_events={he.id: he}, event_log=el, items_files=[items], reason="x")
+    assert (w["抄件"], w["撤销"], w["撤下条目"]) == (0, 0, 0)                      # 重跑不重复
