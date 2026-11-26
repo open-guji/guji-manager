@@ -90,8 +90,8 @@ def compare_products(baseline: dict, products_root: Path) -> dict:
 
 
 def human_events_since(book_id: str, since: str, feedback_root: Path | None) -> int:
-    """基线之后新增的、算人裁的事件条数（`counts_as_human`）。`since` 是 ISO UTC 时戳。"""
-    from .._cv import counts_as_human
+    """基线之后新增的、算钉的事件条数（`feedback.levels.counts_as_pin`：人裁＋AI 钉）。`since` 是 ISO UTC 时戳。"""
+    from ..feedback.levels import counts_as_pin
     root = Path(feedback_root) if feedback_root else None
     ev_dir = root / "events" if root else None
     if not ev_dir or not ev_dir.is_dir():
@@ -104,7 +104,7 @@ def human_events_since(book_id: str, since: str, feedback_root: Path | None) -> 
         if str(d.get("ts") or "") <= since:
             continue
         e = type("E", (), {"kind": d.get("kind"), "payload": d.get("payload") or {}})()
-        if counts_as_human(e):
+        if counts_as_pin(e):
             n += 1
     return n
 

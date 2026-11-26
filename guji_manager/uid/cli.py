@@ -311,7 +311,8 @@ def _cv_bound(book: str, products: str | None) -> dict[str, str]:
 
 def cmd_migrate_plan(a) -> None:
     from .. import u_migrate as M
-    from .._cv import RULING_KIND, EventLog, RulingStore, counts_as_human, replay_key
+    from .._cv import RULING_KIND, EventLog, RulingStore, replay_key
+    from ..feedback.levels import counts_as_pin
     from ..feedback.web_votes import HUMAN_VS
     from .ledger import Ledger
     _ws(a)
@@ -338,8 +339,8 @@ def cmd_migrate_plan(a) -> None:
     for c in [c for c, e in rul_ev.items() if e.id in voided or _iso(e.ts) <= rul_void.get(c, "")]:
         rul.pop(c, None)
         rul_ev.pop(c, None)
-    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
-    gated = {e.id for e in log.iter_all() if M.is_human_cell(e, HUMAN_VS, counts_as_human)}
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_pin)]
+    gated = {e.id for e in log.iter_all() if M.is_human_cell(e, HUMAN_VS, counts_as_pin)}
     for e in sorted((e for e in raw if e.id in gated), key=lambda e: (e.ts, e.batch, e.seq)):
         t = e.target
         if not str(t.key).startswith(pre):
@@ -528,12 +529,13 @@ def cmd_stamp(a) -> None:
 def cmd_check_u(a) -> None:
     """全库自检：有账册每格最新人裁没 u、也没记作废／转待审的（GM2 口径）。有就列出并退出码 1。"""
     from .. import u_migrate as M
-    from .._cv import EventLog, counts_as_human
+    from .._cv import EventLog
+    from ..feedback.levels import counts_as_pin
     from ..feedback.web_votes import HUMAN_VS
     from .ledger import Ledger
     _ws(a)
     log = EventLog()
-    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_pin)]
     books = a.books or sorted({str(e.target.key).split(":", 1)[0] for e in raw})
     fb = Path(log.events_dir).parent
     total, rows, n_anc = 0, [], 0
@@ -596,13 +598,14 @@ def cmd_anchor_fill(a) -> None:
     """~u 人裁抄件补锚档：原件有档的抄一行；无框无档的按身份账取 u 在现行切分里的框。只追加 ``feedback/anchors/<册>.jsonl``。
     产物用现行产物根（``GUJI_PRODUCTS_DIR``）：先把各册 main 包取下来（``guji products pack fetch <册> --to …``）。"""
     from .. import u_migrate as M
-    from .._cv import EventLog, ProductStore, counts_as_human
+    from .._cv import EventLog, ProductStore
+    from ..feedback.levels import counts_as_pin
     from ..feedback.web_votes import HUMAN_VS
     from .ledger import Ledger
     _ws(a)
     log = EventLog()
     fb = Path(log.events_dir).parent
-    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_human)]
+    raw = [e for e in log.iter_all(raw=True) if M.is_human_cell(e, HUMAN_VS, counts_as_pin)]
     books = a.books or sorted({str(e.target.key).split(":", 1)[0] for e in raw if str(e.id).endswith(M.SUFFIX)})
     store = ProductStore()
     out, bads = {}, []
