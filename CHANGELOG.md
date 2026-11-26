@@ -6,6 +6,12 @@
 
 ## [未发版]
 
+## [0.6.30] - 2026-11-26
+
+- 发版缘由：待审条目逐行进 pending_items 表（#1045）。
+
+- PATCH（11-26，GM4，待审与裁定整理方案第 4 步）：待审条目 `feedback/lists/pending/<书>/<章>.items.jsonl` 不再整文件进 `files`，改逐行进新表 `pending_items`（一行一个版本，主键 (ws, src_path, src_line)；列 item_id、ver、book、vol、cell、state、op、src、actor、at、why、recheck，u 由 raw 现算）；视图 `pending_current` 取每条最后一行。拉取按 `source_files.tbl` 逐行拼回，文件逐字节不变，工具不用改。`source_files` 对改归 pending_items 的文件指纹带表名，内容没变的文件推一次也会改归。线上要先建表（guji-workspace-data 迁移），各机升级后首推会把已有整文件行挪过来。L0。
+
 ## [0.6.29] - 2026-11-26
 
 - 发版缘由：事件级别统一口径 feedback.levels（#1042）。

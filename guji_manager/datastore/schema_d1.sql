@@ -393,6 +393,31 @@ CREATE TABLE IF NOT EXISTS source_files (
   "row_sha" TEXT,
   PRIMARY KEY ("ws", "src_path")
 );
+CREATE TABLE IF NOT EXISTS pending_items (
+  "ws" TEXT NOT NULL,
+  "src_path" TEXT NOT NULL,
+  "src_line" INTEGER NOT NULL,
+  "item_id" TEXT,
+  "ver" INTEGER,
+  "book" TEXT NOT NULL,
+  "vol" TEXT NOT NULL,
+  "cell" TEXT,
+  "state" TEXT,
+  "op" TEXT,
+  "src" TEXT,
+  "actor" TEXT,
+  "at" TEXT,
+  "why" TEXT,
+  "recheck" INTEGER NOT NULL DEFAULT 0,
+  "raw" TEXT NOT NULL,
+  "rev" INTEGER NOT NULL,
+  "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  "row_sha" TEXT,
+  -- 待审条目（feedback/lists/pending/<书>/<章>.items.jsonl）一行一个版本，GM4 11-26 从 files 拆出；u 由 raw 现算
+  "u" INTEGER GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.u') = 'integer' THEN json_extract(raw, '$.u') END) VIRTUAL,
+  PRIMARY KEY ("ws", "src_path", "src_line"),
+  FOREIGN KEY (ws) REFERENCES workspaces(ws)
+);
 CREATE TABLE IF NOT EXISTS verdicts (
   "ws" TEXT NOT NULL,
   "src_path" TEXT NOT NULL,
@@ -414,9 +439,15 @@ CREATE INDEX IF NOT EXISTS consumed_event ON consumed (ws, consumer, event);
 CREATE INDEX IF NOT EXISTS events_ws_batch ON events (ws, batch);
 CREATE INDEX IF NOT EXISTS events_ws_book ON events (ws, book);
 CREATE INDEX IF NOT EXISTS events_ws_id ON events (ws, id);
+CREATE INDEX IF NOT EXISTS pending_items_item ON pending_items (ws, src_path, item_id, src_line);
+CREATE INDEX IF NOT EXISTS pending_items_u ON pending_items (ws, book, u) WHERE u IS NOT NULL;
 CREATE INDEX IF NOT EXISTS glyph_instances_label ON glyph_instances (ws, label) WHERE (label IS NOT NULL);
 CREATE INDEX IF NOT EXISTS glyph_instances_sha ON glyph_instances (patch_sha);
 
+-- 每个待审条目的当前版本＝该条目在文件里的最后一行（两边各自追加的版本都留，GM4 11-26）
+CREATE VIEW IF NOT EXISTS pending_current AS SELECT p.* FROM pending_items p
+  WHERE p.src_line = (SELECT max(q.src_line) FROM pending_items q
+                      WHERE q.ws = p.ws AND q.src_path = p.src_path AND q.item_id = p.item_id);
 CREATE VIEW IF NOT EXISTS lists AS SELECT * FROM files WHERE kind = 'list';
 CREATE VIEW IF NOT EXISTS batches AS SELECT * FROM files WHERE kind = 'batch';
 
