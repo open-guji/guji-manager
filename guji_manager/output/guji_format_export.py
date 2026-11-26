@@ -74,6 +74,30 @@ def _clip_boxes(page: dict) -> None:
             if x1 > x0 and y1 > y0:
                 o["box"] = [x0, y0, x1 - x0, y1 - y0]
 
+def stale_uid_pages(book: str, pages, products: Path | None) -> list[int]:
+    """账上现行行带 cells_sha、而产物这一页的切分戳不同 → 这页没入账（11-26 殿本 vol07／vol20 换包：
+    新包切分没 advance 就导，u 按格号照抄旧切分，丢格的旧 u 也没进作废）。取不到戳的页不算。"""
+    from ..cell_ref import _ledger
+    led = _ledger(book)
+    if led is None or not led.exists:
+        return []
+    from .._cv import ProductStore
+    from ..uid import source
+    st = ProductStore(products) if products else ProductStore()
+    out = []
+    for p in pages:
+        cur = led.page(int(p)) or {}
+        if not cur.get("cells_sha"):
+            continue
+        try:
+            sha = source.cells_sha(st, book, int(p))
+        except Exception:  # noqa: BLE001 — 取不到戳不拦（老产物）
+            continue
+        if sha and sha != cur["cells_sha"]:
+            out.append(int(p))
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--products", default=None)
@@ -148,6 +172,11 @@ def main(argv=None) -> int:
         uids = None if a.no_uid else export_uids(a.book)
         if uids is not None:
             print(f"   字格永久编号：账上 {len(uids['map'])} 格、u_max {uids['u_max']}、作废 {len(uids['u_retired'])} → char v0.6")
+            stale = stale_uid_pages(a.book, plist, products)
+            if stale:
+                print(f"   ✗ 字格永久编号：{len(stale)} 页的产物切分不是账上现行那份（第 {stale[:10]} 页）——按格号取 u 会把号挂错格。"
+                      f"先把这份切分入账：guji uid sync {a.book} -w <工作区> --label <包> 或 guji uid advance {a.book}，再导")
+                return 1
         prev_char = None
         if uids is not None and not a.no_prev_char:
             if a.prev_char:

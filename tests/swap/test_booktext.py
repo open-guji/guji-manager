@@ -360,3 +360,29 @@ def test_declare_fig_file(tmp_path):
     assert bt.declare_fig_file(tmp_path, "020")
     assert '"fig_file": "020.fig.json"' in (tmp_path / "index.json").read_text(encoding="utf-8")
     assert not bt.declare_fig_file(tmp_path, "020")                  # 已有不重复加
+
+
+def _uchar(cells, **top):
+    return {"u_max": max((c.get("u", 0) for c in cells), default=0), **top,
+            "pages": [{"page": 1, "columns": [{"col": 1, "cells": cells}]}]}
+
+
+def test_u_handoff_blocks_new_package_without_u():
+    old = _uchar([{"a": "1:1:1", "u": 1, "c": "欽"}, {"a": "1:1:2", "u": 2, "c": "定"}])
+    new = {"pages": [{"page": 1, "columns": [{"col": 1, "cells": [{"a": "1:1:1", "c": "欽"}, {"a": "1:1:2", "c": "定"}]}]}]}
+    why, gone = bt.u_handoff(old, new)
+    assert why and "没带字格永久编号 u" in why and gone == []
+    # 旧版也没 u（未迁册）：不拦
+    assert bt.u_handoff({"pages": new["pages"]}, new) == (None, [])
+
+
+def test_u_handoff_retires_unexported_old_u():
+    old = _uchar([{"a": "1:1:1", "u": 1, "c": "欽"}, {"a": "1:1:2", "u": 2, "c": "定"}, {"a": "1:1:3", "u": 3, "c": "四"}],
+                 u_retired=[{"u": 9, "gone": True}], u_max=9)
+    new = _uchar([{"a": "1:1:1", "u": 1, "c": "欽"}, {"a": "1:1:2", "u": 3, "c": "四"}])
+    why, gone = bt.u_handoff(old, new)
+    assert why is None and gone == [2]
+    assert new["u_retired"] == [{"u": 2, "gone": True}, {"u": 9, "gone": True}]
+    assert new["u_max"] == 9
+    rows = bt.cell_table_by_u(old, new)
+    assert [r["kind"] for r in rows] == ["同格", "删", "改号"]

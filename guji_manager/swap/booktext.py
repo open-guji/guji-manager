@@ -104,6 +104,37 @@ def cell_table_by_u(old_char: dict, new_char: dict) -> list[dict] | None:
     return rows
 
 
+def u_handoff(old_char: dict, new_char: dict) -> tuple[str | None, list[int]]:
+    """换包前核 u 交接（11-26 殿本 vol03／vol05 换包撞车）：
+    - 旧版（book-text 现行）带 u、新包有格没 u → 返回拦截原因：新包导出时没找到字格身份账（或用了 --no-uid），
+      这时 ``cell_table`` 会退回框配对、标点专名的 u 全对不上 char，bump 才报「u=1 在 char 里没有」；
+    - 旧版有、新包没有、新包 ``u_retired`` 也没登记的 u → 记 ``{u, gone: true}`` 补进新包 ``u_retired``（就地改 new_char），
+      与导出时给了 ``prev_char`` 的做法相同（不复用、continuity 不报）。返回 (拦截原因或 None, 补登的 u)。"""
+    oc, nc = _chars(old_char or {"pages": []}), _chars(new_char)
+    if not any("u" in x for _, x in oc):
+        return None, []
+    miss = sum(1 for _, x in nc if "u" not in x)
+    if miss:
+        return (f"新包 char 有 {miss}/{len(nc)} 格没带字格永久编号 u，而 book-text 现行已带 u：导出时没找到字格身份账"
+                f"（feedback/uid/vol*.jsonl，先 guji db pull 取账、切分变了先 guji uid advance）或用了 --no-uid。"
+                f"带账重导（导出会打印「字格永久编号：账上 N 格」）再换包，别按格号对照表落"), []
+    live = {int(x["u"]) for _, x in nc}
+    ret = list(new_char.get("u_retired") or [])
+    have = {int(r["u"]) for r in ret if isinstance(r, dict) and "u" in r}
+    for r in old_char.get("u_retired") or []:          # book-text 已作废的照留
+        if isinstance(r, dict) and "u" in r and int(r["u"]) not in have and int(r["u"]) not in live:
+            ret.append(dict(r))
+            have.add(int(r["u"]))
+    gone = sorted({int(x["u"]) for _, x in oc} - live - have)
+    ret += [{"u": u, "gone": True} for u in gone]
+    if ret:
+        ret.sort(key=lambda r: int(r["u"]))
+        new_char["u_retired"] = ret
+    if "u_max" in new_char:
+        new_char["u_max"] = max(int(new_char["u_max"]), int(old_char.get("u_max") or 0), max(live | have, default=0))
+    return None, gone
+
+
 def cell_table(old_char: dict, old_cord: dict, new_char: dict, new_cord: dict, thr: float = IOU_MIN) -> list[dict]:
     """旧格→新格。每行 {old, new, oc, nc, kind, iou, note}；kind ∈ 同格／改号／删／新增；格号不带册前缀。
     新旧两版都带 u（char v0.6）时直接按 u 对（`cell_table_by_u`），不跑框配对。"""
@@ -884,6 +915,12 @@ def do_book(wt: Path, ws: Path, book: str, text_id: str, export: Path, *, note: 
     new_char = _load(export / f"{ch}.char.json")
     if not new_char:
         return {"status": "blocked", "why": f"导出里没有 {ch}.char.json：{export}"}
+    u_block, u_gone = u_handoff(old_char, new_char)
+    if u_block:
+        return {"status": "blocked", "why": f"{book}：{u_block}"}
+    if u_gone:
+        print(f"   字格永久编号：新包没出、也没登记作废的旧 u {len(u_gone)} 个补记 gone（挂在上面的标点专名挪邻格进复核）："
+              f"{u_gone[:10]}", file=sys.stderr)
     old_cord = _load(vdir / f"{ch}.cord.json")
     why = _copy_cord(export / f"{ch}.cord.json", vdir / f"{ch}.cord.json", cv)     # 换过图源的书换到网站页图坐标
     if why:
