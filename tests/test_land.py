@@ -484,3 +484,14 @@ def test_attach_dian_finds_note_from_card_id(monkeypatch):
     monkeypatch.setattr(U, "u_map", lambda book, ids: {i: 7 for i in ids})
     cards, n = DA.attach_dian([{"id": "b:1:2:3"}], {("u", "b", 7): _NOTE})
     assert n == 1 and cards[0]["dian"]["char"] == "甲"
+
+
+def test_with_released_adds_header_from_notes(tmp_path, monkeypatch):
+    import guji_manager.land_enrich as E
+    row = {"book": "b", "u": 9, "cell": "b:5:5:5", "cands": ["甲"],
+           "trace": [{"level": "L2", "char": "甲", "conf": "high", "why": "文意", "status": "released"}]}
+    monkeypatch.setattr(E, "load_dian", lambda ws, book: {("u", "b", 9): row})
+    sheet = land.with_released(tmp_path, "b", {"cells": [{"cell": "1:2:3"}]})
+    assert [r["u"] for r in sheet["released"]] == [9]
+    sheet2 = land.with_released(tmp_path, "b", {"cells": [{"cell": "5:5:5"}]})        # 已在待审格里的不重复
+    assert "released" not in sheet2

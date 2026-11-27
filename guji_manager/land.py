@@ -258,6 +258,22 @@ def upload_sprites(sprites: list[dict], files_dir: Path) -> dict:
     return stats
 
 
+def with_released(ws: Path, book: str, sheet: dict) -> dict:
+    """单头 ``released``＝放行格的 AI 摘要 ``[{u, ai}]``（GM3 11-27）：从本机中心库副本的 notes 现算，单上已有的格不重复；
+    没有 notes 就保持单头原有的 released。"""
+    from .review.dian_trace import released_list
+    idx = _E.load_dian(ws, book)
+    if not idx:
+        return sheet
+    ids = set()
+    for c in sheet.get("cells") or []:
+        ids |= {c.get("cell"), f"{book}:{c.get('cell')}"}
+    rel = released_list(idx, ids)
+    if rel:
+        sheet["released"] = rel
+    return sheet
+
+
 def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str, work: P.ItemStore, sprites: list[dict],
                   files_dir: Path | None, sync: bool = True) -> dict:
     """有变的册落地：条目带上单图 → 传 R2 → 存条目 → 导出整张单写回（**rev 不变**）→ 只推这两个文件（``db sync --only``）。"""
@@ -269,7 +285,7 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
     if files_dir and sprites:
         out["uploaded"] = upload_sprites(sprites, files_dir)
     out["written"] = work.save()
-    sheet = P.export_sheet(work, head)
+    sheet = with_released(ws, book, P.export_sheet(work, head))
     atomic_write(sheet_p, json.dumps(sheet, ensure_ascii=False))
     out["cells"] = len(sheet["cells"])
     if sync:
@@ -284,7 +300,7 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
             if db_only(ws, "pull", [rels[1]], force=True) == 0 and db_only(ws, "sync", [rels[0]]) == 0:
                 merged = P.ItemStore.open(data, text_id, chapter)
                 head2 = json.loads(sheet_p.read_text(encoding="utf-8"))
-                sheet = P.export_sheet(merged, head2)
+                sheet = with_released(ws, book, P.export_sheet(merged, head2))
                 sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
                 out["cells"] = len(sheet["cells"])
                 out["synced"] = db_only(ws, "sync", rels) == 0
