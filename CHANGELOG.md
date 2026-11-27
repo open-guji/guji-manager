@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM4，清退 files）：意见池 `text_versions.json` 改存 `text_versions.jsonl`（一行紧凑 json，进 `list_rows`）；读时老名字仍认，写时换新名。
+
 ## [0.6.44] - 测试中
 
 - 发版缘由：史記 11-26 回库贴错图的防再犯与补救（#1105）。
