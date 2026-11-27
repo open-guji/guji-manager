@@ -6,6 +6,16 @@
 
 ## [未发版]
 
+- PATCH（11-27，CV0，册号位数统一第二步）：新工具 `python -m guji_manager.ops.renumber`：一部书的册号改位数（book-text cv 版本的章文件按前缀通配改名、`fig/<章>/`、`index.json` 的 `file` 与全部 `*_file`；数据目录 `feedback/lists/**/<书>/<章>.*` 改名；基础配置 `volume_width` 改、`chapter_width` 删）。缺省只出清单，`--apply` 写回滚清单，`--rollback` 还原；新旧并存算冲突整书不动；已发待审单 rev 不改写。不改任何已有代码路径，L0。脉经 dry-run：5 个改名、2 处编辑、无冲突。
+
+- PATCH（11-27，CV0，册号位数统一第一步）：用户 11-27 定册号位数按全书册数（1–9 册 1 位、10–99 两位、100 起三位），迁移前后 1、01、001 并存，比对册号处改按数值认：`ops/exit_check.find_chapter`（字面没对上再按数值／`n`）、`pending_stats` 非正文页表（`_nonbody_for`，先字面再数值）、`review/vis_review` 取单（`_by_number`）。原来对得上的照旧先认字面，行为不变；`swap.chapter_of` 暂不动，随迁移工具一起改。L0，不碰 cv 指纹。方案：https://claude.ai/artifact/GFATExpvckttdKaHSHRuTz
+- PATCH（11-27）：放行格回库事件（`ops/lib_backfill.admit`）的 OCR 通道从 `payload.channel` 改叫 `payload.ocr_channel`，给裁定事件来源 `channel` 腾位置，并写 `level=machine／by=lib_backfill／channel=script`（仍不算钉）；`feedback/consumers._admit_backfills` 重放先读 `ocr_channel`、没有再读老事件的 `channel`，库内证据格式不变。
+
+## [0.6.50] - 2026-11-27
+
+- 发版说明：护栏 `guji eval guard` 云端会话没有书的字形库，**未验证**，已请有真工作区的书线补跑。
+
+- PATCH（11-27，GM4，SJ 报）：点校 AI 摘要对位 `dian_trace.load_notes`／`find_note` 按（册，u）建键并**归一册标签**（去 `vol` 前缀、前导 0：037／37、vol35／035 同册），老行没有 `book` 就用文件名 `<册>.jsonl`；`released_list` 每条加 `book`（u 是册内编号，跨册会撞号，页面合并多册时据此区分）。网站现算侧（Worker pending-live）已同步按（册，u）匹配，见 guji-workspace-data#45。
 - PATCH（11-27，CV0）：`guji glyph-db rebind-audit --show-rows` 把非 keep 的行打到输出，任务库 command 单只留 6000 字输出尾巴、拿不到 TSV 时用（只读，行为不变）。
 
 - PATCH（11-27，CV0 线程，清理计划 1.6／1.8／1.4；行为不变，只多 `machine` 一档与新函数）：「算落定」口径只在 `feedback/levels.py` 定义一处——新增 `settles_cell`（confirm＋格＋`SETTLED_VS`＋算钉）、`SETTLED_VS`、`provenance()`（裁定事件来源三字段 `payload.level／by／channel` 的统一取法，校验取值）；`payload.level=machine` 明确不算钉；`web_votes.HUMAN_VS` 改引用 `SETTLED_VS`、`latest_human` 改调 `settles_cell`。`tests/test_event_levels.py` 加四处一致性矩阵（manager／cv／中心库 `events.level` 表达式／Worker `HUMAN_VS`），登记 3 类已知分歧。新文档 `doc/4-反馈迭代/裁定事件写入点清单-2026-11-27.md`（各写入点现不写三字段，只列不改）、`按u配事件审计-2026-11-27.md`（只按 u 配的地方，只列不修）。
