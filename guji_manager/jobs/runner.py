@@ -935,6 +935,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                 if got is None:
                     _maybe_uid_audit(say)
                     _maybe_uid_checku(say)
+                    _maybe_pending_settle(say)
                     # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
@@ -1045,6 +1046,32 @@ def _maybe_uid_checku(say=print) -> None:
         say("；".join(tail[-8:]) if tail else f"人裁 check-u 报告退出码 {r.returncode}")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"人裁 check-u 报告没跑成：{e}")
+
+
+#: 待审条目对账（格已落定 → 条目标 resolved，清理计划 2.2；秒，缺省 0＝不跑）。只在一台执行方上开：它会写中心库的条目文件
+PENDING_SETTLE_S = int(os.environ.get("GUJI_PENDING_SETTLE_S", "0"))
+_pending_settle_next: float | None = None
+
+
+def _maybe_pending_settle(say=print) -> None:
+    global _pending_settle_next
+    if PENDING_SETTLE_S <= 0:
+        return
+    now = time.time()
+    if _pending_settle_next is not None and now < _pending_settle_next:
+        return
+    _pending_settle_next = now + PENDING_SETTLE_S
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    tok = _token("GUJI_DATA_TOKEN") or _token("GUJI_DATA_TOKEN_READ")
+    if tok:
+        env["GUJI_DATA_TOKEN"] = tok
+    try:
+        r = subprocess.run([str(VENV / "bin" / "guji"), "pending-settle", "--roots", str(HOME.parent), "--pull", "--apply", "--sync"],
+                           capture_output=True, text=True, timeout=3600, env=env)
+        tail = [x for x in (r.stdout + r.stderr).splitlines() if "resolved" in x or x.startswith("✗")]
+        say("；".join(tail[-8:]) if tail else f"待审条目对账退出码 {r.returncode}")
+    except (OSError, subprocess.SubprocessError) as e:
+        say(f"待审条目对账没跑成：{e}")
 
 
 ENV_STREAK_PAUSE = 3
