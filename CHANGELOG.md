@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM2，跟 cv #1974 退役整张换单脚本）：`tools/开书/出v01.py` 不再子进程跑 cv `scripts/zhengli/republish.py from-pack`（含 cv #1974 的 cv 版本上这个文件已删，出 v0.1 会在导出那步失败）。导出改用 `land_text.export_meta`＋`export_cmd`（与 `guji land` 收尾同参数：char-cord、`--keys cv`、四庫拆页表），出到 `reports/<册>/_land/export/`；首发时 book-text dev 上还没有这一章，文本版本仍取本机检出、不带 `--prev-char`。末尾打印的推单命令由 `republish.py push` 改成 `guji land <册> … --export-char … --text-vdir …`（先计划、再 `--apply`）。只出 v0.1 的工具与 wiki/doc 第二步那几处文案改，不动 land／online_lists／swap 逻辑。
 - PATCH（11-27，CV3，候选字线，L0：只新增模块、卡上没有 `cands` 时行为不变）：新增 `review/cands_field`——待审格候选列表 `cands/1`：每格一份，字带各来源原始分（`a` 库相似度、`c` 图像余弦、`b` 形近组方法分、`ctx` 填空 logp、`ref` 参校字）、异体族键，卡片按钮就是前几个；`build_cands(final, rank, ref)` 由 cv 收尾 `glyph_analyzer` 与 `context_rank` 的格记录出表，`pick_fields()` 出人点选时要记的 `pick_src`／`pick_rank`／`pick_shown`。`proof_fields.pending_fields` 卡上有 `cands` 就原样带进待审单（旧字段 ref／lib_top／alt 照出，网站先读 `cands`）。规格 Claude Doc「候选字线：待审格格式、3c／4b 接口与 benchmark」。新增 `tests/test_cands_field.py`。
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧，行为不变。
 

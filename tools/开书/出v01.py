@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""一册出 v0.1：判停 → 收口单 → 导出＋出待审单 → book-text 加章 → 校验，一条命令串起来。
+"""一册出 v0.1：判停 → 收口单 → 导出 → book-text 加章 → 校验，一条命令串起来。
 
 全唐文 004（2026-11-08）手工走 S4 收口＋S14 入库时，要串 6～7 个脚本、手改 book-text 三个文件；
 本脚本把能机器做的都做了（含第五步产物 `guji output export md`＋`guji pipeline collate`，原 Step9，close-check 第 12 项要），只在两处停下：
@@ -29,11 +29,6 @@ from pathlib import Path
 
 # 这些原因是切分／版面的毛病，算法能修（改册配置、格位表、换 cv），出 v0.1 前要再跑一轮
 ALGO = {"seg_defect", "seg_col_unaligned", "seg_page_unaligned", "col_width_out_of_band", "machine_changed"}
-
-
-def cv_root() -> Path:
-    import open_guji_cv
-    return Path(open_guji_cv.__file__).resolve().parents[1]
 
 
 def lib_count_fn(ws: Path, text_id: str):
@@ -101,7 +96,7 @@ def handoff(out: Path, book: str, label: str, rows: list, man: dict) -> None:
 
 
 def chapter_for(book: str, ws: Path, given: str | None = None) -> str:
-    """册号 → book-text 章号（三位）。先认 --chapter，再按 cv 册配置（``core.volume_id.chapter_of``，与 republish 同法），
+    """册号 → book-text 章号（三位）。先认 --chapter，再按 cv 册配置（``core.volume_id.chapter_of``，与 guji land 同法），
     再退到册号里的数字补三位（史記册号 01 → 001；SJ 11-19：原来直接用册号当章号，落成 01.char.json）。"""
     import re
     if given:
@@ -236,7 +231,7 @@ def main() -> int:
     text_id = str(yaml.safe_load((ws / "workspace.yaml").read_text(encoding="utf-8")).get("id") or "")
     if not text_id or text_id == "None":
         sys.exit(f"✗ {ws}/workspace.yaml 没有 id（book-text 条目 id），出不了 v0.1")
-    py, cv = sys.executable, cv_root()
+    py = sys.executable
     env = {**os.environ, "GUJI_WORKSPACE": str(ws), "PYTHONIOENCODING": "utf-8"}
     if not a.no_fetch:
         if (products / book).exists():
@@ -280,27 +275,35 @@ def main() -> int:
     if (ws / "data_full" / book).is_dir() and not list((ws / "data_full").glob(f"*/{book}")):
         (ws / "data_full" / "_vol").mkdir(exist_ok=True)
         (ws / "data_full" / "_vol" / book).symlink_to(Path("..") / book)
-    rc = subprocess.run([py, str(cv / "scripts/zhengli/republish.py"), "from-pack", "--book", book, "-w", str(ws),
-                         "--label", a.label, "--text-version", tv, "--no-pull",   # 不带 --no-alt：史记首发漏了它，线上 1,350 格没有候选字（11-20）
-                         "--chapter", chapter, "--text-id", text_id], env=env, cwd=cv).returncode
-    if rc:
-        return rc
-    export = ws / "reports" / book / "_publish" / f"export-{a.label}"
+    # 导出（原 cv republish.py from-pack，cv #1974 已删）：参数同 guji land 收尾的导出（land_text.export_cmd）。
+    # 首发时 book-text dev 上还没有这一章，所以文本版本取本机检出、不带 --prev-char，不走 land_text.refresh_export。
+    from guji_manager import land_text as LT
+    export = LT.export_dir(ws, book)
+    if export.exists():
+        shutil.rmtree(export)
+    export.mkdir(parents=True, exist_ok=True)
+    meta = LT.export_meta(book, export.parent / "export-input")
+    if meta is None:
+        sys.exit(f"✗ {book} 没有导出用的 meta：cv 无 meta_{book}.json，册配置也缺 book_id／volume")
+    rc = subprocess.run(LT.export_cmd(ws, book, chapter=chapter, out=export, text_version=tv, meta=meta),
+                        env={**env, "GUJI_PRODUCTS_DIR": str(products)}).returncode
+    if rc or not (export / f"{chapter}.char.json").exists():
+        print(f"✗ 导出失败（退出 {rc}），不写 book-text")
+        return rc or 1
     note = (f"粗校 v0.1：产物包 {a.label}（cv {man.get('cv_version') or '?'}），待审 {s['n']} 格（收口全留人审），"
             f"proofing: true")
     bt_add_chapter(bt, text_id, chapter, export, a.title, note, parse_juan(a.juan, a.title))
     subprocess.run([py, "scripts/local_check.py", "--dev"], cwd=bt)
-    pub = sorted((ws / "reports" / book / "_publish").glob(f"{chapter}-r*"))
-    rev = pub[-1].name if pub else "<rev>"
+    vdir = bt_dir(bt, text_id) / "default"
     print("\n接下来（推东西，人或总览线做）：")
     print(f"  0. 出口检查（R5）：guji close-check {book} --tier rough -w {ws}（第五步产物上面已出在 reports/{book}/）")
-    print(f"  1. 看差异单 {ws}/reports/{book}/_publish/{rev}/差异单.md")
-    print(f"  2. book-text：git add Book/…/{text_id} && git commit && git pull --rebase origin dev && git push origin HEAD:dev")
-    print(f"  3. guji source pull {book} -w {ws}（出字块图要原图；图在 data_full/{book} 时建 data_full/_vol/{book} 链接）")
-    print(f"  4. python {cv}/scripts/zhengli/republish.py push --book {book} -w {ws} --chapter {chapter} --text-id {text_id} "
-          f"--rev {rev} --yes --no-publish-web")
-    print(f"  5. guji db pull → guji db push --dry-run（看 0 成批 delete、glyph_exported false）→ guji db push")
-    print(f"  6. 网站：pages-books.json 加 {book}（3 位册号）、触发 iiif（vols={book}）与 proofing-sync（only={text_id}）")
+    print(f"  1. book-text：git add Book/…/{text_id} && git commit && git pull --rebase origin dev && git push origin HEAD:dev")
+    print(f"  2. guji source pull {book} -w {ws}（出单格图要原图；图在 data_full/{book} 时建 data_full/_vol/{book} 链接）")
+    print(f"  3. 出待审单（原 republish.py push，已退役）：先看计划 guji land {book} -w {ws} --text-id {text_id} "
+          f"--export-char {export}/{chapter}.char.json --text-vdir {vdir}；计数合理再加 --apply"
+          "（开条目、传单格图、推条目与线上单、发站；首发上线要先问用户，不想发站加 --no-publish）")
+    print("  4. guji db pull → guji db push --dry-run（看 0 成批 delete、glyph_exported false）→ guji db push")
+    print(f"  5. 网站：pages-books.json 加 {book}（3 位册号）、触发 iiif（vols={book}）与 proofing-sync（only={text_id}）")
     return 0
 
 
