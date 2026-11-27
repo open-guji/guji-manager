@@ -106,3 +106,16 @@ def test_salvage_logs_uploads_and_retires(tmp_path, monkeypatch):
     assert got[0][0] == "salvage_log" and got[0][1][:2] == (17959, 8)
     assert not d.exists() and (tmp_path / "failed-logs" / "job17959-a8.log").exists()
     assert (tmp_path / "jobx-a1").exists()
+
+
+def test_mem_note_cgroup_v1(tmp_path, monkeypatch):
+    g = 1 << 30
+    (tmp_path / "memory.usage_in_bytes").write_text(str(10 * g))
+    (tmp_path / "memory.limit_in_bytes").write_text(str(int(13.4 * g)))
+    (tmp_path / "memory.max_usage_in_bytes").write_text(str(13 * g))
+    (tmp_path / "memory.stat").write_text(f"cache 1\ntotal_cache {2 * g}\n")
+    (tmp_path / "memory.oom_control").write_text("oom_kill_disable 0\nunder_oom 0\noom_kill 2\n")
+    monkeypatch.setattr(R, "_cgroup_mem_dir", lambda: (tmp_path, 1))
+    assert R._mem_note() == "内存 8.0/13.4G 峰 13.0G OOM 2"
+    monkeypatch.setattr(R, "_cgroup_mem_dir", lambda: None)
+    assert R._mem_note() == ""

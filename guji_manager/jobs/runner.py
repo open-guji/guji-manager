@@ -138,7 +138,9 @@ class Job:
             try:
                 # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
                 # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
-                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress,
+                mem = _mem_note()
+                prog = f"{self.progress or ''}｜{mem}"[-500:] if mem else self.progress
+                why = db(S.heartbeat, self.aid, stage=self.stage, progress=prog,
                          seen={"name": S.who(), "state": "busy", "job_id": self.id})   # 续租＋报到（D1 上一次请求）
                 if why != "lost":
                     BOARD.publish(db)
@@ -1171,6 +1173,87 @@ _CACHES = (Path.home() / ".cache" / "uv", Path.home() / ".cache" / "guji-data")
 
 def _free_gb() -> float:
     return shutil.disk_usage(HOME).free / 2**30
+
+
+def _read_int(p: Path) -> int | None:
+    try:
+        v = p.read_text(encoding="ascii").strip()
+    except OSError:
+        return None
+    return int(v) if v.isdigit() else None
+
+
+def _cgroup_mem_dir() -> tuple[Path, int] | None:
+    """本进程所在内存 cgroup 的目录与版本（1／2）。执行方跑在会话的 Bash cgroup 里（上限约 13.4G），按它被杀。"""
+    try:
+        lines = Path("/proc/self/cgroup").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for ln in lines:
+        parts = ln.split(":", 2)
+        if len(parts) == 3 and "memory" in parts[1].split(","):
+            d = Path("/sys/fs/cgroup/memory" + parts[2])
+            if (d / "memory.usage_in_bytes").exists():
+                return d, 1
+    for ln in lines:
+        parts = ln.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            d = Path("/sys/fs/cgroup" + parts[2])
+            if (d / "memory.current").exists():
+                return d, 2
+    return None
+
+
+def _mem_note() -> str:
+    """心跳带上 cgroup 内存：已用（不算页缓存）／上限、峰值、OOM 次数。失联单靠最后一拍看得出是不是内存顶满
+    （11-27 全唐文 056 #17959：三次都在 row_segment 里失联，事后分不清是暂停还是 cgroup 杀）。读不到返回空串。"""
+    got = _cgroup_mem_dir()
+    if not got:
+        return ""
+    d, v = got
+    stat: dict[str, int] = {}
+    try:
+        for ln in (d / "memory.stat").read_text(encoding="ascii").splitlines():
+            k, _, x = ln.partition(" ")
+            if x.isdigit():
+                stat[k] = int(x)
+    except OSError:
+        pass
+    if v == 1:
+        use, lim, peak = (_read_int(d / f) for f in ("memory.usage_in_bytes", "memory.limit_in_bytes",
+                                                     "memory.max_usage_in_bytes"))
+        cache = stat.get("total_cache", 0)
+        oom = None
+        try:
+            for ln in (d / "memory.oom_control").read_text(encoding="ascii").splitlines():
+                if ln.startswith("oom_kill "):
+                    oom = int(ln.split()[1])
+        except (OSError, ValueError):
+            pass
+    else:
+        use, peak = _read_int(d / "memory.current"), _read_int(d / "memory.peak")
+        lim = _read_int(d / "memory.max")
+        cache = stat.get("file", 0)
+        oom = None
+        try:
+            for ln in (d / "memory.events").read_text(encoding="ascii").splitlines():
+                if ln.startswith("oom_kill "):
+                    oom = int(ln.split()[1])
+        except (OSError, ValueError):
+            pass
+    if use is None:
+        return ""
+    g = 1 << 30
+    out = f"内存 {max(0, use - cache) / g:.1f}"
+    if lim and lim < 1 << 60:
+        out += f"/{lim / g:.1f}G"
+    else:
+        out += "G"
+    if peak:
+        out += f" 峰 {peak / g:.1f}G"
+    if oom:
+        out += f" OOM {oom}"
+    return out
 
 
 def _salvage_logs(db, say=print) -> int:
