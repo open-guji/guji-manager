@@ -257,6 +257,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
              extra=("--bench", "../open-guji-dataset/char-clustering/samples/007-qtw-firstseen", "--items", "rare.jsonl"),
              title="5b 候选·全唐文首次字头格", needs=("heavy",),
              note="头条 emb top1／top10；分 firstseen／oov／extB+ 报；81 格约 60 字，按字去重另看"),
+    # 识字候选（CV3，2026-11-27）：3c 按图给候选、4b 按上下文排序与补字、待审卡按钮三个量法；
+    # 甲层＝三书人裁难格（引用 char-clustering 的冻结图），乙层＝发过并有人裁的待审卡。
+    _e("cands", "char-candidates", pythonpath=True,
+       title="识字候选（3c／4b／卡片）", needs=("heavy",),
+       note="3c 报 r5 全字表召回@1/10/30/50；4b 报固定池重排与串联、伤害率；卡片报按钮命中，分「金标≠参校字」另看；要 SikuRoBERTa（HF 缓存）"),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
@@ -324,6 +329,8 @@ SUITES: dict[str, tuple[str, ...]] = {
 }
 SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
 # 要全唐文字形库的（先 export GUJI_GLYPH_DB=<全唐文 glyph.db>）：5a 相似度、A6 形近字组、A3 归一图端到端
+# 识字候选线（3c／4b／卡片），见 open-guji-dataset/char-candidates/README.md
+SUITES["cands"] = ("cands",)
 SUITES["read-qtw-lib"] = ("sim_bench", "nearform", "match_bench_qtw")
 
 
