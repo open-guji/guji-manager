@@ -5,7 +5,7 @@
 | ``opinions.jsonl`` | 只追加；同 id 重复追加被拒 |
 | ``log.jsonl`` | 只追加 |
 | ``raw-feedback.jsonl`` | 按 id 去重合并 |
-| ``text_versions.json`` | 整文件替换 |
+| ``text_versions.jsonl`` | 整文件替换（一行紧凑 json，才能进 list_rows；老的 ``text_versions.json`` 读得到，写时换新名） |
 | ``cv_events_todo.jsonl`` | 只追加 |
 
 本地路径缺省是数据目录 ``$GUJI_DATA_HOME/<分支>/<工作区>/feedback/lists/opinions/<书>/``（``guji db sync`` 会把它推进中心库）；
@@ -27,7 +27,7 @@ FILES = {
     "opinions": "opinions.jsonl",
     "log": "log.jsonl",
     "raw": "raw-feedback.jsonl",
-    "versions": "text_versions.json",
+    "versions": "text_versions.jsonl",
     "cv_todo": "cv_events_todo.jsonl",
     # 自动化（doc/design 修订流程自动化设计）：发布批、格谱系、度量，都只追加
     "releases": "releases.jsonl",
@@ -161,6 +161,8 @@ class OpinionStore:
             self.opinions[op.id] = op
         self.events = [LogEvent.from_dict(d) for d in _jsonl(self._text["log"] or "")]
         self.raw = {d["id"]: d for d in _jsonl(self._text["raw"] or "") if d.get("id")}
+        if self._text["versions"] is None:          # 老名字 text_versions.json（缩进的多行 json）
+            self._text["versions"], _ = self.backend.read("text_versions.json")
         self.text_versions = json.loads(self._text["versions"]) if self._text["versions"] else {}
         self.cv_todo = _jsonl(self._text["cv_todo"] or "")
         self.releases = _jsonl(self._text["releases"] or "")
@@ -280,7 +282,7 @@ class OpinionStore:
         if self._raw_dirty:
             out["raw"] = "".join(_line(self.raw[k]) + "\n" for k in sorted(self.raw))
         if self._versions_dirty:
-            out["versions"] = json.dumps(self.text_versions, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+            out["versions"] = json.dumps(self.text_versions, ensure_ascii=False, sort_keys=True) + "\n"
         return out
 
     def save(self, *, only: list[str] | None = None) -> dict[str, dict]:
