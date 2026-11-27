@@ -6,7 +6,9 @@
 
 ## [未发版]
 
-- PATCH（11-27，GM4，清退 files）：整张待审单 `feedback/lists/proofing/<册>/<页>.pending.json` 改进 `list_rows`（dataset=proofing，一行一个 json 对象，逐字节还原）；单行超 1.8MB 的整份仍留 files（正文走 R2）。
+## [0.6.41] - 2026-11-27
+
+- 发版缘由：整张待审单进 list_rows，清退 files。PATCH（11-27，GM4，清退 files）：整张待审单 `feedback/lists/proofing/<册>/<页>.pending.json` 改进 `list_rows`（dataset=proofing，一行一个 json 对象，逐字节还原）；单行超 1.8MB 的整份仍留 files（正文走 R2）。
 
 ## [0.6.40] - 2026-11-26
 
