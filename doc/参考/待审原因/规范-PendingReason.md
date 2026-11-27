@@ -68,7 +68,7 @@
 
 | 数据 | 写法 | 谁写 |
 |---|---|---|
-| 待审单 `feedback/lists/proofing/<文本号>/<章>.pending.json` | 每格 `pending_reason`（必有）＋`pending_reason_detail`；另有成因码细分 `pending_reason_cause`（A1…I，`review/causes.py`）＋`pending_reason_cause_detail`，派单按它细分 | cv `republish.py` 出单（公众单、团队单都写） |
+| 待审单 `feedback/lists/proofing/<文本号>/<章>.pending.json` | 每格 `pending_reason`（必有）＋`pending_reason_detail`；另有成因码细分 `pending_reason_cause`（A1…I，`review/causes.py`）＋`pending_reason_cause_detail`，派单按它细分 | `guji land` 出单（原 cv `republish.py`）（公众单、团队单都写） |
 | 控制台待审卡 | 每张卡 `pending_reason`／`pending_reason_detail`，控制台显示「原因：显示名（补充）」 | manager `review/cards.py` → `stamp_cards` |
 | 人裁事件 `feedback/events/*.jsonl`（`confirm` 等） | `payload.pending_reason`：裁的时候这格在单上的原因 | manager `cellvotes`（网站票落事件）；手写事件照写，不知道写 `unknown` |
 | 文意裁定 `feedback/rulings/*.jsonl`（`ctx_ruling`） | `payload.pending_reason`：问的时候这格的原因 | 出裁定的脚本；字组裁定写 `group_abstain` 等 |
@@ -116,7 +116,7 @@
 
 - **旧字段（用户 11-04 定）**：`cls`（卡片类别）不再写进待审单和章 `proof.json`，控制台按类别审仍用卡上的 `cls`（控制台自己的筛选，不出单）；
   `cause`／`cause_detail`（成因码）留作 `pending_reason` 下的细分，改名 `pending_reason_cause`／`pending_reason_cause_detail`，派单照旧按它细分。
-  读的一方（guji-manager 人审率统计与分类、cv 台账、republish 差异报告）先读新名、老单退回旧名；回流单（`pending_route.py`）、台账改按 `pending_reason` 分组。
+  读的一方（guji-manager 人审率统计与分类、cv 台账、land 明细 `_land/land-detail.tsv`）先读新名、老单退回旧名；回流单（`pending_route.py`）、台账改按 `pending_reason` 分组。
   网站校对页已改成先读 `pending_reason`、老单才退回 `cls`（kaiyuanguji-web #667）。别再新造 `cause`／`cls` 类字段。
 - 网站阅读页悬停显示原因：book-index-ui 0.65.0（book-index-manager #299）。
 - 候选清单（`feedback/candidates`）：行上或 `_meta` 写 `pending_reason`，`load_list` 每行带出，缺省 `unknown`（11-04）。
