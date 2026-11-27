@@ -124,7 +124,7 @@ def main():
             for r in blocked:                       # 字块图缺：拉原图和出单版包再试一次
                 vol = r["册"]
                 sh(["guji", "source", "pull", vol, "-w", str(ws)], env=env)
-                sh(["guji", "products", "pack", "fetch", vol, "-w", str(ws), "--label", f"rev-{r['单版']}"], env=env)
+                sh(["guji", "products", "pack", "fetch", vol, "-w", str(ws), "--label", f"rev-{r['单版']}", "--force"], env=env)
             if blocked:
                 rc, out = run_collect(ws, book_id, book_text, env, a.extra.split())
                 led = newest_ledger(ws)
