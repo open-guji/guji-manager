@@ -16,8 +16,8 @@ def _setup(tmp_path):
     cells.write_text(json.dumps({"book": "01", "cells": [{"id": "01:10:1:2a", "match": "v2:01:9:1:1"}],
                                  "key": "cols:01:10"}, sort_keys=True), encoding="utf-8")
     old_sha = _sha(cells)
-    (prod / "01" / "cell_shrink" / "manifest.json").write_text(
-        json.dumps({"p0010": {"sha256": old_sha}}), encoding="utf-8")
+    (prod / "01" / "cell_shrink" / "_manifest.jsonl").write_text(
+        json.dumps({"key": "p0010", "sha256": old_sha, "upstream": {"row_segment": old_sha}}) + "\n", encoding="utf-8")
     st = cache / "01" / "char_patch" / "_stamps.json"
     st.parent.mkdir(parents=True)
     st.write_text(json.dumps({"p0010": old_sha}), encoding="utf-8")
@@ -56,7 +56,10 @@ def test_apply_and_rollback(tmp_path):
     assert d["book"] == "1" and d["cells"][0]["id"] == "1:10:1:2a" and d["key"] == "cols:1:10"
     assert d["cells"][0]["match"] == "v2:01:9:1:1"                            # 实例 id 不改
     new_sha = _sha(cells)
-    assert json.loads((prod / "1" / "cell_shrink" / "manifest.json").read_text())["p0010"]["sha256"] == new_sha
+    m = json.loads((prod / "1" / "cell_shrink" / "_manifest.jsonl").read_text())
+    assert m["sha256"] == new_sha and m["upstream"] == {"row_segment": old_sha}   # upstream 不动
+    mk = json.loads((prod / "1" / "_renamed.json").read_text())
+    assert mk["from"] == "01" and mk["shamap"] == {old_sha: new_sha}
     assert json.loads((cache / "1" / "char_patch" / "_stamps.json").read_text())["p0010"] == new_sha
     y = (data / "books" / "1.yaml").read_text(encoding="utf-8")
     assert 'id: "1"' in y and 'aliases: ["01"]' in y and '"1:10:1:2"' in y and "raw_dir: data_full/01" in y

@@ -7,8 +7,9 @@
 ------
 1. **产物**（``--products``，本机产物根）：``<旧>/`` → ``<新>/``；目录下每个 JSON（含 ``_prev/``、manifest）里
    格号前缀换新名（``"vol01:88:6:9"`` → ``"01:88:6:9"``，``"cols:vol01:…"`` 同理）、``"book": "vol01"`` 换新名。
-   改写后文件 sha 变了：manifest 等处记的旧 sha 按「改写前→改写后」对照表一并换掉；
-   由上游 sha 合成的指纹没法换，下游会判过期——不重跑（用户定），close-check／exit-check 要认这种过期。
+   改写后文件 sha 变了：各步 ``_manifest.jsonl`` 条目自己的 ``sha256`` 换新，``upstream`` 不动；改写前后 sha 对照表
+   写进 ``<新>/_renamed.json``。下游指纹按实判「上游产物变了」，cv ``status`` 读这个标记认出「只因改名」、
+   算新鲜（cv ``Engine.rename_only``，#1977）；真跑 pipeline 时照常重跑（用户定：只改不重跑，过期不管）。
 2. **图像缓存**（``--cache``）：``<旧>/`` → ``<新>/``，``_stamps.json`` 里的产物 sha 按对照表换。
 3. **数据目录**（``--data-dir``，``guji db pull`` 拉下的本工作区数据目录）：
    - ``books/<旧>.yaml`` → ``books/<新>.yaml``：``id`` 改新名、加 ``aliases: [旧]``，yaml 里写的完整格号换新名；
@@ -48,6 +49,7 @@ from pathlib import Path
 INSTANCE_NS = ("v1", "v2")
 BOOK_FIELDS = ("book", "vol", "book_id", "volume_id")
 PER_BOOK = ("feedback/anchors", "feedback/uid", "feedback/notes", "feedback/lists/u_void")
+MARKER = "_renamed.json"
 CONTENT_GLOBS = ("feedback/verdicts/**/*.jsonl", "config/*.jsonl")
 _HEX = re.compile(r"[0-9a-f]{64}")
 
@@ -103,7 +105,11 @@ def remap_shas(t: str, shamap: dict[str, str]) -> tuple[str, int]:
 class Plan:
     amap: dict[str, str]
     moves: list[dict] = field(default_factory=list)      # 目录或文件 {"from", "to"}
-    rewrite_json: list[str] = field(default_factory=list)  # 改名后的路径
+    products_json: list[str] = field(default_factory=list)   # 产物页（改名后的路径）
+    manifests: list[str] = field(default_factory=list)       # 各步 _manifest.jsonl
+    renamed: dict[str, str] = field(default_factory=dict)    # 产物目录 新名 → 旧名
+    products_root: Path | None = None
+    rewrite_json: list[str] = field(default_factory=list)    # 数据目录里改内容的 jsonl（改名后的路径）
     rewrite_yaml: list[str] = field(default_factory=list)
     stamps: list[str] = field(default_factory=list)
     uid: list[str] = field(default_factory=list)
@@ -112,7 +118,8 @@ class Plan:
     counts: dict[str, int] = field(default_factory=dict)
 
     def summary(self) -> dict:
-        return {"map": self.amap, "moves": len(self.moves), "rewrite_json": len(self.rewrite_json),
+        return {"map": self.amap, "moves": len(self.moves), "products": len(self.products_json),
+                "manifests": len(self.manifests), "rewrite_json": len(self.rewrite_json),
                 "rewrite_yaml": len(self.rewrite_yaml), "stamps": len(self.stamps), "uid": len(self.uid),
                 "conflicts": self.conflicts, "leftovers": self.leftovers, "counts": self.counts}
 
@@ -127,15 +134,18 @@ def _move(plan: Plan, src: Path, dst: Path) -> bool:
 
 
 def build_plan(amap: dict[str, str], data_dir: Path | None, products: Path | None, cache: Path | None) -> Plan:
-    plan = Plan(amap)
+    plan = Plan(amap, products_root=products)
     clash = sorted(set(amap) & set(amap.values()))
     if clash:
         plan.conflicts.append(f"新旧名重叠 {clash}：一次改不了，先改到中间名")
     rw = Rewriter(amap)
     for old, new in amap.items():
         if products is not None and _move(plan, products / old, products / new):
-            plan.rewrite_json += [str(products / new / p.relative_to(products / old))
-                                  for p in sorted((products / old).rglob("*.json"))]
+            plan.products_json += [str(products / new / p.relative_to(products / old))
+                                   for p in sorted((products / old).rglob("*.json")) if p.name != MARKER]
+            plan.manifests += [str(products / new / p.relative_to(products / old))
+                               for p in sorted((products / old).rglob("_manifest.jsonl"))]
+            plan.renamed[new] = old
         if cache is not None and _move(plan, cache / old, cache / new):
             plan.stamps += [str(cache / new / p.relative_to(cache / old))
                             for p in sorted((cache / old).rglob("_stamps.json"))]
@@ -212,23 +222,33 @@ def apply(plan: Plan, backup: Path) -> dict:
             log["files"].append(path)
         plan.counts[p.suffix] = plan.counts.get(p.suffix, 0) + n
 
-    # 第一遍换名（出 sha 对照表），第二遍把 manifest 等处记的旧 sha 换成新的；第二遍改动的文件 sha 再变，
-    # cur 记的是走到最后的 sha。缓存戳与 u 账用最终对照表。
+    # 产物页换名，记「改写前 sha → 改写后 sha」；manifest 只换各条目自己的 `sha256`（`upstream` 不动：
+    # 下游照实判「上游产物变了」，close-check 拿改名标记里的对照表认出这是改名造成的，见 rename_only_stale）。
+    for f in plan.products_json:
+        edit(f, rw.json_text)
+    prod_map = dict(cur)
+    for f in plan.manifests:
+        edit(f, lambda t: _manifest_text(t, rw, prod_map))
+    for f in plan.stamps:
+        edit(f, lambda t: remap_shas(t, prod_map))
     for f in plan.rewrite_json:
         edit(f, rw.json_text)
-    first = dict(cur)
-    for f in plan.rewrite_json:
-        edit(f, lambda t: remap_shas(t, first))
-    for f in plan.stamps:
-        edit(f, lambda t: remap_shas(t, cur))
     for f in plan.rewrite_yaml:
         edit(f, lambda t: _yaml_book(t, rw))
-    final = dict(cur)
     for f in plan.uid:
-        edit(f, lambda t: _uid_text(t, rw, final))
-    shamap = final
+        edit(f, lambda t: _uid_text(t, rw, prod_map))
+    import time
+    pj = set(plan.products_json)
+    for new, old in plan.renamed.items():
+        base = plan.products_root / new
+        sub = {o: cur[o] for path, o in orig.items() if path in pj and Path(path).is_relative_to(base)}
+        mk = base / MARKER
+        mk.write_text(json.dumps({"from": old, "to": new, "ts": time.time(),
+                                  "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "shamap": sub},
+                                 ensure_ascii=False, indent=0), encoding="utf-8")
+        log["files_created"] = log.get("files_created", []) + [str(mk)]
     save_log()
-    (backup / "shamap.json").write_text(json.dumps(shamap, indent=0), encoding="utf-8")
+    (backup / "shamap.json").write_text(json.dumps(prod_map, indent=0), encoding="utf-8")
     return log
 
 
@@ -244,6 +264,24 @@ def _yaml_book(t: str, rw: Rewriter) -> tuple[str, int]:
     return t, n + k
 
 
+def _manifest_text(t: str, rw: Rewriter, shamap: dict[str, str]) -> tuple[str, int]:
+    out, n = [], 0
+    for line in t.splitlines(keepends=True):
+        s = line.strip()
+        if not s:
+            out.append(line)
+            continue
+        line2, k = rw.json_text(line)
+        d = json.loads(line2)
+        if isinstance(d.get("sha256"), str) and d["sha256"] in shamap:
+            d["sha256"] = shamap[d["sha256"]]
+            line2 = json.dumps(d, ensure_ascii=False) + ("\n" if line.endswith("\n") else "")
+            k += 1
+        out.append(line2)
+        n += k
+    return "".join(out), n
+
+
 def _uid_text(t: str, rw: Rewriter, shamap: dict[str, str]) -> tuple[str, int]:
     t, a = rw.json_text(t)
     t, b = remap_shas(t, shamap)
@@ -252,6 +290,8 @@ def _uid_text(t: str, rw: Rewriter, shamap: dict[str, str]) -> tuple[str, int]:
 
 def rollback(backup: Path) -> None:
     log = json.loads((backup / "rename-log.json").read_text(encoding="utf-8"))
+    for f in log.get("files_created", []):
+        Path(f).unlink(missing_ok=True)
     for f in log["files"]:
         src = backup / "files" / str(Path(f).resolve()).lstrip("/")
         if src.exists():
