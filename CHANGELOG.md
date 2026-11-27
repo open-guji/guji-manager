@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，CV0 线程，清理计划 1.6／1.8／1.4；行为不变，只多 `machine` 一档与新函数）：「算落定」口径只在 `feedback/levels.py` 定义一处——新增 `settles_cell`（confirm＋格＋`SETTLED_VS`＋算钉）、`SETTLED_VS`、`provenance()`（裁定事件来源三字段 `payload.level／by／channel` 的统一取法，校验取值）；`payload.level=machine` 明确不算钉；`web_votes.HUMAN_VS` 改引用 `SETTLED_VS`、`latest_human` 改调 `settles_cell`。`tests/test_event_levels.py` 加四处一致性矩阵（manager／cv／中心库 `events.level` 表达式／Worker `HUMAN_VS`），登记 3 类已知分歧。新文档 `doc/4-反馈迭代/裁定事件写入点清单-2026-11-27.md`（各写入点现不写三字段，只列不改）、`按u配事件审计-2026-11-27.md`（只按 u 配的地方，只列不修）。
+
 - PATCH（11-27，GM3，SJ 报）：`write_notes.py` 状态 released 必须带 `--release-batch`（放行事件批名），摘要文字写「已放行」而状态不是 released 也拦；模板与 wiki 加「放行事件没进库不写已放行」。
 
 - PATCH（11-27，GM3，sheldon 反馈）：AI 判字摘要给用户看的字样一律白话——`dian_trace` 加 `plain_zh`／`jargon_hits`，`dian.why` 不再产出「L2 已(mid)」改「浅层文意判『已』（把握中等）」，`ai` 块 s／d／log 兜底换白话；`tools/dianjiao/write_notes.py` 写入前换、剩内部词报错；新增统一提示词模板 `tools/dianjiao/prompt_ai_analysis.md`（禁内部代号英文、禁自相矛盾、不套别组提醒）。
