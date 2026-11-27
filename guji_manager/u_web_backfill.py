@@ -26,6 +26,7 @@ import re
 from collections import Counter
 
 from .uid.ledger import KIND, Ledger
+from .voter import voter_tag
 
 #: 这些档带的字是「这格就是 X」（cut／jiazhu／main 给了字也是），可拿来当核字的字；none、unsure、figure、damaged 的字不算
 VOTE_CHAR_CHOICES = ("char", "cut", "jiazhu", "main")
@@ -152,7 +153,7 @@ def plan_rows(res: Resolver, rows: list[dict], events: dict | None = None) -> di
             u, why = res.resolve(a, hint)
             if u is not None and why == "字同" and not v.get("shown"):
                 why = "票字同"
-            ev = events.get((str(v.get("rev") or ""), a, str(v.get("voter") or "")[:16]))
+            ev = events.get((str(v.get("rev") or ""), a, voter_tag(str(v.get("voter") or ""))[:16]))
             if ev is not None and ev.get("u"):
                 # 已导成人裁、事件链有 u：以它为准（换图源的票走过几何 rebase，比按格号＋字核更可靠；11-25 实测 473 条里 2 条不一致）
                 why = "人裁事件" if u in (None, ev["u"]) else "人裁事件（账上按字配的是另一个 u）"
