@@ -10,6 +10,7 @@
   `[{c, s, p, src}]`，按字块图相似度排好，`p`＝从哪个近似字查来，`src`＝哪几家（v/rt/zi/near/piv）。
 - `grp`：形近字组的组内全部字（cv #1921 起 Step7 `evidence.group.members`，如 己巳已、日曰目），
   `{id, m:[字…]}`，网页给组内每个字出选择按钮。旧产物没有 members 就不出这个键，网页照旧只用别的候选。
+- 卡上带了 `cands`（`review/cands_field`，候选字线 `cands/1`）就原样带出。
 - `slim_fields(card)`：章 `proof.json` 瘦身形态，只带 `cls`／`why`／`conf`。
 """
 from __future__ import annotations
@@ -116,6 +117,9 @@ def pending_fields(card: dict) -> dict:
     grp = card.get("grp")
     if grp and grp.get("m"):
         out["grp"] = {"id": grp.get("id") or "", "m": list(grp["m"])}
+    cands = card.get("cands")
+    if isinstance(cands, dict) and cands.get("list"):
+        out["cands"] = cands          # `review/cands_field.build_cands` 出的 cands/1，原样带出；网站先读它，没有才退回 ref／lib_top／alt
     alt = card.get("alt")
     if alt:
         out["alt"] = [{"c": a["c"], "s": _num(a.get("s"), 4), "p": a.get("p") or "", "src": a.get("src") or ""}

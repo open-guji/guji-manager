@@ -48,6 +48,6 @@ guji feedback closeout fix-misplaced --repo … --vdir … --chapter NNN --cells
 
 ## 还没做
 
-- 出单脚本（cv `republish.py`／`pending_list.py`）调用 `derive`＋`stamp`，把 A 类写进线上单。
+- 出单（`guji land`，经 cv `pending-cells` 取待审格）调用 `derive`＋`stamp`，把 A 类写进线上单。
 - 别仓 enum 副本（kaiyuanguji-web TS、看板、book-text 校验器）按 `python -m guji_manager.review.pending_reason --json` 同步。
 - 把 `derive`／`overlay`／`remap_lib`／红线串成 `swap book_text` 的一条龙。

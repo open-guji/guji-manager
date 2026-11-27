@@ -107,7 +107,7 @@ python3 tools/dianjiao/write_notes.py in.tsv <feedback>/notes/<册>.jsonl --leve
 # notes 文件与裁定事件写好即可；collect／db sync（notes 进 ai_notes、裁定落 book-text）由 GM4 定时批量跑，各线别自己推库
 # 确需单独推 notes 先问 GM4（推前先 db pull、--dry-run）
 # 5 出单（挂卡）
-guji audit alt <册>  # 写卡时已并入 notes；land／republish 读同一份卡，再对账即补
+guji audit alt <册>  # 写卡时已并入 notes；land 读同一份卡，再对账即补
 ```
 
 放行再走 `llm_queue import`／`final-review` ctx-m1 路径（见第八节第 4 条）。

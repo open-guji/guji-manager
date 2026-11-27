@@ -55,7 +55,7 @@ def classify(c, ctx):   # L02／L03 命中、而本书库 0 例 → L01
 2. **Step6 上下文（context_decide）**：在库候选里按文意选字，选中的是形近字。
 3. **seed_admit 上下文护栏 `_context_guard`**（cv `open_guji_cv/steps/seed_admit.py` 第 4536 行，开关 `context_guard_ref_prefer`）：坐标对位给出的整理本字和上下文选的字语义不同，库又不是 `same`，于是不放行，打疑问码 `ctx_guard_ref`，**默认字改成整理本字**。所以这一格的 `char` 和整理本相同，命中上面的第 3 条。
 4. **rare_ref（5b 生僻字放回）不碰这些格**：`lane_keep_ref_review=True`（cv 第 785 行；`_LANE_REF_REVIEW` 第 2571 行）规定带 `ctx_guard_ref` 的格不按整理本字放回（A24 10-23，起因是 vol18:115:6:3 本／木）。
-5. **出单**：cv `scripts/zhengli/republish.py` `add_causes`（第 455 行）调 `reasons_for_pending(..., glyph_db=<工作区>/output/glyph.db)`（第 702 行），写进待审单的 `pending_reason`。
+5. **出单**：（原）cv `republish.py` `add_causes`（已删；现 `guji land` 并成因字段）调 `reasons_for_pending(..., glyph_db=<工作区>/output/glyph.db)`（第 702 行），写进待审单的 `pending_reason`。
 
 另一条少数路（16 格）：库首位就是整理本字，但 cov 不够，又有「上下文 margin 不足」。这时 `char` 也是整理本字，同样落到 L03。
 
@@ -66,7 +66,7 @@ def classify(c, ctx):   # L02／L03 命中、而本书库 0 例 → L01
 | enum、priority、hint、detect 文案 | `guji_manager/review/pending_reasons.yaml`（`lib_sparse_agree`，第 268 行） |
 | 判定 | `guji_manager/review/reasons.py`：`LIB_SPARSE`、`_sparse`、`RULES`、`lib_counts`、`classify`、`book_cells`（读 seed_admit／align_ref／glyph_match 拼 `Cell`）、`reasons_for_pending` |
 | 上游让格停下来的护栏 | cv `open_guji_cv/steps/seed_admit.py`：`_context_guard`、`lane_keep_ref_review`、`_rare_ref_pass`、`rare_ref_decide` |
-| 出单写原因 | cv `scripts/zhengli/republish.py` `add_causes`；回填 `scripts/zhengli/backfill_pending_reason.py` |
+| 出单写原因 | （原 cv `republish.py` `add_causes`，已删）`guji_manager/land_enrich.py`；回填 `scripts/zhengli/backfill_pending_reason.py` |
 | 分档 | `guji_manager/iterate/leverage.py` `FIRST_ENTRY` |
 
 ### 结构上不够清楚的地方（2026-11-06 调研；1–3 条已在 11-06 边界调整里处理）
@@ -77,7 +77,7 @@ def classify(c, ctx):   # L02／L03 命中、而本书库 0 例 → L01
    - `reasons.lib_counts`：按 `glyphs.n_confirmed` 求和，**含借来的版本**。史記库借了全唐文，借来的刻例也算进去。
    - `reasons.lib_split_counts`（L01 细分用）：按 exemplars 数，本书与借来分开。
    - seed_admit 的 `_keben_counts`：按 exemplars 数。
-4. **结果取决于出单机器上的字形库**。republish 读的是 `<工作区>/output/glyph.db`，不是册 yaml 钉的 `glyph_pin` 版本，同一包换台机器出单，数可能不同。`pending-stats --glyph-db` 只影响旧口径 L4，不重算 `pending_reason`。三书统计脚本（ai-team `三书待审原因统计/run3.py`）没接字形库，所以下面总览表里 L02／L03 原先是 0，L04 偏多。
+4. **结果取决于出单机器上的字形库**。出单（land）读的是 `<工作区>/output/glyph.db`，不是册 yaml 钉的 `glyph_pin` 版本，同一包换台机器出单，数可能不同。`pending-stats --glyph-db` 只影响旧口径 L4，不重算 `pending_reason`。三书统计脚本（ai-team `三书待审原因统计/run3.py`）没接字形库，所以下面总览表里 L02／L03 原先是 0，L04 偏多。
 5. 判定本身很短，一个阈值加一个等式，不难读。难的是要读懂上面 seed_admit 那条链，才知道一格**为什么**会走到这里，而 reasons.py 里看不到这条链。
 
 ## 现状（2026-11-06）

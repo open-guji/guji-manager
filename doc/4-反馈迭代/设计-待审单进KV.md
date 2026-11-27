@@ -7,7 +7,7 @@
 ## 已做（短期，不改架构）
 1. proofing-sync 带 `only` 时，冒烟只严查所指章节；别章只比单子 rev，问题只告警（kaiyuanguji-web #752）。
 2. `only` 发布时 `index.json` 只改所选章，别章保持 COS 现有写法。**这是 007/008 的真问题**：旧写法下 index 按中心库全部单子生成（007=r11、008=r7），而 COS 上这两章的单子没传（仍 r10、r6），读者侧 rev 对不上，且每次 only 发布都会重现，直到下次全站发布。
-3. cv `republish push --sync`（以及 edit-cell／add-alt／add-sprites 的 `--sync`）补上 `publish_only`（open-guji-cv #1372）；guji-manager 的 `guji feedback pending --sync` 本来就带。
+3. （历史）cv `republish push --sync` 等补上 `publish_only`（open-guji-cv #1372；republish 已删，现 `guji land`）；guji-manager 的 `guji feedback pending --sync` 本来就带。
 
 ## 条目进 KV（11-10 已实现，sheldon 定现在就做）
 现状：条目日志在中心库 `feedback/lists/pending/<书>/<章>.items.jsonl`，原先网站只读 COS `proof/<书>/<章>.pending.json`，撤下一格、加一格要「导出单 → 推库 → 触发 workflow → 传 COS → 清 CDN」。
