@@ -7,6 +7,7 @@
 ## [未发版]
 
 - PATCH（11-27，GM2，MJ 报）：`guji land --text` 刷新导出改调本包 `output/guji_format_export`，参数同 cv `republish.py from-pack`（char-cord、`--keys cv`、book-text dev 现行 `--text-version`、`--meta`、`--prev-char`）。原拼 `guji export format <册> -w …` 在 cv 0.9.7 吃不到册后参数、非殿本无 meta 退出、也不出 char.json。
+- PATCH（11-27，GM4，清退 files）：新表 `file_chunks`——超过 D1 单行上限的整张待审单（`proofing/<册>/<章>.pending.json`，目前北行古本两张）按 30 万字符切块进库，`source_files.tbl='file_chunks'`，还原直接拼块；不再占 files。需先建表（guji-workspace-data 迁移 2026-11-27-file-chunks.sql）、部署 Worker，再发版。
 - PATCH（11-27，CV0，参校本 D 块）：人审原因 `_ref_by_design` 认册配置 `reference_profile` 声明 none 的页（align_ref `ref_kind: none`／备注「本页无参照（配置）」）——这些页没有对位字是设计，不再判 S01 seg_page_unaligned／S02／R02 ref_gap，落字形类；声明 text 的页不变。
 - PATCH（11-27，GM4，清退 files）：意见池 `text_versions.json` 改存 `text_versions.jsonl`（一行紧凑 json，进 `list_rows`）；读时老名字仍认，写时换新名。
 
