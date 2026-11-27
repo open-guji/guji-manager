@@ -116,6 +116,7 @@ _NO_FILE = re.compile(r"(FileNotFoundError|No such file|not found|不存在|找�
 _WEIGHT = re.compile(r"(models/|\.pt\b|\.pth\b|checkpoint|ckpt|glyph_cnn|glyph_sim|权重|模型)", re.IGNORECASE)
 _RARE_IDX = re.compile(r"(emb_[\w-]+\.npz|rare[-_]index|向量包|稀见字索引)", re.IGNORECASE)
 
+
 def missing_asset_hint(out: str) -> str:
     """子进程输出看着是缺模型权重或稀见字向量包，就给补法；看不出来返回空串（不瞎猜）。"""
     lines = [ln for ln in (out or "").splitlines() if _NO_FILE.search(ln)]
