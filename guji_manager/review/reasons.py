@@ -573,13 +573,18 @@ def _page_kind(root: Path, name: str) -> str | None:
 
 
 #: align_ref 的 note：本册没配整理本／证人，或册里没写 references 读不到（cv align_ref `未配置整理本`／`未配置证人`／`整理本读不到`；QTW 11-08：全唐文 002 的 208 页都是「整理本读不到」）。
-NOREF_NOTES = ("未配置整理本", "未配置证人", "整理本读不到")
+#: 另加册配置 `reference_profile` 声明 none 的页：cv align_ref 写 note「本页无参照（配置）」＋`ref_kind: "none"`（参校本属性 D 块，CV0 11-26）。
+NOREF_NOTES = ("未配置整理本", "未配置证人", "整理本读不到", "本页无参照（配置）")
 
 
 def _ref_by_design(root: Path, name: str) -> bool:
-    """本页的对位层说「没配参校本」（不是锚不上、不是钉页无此页）→ 无对位是设计。"""
-    ar = _layer_note(root, name)
-    return any(n in ar for n in NOREF_NOTES)
+    """本页的对位层说「没配参校本」或「本页声明无参照」（不是锚不上、不是钉页无此页）→ 无对位是设计。
+    机器认 `ref_kind == "none"`，备注只兜底老产物。"""
+    ar = _load_layer(root / "align_ref" / name, "align_ref") or {}
+    if ar.get("ref_kind") == "none":
+        return True
+    note = str(ar.get("note") or "")
+    return any(n in note for n in NOREF_NOTES)
 
 
 def _layer_note(root: Path, name: str) -> str:

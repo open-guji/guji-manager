@@ -91,6 +91,16 @@ def _verify_ws(cur, reader, d, files) -> dict:
             continue
         if f["sha"] != bsha or f["bytes"] != len(data):
             mism.append(f"{rel}: source_files 记的 sha/字节数与提交不符")
+        if tbl == "file_chunks" or f["tbl"] == "file_chunks":
+            # 超大整文件按块存：拼回逐字节核对（GM4 11-27）
+            have = lines_by_file.get(rel, {})
+            if any(i >= f["n"] for i in have) or len(have) != f["n"]:
+                mism.append(f"{rel}: 块数 库{len(have)}/登记{f['n']}")
+            elif sha256("".join(have[i] for i in range(f["n"])).encode("utf-8")) != bsha:
+                mism.append(f"{rel}: 块拼回后整文件 sha 不符")
+            counts["lines_checked"] += f["n"]
+            git_lines["file_chunks"] += f["n"]
+            continue
         if tbl in ("list_rows", "ai_notes") and f["tbl"] == "files":
             tbl = "files"              # 清单里有不是 json 的行：scan 时整文件退回 files（GM4 11-26）
         if tbl in ("workspaces", "books", "files"):

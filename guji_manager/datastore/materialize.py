@@ -271,6 +271,9 @@ def _texts(src, ws: str, files: dict, reuse, repair_gaps: bool = False) -> tuple
                     continue
             if extra:
                 raise MaterializeError(f"{p}: 库里有超出 n_lines 的行 {sorted(extra)[:5]}")
+            if tbl == "file_chunks":                    # 块直接拼回，不加换行（GM4 11-27）
+                texts[p] = "".join(have.get(i, "") for i in range(n)).encode("utf-8")
+                continue
             text = "\n".join(have.get(i, "") for i in range(n)) + ("\n" if f["final_newline"] else "")
             texts[p] = text.encode("utf-8")
             if repair_gaps and len(have) < n and sha256(texts[p]) != f["sha256"]:
