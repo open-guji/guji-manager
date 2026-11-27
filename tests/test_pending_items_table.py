@@ -203,10 +203,22 @@ def test_proofing_sheet_rows_and_oversize(repo, conn, tmp_path):
     tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchall())
     assert tbls == {"feedback/lists/proofing/96mid1ogzk/001.pending.json": "list_rows",
                     "feedback/lists/proofing/96mid1ogzk/002.pending.json": "files"}
-    # 超行上限的整份进 files（正文在 R2，测试替身读不回，只验其余文件不受影响）
+    # 超行上限的整份进 files（正文在 R2，测试替身读不回，故不对它做 verify／materialize）
     assert conn.execute("SELECT body_r2 FROM files WHERE src_path LIKE '%002.pending.json'").fetchone()[0] == 1
-    bad = verify_commit(conn, repo, c1)["workspaces"]["tws"].get("mismatches") or []
-    assert all("002.pending.json" in m for m in bad), bad
+
+
+def test_proofing_sheet_roundtrip(repo, conn, tmp_path):
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _base()
+    small = "W/feedback/lists/proofing/96mid1ogzk/001.pending.json"
+    f[small] = (_line(rev=3, cells=[{"cell": "1:1:1", "id": "pi_1"}]) + "\n").encode()
+    c1 = _commit(repo, f, "c1")
+    import_commit(conn, repo, c1)
+    assert verify_commit(conn, repo, c1)["ok"]
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
     assert (out / small[2:]).read_bytes() == f[small]
