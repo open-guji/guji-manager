@@ -7,7 +7,8 @@
 ## [未发版]
 
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧，行为不变。
-## [0.7.0] - 测试中
+
+## [0.7.0] - 2026-11-27
 
 - PATCH（11-27，待审清理计划 2.7）：后台看板待审数改由条目现算：`progress-sync` 把每册 `pending_review` 写成 `pending_current` 的 open 条目数、`pending_at` 写成最后一次条目变更时间，`pending_rev` 写空；不再比线上单 rev、不再调 cv `progress_report.py`。册号 `01`／`001` 视为同一册。新增 `--pending-only`；执行方开了 `GUJI_PENDING_SETTLE_S` 的，待审条目对账后顺手跑它。
 
