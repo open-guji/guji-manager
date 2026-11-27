@@ -252,7 +252,9 @@ class Draft:
         """控制台 ``/api/events`` 一行。"""
         ids = "、".join(f"{voter_tag(voter_ident(v))[:16]}" for v in self.votes)
         note = "；".join(v["note"] for v in self.votes if v.get("note"))
-        return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}"}
+        # 来源三字段：网站投票落成的裁定＝人裁（读者点的），by＝投票人短标识，channel＝web_vote（2026-11-27，2.4）
+        prov = {"level": "human", "channel": "web_vote", **({"by": ids} if ids else {})}
+        return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}", **prov}
 
 
 @dataclass

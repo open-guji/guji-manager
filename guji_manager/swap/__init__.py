@@ -1,18 +1,19 @@
-"""换单 driver：把「出新单 → 同步 → 分批发布 → 核对线上 → 清盘 → 刷看板」串成一条可断点续跑的命令。
+"""换单 driver：把「取 main 包 → guji land 对账＋推库 → 发站 → 核对线上 → 清盘 → 刷看板」串成一条可断点续跑的命令。
 
 ``guji swap run --books vol20-vol99 -w <工作区> --book-text <book-text>``
+
+2026-11-27（待审清理计划 1.7）：出单从 cv 的 ``auto_cycle.py``（整张换单、升 rev）改为 ``guji land``（条目对账、就地覆盖、rev 不升）。
+每批 ``--batch-size`` 册：每册 ``guji products pack fetch --label <★main>`` → 一次 ``guji land <这批> --apply``（land 自己推库、只发有变的册、核线上格数；
+带 ``--book-text`` 时顺带 ``--text-apply`` 把机器改字落 book-text，``--no-text-apply`` 关掉）。没变的册记 fresh，land 拒绝的（挪格＋旧 rev 票）记 blocked。
+auto_cycle 以前做的「票落成人裁」「手加格补回」「引擎 worktree 重跑」不再有：票按条目记，用 ``guji collect`` 落；手加格条目 land 不会关掉。
 
 设计要点（A32，2026-11-05，换单经验总结）：
 
 * 全程设 ``GUJI_DB_NO_GLYPH=1``：同步只推待审单与事件，绝不碰字形库账本（11-04 字形账本被清空的事故）。
 * 开跑前、每批之间都核字形库账本不空、不比基准少一成以上、磁盘够；不过就停在原地不动。
-* 单次 sync 模式（缺省，cv 带 ``--defer-sync`` 时）：开跑 db pull 一次→auto_cycle 各批只写本地→手加格补回→整趟 db sync 一次→按 ``--publish-batch`` 分批发布核对；
-  下面是 ``--no-single-sync`` 的老做法：
-* 每批 ``--batch-size`` 册：auto_cycle（``--no-publish``）→ ``sync_workspace(no_glyph)`` → 对这批 ``proofing-sync only=`` 发布并等跑完
-  → 逐册取线上 ``NNN.pending.json`` 核版本 → 核过的清掉本地产物包。全站一把发会撞 40 分钟超时，所以只发这一批。
 * 状态写 ``<工作区>/reports/_swap/state.json``，崩了/容器重启后同样的命令接着做（已核对的册跳过）。
-* 格号变动（增删格、改号）由 cv republish 交 ``swap.booktext`` 按格级对照表自动落 book-text；守卫拦下的册（guard-stop）、
-  出单失败的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 GM3，修好后 ``guji swap book-text --sheet``。不在这里自动重试。
+* 格号变动（增删格、改号）交 ``swap.booktext`` 按格级对照表落 book-text；守卫拦下的册（guard-stop）、
+  land 拒绝的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 GM3，修好后 ``guji swap book-text``。不在这里自动重试。
 """
 
 from __future__ import annotations
@@ -197,21 +198,6 @@ def sync_retry(ws: Path, tries: int = 3) -> dict:
     raise last  # pragma: no cover
 
 
-def apply_hand_cells(ws: Path, books: list[str], hand_cells: Path | None, text_id: str, state: dict) -> None:
-    """手加格持久化（019:120:6:19、004:92:4:14 每次换单都被丢）：清单 ``{"<册>": [{"cell": "页:列:格", "note": "..."}]}``，
-    换完单、推库之前对每个册 ``republish.py add-cell --no-sync`` 补回。失败只记状态、不挡。"""
-    if not hand_cells or not Path(hand_cells).exists():
-        return
-    cfg = json.loads(Path(hand_cells).read_text(encoding="utf-8"))
-    cv = Path(os.environ.get("GUJI_CV") or Path.home() / "cv")
-    for b in books:
-        for e in cfg.get(b, []) + cfg.get(chapter_of(b), []):
-            r = subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "republish.py"), "add-cell", "--book", b, "-w", str(ws),
-                                "--cell", e["cell"], "--note", e.get("note", "手加格（换单自动补回）"), "--src", "script:swap-hand-cells", "--no-sync"],
-                               capture_output=True, text=True, env={**os.environ, "GUJI_WORKSPACE": str(ws), "PYTHONPATH": str(cv)})
-            state["books"][b].setdefault("hand_cells", {})[e["cell"]] = "ok" if r.returncode == 0 else "failed: " + (r.stdout + r.stderr).strip()[-200:]
-
-
 def current_main(ws: Path, book: str) -> str | None:
     """这册现在的 ★main 标签；读不到（没网、没标过）→ None，不挡换单。"""
     from ..datastore.packs import main_label
@@ -241,45 +227,12 @@ def save_state(path: Path, state: dict) -> None:
     os.replace(tmp, path)
 
 
-def parse_cycle_log(text: str) -> dict[str, dict]:
-    """auto_cycle 的输出里取每册结论：``volN\\t→ done\\t说明``。"""
-    out: dict[str, dict] = {}
-    for line in text.splitlines():
-        p = line.split("\t")
-        if len(p) >= 2 and re.fullmatch(r"[A-Za-z0-9_]+", p[0]) and (p[1].startswith("→") or p[1] in ("fresh", "waiting")):
-            # fresh：线上单已基于现在的 main 包，不用换；waiting：线上单的票还没投完，等着（计划行都不带「→」）
-            out[p[0]] = {"verdict": p[1].lstrip("→ ").strip(), "why": p[2] if len(p) > 2 else ""}
-    return out
-
-
-def expected_rev(ws: Path, book: str, text_id: str) -> str | None:
-    """auto_cycle 换完后线上单的版本号：最新一次循环 rev 的下一个（NNN-rK → NNN-r(K+1)）。"""
-    dirs = sorted((ws / "reports" / book / "_cycle").glob("*/"), key=lambda p: [int(x) for x in re.findall(r"\d+", p.name)])
-    if not dirs:
-        return None
-    m = re.fullmatch(r"(\d+)-r(\d+)", dirs[-1].name)
-    return f"{m[1]}-r{int(m[2]) + 1}" if m else None
-
-
 def live_rev(text_id: str, n: int) -> str | None:
     try:
         with urllib.request.urlopen(LIVE.format(text_id=text_id, n=n) + f"?x={int(time.time())}", timeout=30) as r:
             return json.load(r).get("rev")
     except Exception:
         return None
-
-
-def _cv_supports_defer_sync(cv: Path) -> bool:
-    try:
-        return "--defer-sync" in (cv / "scripts" / "zhengli" / "auto_cycle.py").read_text(encoding="utf-8")
-    except OSError:
-        return False
-
-
-def default_hand_cells(book_text: str, text_id: str) -> Path | None:
-    """手加格清单缺省位置：book-text 仓根 ``swap-hand-cells.json``（跟 book-text 一起版本化，换容器不丢）。"""
-    f = Path(book_text) / "swap-hand-cells.json"
-    return f if f.exists() else None
 
 
 def last_publish_age_hours() -> float | None:
@@ -357,18 +310,8 @@ def publish_batch(books: list[str], text_id: str, retries: int = 2) -> str:
     return concl
 
 
-def wait_live_rev(text_id: str, n: int, want: str | None, minutes: float = 6.0) -> str | None:
-    """发布成功后线上文件可能还在 CDN 缓存里：核到想要的版本或超时为止，返回最后读到的 rev。"""
-    end = time.time() + minutes * 60
-    got = live_rev(text_id, n)
-    while want and got != want and time.time() < end:
-        time.sleep(20)
-        got = live_rev(text_id, n)
-    return got
-
-
 def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dict) -> None:
-    """换单后刷新后台「文本整理」看板（pending_review 等）。必须在 db sync 之后跑：auto_cycle 里那次是在新单推库前算的，
+    """换单后刷新后台「文本整理」看板（pending_review 等）。必须在 db sync 之后跑：对账前算的是旧单，
     读到的还是旧单（11-08 vol44 显示 377、实际 80）。失败要响，并记进 state，不能静默。"""
     cv = cv or (Path(os.environ["GUJI_CV"]) if os.environ.get("GUJI_CV") else None)
     script = cv / "scripts" / "zhengli" / "progress_report.py" if cv else None
@@ -388,9 +331,9 @@ def refresh_progress(books: list[str], text_id: str, cv: Path | None, state: dic
 
 def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp: Path, book_text: Path | None = None,
                        cv: Path | None = None, sync: bool = True) -> None:
-    """已换好单（status=done）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上版本 → 核过的清盘。
-
-    全站冒烟必然「失败」（别的册还是旧版本），所以以逐册线上版本为准。"""
+    """已对好条目（status=done／publish-mismatch，续跑补发用）的册：同步进中心库（不碰字形库）→ 发布这一批 → 逐册核线上能读到 → 核过的清盘。
+    rev 不再升，没有「想要的版本」可核；以发站 run 成功＋线上单读得到为准。"""
+    from ..land import verify_live
     audit_books(ws, done, book_text, text_id, state, sp)          # 产物包核过就清，所以在发布前出机器改字抽检数据
     if sync:
         sync_retry(ws)
@@ -403,16 +346,64 @@ def publish_and_verify(ws: Path, done: list[str], text_id: str, state: dict, sp:
         return
     concl = publish_batch(done, text_id)
     for b in done:
-        want = expected_rev(ws, b, text_id)
-        # 发站没成功（failure／cancelled／no-run／timeout）一律不算 verified，哪怕线上碰巧读到想要的版本：
+        # 发站没成功（failure／cancelled／no-run／timeout）一律不算 verified，哪怕线上碰巧读得到：
         # 11-24 011 状态 verified、实际 proofing-sync 失败，线上停在 011-r13
-        got = wait_live_rev(text_id, vol_no(b), want) if concl == "success" else live_rev(text_id, vol_no(b))
-        ok = concl == "success" and want is not None and want == got
-        state["books"][b].update(status="verified" if ok else "publish-mismatch", want=want, live=got, publish=concl)
+        ok = concl == "success" and verify_live(text_id, vol_no(b), None)
+        state["books"][b].update(status="verified" if ok else "publish-mismatch", publish=concl)
         if ok:
             for p in (ws / "_packs").glob(f"*/{b}"):
                 shutil.rmtree(p, ignore_errors=True)
     save_state(sp, state)
+
+
+def land_chunk(ws: Path, chunk: list[str], text_id: str, mains: dict, book_text: str, log: Path, text_apply: bool = True) -> dict[str, dict]:
+    """这一批：每册取 ★main 包，再一次 ``guji land <这批> --apply``（对账、推库、发站、核线上都在 land 里）。返回 {册: {verdict, why}}。
+    verdict：verified（有变、已发站且线上核过）、fresh（条目没变）、publish-mismatch（有变但发站没成）、blocked（land 拒绝或没有 main 包）、land-failed。"""
+    env = {**os.environ, "GUJI_DB_NO_GLYPH": "1", "GUJI_WORKSPACE": str(ws)}
+    cv_cli = [sys.executable, "-m", "open_guji_cv.cli_v2"]
+    res: dict[str, dict] = {}
+    ready: list[str] = []
+    with open(log, "w", encoding="utf-8") as f:
+        for b in chunk:
+            if not mains.get(b):
+                res[b] = {"verdict": "blocked", "why": "没有 ★main 包可对账"}
+                continue
+            r = subprocess.run([*cv_cli, "products", "pack", "fetch", b, "--label", mains[b], "-w", str(ws), "--force"],
+                               env=env, stdout=f, stderr=subprocess.STDOUT)
+            if r.returncode:
+                res[b] = {"verdict": "land-failed", "why": f"取 main 包 {mains[b]} 失败（退出码 {r.returncode}）"}
+            else:
+                ready.append(b)
+        if not ready:
+            return res
+        no_pub = bool(os.environ.get("GUJI_SWAP_NO_PUBLISH"))      # 并行分片：各片只对账推库，最后统一发（续跑时 done 的册补发）
+        cmd = [*cv_cli, "land", ",".join(ready), "-w", str(ws), "--text-id", text_id, "--apply", *(["--no-publish"] if no_pub else []),
+               *(["--book-text", book_text, "--text-apply"] if text_apply else [])]
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        f.write(r.stdout + r.stderr)
+    summary = {}
+    for line in reversed(r.stdout.splitlines()):         # land 最后印一行 JSON：{changed, unchanged, blocked}
+        if line.startswith("{") and '"changed"' in line:
+            try:
+                summary = json.loads(line)
+            except ValueError:
+                pass
+            break
+    if not summary:
+        for b in ready:
+            res[b] = {"verdict": "land-failed", "why": f"land 没给结论（退出码 {r.returncode}），见 {log}"}
+        return res
+    for b in ready:
+        if b in (summary.get("blocked") or {}):
+            res[b] = {"verdict": "blocked", "why": str(summary["blocked"][b].get("why", ""))}
+        elif b in (summary.get("unchanged") or []):
+            res[b] = {"verdict": "fresh", "why": "条目与 main 包一致，没动"}
+        elif b in (summary.get("changed") or []):
+            res[b] = {"verdict": ("done" if no_pub else "verified") if r.returncode == 0 else "publish-mismatch",
+                      "why": "land 已对账" + ("、发站并核过" if r.returncode == 0 else f"，但发站没成或线上格数对不上（land 退出码 {r.returncode}）")}
+        else:
+            res[b] = {"verdict": "land-failed", "why": f"land 结论里没有这册（退出码 {r.returncode}）"}
+    return res
 
 
 def audit_books(ws: Path, books: list[str], book_text: Path | None, text_id: str, state: dict, sp: Path) -> None:
@@ -454,7 +445,7 @@ def cmd_run(a) -> int:
         if st and st.get("main") and mains[b] and mains[b] != st["main"]:
             print(f"{b}：主包 {st['main']} → {mains[b]}，上次的「{st.get('status')}」作废，重做", file=sys.stderr)
             state["books"][b] = {"status": "stale-main", "why": f"上次结论基于 {st['main']}"}
-    # 上次换好单但没发布成/没核过的册：只补「发布＋核对」，不能再跑 auto_cycle（会再出一张新单）
+    # 上次换好单但没发布成/没核过的册：只补「发布＋核对」，不能再跑 land（条目已对到 main，只剩发站）
     pub_only = [b for b in books if state["books"].get(b, {}).get("status") in ("done", "publish-mismatch")]
     todo = [b for b in books if state["books"].get(b, {}).get("status") not in ("verified", "done", "publish-mismatch")]
     print(f"待处理 {len(todo)} 册", file=sys.stderr)
@@ -464,44 +455,29 @@ def cmd_run(a) -> int:
     for chunk in chunks(pub_only, a.batch_size):
         precheck(ws, state, text_id)
         publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv)
-    single = not a.no_single_sync and _cv_supports_defer_sync(cv)
-    if single is False and not a.no_single_sync:
-        print("⚠ cv 的 auto_cycle 还没有 --defer-sync（要 open-guji-cv#1829 之后的版本）：退回每册各 sync 的老做法", file=sys.stderr)
+    for flag, why in (("ack_unlanded_votes", "票按条目记，对账不动条目 id"), ("land_votes", "要落票请先 guji collect"),
+                      ("hand_cells", "手加格条目 land 不会关掉"), ("no_single_sync", "land 每册只推条目文件")):
+        if getattr(a, flag, None):
+            print(f"⚠ --{flag.replace('_', '-')} 已不起作用（换单改走 guji land）：{why}", file=sys.stderr)
     if todo and not a.no_pull:
         unpushed = any(v.get("status") in ("done", "publish-mismatch") for v in state["books"].values())
         if pull_workspace(ws, force_ok=not unpushed):
-            print("⚠ guji db pull 没成：照现有本地库往下做（出单后 sync 会再合并一次）", file=sys.stderr)
-    deferred: list[str] = []
+            print("⚠ guji db pull 没成：照现有本地库往下做（land 对账前会再拉这册的条目文件）", file=sys.stderr)
+    landed: list[str] = []
     for chunk in chunks(todo, a.batch_size):
         precheck(ws, state, text_id)                         # 每批之间再核一次账本与磁盘（磁盘不够先自动清）
         log = ws / "reports" / "_swap" / f"{chunk[0]}-{chunk[-1]}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
-        with open(log, "w", encoding="utf-8") as f:
-            subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "auto_cycle.py"), "--books", ",".join(chunk),
-                            "-w", str(ws), "--book-text", a.book_text, *(["--defer-sync"] if single else ["--no-publish"]),
-                            *(["--ack-unlanded-votes", a.ack_unlanded_votes] if getattr(a, "ack_unlanded_votes", None) else []),
-                            *(["--land-votes"] if getattr(a, "land_votes", False) else [])],
-                           cwd=cv, env={**env, "PYTHONPATH": str(cv)}, stdout=f, stderr=subprocess.STDOUT)
-        res = parse_cycle_log(log.read_text(encoding="utf-8"))
+        res = land_chunk(ws, chunk, text_id, mains, a.book_text, log, text_apply=not getattr(a, "no_text_apply", False))
         for b in chunk:
-            r = res.get(b, {"verdict": "no-result", "why": "auto_cycle 没给结论（进程中断？）"})
+            r = res[b]
             state["books"][b] = {"status": r["verdict"], "why": r["why"][:300], "main": mains.get(b)}
+            if r["verdict"] == "verified":
+                landed.append(b)
         save_state(sp, state)
-        done = [b for b in chunk if state["books"][b]["status"] == "done"]
-        if not done:
-            continue
-        if single:
-            deferred += done                                 # 本地写好了，中心库和网站整趟最后一次推
-        else:
-            publish_and_verify(ws, done, text_id, state, sp, Path(a.book_text), cv)
-    if deferred:
-        apply_hand_cells(ws, deferred, Path(a.hand_cells) if a.hand_cells else default_hand_cells(a.book_text, text_id), text_id, state)
+    if landed:
+        refresh_progress(landed, text_id, cv, state)         # land 已推库、发站，看板才算得对
         save_state(sp, state)
-        sync_retry(ws)                                       # 整趟唯一一次推库
-        refresh_progress(deferred, text_id, cv, state)
-        save_state(sp, state)
-        for chunk in chunks(deferred, a.publish_batch):      # 发站按批（全站一把发会撞 40 分钟超时、CDN purge 配额）
-            publish_and_verify(ws, chunk, text_id, state, sp, Path(a.book_text), cv, sync=False)
     rep = write_audit_report(ws, state)
     if rep:
         print(f"机器改字抽检表：{rep}", file=sys.stderr)
@@ -522,11 +498,12 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--book-text", required=True)
     p.add_argument("--text-id", default=DIANBEN_ID, help="book-text 书 ID（缺省殿本；全唐文 995ejelvk0、史記 988g3f0wsu）")
     p.add_argument("--cv", default=os.environ.get("GUJI_CV", str(Path.home() / "cv")), help="open-guji-cv 检出目录")
-    p.add_argument("--batch-size", type=int, default=6, help="每批几册（出单批；单次 sync 模式下只决定一次 auto_cycle 跑几册，不再每批 sync）")
-    p.add_argument("--publish-batch", type=int, default=10, help="整趟 sync 后每批发几册（全站一把发会超 40 分钟）")
-    p.add_argument("--no-single-sync", action="store_true", help="run：退回每册各 sync 的老做法（缺省整趟只拉一次库、只 sync 一次）")
+    p.add_argument("--batch-size", type=int, default=6, help="每批几册（一批一次 guji land，也是发站的一批）")
+    p.add_argument("--publish-batch", type=int, default=10, help="（已不起作用：发站按 --batch-size 一批）")
+    p.add_argument("--no-single-sync", action="store_true", help="（已不起作用）")
+    p.add_argument("--no-text-apply", action="store_true", help="run：land 不把机器改字写回 book-text（缺省写：land --book-text --text-apply）")
     p.add_argument("--no-pull", action="store_true", help="run：开跑不先 db pull（刚拉过）")
-    p.add_argument("--hand-cells", help="run：手加格清单 json（缺省 <book-text>/swap-hand-cells.json）：{\"<册>\": [{\"cell\": \"92:4:14\", \"note\": \"…\"}]}，换完单自动 add-cell 补回")
+    p.add_argument("--hand-cells", help="（已不起作用：手加格条目 land 不会关掉）")
     p.add_argument("--state", default=None)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--export", help="book-text：导出目录（缺省取 reports/<册>/_cycle/ 下最新的 export）")
@@ -535,13 +512,12 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--push", action="store_true", help="book-text：过了守卫和 local_check 就推（0.x 推 dev；1.x 推 swap/<册>-1x 分支待开 PR）")
     p.add_argument("--glyph-db", help="book-text：字形库 sqlite（R1 前置闸：库里刻例的格键须都在新包里，否则停 r1-stop；不给则只标「R1 未核」）")
     p.add_argument("--ack-unlanded-votes", metavar="原因", default=None,
-                   help="run：旧单上的票没落完（如 ~r 迁移后已是人裁）也照换；写明原因，透传 auto_cycle → proof_cycle apply → republish issue")
+                   help="（已不起作用：票按条目记）")
     p.add_argument("--land-votes", action="store_true",
-                   help="run：线上单有票但没投完也不等，先把票落成人裁再换单（透传 auto_cycle；落不了的票由票账门列出）")
+                   help="（已不起作用：要落票请先 guji collect）")
     p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
     p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
     p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")
-    p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
     p.add_argument("--fix", action="store_true", help="doctor：取缺的模型（cv 与各册引擎 worktree）、book-text 稀疏检出补本书目录")
     p.add_argument("--env", action="store_true", help="doctor：打印可 eval 的 export 行（PATH、PYTHONPATH、GUJI_CV、GUJI_WORKSPACE）")
 

@@ -440,6 +440,15 @@ def _is_backfill(e: Event) -> bool:
         and (p.get("v") or "confirm") == "confirm"
 
 
+def _backfill_meta(p: dict) -> dict:
+    """回库事件 payload → 入库证据。新事件的 OCR 通道在 `ocr_channel`（`payload.channel` 是来源 channel，值如 script）；
+    老事件没有 `ocr_channel`，其 `channel` 就是 OCR 通道。证据里的键仍叫 `channel`（库内格式不动）。"""
+    meta = {k: p.get(k) for k in ("channel", "tier", "verdict", "cov", "verify") if k != "tier" or p.get(k)}
+    if "ocr_channel" in p:
+        meta["channel"] = p["ocr_channel"]
+    return meta
+
+
 def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
     """放行格回库事件的重放：按事件里记的字块键从缓存取图，照 `lib_backfill.run` 同一把二值化，以
     `provenance="auto"` 进库。这一格已在库（人裁或机器）、或被撤过库的不进；缓存里没有字块的报错留着，
@@ -468,7 +477,7 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
             res.skipped += 1
             continue
         png = cv2.imencode(".png", binarize_page(img, edge_margin=0))[1].tobytes()
-        meta = {k: p.get(k) for k in ("channel", "tier", "verdict", "cov", "verify") if k != "tier" or p.get(k)}
+        meta = _backfill_meta(p)
         ok = db.admit_instance(db_id, ch, png, provenance="auto", shape=ch,
                                evidence={"event": e.id, "batch": e.batch, "source": "auto", "backfill": True, **meta},
                                page=pg, col=int(col), idx=int(slot))

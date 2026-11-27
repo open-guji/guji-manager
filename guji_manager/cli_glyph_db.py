@@ -120,6 +120,10 @@ def cmd_glyph_db(args):
                 if args.tsv:
                     RA.write_tsv(rows, args.tsv)
                 print(f"{len(rows)} 例：{RA.summary(rows)}" + (f"；已写 {args.tsv}" if args.tsv else ""))
+                if getattr(args, "show_rows", False):   # 任务库 command 单只留输出尾巴、拿不到 TSV：把要动的行（非 keep）打出来
+                    for r in rows:
+                        if r["action"] != "keep":
+                            print("ROW\t" + "\t".join(str(r.get(k, "")) for k in ("action", "instance", "book", "char", "key", "bound", "status", "new_instance")))
         finally:
             db.close()
         return
@@ -354,6 +358,7 @@ def add_parser(sub) -> None:
     p.add_argument("--confirmed-by", default=None, help="rebind-audit --apply 用：谁确认的（必填，记进撤库原因）")
     p.add_argument("--undo-file", default=None, help="rebind-audit：--apply 记撤掉的旧例（含图）的 jsonl；--undo 读它回退")
     p.add_argument("--undo", action="store_true", help="rebind-audit 用：按 --undo-file 回退")
+    p.add_argument("--show-rows", action="store_true", help="rebind-audit 用：把非 keep 的行（ROW\\t动作\\t库例\\t册\\t字\\t键\\t绑到\\t状态\\t新例）打到输出里，任务库 command 单只留输出尾巴时用")
     p.add_argument("--include-rebind", action="store_true", help="rebind-audit --apply 用：也执行 rebind（缺省只执行 withdraw）")
     p.add_argument("--title", default=None, help="书名")
     p.add_argument("--pin", type=int, default=None,

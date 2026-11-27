@@ -27,6 +27,7 @@ from pathlib import Path
 from .review import pending_items as P
 from .swap import current_main
 
+ORIGIN_PIPELINE = "pipeline"                    # 条目来源（origin）：机器出的格一律写这个，不带批号、不带哪个包（包信息不进条目来源）
 HAND_SRC = ("human:", "script:")          # 人工加的格、手加格（swap-hand-cells）不被机器对账关掉
 CHANGE_KEYS = ("开", "改", "挪格", "图变", "重开", "关")
 
@@ -396,7 +397,7 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     base = P.ItemStore(store.path, store.text_id, store.chapter)
     base.items = copy.deepcopy(store.items)
     restored = repair_reopened(base, by)
-    plan = plan_book(base, keep_old_alt(store, res["cells"]), src=f"land:{book}", fps=res.get("fps") or {}, by=by, us=us)
+    plan = plan_book(base, keep_old_alt(store, res["cells"]), src=ORIGIN_PIPELINE, fps=res.get("fps") or {}, by=by, us=us)
     structural = [k for k in STRUCTURAL if plan[k]]
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
