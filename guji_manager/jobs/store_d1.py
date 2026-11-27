@@ -182,7 +182,9 @@ def _reap_stmts(t: str, free: int) -> list[tuple[str, list]]:
          " RETURNING id, status", [t, free]),
         (_ev("a.job_id", "a.id", "reap", "warn",
              "a.worker || CASE WHEN j.status = 'queued' THEN ' 失联，租约过期，退回排队'"
-             " WHEN j.status = 'cancelled' THEN ' 失联，已有人要求停下，记取消' ELSE ' 失联，次数用完' END",
+             " WHEN j.status = 'cancelled' THEN ' 失联，已有人要求停下，记取消' ELSE ' 失联，次数用完' END"
+             # 失联前最后一拍心跳报的进展（pipeline 最后一行输出，如「row_segment p0128 完成」）：下次领单会清掉 job.progress，这里留底
+             " || coalesce('；失联前最后进展：' || substr(j.progress, 1, 300), '')",
              "FROM attempt a JOIN job j ON j.id = a.job_id AND j.mark = ?1 WHERE a.mark = ?1"), [t]),
         (f"UPDATE job SET status = 'blocked', finished_at = {NOW}, updated_at = {NOW}, mark = ?1,"
          " error = (SELECT '依赖 ' || group_concat('#' || d.id || '（' || d.status || '）', '、') || ' 没成功，不跑'"
