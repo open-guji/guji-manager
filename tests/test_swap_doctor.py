@@ -69,8 +69,8 @@ def test_book_text_sparse_missing_book_dir(tmp_path, monkeypatch):
 
 
 def test_cv_mismatch(tmp_path):
-    (tmp_path / "scripts" / "zhengli").mkdir(parents=True)
-    (tmp_path / "scripts" / "zhengli" / "auto_cycle.py").write_text("")
+    (tmp_path / "open_guji_cv").mkdir(parents=True)
+    (tmp_path / "open_guji_cv" / "__init__.py").write_text("")
     r = D.Report()
     D.check_cv(str(tmp_path), r)
     assert r.failed and "PYTHONPATH" in r.text()

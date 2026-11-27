@@ -1,4 +1,4 @@
-"""换单 driver 里不连网的部分：册号展开、分批、账本核对、auto_cycle 输出解析、状态读写。"""
+"""换单 driver 里不连网的部分：册号展开、分批、账本核对、状态读写。"""
 
 import json
 
@@ -35,13 +35,6 @@ def test_ledger_counts(tmp_path):
     assert got == {"glyphs.jsonl": 2, "exemplars.jsonl": 0, "admissions.jsonl": 0}
 
 
-def test_parse_cycle_log():
-    text = "guji-manager 3f609c8\nvol20\tgo\t零票\nvol20\t→ done\t写人裁 0 条\nvol21\t→ need-A33\t锚点落空\n"
-    assert swap.parse_cycle_log(text) == {
-        "vol20": {"verdict": "done", "why": "写人裁 0 条"},
-        "vol21": {"verdict": "need-A33", "why": "锚点落空"}}
-
-
 def test_state_roundtrip(tmp_path):
     p = tmp_path / "x" / "state.json"
     assert swap.load_state(p) == {"books": {}}
@@ -49,15 +42,8 @@ def test_state_roundtrip(tmp_path):
     assert json.loads(p.read_text())["books"]["vol20"]["status"] == "verified"
 
 
-def test_expected_rev(tmp_path):
-    for r in ("020-r5", "020-r6", "020-r10"):
-        (tmp_path / "reports" / "vol20" / "_cycle" / r).mkdir(parents=True)
-    assert swap.expected_rev(tmp_path, "vol20", "x") == "020-r11"
-    assert swap.expected_rev(tmp_path, "vol99", "x") is None
-
-
 def test_resume_skips_issued_books(tmp_path, monkeypatch):
-    """上次已换好单（done／publish-mismatch）的册，续跑时只补发布，不再进 auto_cycle。"""
+    """上次已换好单（done／publish-mismatch）的册，续跑时只补发布，不再进 land。"""
     import argparse
     ws = tmp_path
     sp = ws / "state.json"
@@ -92,7 +78,6 @@ def test_parse_books_numeric_and_chapter():
     assert S.parse_books("01-02") == ["01", "02"]
     assert S.parse_books("vol9-vol10") == ["vol09", "vol10"]
     assert S.chapter_of("vol07") == "007" and S.chapter_of("07") == "007" and S.chapter_of("045") == "045"
-    assert S.parse_cycle_log("045\t→ done\t写人裁 3 条")["045"]["verdict"] == "done"
 
 
 def test_precheck_nondianben_data_problem_not_fatal(tmp_path, monkeypatch, capsys):
@@ -109,19 +94,6 @@ def test_precheck_nondianben_data_problem_not_fatal(tmp_path, monkeypatch, capsy
         assert False
     except SystemExit as e:
         assert "待收字登记表" in str(e)
-
-
-def test_parse_cycle_log_fresh_is_terminal():
-    from guji_manager.swap import parse_cycle_log
-    r = parse_cycle_log("004\tfresh\t线上单 004-r4 就是基于现在的 main 包出的\n009\tgo\t零票\n009\t→ done\t写人裁 0 条\n")
-    assert r["004"]["verdict"] == "fresh"
-    assert r["009"]["verdict"] == "done"
-
-
-def test_parse_cycle_log_waiting_recorded():
-    from guji_manager.swap import parse_cycle_log
-    r = parse_cycle_log("001\twaiting\t线上单 28 格已投 8，还没投完\n")
-    assert r["001"] == {"verdict": "waiting", "why": "线上单 28 格已投 8，还没投完"}
 
 
 def test_new_main_voids_old_verdict(tmp_path, monkeypatch):
@@ -154,27 +126,55 @@ def test_auto_clean_only_removes_finished_books(tmp_path):
     assert (tmp_path / "_packs" / "lbl" / "vol02").exists()
 
 
-def test_cv_supports_defer_sync(tmp_path):
-    from guji_manager.swap import _cv_supports_defer_sync
-    z = tmp_path / "scripts" / "zhengli"
-    z.mkdir(parents=True)
-    (z / "auto_cycle.py").write_text("x", encoding="utf-8")
-    assert not _cv_supports_defer_sync(tmp_path)
-    (z / "auto_cycle.py").write_text('ap.add_argument("--defer-sync")', encoding="utf-8")
-    assert _cv_supports_defer_sync(tmp_path)
-
-
 def test_publish_failure_is_not_verified(tmp_path, monkeypatch):
     """11-24 全唐文 011：proofing-sync 失败却记 verified。发站不是 success 一律 publish-mismatch。"""
     import guji_manager.swap as S
     monkeypatch.setattr(S, "audit_books", lambda *a, **k: None)
     monkeypatch.setattr(S, "publish_batch", lambda books, text_id: "failure")
-    monkeypatch.setattr(S, "expected_rev", lambda ws, b, t: "011-r14")
-    monkeypatch.setattr(S, "live_rev", lambda t, n: "011-r14")          # 线上碰巧是想要的版本也不算
+    import guji_manager.land as L
+    monkeypatch.setattr(L, "verify_live", lambda *a, **k: True)          # 线上碰巧读得到也不算
     state = {"books": {"011": {"status": "done"}}}
     S.publish_and_verify(tmp_path, ["011"], "t", state, tmp_path / "s.json", sync=False)
     assert state["books"]["011"]["status"] == "publish-mismatch"
     monkeypatch.setattr(S, "publish_batch", lambda books, text_id: "success")
-    monkeypatch.setattr(S, "wait_live_rev", lambda t, n, w, minutes=6.0: "011-r14")
     S.publish_and_verify(tmp_path, ["011"], "t", state, tmp_path / "s.json", sync=False)
     assert state["books"]["011"]["status"] == "verified"
+
+
+def test_land_chunk_verdicts(tmp_path, monkeypatch):
+    """一批一次 guji land：有变＝verified（发站成功）、没变＝fresh、拒绝＝blocked；没有 main 包的册 blocked，取包失败 land-failed。"""
+    import guji_manager.swap as S
+    calls = []
+
+    class R:
+        def __init__(self, rc=0, out=""):
+            self.returncode, self.stdout, self.stderr = rc, out, ""
+
+    def fake(cmd, **k):
+        calls.append(cmd)
+        if "fetch" in cmd:
+            return R(1) if "vol03" in cmd else R()
+        return R(0, 'x\n{"changed": ["vol01"], "unchanged": ["vol02"], "blocked": {}}\n')
+
+    monkeypatch.setattr(S.subprocess, "run", fake)
+    res = S.land_chunk(tmp_path, ["vol01", "vol02", "vol03", "vol04"], "t", {"vol01": "a", "vol02": "b", "vol03": "c", "vol04": None},
+                       str(tmp_path / "bt"), tmp_path / "l.log")
+    assert {b: r["verdict"] for b, r in res.items()} == {"vol01": "verified", "vol02": "fresh", "vol03": "land-failed", "vol04": "blocked"}
+    land = [c for c in calls if "land" in c][0]
+    assert land[land.index("land") + 1] == "vol01,vol02" and "--apply" in land and "--text-apply" in land
+    assert not any("auto_cycle" in " ".join(map(str, c)) or "republish" in " ".join(map(str, c)) for c in calls)
+
+
+def test_land_chunk_publish_failure_and_blocked(tmp_path, monkeypatch):
+    import guji_manager.swap as S
+
+    class R:
+        def __init__(self, rc=0, out=""):
+            self.returncode, self.stdout, self.stderr = rc, out, ""
+
+    def fake(cmd, **k):
+        return R() if "fetch" in cmd else R(3, '{"changed": ["vol01"], "unchanged": [], "blocked": {"vol02": {"why": "挪格"}}}\n')
+
+    monkeypatch.setattr(S.subprocess, "run", fake)
+    res = S.land_chunk(tmp_path, ["vol01", "vol02"], "t", {"vol01": "a", "vol02": "b"}, "bt", tmp_path / "l.log", text_apply=False)
+    assert res["vol01"]["verdict"] == "publish-mismatch" and res["vol02"]["verdict"] == "blocked"
