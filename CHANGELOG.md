@@ -7,17 +7,17 @@
 ## [未发版]
 
 - PATCH（11-27，GM2，MJ 报）：`guji land --text` 刷新导出改调本包 `output/guji_format_export`，参数同 cv `republish.py from-pack`（char-cord、`--keys cv`、book-text dev 现行 `--text-version`、`--meta`、`--prev-char`）。原拼 `guji export format <册> -w …` 在 cv 0.9.7 吃不到册后参数、非殿本无 meta 退出、也不出 char.json。
-- PATCH（11-27，GM4，清退 files）：新表 `file_chunks`——超过 D1 单行上限的整张待审单（`proofing/<册>/<章>.pending.json`，目前北行古本两张）按 30 万字符切块进库，`source_files.tbl='file_chunks'`，还原直接拼块；不再占 files。需先建表（guji-workspace-data 迁移 2026-11-27-file-chunks.sql）、部署 Worker，再发版。
-- PATCH（11-27，CV0，参校本 D 块）：人审原因 `_ref_by_design` 认册配置 `reference_profile` 声明 none 的页（align_ref `ref_kind: none`／备注「本页无参照（配置）」）——这些页没有对位字是设计，不再判 S01 seg_page_unaligned／S02／R02 ref_gap，落字形类；声明 text 的页不变。
-- PATCH（11-27，GM4，清退 files）：意见池 `text_versions.json` 改存 `text_versions.jsonl`（一行紧凑 json，进 `list_rows`）；读时老名字仍认，写时换新名。
 
-## [0.6.44] - 测试中
+## [0.6.44] - 2026-11-27
 
-- 发版缘由：史記 11-26 回库贴错图的防再犯与补救（#1105）。
+- 发版缘由：史記 11-26 回库贴错图的防再犯与补救（#1105）；带上清退 files 的 #1120、#1122、#1124（含新表 `file_chunks`，库与 Worker 已先上线）与 #1123。
 - PATCH（11-27，CV3，史記回库贴错图 #1105）：`glyphdb_admit` 本机没有该页现行切分产物时不再按事件原键取字块缓存（缓存是现行切分、事件键是裁决当时的，换过切分的页取到邻格）：`_bindings_lookup` 返回 None，默认不取图不进库、计 `res.no_products`，`GUJI_ADMIT_NO_PRODUCTS_OK=1` 放行旧行为。新增 `guji glyph-db rebind-audit`：窗口内人裁回库例按 cv `book_bindings` 分 keep／rebind／withdraw（默认只读出 TSV；`--apply` 缺省只执行 withdraw，rebind 须 `--include-rebind`，须 `--confirmed-by` 与 `--undo-file`，`--undo` 回退）。
 - PATCH（11-27，GM4，清退 files）：`feedback/candidates/*.jsonl` 与 `feedback/*.jsonl`（promote、抽样裁定等零散台账）逐行进 `list_rows`（dataset=candidates／feedback_misc）；非 jsonl（tsv、json）仍整文件。
 
 - PATCH（GM3 11-27）：放行格也能在网页看 AI 分析——`dian_trace.released_list` 取 notes 里最后一轮 `status=released` 的格，出 `[{u, ai}]`；`dian_attach` 加第 4 个参数写出该文件，ai-team `pending_list.py --released` 并进待审单顶层 `released`。顺带修 `dian_for` 没把分析状态 `st` 带进 `ai` 块的缺口。
+- PATCH（11-27，GM4，清退 files）：新表 `file_chunks`——超过 D1 单行上限的整张待审单（`proofing/<册>/<章>.pending.json`，目前北行古本两张）按 30 万字符切块进库，`source_files.tbl='file_chunks'`，还原直接拼块；不再占 files。需先建表（guji-workspace-data 迁移 2026-11-27-file-chunks.sql）、部署 Worker，再发版。
+- PATCH（11-27，CV0，参校本 D 块）：人审原因 `_ref_by_design` 认册配置 `reference_profile` 声明 none 的页（align_ref `ref_kind: none`／备注「本页无参照（配置）」）——这些页没有对位字是设计，不再判 S01 seg_page_unaligned／S02／R02 ref_gap，落字形类；声明 text 的页不变。
+- PATCH（11-27，GM4，清退 files）：意见池 `text_versions.json` 改存 `text_versions.jsonl`（一行紧凑 json，进 `list_rows`）；读时老名字仍认，写时换新名。
 
 ## [0.6.43] - 2026-11-26
 
