@@ -147,7 +147,7 @@
 | 裁定为阙文 | □＋`lacuna: true` | 不开 |
 | 裁定为无法识别字 | □＋`unk: "描述"` | 不开 |
 
-代码：manager `formats/guji_char_cord.apply_pending(current=)`、`swap/resolve.resolve`；cv `scripts/zhengli/republish.py`（`hold_pending_current`，整张换单流程已弃，见第八节）。
+代码：manager `formats/guji_char_cord.apply_pending(current=)`、`swap/resolve.resolve`；（原 cv `republish.py` 的 `hold_pending_current`，已随 republish 删除，逻辑在 `guji land --text`，见第八节）。
 
 ### 4. 四条铁律
 
@@ -197,7 +197,7 @@
 | 条目 `src`／`why` 带批号 | `src` 写 `rev:046-r0`；`why` 列实为变更说明 | 1.5、2.6：`why` 纠偏，`origin` 去批号 |
 | 整张单头 | `web_inbox pending` 的单头 `rev`／`based_on_db_rev`／`routed_as_of` | 2.6 |
 | 看板 | `progress_volume` 的 `pending_rev`／`pending_at` | 2.7：改 open 数＋最后变更时间 |
-| 整张换单脚本 | cv `republish.py`、`proof_cycle.py`、`votes_gate` 仍在，已被 `guji land`＋读时现算取代 | 1.7：标 deprecated 后删 |
+| 整张换单脚本 | cv `republish.py`、`proof_cycle.py`、`auto_cycle.py` 已删（cv #1974，11-27）；`votes_gate` 随之去掉，由 `guji land`＋读时现算取代 | 已完成 |
 | 事件来源不可靠 | 仅约 1.2% 事件显式写 `payload.level`，其余按 actor＋批次名猜；人级 confirm 里约 64% `reviewer` 为空 | 1.6 先告警，2.4 改必填 |
 | **跨册 u 误配（线上 bug）** | Worker 读时现算 `pendingLive`／`pendingLiveCounts` 与 `ai_notes` 按 `(工作区, u)` 配，没带册；约 923 格被误当已落定藏掉 | 2.0 热修（另有人在修） |
 | 事件缺顶层册、u | `events.book` 多为空；册只在 `target.key` 前缀里（`vol46`／`004`／`01` 三种写法） | 2.3 |
