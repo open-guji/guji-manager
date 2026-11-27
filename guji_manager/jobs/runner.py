@@ -349,9 +349,31 @@ class Job:
         out = self.guji(*args, outcome="failed")
         m = re.search(r"已取：(\S+)", out)
         self.ev(f"铺底包 {m.group(1) if m else label}")
-        n = _clear_local_derived(self.ws or "", self.spec["book"])
+        prod, fb = self._cv_roots()
+        n = _clear_local_derived(prod, fb, self.spec["book"])
         if n:
             self.ev(f"清本机派生物 {n} 处（人裁绑定缓存、切分旧备份），按刚铺的底重算")
+
+    def _cv_roots(self) -> tuple[str, str]:
+        """按本单环境问 cv 这台机器的产物根、人裁根（11-27：迁到中心库的工作区有 ``.central.json``，
+        人裁绑定缓存在 ``~/.guji-data/<分支>/<工作区>/feedback/``、实验分支的产物也不在工作区下，
+        不能按 ``<工作区>/feedback``、``<工作区>/products`` 猜）。问不到就退回工作区下。"""
+        ws = Path(self.ws or ".")
+        dflt = (str(ws / "products"), str(ws / "feedback"))
+        if self.dry:
+            return dflt
+        code = ("from open_guji_cv.core.workspace import products_root,feedback_root;"
+                "print(products_root());print(feedback_root())")
+        try:
+            r = subprocess.run([str(VENV / "bin" / "python"), "-c", code], capture_output=True, text=True,
+                               env=self.env(), cwd=str(self.dir), timeout=120)
+            lines = [x.strip() for x in r.stdout.splitlines() if x.strip()]
+            if r.returncode == 0 and len(lines) >= 2:
+                return lines[-2], lines[-1]
+        except Exception:  # noqa: BLE001
+            pass
+        self.ev("问不到 cv 的产物根／人裁根，按工作区下清", level="warn")
+        return dflt
 
     def uid_sync(self, strict: bool = False) -> None:
         """刚铺的底是 main 包：这册字格身份账要是没入过这份切分，就入账并推中心库（标 main 钩子会漏，11-25）。
@@ -1086,17 +1108,16 @@ def _first_page_failures(out: str, limit: int = 8) -> list[str]:
     return list(seen.values())
 
 
-def _clear_local_derived(ws: str, book: str) -> int:
+def _clear_local_derived(products: str, feedback: str, book: str) -> int:
     """铺底后清这一册在本机的派生物，免得结果随机器而变（11-26 史記 03 #17918：worker-46 上
     16 格没锚框的旧人裁被落成 human，别处复算是 unanchored）：
-    - ``feedback/bindings/<册>/``：人裁绑定按页缓存，只按切分 sha＋事件签名判新鲜，不含 cv 版本，换 cv 后会沿用旧算法的结果；
-    - ``products/<册>/<步>.bak-*``、``<步>/_prev``：绑定会拿它们找「当时那一版」的框，本机残留的旧备份会让旧人裁绑上。
-    都可重建。返回清掉的处数。"""
-    if not ws or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book or ""):
+    - ``<人裁根>/bindings/<册>/``：人裁绑定按页缓存，只按切分 sha＋事件签名判新鲜，不含 cv 版本，换 cv 后会沿用旧算法的结果；
+    - ``<产物根>/<册>/<步>.bak-*``、``<步>/_prev``：绑定会拿它们找「当时那一版」的框，本机残留的旧备份会让旧人裁绑上。
+    两个根按 cv 的解析取（``Runner._cv_roots``），中心库工作区的人裁根不在工作区下。都可重建。返回清掉的处数。"""
+    if not products or not feedback or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", book or ""):
         return 0
-    root = Path(ws)
-    hits = [root / "feedback" / "bindings" / book]
-    prod = root / "products" / book
+    hits = [Path(feedback) / "bindings" / book]
+    prod = Path(products) / book
     if prod.is_dir():
         hits += [d for d in prod.iterdir() if d.is_dir() and ".bak-" in d.name]
         hits += [d / "_prev" for d in prod.iterdir() if d.is_dir()]
