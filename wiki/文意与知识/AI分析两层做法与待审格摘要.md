@@ -42,7 +42,7 @@
 
 1. 已出 v0.1 的册默认不整册重跑；要改的格直接更新待审单。
 2. AI 放行＝产生裁定事件，`level=ai`，**必须过 seed_admit**，不过闸的不落 book-text；人定的写 `level=human`。
-3. `guji feedback collect` 落 book-text dev，再 `guji db sync`；以后 pipeline 重跑读钉，优先级人裁＞AI＞pipeline。
+3. 各线处理待审格**只标人裁／AI 裁定事件**，随时、批量、轻量都行；事件进库这格就算完成，网站上不再出现。**`guji feedback collect` 与 `guji db sync` 各线不要自己随时跑，由 GM4 定时批量跑**（落 book-text dev 与推库都归它；book-text dev 照旧每日合 main）。以后 pipeline 重跑读钉，优先级人裁＞AI＞pipeline。
 4. 换包用 `guji pipeline … --land-apply`。**manager 要 ≥0.6.43**（ai_notes 表自 0.6.43）再推库。
 5. 本流程的摘要（notes）与放行（裁定事件）是两件事：notes 只给人看，不是钉；放行才是钉。
 
@@ -56,8 +56,9 @@ tools/dianjiao/check_out.py   repair.py
 # 3 写摘要：TSV → feedback/notes/<册>.jsonl
 python3 tools/dianjiao/write_notes.py in.tsv <feedback>/notes/<册>.jsonl --level L2|L3 --model <模型> --batch <批名>
 #   TSV 列：册 u 格号 AI判 置信 状态 一句话 详情 检索 出处 [候选]；检索多条用「 ; 」分隔，每条「来源|结果|说明」
-# 4 推库（notes 进 ai_notes）
-guji db sync        # 或 guji db push；推前先 db pull、--dry-run 看一眼
+# 4 推库（由 GM4 定时批量，notes 进 ai_notes）
+# notes 文件与裁定事件写好即可；collect／db sync（notes 进 ai_notes、裁定落 book-text）由 GM4 定时批量跑，各线别自己推库
+# 确需单独推 notes 先问 GM4（推前先 db pull、--dry-run）
 # 5 出单（挂卡）
 guji audit alt <册>  # 写卡时已并入 notes；land／republish 读同一份卡，再对账即补
 ```
