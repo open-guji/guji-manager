@@ -65,6 +65,50 @@ def line_id(book: str, page: int, cells_sha: str | None, umap: dict) -> str:
     return f"uid-{book}-p{page:04d}-{h}"
 
 
+def unique_id(lid: str, taken: set) -> str:
+    """``lid`` 已被占用就加 ``-r2``、``-r3``…，取第一个空的。"""
+    if lid not in taken:
+        return lid
+    n = 2
+    while f"{lid}-r{n}" in taken:
+        n += 1
+    return f"{lid}-r{n}"
+
+
+def dedup_ids(lines: list[dict]) -> list[tuple[int, str, str]]:
+    """账里 id 重复的行（后出现的）就地改成 ``unique_id``。→ [(行号 1 起, 旧 id, 新 id)]。"""
+    taken: set = set()
+    out = []
+    for i, d in enumerate(lines):
+        lid = d.get("id")
+        nid = unique_id(lid, taken)
+        if nid != lid:
+            d["id"] = nid
+            out.append((i + 1, lid, nid))
+        taken.add(nid)
+    return out
+
+
+def fix_dup_ids(book: str, root: Path | str | None = None, *, write: bool = True) -> list[tuple[int, str, str]]:
+    """本地账文件里 id 重复的账行改名并写回（只换账行，别的行原样）。→ 改了哪些。"""
+    led = Ledger.load(book, root)
+    fixed = dedup_ids(led.lines)
+    if fixed and write:
+        raw = [r for r in led.path.read_text(encoding="utf-8").splitlines() if r.strip()]
+        it = iter(led.lines)
+        out = []
+        for r in raw:
+            try:
+                k = json.loads(r).get("kind")
+            except ValueError:
+                k = None
+            out.append(json.dumps(next(it), ensure_ascii=False, separators=(",", ":")) if k == KIND else r)
+        tmp = led.path.with_suffix(".jsonl.tmp")
+        tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+        tmp.replace(led.path)
+    return fixed
+
+
 def default_by() -> str:
     """谁写的这行：``GUJI_ACTOR``（推中心库也用它）、执行方名 ``GUJI_JOBS_WHO``，都没有就机器名。"""
     import socket
@@ -201,6 +245,10 @@ class Ledger:
         new = [d for d in lines]
         if not new:
             return 0
+        taken = {d.get("id") for d in self.lines}
+        for d in new:                    # 切回账上更早的某份切分时（页号＋cells_sha＋map 都同），id 会与旧行相同；
+            d["id"] = unique_id(d["id"], taken)   # 中心库主键 (src_path, id) 不许重 → 加 -r<n>（QTW 11-26）
+            taken.add(d["id"])
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as f:
             for d in new:

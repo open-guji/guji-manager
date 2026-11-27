@@ -74,8 +74,12 @@ def sync(book: str, label: str | None = None, ws: str | None = None, *, products
     # reconfirm（标 main 钩子、自检交的 uidsync 单）：同一个包重标 main 也记一笔，自检才不会一直报缺
     status = "entered" if r["entered"] else ("synced" if mark_synced(book, label, src=src, reconfirm=reconfirm)
                                              else "unchanged")
+    from .ledger import fix_dup_ids
+    renamed = fix_dup_ids(book)         # 旧版本入账写出的重复 id（切回旧切分的页）先改名，不然推库闸拦（QTW 11-26）
     out = {"status": status, "entered": r["entered"], "label": label, "u_max": r["u_max"], "via": r["via"]}
-    if push and status != "unchanged":
+    if renamed:
+        out["renamed_ids"] = len(renamed)
+    if push and (status != "unchanged" or renamed):
         ok, msg = _db("push", book, ws, env)
         if not ok:
             out.update(status="push_failed", msg=msg)
