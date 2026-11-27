@@ -613,6 +613,17 @@ def run_pools(paths: list[str], *, apply: bool = False, batch: str | None = None
     return rep
 
 
+def backfill_payload(ch: str, meta: dict, verify: dict) -> dict:
+    """放行格回库 `confirm` 事件的 payload。OCR 通道原叫 `payload.channel`，与裁定事件的来源 `channel` 撞名
+    （2026-11-27）：改叫 `ocr_channel`；来源三字段写 `machine／lib_backfill／script`。重放读法见
+    `feedback/consumers.py::_backfill_meta`（老事件没有 `ocr_channel`，其 `channel` 就是 OCR 通道）。"""
+    from ..feedback.levels import provenance
+    return {"v": "confirm", "shape": ch, "source": "auto", "backfill": True,
+            **{x: y for x, y in meta.items() if x != "channel"},
+            "ocr_channel": meta.get("channel"), "verify": verify,
+            **provenance("machine", "lib_backfill", "script")}
+
+
 def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
     """把挑好的格（字, 格键, 库图 png, meta, 核验结果）入库：先写可重放的 `confirm` 事件，再进库、记账、导出账本。"""
     from .._cv import (EventLog, EventTarget, GlyphDB, ProductStore, enrich_events, export_store, glyph_db_path,
@@ -628,8 +639,7 @@ def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
         evs.append(make_event(batch, base + i, "confirm",
                               EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
                                           page=int(pg), col=int(col), slot=int(slot)),
-                              {"v": "confirm", "shape": ch, "source": "auto", "backfill": True, **meta,
-                               "verify": v},
+                              backfill_payload(ch, meta, v),
                               actor="model"))
     # 先补锚（带产物页表的 source_rev）、先写事件日志，再进库：换过图源的册（yaml 有 source_rev）
     # 不带锚的事件会被日志拒写，原先这时库里已进了刻例、却没有事件，重放会丢（史记 36、42 册，11-18）

@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27）：放行格回库事件（`ops/lib_backfill.admit`）的 OCR 通道从 `payload.channel` 改叫 `payload.ocr_channel`，给裁定事件来源 `channel` 腾位置，并写 `level=machine／by=lib_backfill／channel=script`（仍不算钉）；`feedback/consumers._admit_backfills` 重放先读 `ocr_channel`、没有再读老事件的 `channel`，库内证据格式不变。
+
 ## [0.6.50] - 2026-11-27
 
 - 发版说明：护栏 `guji eval guard` 云端会话没有书的字形库，**未验证**，已请有真工作区的书线补跑。
