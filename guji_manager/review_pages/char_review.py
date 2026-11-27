@@ -5,7 +5,7 @@ char_review_sheet.py（只留 --grid 全对点错模式）、pull_char_review.py
           借来的字形库首位字 ＝ 整理本字的格，按字归并，每字取像素匹配度最高的格，出 char_grid 页。
           只读产物（glyph_match/align_ref/seed_admit）和 cache/<册>/char_patch，不写库。
   pull    rows.json out.json    把后台 review 集合导出的文档合成 ingest 吃的 JSON
-  ingest  result.json [--batch NAME] [--dry-run]
+  ingest  result.json --reviewer 账号 [--batch NAME] [--dry-run]
           ok 格写 confirm(v=confirm, shape=字) 事件（actor=user、source=char_review）并跑 glyphdb_admit；
           需要 GUJI_WORKSPACE；只写本机 feedback/events 和 glyph.db，不推中心库。
 """
@@ -121,6 +121,9 @@ def cmd_ingest(a) -> None:
         sys.exit("先设 GUJI_WORKSPACE")
     from guji_manager.feedback.consumers import route_and_consume
     from .._cv import EventLog, EventTarget, make_event
+    from ..feedback.levels import provenance
+    if not a.reviewer:
+        sys.exit("ingest 要 --reviewer <审查人账号>：裁定事件的 payload.by 必填（人在页上点确认，算人裁）")
     book = res["book"]
     bad = set(res.get("bad", []))
     log = EventLog()
@@ -132,7 +135,9 @@ def cmd_ingest(a) -> None:
         evs.append(make_event(a.batch, base + k, "confirm",
                               EventTarget(step="seed_admit", unit="cell", key=cid, book=book,
                                           page=int(page), col=int(col), slot=int(m.group(1))),
-                              {"v": "confirm", "shape": ch, "source": "char_review"}))
+                              {"v": "confirm", "shape": ch, "source": "char_review",
+                               **provenance("human", a.reviewer, "console")}),
+                              reviewer=a.reviewer)
     print(f"确认 {len(evs)} 格，剔除 {len(bad & {x[0] for x in res['ok']})} 格，不对 {len(bad)} 格")
     if a.dry_run:
         print("dry-run：不写事件、不落库")
@@ -150,6 +155,7 @@ def main(argv=None) -> None:
     p.add_argument("--unadmitted", action="store_true", help="只出还没放行、但整理本有对应字的格（第二轮）")
     p = sub.add_parser("pull"); p.add_argument("rows"); p.add_argument("out")
     p = sub.add_parser("ingest"); p.add_argument("result"); p.add_argument("--batch", default="char-review-grid")
+    p.add_argument("--reviewer", help="审查人账号（写 payload.by；必填）")
     p.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     {"sheet": cmd_sheet, "pull": cmd_pull, "ingest": cmd_ingest}[a.cmd](a)

@@ -43,7 +43,7 @@ def _one(ws_dir: Path, a, conn) -> dict:
         raise SystemExit(f"✗ {ws_dir}：db pull --only {PEND} 失败")
     res = S.sync_workspace(conn, ws, data_dir(ws_dir), apply=a.apply, by=a.by or S.BY)
     res["ws"] = ws
-    if a.apply and a.sync and res["resolved"] and db_only(ws_dir, "sync", [PEND]):
+    if a.apply and a.sync and db_only(ws_dir, "sync", [PEND]):
         raise SystemExit(f"✗ {ws_dir}：db sync --only {PEND} 失败（条目已写到本机，重跑 --sync 即可）")
     return res
 
@@ -54,6 +54,8 @@ def cmd_pending_settle(a) -> int:
     if a.sync and not a.apply:
         sys.exit("✗ --sync 要和 --apply 一起")
     dbconfig.apply_env()
+    os.environ.setdefault("GUJI_ACTOR", "pending-settle")      # db sync 要有操作人（imports.actor）
+    os.environ.setdefault("GUJI_ACTOR", "pending-settle")      # db sync 要有操作人（imports.actor）
     if a.roots:
         from .uid.checku_report import find_workspaces
         dirs = list(sorted(find_workspaces([a.roots]).items()))
