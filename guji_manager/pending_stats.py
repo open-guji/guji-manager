@@ -65,6 +65,22 @@ def _expand_pages(spec) -> set[str]:
     return out
 
 
+def vol_key(s: str | int) -> str:
+    """册号按数值作键（1、01、001 同一册；用户 11-27 册号位数统一，迁移前后新旧位数并存）。"""
+    return str(int(s))
+
+
+def _nonbody_for(nonbody: dict | None, vol: str, digits: str | None) -> dict:
+    """册的非正文页表：先认字面，再按数值（键可能是 001、01、1）。"""
+    nonbody = nonbody or {}
+    if vol in nonbody:
+        return nonbody[vol] or {}
+    if digits is None:
+        return {}
+    n = int(digits)
+    return next((v for k, v in nonbody.items() if str(k).isdigit() and int(k) == n), None) or {}
+
+
 def nonbody_of_yaml(raw: str) -> dict[str, str]:
     """册 yaml 原文 → {页号: 页型}（只收非正文页型 roster／table／cover；新写法 page_kinds 与老写法都认）。"""
     import yaml
@@ -91,7 +107,7 @@ def load_nonbody(ws: str) -> dict[str, dict[str, str]]:
         if m and raw:
             nb = nonbody_of_yaml(raw)
             if nb:
-                out[f"{int(m[-1]):03d}"] = nb
+                out[vol_key(m[-1])] = nb
     return out
 
 
@@ -187,7 +203,7 @@ def analyse(lists: dict, codepoints: dict, extra_cp: dict | None = None, lib_n=N
                 if cause_of(c) == "D":
                     occ_page[pos[0]] += 1
         m = re.findall(r"\d+", str(vol))
-        nb = (nonbody or {}).get(f"{int(m[0]):03d}" if m else vol) or {}
+        nb = _nonbody_for(nonbody, vol, m[0] if m else None)
         for c in cells:
             pos = cell_pos(c["cell"]) or ("?", "?")
             v = classify(c, occ_page_n=occ_page[pos[0]], decided=decided, group_of=_group_of, lib_n=lib_n)
@@ -362,7 +378,7 @@ def main(argv=None) -> int:
             m = re.findall(r"\d+", f.stem)
             nb = nonbody_of_yaml(f.read_text(encoding="utf-8")) if m else {}
             if nb:
-                nonbody[f"{int(m[-1]):03d}"] = nb
+                nonbody[vol_key(m[-1])] = nb
     elif not a.from_dir:
         nonbody = load_nonbody(a.ws)
     rows = analyse(lists, cp, extra, lib_n, nonbody)

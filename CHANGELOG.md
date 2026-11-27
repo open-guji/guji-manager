@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，CV0，册号位数统一第一步）：用户 11-27 定册号位数按全书册数（1–9 册 1 位、10–99 两位、100 起三位），迁移前后 1、01、001 并存，比对册号处改按数值认：`ops/exit_check.find_chapter`（字面没对上再按数值／`n`）、`pending_stats` 非正文页表（`_nonbody_for`，先字面再数值）、`review/vis_review` 取单（`_by_number`）。原来对得上的照旧先认字面，行为不变；`swap.chapter_of` 暂不动，随迁移工具一起改。L0，不碰 cv 指纹。方案：https://claude.ai/artifact/GFATExpvckttdKaHSHRuTz
+
 ## [0.6.50] - 2026-11-27
 
 - 发版说明：护栏 `guji eval guard` 云端会话没有书的字形库，**未验证**，已请有真工作区的书线补跑。
