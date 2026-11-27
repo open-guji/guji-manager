@@ -10,6 +10,9 @@
 2. 先带时间戳备份到工作区外（缺省 ~/.guji-jobs/checkout-bak/<UTC 时间>-<pid>/<仓名>/<原相对路径>），再从仓里移走，然后重试 checkout。
 3. 日志里记下备份路径（返回值和 say 回调都带）。
 
+runner 自更新（执行方 cv 检出 `merge --ff-only origin/dev`、退一步 `checkout --detach origin/dev`）也走 `run`，
+同一套规则（11-27 worker-24 被未跟踪 config/groups/wu/rules.yaml 挡住自更新、每 10 分钟退出一次）。
+
 命令行（准备脚本 rerun_prep.sh 也用同一套规则，见 cv scripts/rerun_prep.sh 的 safe_checkout）：
     python -m guji_manager.jobs.safe_checkout <仓目录> <ref>
 """
@@ -22,9 +25,9 @@ import sys
 import time
 from pathlib import Path
 
-#: git 的两种说法：文件挡路（overwritten）、目录里的未跟踪文件会被删（removed）
-_HEADS = ("untracked working tree files would be overwritten by checkout",
-          "untracked working tree files would be removed by checkout")
+#: git 的说法：文件挡路（overwritten）、目录里的未跟踪文件会被删（removed）；checkout 和 merge（runner 自更新的 ff）各一套
+_HEADS = tuple(f"untracked working tree files would be {how} by {op}"
+               for op in ("checkout", "merge") for how in ("overwritten", "removed"))
 
 
 def backup_root() -> Path:
@@ -81,11 +84,14 @@ class CheckoutError(RuntimeError):
     pass
 
 
-def checkout(repo: str | Path, ref: str, *, extra: tuple[str, ...] = ("-q",), say=print) -> list[Path]:
-    """git checkout <ref>；遇未跟踪文件冲突时备份、移走报出的那几个文件后重试一次。
-    返回备份到的路径（没冲突回空）。checkout 最终失败抛 CheckoutError（带 git 原话）。"""
+def run(repo: str | Path, args: list[str] | tuple[str, ...], *, label: str | None = None, say=print,
+        timeout: int = 600) -> list[Path]:
+    """git <args>（checkout 或 merge）；遇未跟踪文件冲突时备份、移走报出的那几个文件后重试一次。
+    返回备份到的路径（没冲突回空）。最终失败抛 CheckoutError（带 git 原话）。"""
     repo = Path(repo)
-    r = _git(repo, "checkout", *extra, ref)
+    args = list(args)
+    label = label or " ".join(a for a in args if a != "-q")
+    r = _git(repo, *args, timeout=timeout)
     if r.returncode == 0:
         return []
     err = (r.stderr or "") + (r.stdout or "")
@@ -105,13 +111,18 @@ def checkout(repo: str | Path, ref: str, *, extra: tuple[str, ...] = ("-q",), sa
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(repo / rel), str(dst))      # 备份即移走：原文件留在工作区外，可原样放回
         moved.append(dst)
-    say(f"[safe_checkout] {repo} 切 {ref} 遇 {len(rels)} 个未跟踪文件冲突，已备份到 {dest_root} 后移走："
+    say(f"[safe_checkout] {repo} {label} 遇 {len(rels)} 个未跟踪文件冲突，已备份到 {dest_root} 后移走："
         + "，".join(rels[:10]) + ("…" if len(rels) > 10 else ""))
-    r = _git(repo, "checkout", *extra, ref)
+    r = _git(repo, *args, timeout=timeout)
     if r.returncode != 0:
-        raise CheckoutError(f"移走冲突文件（备份在 {dest_root}）后 checkout 仍失败："
+        raise CheckoutError(f"移走冲突文件（备份在 {dest_root}）后 {label} 仍失败："
                             + ((r.stderr or "") + (r.stdout or "")).strip()[-600:])
     return moved
+
+
+def checkout(repo: str | Path, ref: str, *, extra: tuple[str, ...] = ("-q",), say=print, timeout: int = 600) -> list[Path]:
+    """git checkout <extra> <ref>，未跟踪文件冲突自动让路（见 `run`）。"""
+    return run(repo, ["checkout", *extra, ref], label=f"切 {ref}", say=say, timeout=timeout)
 
 
 def main(argv: list[str]) -> int:

@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM2，执行方总管报）：runner 自更新也走 `safe_checkout`——执行方 cv 检出的 `merge --ff-only origin/dev` 和退一步的 `checkout --detach origin/dev` 遇未跟踪文件冲突（11-27 worker-24 被未跟踪 `config/groups/wu/rules.yaml` 挡住、每 10 分钟退出一次），同 `Job.checkout`：只备份、移走报出的那几个到工作区外再试，日志记 `[safe_checkout]` 行。`safe_checkout` 新增通用 `run()`，认 merge 的报错说法；`checkout()` 行为不变。卡住的机器拉 manager main 这一步不受影响，发版后重起即生效。L0。
+
 - PATCH（11-27，CV0，册号位数统一第二步）：新工具 `python -m guji_manager.ops.renumber`：一部书的册号改位数（book-text cv 版本的章文件按前缀通配改名、`fig/<章>/`、`index.json` 的 `file` 与全部 `*_file`；数据目录 `feedback/lists/**/<书>/<章>.*` 改名；基础配置 `volume_width` 改、`chapter_width` 删）。缺省只出清单，`--apply` 写回滚清单，`--rollback` 还原；新旧并存算冲突整书不动；已发待审单 rev 不改写。不改任何已有代码路径，L0。脉经 dry-run：5 个改名、2 处编辑、无冲突。
 
 - PATCH（11-27，CV0，册号位数统一第一步）：用户 11-27 定册号位数按全书册数（1–9 册 1 位、10–99 两位、100 起三位），迁移前后 1、01、001 并存，比对册号处改按数值认：`ops/exit_check.find_chapter`（字面没对上再按数值／`n`）、`pending_stats` 非正文页表（`_nonbody_for`，先字面再数值）、`review/vis_review` 取单（`_by_number`）。原来对得上的照旧先认字面，行为不变；`swap.chapter_of` 暂不动，随迁移工具一起改。L0，不碰 cv 指纹。方案：https://claude.ai/artifact/GFATExpvckttdKaHSHRuTz

@@ -805,15 +805,19 @@ def _refresh_runner() -> bool:
 
     失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
     当时看不出是超时还是 merge 报错。"""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     if not _refresh_manager():
         return False
     try:
-        r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
-                           text=True, timeout=REFRESH_TIMEOUT_S, env=env)
-        if r.returncode != 0:
-            print(f"[runner 自更新] git merge --ff-only origin/dev 失败（退出码 {r.returncode}）："
-                  f"{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+        # 未跟踪文件挡路（如 config/groups/wu/rules.yaml 新进 dev 跟踪）：同 Job.checkout，只备份、移走报出的那几个再试
+        say = lambda m: print(m[:800], flush=True)      # noqa: E731
+        try:
+            SC.run(RUNNER_ROOT, ["merge", "--ff-only", "-q", "origin/dev"], label="自更新 merge --ff-only origin/dev",
+                   say=say, timeout=REFRESH_TIMEOUT_S)
+            merged = True
+        except SC.CheckoutError as e:
+            merged = False
+            print(f"[runner 自更新] git merge --ff-only origin/dev 失败：{str(e)[-400:]}", flush=True)
+        if not merged:
             # 准备脚本会把这个检出切到单上钉的 cv（tag、rc 头、功能分支提交），HEAD 于是不在 origin/dev 的祖先线上，
             # ff 必败。检出是执行方自用的、工作区干净时（没有未提交改动）直接切到 origin/dev 的 detached HEAD，不丢任何东西。
             # 只对 detached HEAD 这么做：在分支上有本地提交（人手改过 runner 检出）一律不动，免得丢提交
@@ -824,11 +828,10 @@ def _refresh_runner() -> bool:
             if br.returncode == 0 or st.returncode != 0 or st.stdout.strip():
                 print("[runner 自更新] 检出在分支上、有未提交改动或状态读不了，不切换", flush=True)
                 return False
-            r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "checkout", "-q", "--detach", "origin/dev"],
-                               capture_output=True, text=True, timeout=REFRESH_TIMEOUT_S, env=env)
-            if r.returncode != 0:
-                print(f"[runner 自更新] git checkout --detach origin/dev 失败：{(r.stderr or r.stdout).strip()[-400:]}",
-                      flush=True)
+            try:
+                SC.checkout(RUNNER_ROOT, "origin/dev", extra=("-q", "--detach"), say=say, timeout=REFRESH_TIMEOUT_S)
+            except SC.CheckoutError as e:
+                print(f"[runner 自更新] git checkout --detach origin/dev 失败：{str(e)[-400:]}", flush=True)
                 return False
             print("[runner 自更新] HEAD 不在 origin/dev 线上（多半是上一单钉的 cv），已切到 origin/dev", flush=True)
         head = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
