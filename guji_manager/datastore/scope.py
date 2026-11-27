@@ -401,6 +401,10 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
                 and len(data) >= ROW_MAX_BYTES // 2:
             # 超大整张待审单（逐行进不了 list_rows）：按块进 file_chunks，不再占 files（GM4 11-27）
             tbl = "file_chunks"
+        if tbl == "files" and rel.startswith("feedback/lists/") and PurePosixPath(rel).suffix in (".tsv", ".json") \
+                and _is_utf8(data):
+            # stale_verdicts.tsv、known-errors.tsv 等不是逐行 json 的小清单：原样按块存，不占 files、cv 读本机文件不受影响（GM4 11-27）
+            tbl = "file_chunks"
         if tbl in BLOB_TABLES:
             rows.append(Row(tbl, (rel,), {"sha256": fsha, "bytes": len(data)}, fsha, rel))
             continue

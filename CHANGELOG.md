@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM4，清退 files）：`feedback/lists/` 下的 `.tsv`／`.json` 小清单（stale_verdicts.tsv、known-errors.tsv、opinions 老的 text_versions.json）按块进 `file_chunks`，往返逐字节同，不再占 files；本机文件照旧，cv 读法不变。
+
 ## [0.6.44] - 2026-11-27
 
 - 发版缘由：史記 11-26 回库贴错图的防再犯与补救（#1105）；带上清退 files 的 #1120、#1122、#1124（含新表 `file_chunks`，库与 Worker 已先上线）与 #1123。
