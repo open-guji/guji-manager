@@ -22,3 +22,14 @@ def test_hidden_matches_public_member_tag():
     assert _hidden(hidden, "cf|001|v1|3:4:5", a)                  # 中心库全值
     assert _hidden(hidden, "cf|001|v1|3:4:5", voter_tag(a)[:6])   # 公开读短标识
     assert not _hidden(hidden, "cf|001|v1|3:4:5", "zzzzzz")
+
+
+def test_voter_prev_ident():
+    from guji_manager.voter import voter_ident
+    from guji_manager.feedback.web_votes import latest_votes
+    uid = "01a21b61-03b1-7c9d-bc6a-153a060e15ba"
+    old = {"book": "b", "rev": "r1", "a": "1:2:3", "choice": "char", "char": "甲", "voter": uid, "ts": 5}
+    new = {**old, "voter": "K7QM2XR9", "voter_prev": uid}
+    assert voter_ident(new) == uid and voter_ident({"voter": "K7QM2XR9"}) == "K7QM2XR9"
+    got, _ = latest_votes([old, new], "b", "r1")
+    assert len(got) == 1
