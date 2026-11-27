@@ -61,11 +61,12 @@ from typing import Callable
 
 from ..formats.guji_char_cord import UNK_DEFAULT
 from ..voter import voter_ident, voter_tag
+from .levels import SETTLED_VS, settles_cell
 
 CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
 A_RE = re.compile(r"^(\d+):(\d+):(-?\d+)([ab]?)$")
 #: 人裁里算「定了这一格」的 payload.v
-HUMAN_VS = ("confirm", "seg_defect", "not_a_char", "damaged", "figure")
+HUMAN_VS = SETTLED_VS  # 口径只在 feedback/levels.py 定义一处（清理计划 1.8）
 BOX_TOL = 8.0
 
 
@@ -149,14 +150,11 @@ def latest_human(events) -> dict[str, object]:
     """每格最后一条算钉的 confirm（`feedback.levels.counts_as_pin`：人裁＋AI 钉），key → Event。``events`` 是 Event 的可迭代。
     带 `target.anchor.u` 且册有字格身份账的（T2）：key 用这个 u **现在**的格号（重切、补删字后格号变了也跟着走）；
     u 已作废的不算任何一格的人裁。"""
-    from .levels import counts_as_pin
     from ..u_stamp import current_cell
     last: dict[str, object] = {}
     for e in events:
         t = e.target
-        if e.kind != "confirm" or t.unit != "cell" or (e.payload or {}).get("v") not in HUMAN_VS:
-            continue
-        if not counts_as_pin(e):
+        if not settles_cell(e):   # confirm＋格＋v∈HUMAN_VS＋算钉，口径在 levels 一处
             continue
         key = current_cell({"cell": t.key, "u": (t.anchor or {}).get("u")})
         if key is None:
