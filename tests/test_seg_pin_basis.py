@@ -98,3 +98,31 @@ def test_backfill_geom(monkeypatch):
     assert sp.backfill_geom(_item({"col_sha": "b"}))[0] is None          # 列窗不一致不补
     assert sp.backfill_geom(_item({"col_sha": "a", "geom": _geom()}))[0] is None
     assert sp.backfill_geom(_item(None))[0] is None
+
+
+def test_basis_status_small_shift_ok(monkeypatch):
+    """几何字段变了但钉子框位移 ≤3px → ok；位移大 → stale（QTW 11-27 outer_bar 开↔关误报）。"""
+    now = {"col_sha": "z", "cw_fp": "f", "geom": _geom(10.5)}
+    monkeypatch.setattr(sp, "column_basis", lambda *a, **k: now)
+    it = _item({"col_sha": "a", "geom": _geom()})
+    it["expected"] = {"cells": [{"slot": 1, "kind": "char", "x0": 5.0, "x1": 45.0, "y0": 10.0, "y1": 50.0}]}
+    monkeypatch.setattr(sp, "pin_shift", lambda *a: 0.5)
+    assert sp.basis_status(it)[0] == "ok"
+    monkeypatch.setattr(sp, "pin_shift", lambda *a: 12.0)
+    st, why = sp.basis_status(it)
+    assert st == "stale" and "12.0px" in why
+    monkeypatch.setattr(sp, "pin_shift", lambda *a: None)
+    assert sp.basis_status(it)[0] == "stale"
+
+
+def test_pin_shift_real_mapper():
+    """用 cv 的 ColumnMapper 实算：左右线整体右移 0.5px，位移约 0.5px；上界挪 20px，位移约 20px。"""
+    cells = [{"slot": 1, "kind": "char", "x0": 5.0, "x1": 45.0, "y0": 10.0, "y1": 50.0}]
+    g0 = dict(_geom(), page_w=200)
+    d = sp.pin_shift(cells, g0, dict(g0, left=[10.5, 0.0, None, None, None, None],
+                                     right=[60.5, 0.0, None, None, None, None]))
+    if d is None:
+        import pytest
+        pytest.skip("装的 cv 没有钉子换算（< v0.9.6）")
+    assert d < 1.0
+    assert sp.pin_shift(cells, g0, dict(g0, top_y=25.0)) > 15
