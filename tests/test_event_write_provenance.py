@@ -60,3 +60,13 @@ def test_write_events_end_to_end(tmp_path):
     (e,) = log.read("H-t")
     assert e.target.book == "01" and (e.target.page, e.target.col, e.target.slot) == (11, 6, 10)
     assert (e.payload["level"], e.payload["by"], e.payload["channel"]) == ("human", "a@x.com", "console")
+
+
+def test_scope_event_book_fallback():
+    from guji_manager.datastore.scope import _events
+    mk = lambda t: _events({"id": "e", "target": t}, "feedback/events/b.jsonl", 1)[1]["book"]
+    assert mk({"unit": "cell", "key": "01:11:6:10"}) == "01"
+    assert mk({"unit": "cell", "key": "01:11:6:10", "book": "vol01"}) == "vol01"
+    assert mk({"unit": "cell", "key": "01:11:6:10", "book": ""}) == "01"
+    assert mk({"unit": "page", "key": "01:11:6:10"}) is None
+    assert mk({"unit": "cell", "key": "x:98:01:1:2"}) is None
