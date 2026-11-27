@@ -173,7 +173,7 @@ def write_state(data: Path, **kw) -> None:
 #: 增量推（只扫、只比改了的文件）适用的表：主键里带 src_path，或一个文件就对应一组固定的主键（consumed 一个消费者一个文件、
 #: books 一册一个 yaml、workspaces）。字形库各表主键是实例 id 等、行会在文件间挪，照旧全量比。
 INCREMENTAL_TABLES = frozenset({"workspaces", "source_files", "books", "events", "consumed", "anchors",
-                                "verdicts", "pending_items", "list_rows", "ai_notes", "files", *BLOB_TABLES})
+                                "verdicts", "pending_items", "list_rows", "ai_notes", "file_chunks", "files", *BLOB_TABLES})
 FULL_SCAN_ENV = "GUJI_DB_FULL_SCAN"
 
 
