@@ -6,6 +6,11 @@
 
 ## [未发版]
 
+## [0.6.51] - 2026-11-27
+
+- 发版说明：PATCH，从 v0.6.50 的 main 切出，只挑入册号位数统一的四件（dev 上另有 MINOR 改动，留给下一版）；护栏 `guji eval guard` 云端会话没有字形库，**未验证**。
+- PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧。
+- PATCH（11-27，CV0，册号位数统一）：新工具 `python -m guji_manager.ops.rename_volume`：老书 cv 内部册名改名（用户定只改不重跑）——产物、缓存、数据目录按册文件改名改写，manifest／缓存戳／u 账 sha 按对照表换，写 `_renamed.json` 给 cv status 认 rename_only；事件、字形库与实例 id 不改；dry-run／--apply --backup／--rollback。L0。
 - PATCH（11-27，CV0，册号位数统一第二步）：新工具 `python -m guji_manager.ops.renumber`：一部书的册号改位数（book-text cv 版本的章文件按前缀通配改名、`fig/<章>/`、`index.json` 的 `file` 与全部 `*_file`；数据目录 `feedback/lists/**/<书>/<章>.*` 改名；基础配置 `volume_width` 改、`chapter_width` 删）。缺省只出清单，`--apply` 写回滚清单，`--rollback` 还原；新旧并存算冲突整书不动；已发待审单 rev 不改写。不改任何已有代码路径，L0。脉经 dry-run：5 个改名、2 处编辑、无冲突。
 
 - PATCH（11-27，CV0，册号位数统一第一步）：用户 11-27 定册号位数按全书册数（1–9 册 1 位、10–99 两位、100 起三位），迁移前后 1、01、001 并存，比对册号处改按数值认：`ops/exit_check.find_chapter`（字面没对上再按数值／`n`）、`pending_stats` 非正文页表（`_nonbody_for`，先字面再数值）、`review/vis_review` 取单（`_by_number`）。原来对得上的照旧先认字面，行为不变；`swap.chapter_of` 暂不动，随迁移工具一起改。L0，不碰 cv 指纹。方案：https://claude.ai/artifact/GFATExpvckttdKaHSHRuTz
