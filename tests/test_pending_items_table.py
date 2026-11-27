@@ -222,3 +222,9 @@ def test_proofing_sheet_roundtrip(repo, conn, tmp_path):
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
     assert (out / small[2:]).read_bytes() == f[small]
+
+
+def test_classify_ai_notes():
+    from guji_manager.datastore.scope import classify
+    assert classify("feedback/notes/vol10.jsonl") == "ai_notes"
+    assert classify("feedback/notes/vol10.json") != "ai_notes"

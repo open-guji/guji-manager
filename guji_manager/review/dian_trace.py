@@ -95,8 +95,31 @@ def _refs(trace: list[dict]) -> list[dict]:
     return out
 
 
-def summarize_trace(trace: list[dict], cands: list[str] | None = None) -> dict | None:
-    """trace → `{char?, why, refs?}`；trace 为空返回 None。"""
+def _ai_block(trace: list[dict], cands: list[str], st: str | None) -> dict | None:
+    """最高一级 trace → 待审单上的 `ai` 对象：{c, k, st, lv, s, d, log, refs}（GM3 11-27，网站折叠显示）。
+
+    s＝一句话结论（≤40 字，常显）；d＝详情（≤300 字，折叠）；log＝检索记录 [{src, r, t, u?}]（折叠；浅层判为空）。"""
+    best = max(trace, key=_lvl)
+    ch = best.get("char") or ""
+    if not ch:
+        return None
+    d = str(best.get("why") or "").strip()
+    s = str(best.get("s") or "").strip() or (d[:38] + "…" if len(d) > 40 else d)
+    out: dict = {"c": ch, "k": best.get("conf") or "", "lv": best.get("level") or "", "s": s[:40], "d": d[:300],
+                 "log": [{k: str(v)[:60] for k, v in e.items() if k in ("src", "r", "t", "u") and v}
+                         for e in (best.get("log") or []) if isinstance(e, dict)][:12]}
+    if st:
+        out["st"] = st
+    if ch not in cands and cands:
+        out["out_of_cands"] = True      # 倾向字不在候选里（如己已巳组漏己），网站提示
+    refs = _refs(trace)
+    if refs:
+        out["refs"] = refs
+    return out
+
+
+def summarize_trace(trace: list[dict], cands: list[str] | None = None, st: str | None = None) -> dict | None:
+    """trace → `{char?, why, refs?, ai?}`；trace 为空返回 None。"""
     if not trace:
         return None
     cands = list(cands or [])
@@ -113,6 +136,9 @@ def summarize_trace(trace: list[dict], cands: list[str] | None = None) -> dict |
     refs = _refs(trace)
     if refs:
         out["refs"] = refs
+    ai = _ai_block(trace, cands, st)
+    if ai:
+        out["ai"] = ai
     return out
 
 

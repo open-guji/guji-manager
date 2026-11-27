@@ -38,7 +38,7 @@ def fingerprint(row: Row) -> str:
 
 #: 文件从别的表改归到这些表（待审条目 files → pending_items，GM4 11-26）：source_files 的指纹带上表名，
 #: 文件内容没变也会把 source_files.tbl 改过来（还原按它找表）。只对这些表加，别的 source_files 行指纹不变、不必重推
-RECLASSIFIED = frozenset({"pending_items", "list_rows"})
+RECLASSIFIED = frozenset({"pending_items", "list_rows", "ai_notes"})
 
 
 def r2_key(sha: str, ext: str = "png") -> str:
@@ -89,6 +89,8 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("pending_items", ("src_path", "src_line"), has_doc=False),
     # 其余 feedback/lists 下的 jsonl 清单（读者反馈、意见池、冻结登记、台账、作废记档）一行一条，GM4 11-26（files 清退路线）
     TableSpec("list_rows", ("src_path", "src_line"), has_doc=False),
+    # AI 分析摘要（feedback/notes/<册>.jsonl：浅层、深搜、放行与不确定都写）一行一条，GM3 11-27；book、u、char 等由 raw 现算
+    TableSpec("ai_notes", ("src_path", "src_line"), has_doc=False),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
     TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
@@ -169,7 +171,7 @@ def classify(rel: str) -> str | None:
         if len(parts) == 3 and parts[1] == "rulings" and p.suffix in (".yaml", ".yml"):
             return "files"                 # 裁定版本等价登记表 ver_equiv.yaml（GM4 方案②，cv 读、随中心库同步，11-24）
         if len(parts) == 3 and parts[1] == "notes" and p.suffix == ".jsonl":
-            return "files"                 # 各级没定下的格的查证备注（trace），键同裁定库；管线不读（sheldon 11-08）
+            return "ai_notes"              # AI 分析摘要／各级查证备注（trace），逐行进 ai_notes 表（GM3 11-27）；管线不读
         if len(parts) == 2:
             return "files"
         return None
@@ -269,6 +271,16 @@ def _list_row(rec, rel, line):
     return (rel, line), {"dataset": p.parts[2], "book": book, "name": p.stem}
 
 
+def _ai_note(rec, rel, line):
+    p = PurePosixPath(rel)
+    tr = rec.get("trace") if isinstance(rec.get("trace"), list) else []
+    last = tr[-1] if tr and isinstance(tr[-1], dict) else {}
+    cols = {"vol": p.stem, "cell": _str(rec.get("cell")), "batch": _str(rec.get("batch")),
+            "level": _str(last.get("level")), "model": _str(last.get("model")),
+            "char": _str(last.get("char")), "conf": _str(last.get("conf"))}
+    return (rel, line), cols
+
+
 def _consumed(rec, rel, line):
     cols = _pick(rec, ("event", "ts", "note"))
     return (PurePosixPath(rel).stem, line), cols
@@ -302,6 +314,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "verdicts": _verdicts,
     "pending_items": _pending,
     "list_rows": _list_row,
+    "ai_notes": _ai_note,
     "glyph_sources": _glyph(
         ("source_id", "collection", "title", "volume", "edition_tag", "script_style", "era",
          "cols_per_page", "chars_per_col", "pipeline_version", "notes", "kind", "created_at"),
@@ -363,7 +376,7 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
             continue
         data = read()
         fsha = sha256(data)
-        if tbl == "list_rows" and not _all_json_lines(data):
+        if tbl in ("list_rows", "ai_notes") and not _all_json_lines(data):
             res.problems.append(f"{rel}: 有不是 json 的行，整文件进 files")
             tbl = "files"
         elif tbl == "list_rows" and any(len(ln) > ROW_MAX_BYTES for ln in data.split(b"\n")):
