@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM3，sheldon 反馈）：AI 判字摘要给用户看的字样一律白话——`dian_trace` 加 `plain_zh`／`jargon_hits`，`dian.why` 不再产出「L2 已(mid)」改「浅层文意判『已』（把握中等）」，`ai` 块 s／d／log 兜底换白话；`tools/dianjiao/write_notes.py` 写入前换、剩内部词报错；新增统一提示词模板 `tools/dianjiao/prompt_ai_analysis.md`（禁内部代号英文、禁自相矛盾、不套别组提醒）。
+
 ## [0.6.48] - 2026-11-27
 
 - 发版缘由：网站会员号迁移（voter 36 位 uid → 8 位会员号，旧票带 voter_prev），manager 要先认 voter_prev 网站才能真跑迁移。
