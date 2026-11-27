@@ -257,7 +257,7 @@ def merge_chars(old_char: dict, new_char: dict, rows: list[dict], pending: set[s
 
 def fill_pending_blanks(new_char: dict, pending, protected: dict[str, str] | None = None) -> list:
     """新单上的待审格落完还是 □（现行和新包都没字）：写首选字、去 lacuna（sheldon 11-09／11-18 定：book-text 只录首选字，
-    待审格不显示阙文；只有审过定阙的格才是阙文）。``pending`` 是 {格号: 新单条目}（``pending_cells_of``）才做；
+    待审格不显示阙文；只有审过定阙的格才是阙文）。``pending`` 是 {格号: 待审条目}（``pending_cells_of``）才做；
     只给格号集合（旧调用方、测试）时无从取首选字，不动。人裁／手改保护的格不动。返回 [(格, None, □, 首选字)]。"""
     if not isinstance(pending, dict) or not pending:
         return []
@@ -874,27 +874,20 @@ def _worktree(src: Path, wt: Path, branch: str = "swap-booktext", sparse: tuple[
 
 
 def _copy_cord(src: Path, dst: Path, cv: Path | None) -> str | None:
-    """导出的 cord 写进 book-text。给了 cv 就用 cv ``republish.copy_cord_for_site`` 换到网站页图坐标（换过图源的书，
-    与 swap run 的自动路径同一口径）；没给 cv 原样拷（殿本页表未换，坐标相同）。返回 None＝成功，否则是停下的原因。"""
+    """导出的 cord 写进 book-text。``cv`` 非空（只当开关用）就用 ``cord_site.copy_cord_for_site`` 换到网站页图坐标
+    （换过图源的书，与 swap run 的自动路径同一口径）；为空原样拷（殿本页表未换，坐标相同）。返回 None＝成功，否则是停下的原因。"""
     if not src.exists():
         return None
     if cv is None:
         shutil.copyfile(src, dst)
         return None
-    import importlib.util
-    f = Path(cv) / "scripts" / "zhengli" / "republish.py"
+    from .cord_site import copy_cord_for_site
     try:
-        for d in (str(Path(cv)), str(f.parent)):
-            if d not in sys.path:
-                sys.path.insert(0, d)
-        spec = importlib.util.spec_from_file_location("_cv_republish", f)
-        rp = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(rp)
-        rp.copy_cord_for_site(src, dst)
+        copy_cord_for_site(src, dst)
     except SystemExit as e:
         return f"cord 换不到网站页图坐标：{e}"
-    except Exception as e:  # noqa: BLE001 —— cv 不在或读不了页表：不拿错坐标落库
-        return f"cord 换坐标失败（cv {cv}）：{e}"
+    except Exception as e:  # noqa: BLE001 —— 读不了页表：不拿错坐标落库
+        return f"cord 换坐标失败：{e}"
     return None
 
 
@@ -1094,47 +1087,15 @@ def drop_stored_table(stored: Path) -> None:
 
 
 def pending_cells_of(ws: Path, text_id: str, ch: str) -> dict[str, dict]:
-    """本册新单（`republish prep` 出在 reports/<册>/_publish/<rev>/ 的新单）{格号: 条目}；读不到就当没有
-    （影响「待审保持现字」与「待审 □ 格写首选字」两条）。"""
-    for p in sorted((ws / "reports").glob(f"vol{int(ch):02d}/_publish/*/{ch}.pending.json"), key=lambda p: p.stat().st_mtime)[::-1]:
-        try:
-            return {c["cell"]: c for c in json.loads(p.read_text(encoding="utf-8")).get("cells", []) if c.get("cell")}
-        except (OSError, ValueError, KeyError):
-            continue
-    return {}
-
-
-def push_sheet(ws: Path, book: str, cv: Path) -> str:
-    """book-text 这步没过（guard-stop，旧称 need-A33）时 auto_cycle 停在推库之前：新单已出（reports/<册>/_publish/<rev>）但没换上线。book-text 落好后补推这张单
-    （cv `republish.py push --yes --no-pack`，不带 --book-text：文本已由本命令落好）。只写本机数据目录，最后统一 db sync。"""
-    ch = _chapter(book)
-    pubs = sorted((ws / "reports" / book / "_publish").glob(f"{ch}-r*"), key=lambda p: int(p.name.rsplit("-r", 1)[1]))
-    if not pubs or not (pubs[-1] / f"{ch}.pending.json").exists():
-        return "no-sheet（没有已出的新单）"
-    rev = pubs[-1].name
-    env = {**os.environ, "GUJI_WORKSPACE": str(ws), "GUJI_DB_NO_GLYPH": "1"}
-    script = cv / "scripts" / "zhengli" / "republish.py"
-    # cv 11-17 起 push 缺省推库并发站（cv #1641）；这里有意只写本机、最后统一 db sync，认得 --no-sync 就带上
-    no_sync = ["--no-sync"] if "--no-sync" in script.read_text(encoding="utf-8") else []
-    for _ in range(3):
-        p = subprocess.run([sys.executable, str(script), "push", "--book", book, "-w", str(ws),
-                            "--rev", rev, "--yes", "--no-pack", *no_sync], cwd=cv, env={**env, "PYTHONPATH": str(cv)}, capture_output=True, text=True)
-        if p.returncode == 0:
-            return f"pushed {rev}"
-        if not re.search(r"Connection reset|timed out|HTTP Error 5", p.stdout + p.stderr):
-            break
-    return f"sheet-fail {rev}：{(p.stdout + p.stderr).strip()[-200:]}"
-
-
-def db_sync(ws: Path, cv: Path, tries: int = 4) -> bool:
-    env = {**os.environ, "GUJI_WORKSPACE": str(ws), "GUJI_DB_NO_GLYPH": "1"}
-    env.setdefault("GUJI_ACTOR", "swap-book-text")        # 推中心库要有操作人
-    for _ in range(tries):
-        p = subprocess.run([sys.executable, "-m", "open_guji_cv.cli_v2", "db", "sync", "-w", str(ws), "--no-glyph"],
-                           cwd=cv, env=env, capture_output=True, text=True)
-        if p.returncode == 0:
-            return True
-    return False
+    """本册现在开着的待审条目 {格号: 条目 doc}（中心库条目文件本机副本；读不到就当没有，影响「待审保持现字」与「待审 □ 格写首选字」两条）。
+    2026-11-27 起不再读 republish 出的整张新单（reports/<册>/_publish/）。"""
+    from ..review import pending_items as P
+    from ..datastore.workcopy import data_dir
+    try:
+        store = P.ItemStore.open(data_dir(ws), text_id, ch)
+    except (OSError, ValueError):
+        return {}
+    return {r["cell"]: {**(r.get("doc") or {}), "cell": r["cell"], "src": r.get("src")} for r in store.items.values() if r["state"] == "open"}
 
 
 def cmd_book_text(a, books: list[str]) -> int:
@@ -1154,14 +1115,9 @@ def cmd_book_text(a, books: list[str]) -> int:
         r = do_book(wt, ws, b, a.text_id, export, note=a.note or f"{b} 换包（{export.parent.name}），增删格按格级对照表落 book-text",
                     push=a.push, pending=pending_cells_of(ws, a.text_id, ch), out_dir=out_root / b,
                     glyph_db=Path(a.glyph_db) if getattr(a, "glyph_db", None) else None, open_pr_=not getattr(a, "no_pr", False),
-                    cv=Path(a.cv) if getattr(a, "cv", None) and (Path(a.cv) / "scripts" / "zhengli" / "republish.py").exists() else None)
+                    cv=Path(a.cv) if getattr(a, "cv", None) else None)
         res[b] = {k: v for k, v in r.items() if k not in ("char_detail", "left", "review")}
-        if getattr(a, "sheet", False) and r["status"] == "pushed":
-            res[b]["sheet"] = push_sheet(ws, b, Path(a.cv))
-        print(f"{b}\t{r['status']}\t{r.get('why', '')}\t{res[b].get('sheet', '')}", file=sys.stderr)
-    if any(str(v.get("sheet", "")).startswith("pushed") for v in res.values()):
-        ok = db_sync(ws, Path(a.cv))
-        print(f"中心库同步：{'好' if ok else '失败，手动 guji db sync -w ' + str(ws)}；网站随 swap run 的发布或每日 proofing-sync 上线", file=sys.stderr)
+        print(f"{b}\t{r['status']}\t{r.get('why', '')}", file=sys.stderr)
     print(json.dumps(res, ensure_ascii=False, indent=1))
     return 0 if all(v["status"] in ("pushed", "committed", "pr-needed", "pr-opened") for v in res.values()) else 2
 
