@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM2，CV0 采纳执行方建议）：执行方切 cv（`Job.checkout`，eval／command 单）遇「未跟踪文件会被新版本跟踪」时自动让路：只处理 checkout 报出的那几个文件，先带时间戳备份到工作区外（缺省 `~/.guji-jobs/checkout-bak/<UTC 时间>-<pid>/<仓名>/`，`GUJI_CHECKOUT_BAK` 可改），再移走、重切，备份路径进单子事件和 run.log；不整仓 clean，清单里有仓外／已跟踪／不存在的路径就一个都不动、照原错失败。新模块 `guji_manager.jobs.safe_checkout`（也可 `python -m` 用）。准备脚本 rerun_prep.sh 同一规则在 cv 仓。
+
 ## [0.6.49] - 2026-11-27
 
 - PATCH（11-27，GM4）：`guji collect --batch` 在「没票、`--no-ai`、批次事件全是只给 u 锚的」时不再算全书绑定表（`current_human`，QTW 004 要 30 多分钟，一格也用不上）。
