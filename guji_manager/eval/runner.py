@@ -23,12 +23,118 @@ def repo_root() -> Path:
     return _cv.cv_repo()
 
 
-def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
+DEFAULT_TIMEOUT = 900
+
+
+def parse_timeout_for(items) -> dict[str, int]:
+    """`id=秒` 或 `前缀_=秒`／`前缀*=秒`（逗号分隔或多次给）→ {键: 秒}。写错直接报，别静默用默认。"""
+    out: dict[str, int] = {}
+    for item in items or []:
+        for part in str(item).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            k, sep, v = part.partition("=")
+            if not sep or not k.strip() or not v.strip().isdigit():
+                raise ValueError(f"超时写法不对：{part!r}，要 评测器id=秒 或 前缀_=秒（如 rare_=3600）")
+            out[k.strip()] = int(v)
+    return out
+
+
+def _match_override(eval_id: str, overrides: dict[str, int]) -> int | None:
+    if eval_id in overrides:
+        return overrides[eval_id]
+    best = None
+    for k, v in overrides.items():
+        pre = k[:-1] if k.endswith("*") else (k if k.endswith("_") else None)
+        if pre is not None and eval_id.startswith(pre) and (best is None or len(pre) > best[0]):
+            best = (len(pre), v)
+    return best[1] if best else None
+
+
+def eval_timeout(spec: EvalSpec, timeout: int | None = None,
+                 overrides: dict[str, int] | None = None) -> int:
+    """这个评测器用多少秒超时。先后：按评测器覆盖（--timeout-for，再环境变量 GUJI_EVAL_TIMEOUT_FOR）
+    → 统一给的 --timeout → 环境变量 GUJI_EVAL_TIMEOUT → 注册表里评测器自己的默认（rare_* 2700）→ 900。"""
+    hit = _match_override(spec.id, overrides or {})
+    if hit is None:
+        hit = _match_override(spec.id, parse_timeout_for([os.environ.get("GUJI_EVAL_TIMEOUT_FOR", "")]))
+    if hit is not None:
+        return hit
+    if timeout is not None:
+        return int(timeout)
+    env = os.environ.get("GUJI_EVAL_TIMEOUT", "").strip()
+    if env.isdigit():
+        return int(env)
+    return spec.timeout or DEFAULT_TIMEOUT
+
+
+def _cv_desc() -> str:
+    """当前用的 cv：版本＋仓路径（报缺脚本时让人一眼看出是不是旧 cv）。"""
+    try:
+        from importlib.metadata import version
+        ver = version("open-guji-cv")
+    except Exception:   # noqa: BLE001
+        ver = "版本未知"
+    try:
+        where = str(repo_root())
+    except Exception:   # noqa: BLE001
+        where = "?"
+    return f"cv {ver}（{where}）"
+
+
+def missing_script(spec: EvalSpec) -> str:
+    """cv 仓里没有这个评测脚本就返回给人看的提示，有就空串。
+
+    旧 cv（<0.9.2）没有 eval_advset.py、eval_match_pool.py 这类新评测器，
+    以前子进程报「can't open file」只记成「未验证」，看不出该换 cv（GM4 11-27 史記补跑 15 条未验证）。"""
+    try:
+        path = repo_root() / "scripts" / spec.script
+    except Exception:   # noqa: BLE001
+        return ""
+    if path.exists():
+        return ""
+    lo, rec = cv_floor()
+    return (f"当前 {_cv_desc()} 没有 scripts/{spec.script}——这个评测器要 cv ≥{lo}，"
+            f"请用 cv ≥{lo}（建议 v{rec}）检出再跑")
+
+
+# 护栏评测脚本要的 cv 下限与建议版本（CV0 11-27 核实：0.9.2 起每个 0.9.x 都带 eval_advset／eval_match_pool）。
+# 写在这里一处；建议版本会过时，环境变量 GUJI_EVAL_CV_MIN／GUJI_EVAL_CV_SUGGEST 可盖，不用等发版。
+EVAL_CV_MIN = "0.9.2"
+EVAL_CV_SUGGEST = "0.9.10"
+
+
+def cv_floor() -> tuple[str, str]:
+    lo = os.environ.get("GUJI_EVAL_CV_MIN", "").strip().lstrip("v") or EVAL_CV_MIN
+    rec = os.environ.get("GUJI_EVAL_CV_SUGGEST", "").strip().lstrip("v") or EVAL_CV_SUGGEST
+    return lo, rec
+
+
+# 缺权重／缺稀见字索引的报错特征（ZM 殿本 11-27 补齐这两样后护栏 5/5 过，GM4 报）
+_NO_FILE = re.compile(r"(FileNotFoundError|No such file|not found|不存在|找不到|缺)", re.IGNORECASE)
+_WEIGHT = re.compile(r"(models/|\.pt\b|\.pth\b|checkpoint|ckpt|glyph_cnn|glyph_sim|权重|模型)", re.IGNORECASE)
+_RARE_IDX = re.compile(r"(emb_[\w-]+\.npz|rare[-_]index|向量包|稀见字索引)", re.IGNORECASE)
+
+def missing_asset_hint(out: str) -> str:
+    """子进程输出看着是缺模型权重或稀见字向量包，就给补法；看不出来返回空串（不瞎猜）。"""
+    lines = [ln for ln in (out or "").splitlines() if _NO_FILE.search(ln)]
+    if any(_RARE_IDX.search(ln) for ln in lines):
+        return "缺稀见字索引：先 `guji cache pull-rare-index --charset unicode-cjk-ab` 再重跑"
+    if any(_WEIGHT.search(ln) for ln in lines):
+        return "缺模型权重：先 `guji pipeline model fetch`（要 GUJI_DATA_TOKEN 或 GUJI_DATA_TOKEN_READ）再重跑"
+    return ""
+
+
+def run_eval(key: str, dataset_root: Path | None = None, timeout: int | None = None,
              allow: tuple[str, ...] = ("products",),
-             report_dir: Path | None = None, from_raw: bool = False) -> EvalReport:
+             report_dir: Path | None = None, from_raw: bool = False,
+             timeout_for: dict[str, int] | None = None) -> EvalReport:
     spec = find_eval(key)
     if spec is None:
-        return EvalReport(eval_id=key, shard="", status="failed", error=f"没有这个评测器: {key}")
+        return EvalReport(eval_id=key, shard="", status="failed", error=f"没有这个评测器: {key}",
+                          fail_kind="error")
+    timeout = eval_timeout(spec, timeout, timeout_for)
 
     from .._cv import GoldStore
     store = GoldStore(dataset_root)
@@ -39,6 +145,13 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
     if not ok:
         rep.status = "skipped"
         rep.error = why
+        rep.fail_kind = "precondition"
+        _fill_gold(rep, store, spec)
+        return rep
+
+    gone = missing_script(spec)
+    if gone:
+        rep.status, rep.error, rep.fail_kind = "failed", gone, "missing_script"
         _fill_gold(rep, store, spec)
         return rep
 
@@ -52,14 +165,14 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
                 if broken:
                     # 单个评测引用的册在本工作区里没有定义（如云端只挂四库总目、金标里有 bxgb）：
                     # 只让这一个评测失败并写明原因，别把整批 `eval run` 拖崩。
-                    rep.status = "failed"
+                    rep.status, rep.fail_kind = "failed", "precondition"
                     rep.error = "from-raw 补产物失败：" + "；".join(
                         f"{bk}（{why}）" for bk, why in broken.items())
                     _fill_gold(rep, store, spec)
                     return rep
             else:
                 detail = "；".join(f"{bk} 缺第 {pgs} 页" for bk, pgs in missing.items())
-                rep.status = "failed"
+                rep.status, rep.fail_kind = "failed", "precondition"
                 rep.error = (f"缺产物，{detail}。"
                              f"加 --from-raw 从原图现跑补齐，或先跑 "
                              f"`seg_harness.py --from-raw`（不带 --pages 即全金标）")
@@ -70,12 +183,12 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
         from .bench_bundle import ensure_bench
         ok_b, why_b = ensure_bench()
         if not ok_b:
-            rep.status, rep.error = "skipped", f"5b 评测集不齐：{why_b}"
+            rep.status, rep.error, rep.fail_kind = "skipped", f"5b 评测集不齐：{why_b}", "precondition"
             return rep
 
     target = spec.target(ds)
     if target is not None and not target.exists():
-        rep.status = "skipped"
+        rep.status, rep.fail_kind = "skipped", "precondition"
         rep.error = f"金标路径不存在: {target}"
         return rep
 
@@ -103,10 +216,13 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
         out = (p.stdout or "") + (("\n" + p.stderr) if p.returncode and p.stderr else "")
         rep.exit_code = p.returncode
     except subprocess.TimeoutExpired:
-        rep.status, rep.error, rep.elapsed = "failed", f"超时（{timeout}s）", time.time() - t0
+        rep.status, rep.elapsed, rep.fail_kind = "failed", time.time() - t0, "timeout"
+        rep.error = (f"超时（{timeout}s）；要放宽就加 --timeout-for {spec.id}=秒"
+                     f"（前缀写法 {spec.id.split('_')[0]}_=秒），或设 GUJI_EVAL_TIMEOUT_FOR")
         return rep
     except Exception as e:   # noqa: BLE001
         rep.status, rep.error, rep.elapsed = "failed", f"{type(e).__name__}: {e}", time.time() - t0
+        rep.fail_kind = "error"
         return rep
     rep.elapsed = round(time.time() - t0, 2)
     rep.stdout_tail = "\n".join(out.strip().splitlines()[-25:])
@@ -154,6 +270,7 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
     if structured_err:
         # 数是假的（如 rare_* 缺向量包全 0%）：判失败，别报 ok
         rep.status, rep.error = "failed", structured_err
+        rep.fail_kind = "missing_asset" if "pull-rare-index" in structured_err else "error"
     elif rep.metrics or gate:
         # **回归门的结论本身就是结果**：印了「回归门：通过」而没有别的数字，
         # 也是跑成功了（这类闸的产出就是过没过）。失败同理——门拦住了东西，
@@ -177,6 +294,13 @@ def run_eval(key: str, dataset_root: Path | None = None, timeout: int = 900,
                      f"猜测（未证实，别当结论）：产物已经在跑之前查过（见上面 needs 检查），"
                      f"多半是 parse_metrics 认不出这个脚本的输出格式")
 
+    if rep.status == "failed" and not rep.fail_kind:
+        hint = missing_asset_hint(out)
+        if hint:
+            rep.fail_kind = "missing_asset"
+            rep.error = hint + "；原报错：" + rep.error
+    if rep.status in ("failed", "skipped") and not rep.fail_kind:
+        rep.fail_kind = "error"
     _apply_guards(rep, ds)
     _fill_gold(rep, store, spec)
     return rep

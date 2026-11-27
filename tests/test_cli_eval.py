@@ -86,7 +86,7 @@ def test_eval_run_allow_passes_through(monkeypatch, capsys):
         def warnings(self):
             return []
 
-    def fake_run_eval(k, timeout=900, from_raw=False, allow=("products",)):
+    def fake_run_eval(k, timeout=900, from_raw=False, allow=("products",), **kw):
         seen[k] = allow
         return _R()
 

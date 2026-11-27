@@ -34,7 +34,7 @@ def cmd_eval(args) -> None:
                                   if x.strip())
     reports = []
     for k in sorted(keys):
-        r = run_eval(k, timeout=args.timeout, from_raw=args.from_raw, allow=allow,
+        r = run_eval(k, timeout=args.timeout, timeout_for=_timeout_for(args), from_raw=args.from_raw, allow=allow,
                      **({"report_dir": save} if save else {}))
         if save:
             save.mkdir(parents=True, exist_ok=True)
@@ -67,6 +67,14 @@ def cmd_eval(args) -> None:
     sys.exit(1 if n_bad and args.strict else 0)
 
 
+def _timeout_for(args) -> dict[str, int]:
+    from .eval.runner import parse_timeout_for
+    try:
+        return parse_timeout_for(getattr(args, "timeout_for", None) or [])
+    except ValueError as e:
+        raise SystemExit(str(e))
+
+
 def _cmd_guard(args) -> None:
     """跑 dataset guards/*.yaml 里的全部评测器，逐条比护栏，出总表；有越线／未验证就以 1 退出（发版用）。"""
     import os
@@ -86,6 +94,7 @@ def _cmd_guard(args) -> None:
     save = Path(args.save_dir) if getattr(args, "save_dir", "") else None
     allow = ("products", "heavy") + tuple(x.strip() for x in (getattr(args, "allow", "") or "").split(",")
                                           if x.strip())
+    tfor = _timeout_for(args)
     summary = GuardSummary()
     for k in ids:
         gs = guards_for(guards, k)
@@ -95,14 +104,15 @@ def _cmd_guard(args) -> None:
         lib = next(iter(need), "")
         if lib and lib not in libs:
             print(f"– {k}：要书 {lib} 的字形库，没给 --lib {lib}=<glyph.db>，记未验证")
-            summary.results += [GuardResult(g, None, "unverified")
+            summary.results += [GuardResult(g, None, "unverified", why="missing_lib")
                                 for g in gs]
             continue
         old = os.environ.get("GUJI_GLYPH_DB")
         if lib:
             os.environ["GUJI_GLYPH_DB"] = libs[lib]
         try:
-            r = run_eval(k, timeout=args.timeout, allow=allow, **({"report_dir": save} if save else {}))
+            r = run_eval(k, timeout=args.timeout, allow=allow, timeout_for=tfor,
+                         **({"report_dir": save} if save else {}))
         finally:
             if lib:
                 if old is None:
@@ -116,7 +126,10 @@ def _cmd_guard(args) -> None:
         res = check_report(r, gs)
         summary.results += res
         mark = "✓" if all(x.verdict == "pass" for x in res) else "✗"
-        print(f"{mark} {k}（{r.status}，{r.elapsed:.0f}s）" + (f"：{r.error[:120]}" if r.status == "failed" else ""))
+        from .eval.guards import WHY_LABEL
+        tag = f"，{WHY_LABEL.get(r.fail_kind, r.fail_kind)}" if r.status in ("failed", "skipped") and r.fail_kind else ""
+        print(f"{mark} {k}（{r.status}{tag}，{r.elapsed:.0f}s）"
+              + (f"：{r.error[:240]}" if r.status in ("failed", "skipped") else ""))
         lock = getattr(r, "lock", None)
         if lock:
             print("    钉版 " + " ".join(f"{a}={b}" for a, b in lock.items()))
@@ -315,7 +328,11 @@ def add_parser(sub) -> None:
     p.add_argument("--lib", action="append", default=[], metavar="书id=glyph.db",
                    help="guard：护栏要字形库的书给库路径（可重复）；没给的记未验证")
     p.add_argument("evals", nargs="*", help="评测器 id；留空跑全部轻量的")
-    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--timeout", type=int, default=None,
+                   help="统一超时（秒）；不给按评测器自己的默认（多数 900，rare_* 2700），环境变量 GUJI_EVAL_TIMEOUT 同义")
+    p.add_argument("--timeout-for", action="append", default=[], metavar="id或前缀_=秒",
+                   help="按评测器放宽超时，可重复或逗号分隔，如 --timeout-for rare_=3600；"
+                        "环境变量 GUJI_EVAL_TIMEOUT_FOR 同写法；优先于 --timeout")
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true", help="有跑不起来的就以 1 退出")
     p.add_argument("--allow", default="",

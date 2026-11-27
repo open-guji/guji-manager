@@ -42,6 +42,7 @@ class EvalSpec:
     extra: tuple[str, ...] = ()  # 固定要带的选项
     needs: tuple[str, ...] = ()
     pythonpath: bool = False     # 要不要 PYTHONPATH=.
+    timeout: int | None = None   # 这个评测器的默认超时（秒）；None＝用全局默认 900。命令行 --timeout／--timeout-for 可盖
     title: str = ""
     note: str = ""
 
@@ -76,6 +77,11 @@ class EvalSpec:
         if self.arg_kind == "shard_parent":
             return p.parent
         return p
+
+
+# 5b 候选（rare_*）emb 检索 unicode-cjk-ab 全表，史記补跑 900s 超时（GM4 11-27 报），默认放宽到 45 分钟；
+# 再不够用 `--timeout-for rare_=秒` 或环境变量 GUJI_EVAL_TIMEOUT_FOR=rare_=秒 盖（见 runner.eval_timeout）。
+RARE_TIMEOUT = 2700
 
 
 def _e(id, shard, **kw) -> EvalSpec:
@@ -247,7 +253,7 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
                arg_kind="none", out_flag="--json", pythonpath=True,
                extra=("--bench", f"../open-guji-dataset/char-clustering/samples/{sh}",
                       "--items", "rare.jsonl"),
-               title=f"5b 候选·{t}人裁", needs=("heavy",),
+               title=f"5b 候选·{t}人裁", needs=("heavy",), timeout=RARE_TIMEOUT,
                note="emb 检索 unicode-cjk-ab 全表；分 unseen／oov 两层报；--no-flagged 手跑可剔体检标过的")
       for k, sh, t in (("siku_v2", "004-siku-v2-human", "殿本"), ("shiji", "005-shiji-human", "史記"),
                        ("qtw", "006-qtw-human", "全唐文"))],
@@ -255,7 +261,7 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     EvalSpec(id="rare_qtw_firstseen", script="eval_oov.py", shard="char-clustering/samples/007-qtw-firstseen",
              arg_kind="none", out_flag="--json", pythonpath=True,
              extra=("--bench", "../open-guji-dataset/char-clustering/samples/007-qtw-firstseen", "--items", "rare.jsonl"),
-             title="5b 候选·全唐文首次字头格", needs=("heavy",),
+             title="5b 候选·全唐文首次字头格", needs=("heavy",), timeout=RARE_TIMEOUT,
              note="头条 emb top1／top10；分 firstseen／oov／extB+ 报；81 格约 60 字，按字去重另看"),
     # 识字候选（CV3，2026-11-27）：3c 按图给候选、4b 按上下文排序与补字、待审卡按钮三个量法；
     # 甲层＝三书人裁难格（引用 char-clustering 的冻结图），乙层＝发过并有人裁的待审卡。

@@ -55,6 +55,10 @@ class EvalReport:
     command: str = ""
     stdout_tail: str = ""
     error: str = ""
+    # 没跑成（failed／skipped）的原因类别，护栏「未验证」按它分开报：
+    # missing_script 当前 cv 仓没有这个评测脚本（cv 太旧，要 ≥0.9.2）｜timeout 超时｜
+    # missing_lib 没给字形库｜missing_asset 缺模型权重或稀见字索引｜precondition 前提不满足（needs、金标路径）｜error 其他报错
+    fail_kind: str = ""
     ts: float = field(default_factory=time.time)
     lock: dict = field(default_factory=dict)  # 识字评测：库、代码、数据集各是哪一版（extract.bench_lock）
     guards: list = field(default_factory=list)  # 护栏逐条结论（eval.guards.GuardResult.to_dict），dataset guards/*.yaml 里有它才有

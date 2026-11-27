@@ -46,11 +46,25 @@ class GuardResult:
     guard: Guard
     value: object = None
     verdict: str = "missing"    # pass | fail | missing | unverified
+    why: str = ""               # unverified 的原因：missing_script | timeout | missing_lib | missing_asset | precondition | error
 
     def to_dict(self) -> dict:
         g = self.guard
         return dict(eval=g.eval, book=g.book, metric=g.metric, dir=g.dir, limit=g.limit,
-                    baseline=g.baseline, value=self.value, verdict=self.verdict)
+                    baseline=g.baseline, value=self.value, verdict=self.verdict, why=self.why)
+
+
+# 未验证按原因分开报（GM4 11-27：史記补跑 17 条只过 2，15 条未验证混在一起看不出是缺脚本、超时还是缺库）
+WHY_LABEL = {"missing_script": "缺脚本", "timeout": "超时", "missing_lib": "缺库", "missing_asset": "缺权重或索引",
+             "precondition": "前提不齐", "error": "报错"}
+WHY_HINT = {
+    "missing_script": "缺脚本：cv 太旧，没有这些评测脚本，用 cv ≥0.9.2 检出再跑（见各条报错里的建议版本）",
+    "timeout": "超时：加 --timeout-for <评测器id或前缀_>=秒 放宽（如 --timeout-for rare_=3600）",
+    "missing_lib": ("缺库：给 --lib <书id>=<glyph.db>；顺手先 `guji pipeline model fetch`（权重，如 glyph_cnn_r5）和 "
+                    "`guji cache pull-rare-index --charset unicode-cjk-ab`（稀见字索引），免得补了库又卡在这"),
+    "missing_asset": ("缺权重或索引：缺权重（如 glyph_cnn_r5）先 `guji pipeline model fetch`，缺稀见字索引先 "
+                      "`guji cache pull-rare-index --charset unicode-cjk-ab`，再重跑"),
+}
 
 
 def load_guards(dataset_root: Path) -> list[Guard]:
@@ -82,7 +96,7 @@ def check_report(rep, guards: list[Guard]) -> list[GuardResult]:
     out = []
     for g in guards:
         if rep.status in ("failed", "skipped"):
-            out.append(GuardResult(g, None, "unverified"))
+            out.append(GuardResult(g, None, "unverified", why=getattr(rep, "fail_kind", "") or "error"))
             continue
         v = vals.get(g.metric)
         out.append(GuardResult(g, v, g.check(v)))
@@ -103,14 +117,29 @@ class GuardSummary:
             c[r.verdict] = c.get(r.verdict, 0) + 1
         return c
 
+    def unverified_by_why(self) -> dict[str, int]:
+        c: dict[str, int] = {}
+        for r in self.results:
+            if r.verdict == "unverified":
+                k = r.why or "error"
+                c[k] = c.get(k, 0) + 1
+        return c
+
     def table(self) -> str:
         mark = {"pass": "✓", "fail": "✗", "missing": "?", "unverified": "–"}
         lines = [f"{'':2}{'评测器':20s} {'护栏':36s} {'实测':>10s}"]
         for r in self.results:
             v = "" if r.value is None else str(r.value)
+            if r.verdict == "unverified" and r.why:
+                v = WHY_LABEL.get(r.why, r.why)
             lines.append(f"{mark[r.verdict]} {r.guard.eval:20s} {r.guard.label():36s} {v:>10s}")
         c = self.counts()
+        by = self.unverified_by_why()
+        why_s = ("（" + "／".join(f"{WHY_LABEL.get(k, k)} {n}" for k, n in sorted(by.items())) + "）") if by else ""
         lines.append(f"\n护栏 {len(self.results)} 条：过 {c.get('pass', 0)}／越线 {c.get('fail', 0)}／"
-                     f"缺指标 {c.get('missing', 0)}／未验证 {c.get('unverified', 0)}"
+                     f"缺指标 {c.get('missing', 0)}／未验证 {c.get('unverified', 0)}{why_s}"
                      + ("　→ 全过" if self.ok else "　→ **不能发版**"))
+        for k in sorted(by):
+            if k in WHY_HINT:
+                lines.append(f"  · {WHY_HINT[k]}")
         return "\n".join(lines)

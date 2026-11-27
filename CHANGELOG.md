@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM2，GM4 报史記护栏补跑 17 条只过 2）：`guji eval guard` 的「未验证」按原因分开报（缺脚本／超时／缺库／缺权重或索引／前提不齐／报错），总表下给各类补法；cv 仓没有评测脚本时直接说「请用 cv ≥0.9.2（建议 v0.9.10）检出」（下限与建议版本可用 `GUJI_EVAL_CV_MIN`／`GUJI_EVAL_CV_SUGGEST` 盖）；输出像缺模型权重或稀见字向量包时提示先 `guji pipeline model fetch`／`guji cache pull-rare-index`；超时可配置：评测器自带默认（rare_* 2700s，其余 900s），`--timeout` 统一盖，`--timeout-for rare_=3600`（id 或前缀，可重复）与环境变量 `GUJI_EVAL_TIMEOUT_FOR`／`GUJI_EVAL_TIMEOUT` 按评测器盖。`EvalReport.fail_kind`、护栏结论 `why` 新字段。
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧，行为不变。
 
 ## [0.7.0] - 2026-11-27
