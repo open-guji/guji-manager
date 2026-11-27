@@ -732,9 +732,19 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         _pg = sorted({int(k.split(":")[0]) for k in _ks}) if all(k.split(":")[0].isdigit() and ":" in k for k in _ks) else None
         if a.batch:
             _pg = None
+        got, miss, u_got, u_notes = {}, [], {}, []
+        if a.batch:
+            got, miss = batch_cells(book, a.batch, meta.get("products_root"))
+            u_got, u_notes = batch_u_cells(book, a.batch, char)
+        # 只落「只给 u 锚」的批次、没票、不落 AI：全书绑定表（QTW 004 要 30 多分钟）一格也用不上，不算
+        _skip_hc = bool(a.batch and getattr(a, "no_ai", False) and not votes_now and not same_ids and not got)
         try:
             try:
-                hc = current_human(book, meta.get("products_root"), _pg)
+                if _skip_hc:
+                    print("  只有 u 锚批次事件、没票、--no-ai：不算全书绑定表")
+                    hc = {}
+                else:
+                    hc = current_human(book, meta.get("products_root"), _pg)
             except RuntimeError as e:
                 if "字块图拿不到" not in str(e):
                     raise
@@ -750,8 +760,6 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         cells = {k: "票" for k in votes_now} | {k: "票与已有人裁一致" for k in same_ids if k not in votes_now}
         notes = []
         if a.batch:
-            got, miss = batch_cells(book, a.batch, meta.get("products_root"))
-            u_got, u_notes = batch_u_cells(book, a.batch, char)
             miss = [m for m in miss if not any(m.startswith(f"{k} 绑定") for k in u_got)]
             notes += miss + u_notes
             for k, v in got.items():
