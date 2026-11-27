@@ -307,3 +307,16 @@ def test_steal_check_default_off():
     """真格实测分不开好坏（史記第 02 册），缺省关；要用的书在 workspace.yaml 开。"""
     import inspect
     assert LB.STEAL_CHECK is False and inspect.signature(LB.run).parameters["steal_check"].default is False
+
+
+def test_backfill_payload_ocr_channel_and_provenance():
+    from guji_manager.feedback.consumers import _backfill_meta
+    from guji_manager.feedback.levels import event_level
+    meta = {"channel": "rare_ref", "tier": "b", "verdict": "same", "cov": 0.9, "patch_key": "pk"}
+    p = LB.backfill_payload("曰", meta, {"ok": True})
+    assert p["ocr_channel"] == "rare_ref"
+    assert (p["level"], p["by"], p["channel"]) == ("machine", "lib_backfill", "script")
+    assert event_level({"kind": "confirm", "actor": "model", "payload": p}) is None   # 仍不算钉
+    # 重放：新事件读 ocr_channel，老事件（无 ocr_channel）读 channel
+    assert _backfill_meta(p)["channel"] == "rare_ref"
+    assert _backfill_meta({"channel": "rare_ref", "tier": "b"})["channel"] == "rare_ref"
