@@ -23,6 +23,7 @@ from pathlib import Path
 
 from . import board as BOARD
 from . import exit_trace as XT
+from . import safe_checkout as SC
 from .._cv import jobs_spec as SP
 from .._cv import jobs_store as S
 from .notify import notify_submitters
@@ -328,7 +329,17 @@ class Job:
         except StageError as e:
             e.env = True
             raise
-        self.sh(["git", "-C", str(SEED), "checkout", "-q", cv], outcome="failed")
+        if self.dry:
+            self.sh(["git", "-C", str(SEED), "checkout", "-q", cv], outcome="failed")
+            return
+        # 未跟踪文件挡路（如 R2 取回的 models/ 被要切的版本跟踪）：只备份、移走报出的那几个再切，备份路径进日志
+        if self.cancel.is_set():
+            raise Cancelled()
+        self._w(f"$ safe_checkout {SEED} {cv}")
+        try:
+            SC.checkout(SEED, cv, say=lambda m: self.ev(m[:500]))
+        except SC.CheckoutError as e:
+            raise StageError("failed", f"git checkout {cv} 失败：{redact(str(e))[-500:]}") from None
 
     def verify_cv(self) -> None:
         if self.dry:
