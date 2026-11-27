@@ -7,6 +7,8 @@
 ## [未发版]
 
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧，行为不变。
+## [0.7.0] - 测试中
+
 - PATCH（11-27，待审清理计划 2.7）：后台看板待审数改由条目现算：`progress-sync` 把每册 `pending_review` 写成 `pending_current` 的 open 条目数、`pending_at` 写成最后一次条目变更时间，`pending_rev` 写空；不再比线上单 rev、不再调 cv `progress_report.py`。册号 `01`／`001` 视为同一册。新增 `--pending-only`；执行方开了 `GUJI_PENDING_SETTLE_S` 的，待审条目对账后顺手跑它。
 
 - MINOR（11-27，清理计划 2.3／2.4，**写入口行为变：`--reviewer` 现为必填**）：裁定事件（`confirm`＋`unit=cell`）新写入口必填顶层册和来源三字段。①`review/event_write.write_events`：解析不出册时（章号前缀 `01:11:6:10`）取格号第一段写进 `target.book/page/col/slot`，取不到拒写；`payload.level／by／channel` 兜底补 `human／reviewer／console`，调用方传了的优先，`by` 取不到或取值越界拒写（400）。②各写入口：网站票落裁定 `human／投票人／web_vote`；意见采纳补 `by／channel=opinion`；**`review-pages char ingest` 与 `pair-events --apply` 现在必须带 `--reviewer <账号>`（各书线脚本会撞到，原来可以不带）**。③`datastore/scope._event_book`：`events.book` 拆列同规则兜底（Worker `eventColumns` 同改，guji-workspace-data#49）。「AI 判字、人点按钮确认」仍算 human，`levels.py` 口径不动。
