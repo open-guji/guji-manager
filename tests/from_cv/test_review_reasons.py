@@ -692,6 +692,21 @@ def test_noref_notes_include_unreadable(tmp_path):
         assert _ref_by_design(tmp_path, name) is want
 
 
+def test_ref_profile_none_page_by_design(tmp_path):
+    """册配置 reference_profile 声明 none 的页（cv align_ref note「本页无参照（配置）」＋ref_kind none）算本就没参照；
+    声明 text 的页不算（参D块，CV0 11-26）。"""
+    import json
+    from guji_manager.review.reasons import _ref_by_design
+    d = tmp_path / "align_ref"
+    d.mkdir()
+    for name, layer, want in (("p1.json", {"note": "本页无参照（配置）", "ref_kind": "none"}, True),
+                              ("p2.json", {"ref_kind": "none"}, True),
+                              ("p3.json", {"note": "本页无参照（配置）"}, True),
+                              ("p4.json", {"ref_kind": "text", "note": ""}, False)):
+        (d / name).write_text(json.dumps({"align_ref": layer}), encoding="utf-8")
+        assert _ref_by_design(tmp_path, name) is want
+
+
 def test_variant_pair_not_variant_pairs():
     """兩/雨、玉/王 这类字典里有异体边、实为形近的对（ZM 11-21）：不算 V01，落回后面的规则。"""
     var = lambda a, b: {a, b} in ({"兩", "雨"}, {"衞", "衛"})

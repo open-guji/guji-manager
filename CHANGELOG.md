@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-27，CV0，参校本 D 块）：人审原因 `_ref_by_design` 认册配置 `reference_profile` 声明 none 的页（align_ref `ref_kind: none`／备注「本页无参照（配置）」）——这些页没有对位字是设计，不再判 S01 seg_page_unaligned／S02／R02 ref_gap，落字形类；声明 text 的页不变。
 - PATCH（11-27，GM4，清退 files）：意见池 `text_versions.json` 改存 `text_versions.jsonl`（一行紧凑 json，进 `list_rows`）；读时老名字仍认，写时换新名。
 
 ## [0.6.44] - 测试中
