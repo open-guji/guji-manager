@@ -167,13 +167,13 @@ def classify(rel: str) -> str | None:
         if len(parts) >= 3 and parts[1] == "lists":
             return "files"
         if len(parts) == 3 and parts[1] == "candidates":
-            return "files"
+            return "list_rows" if p.suffix == ".jsonl" else "files"     # 一次性候选清单，逐行进 list_rows（GM4 11-27 清退 files）
         if len(parts) == 3 and parts[1] == "rulings" and p.suffix in (".yaml", ".yml"):
             return "files"                 # 裁定版本等价登记表 ver_equiv.yaml（GM4 方案②，cv 读、随中心库同步，11-24）
         if len(parts) == 3 and parts[1] == "notes" and p.suffix == ".jsonl":
             return "ai_notes"              # AI 分析摘要／各级查证备注（trace），逐行进 ai_notes 表（GM3 11-27）；管线不读
         if len(parts) == 2:
-            return "files"
+            return "list_rows" if p.suffix == ".jsonl" else "files"     # feedback/*.jsonl 的零散台账（promote、抽样裁定等）
         return None
     if len(parts) >= 3 and parts[0] == "review" and parts[1] == "batches":
         return "files"
@@ -268,7 +268,12 @@ def _list_row(rec, rel, line):
     p = PurePosixPath(rel)
     # web/<书>/x.jsonl、opinions/<书>/x.jsonl 的书在第四段；freeze/<册>.jsonl 等没有书目录
     book = p.parts[3] if len(p.parts) >= 5 else None
-    return (rel, line), {"dataset": p.parts[2], "book": book, "name": p.stem}
+    if p.parts[1] == "lists":
+        dataset = p.parts[2]
+    else:                                  # candidates/x.jsonl、feedback/x.jsonl：没有 lists 层
+        dataset = p.parts[1] if len(p.parts) == 3 else "feedback_misc"
+        book = None
+    return (rel, line), {"dataset": dataset, "book": book, "name": p.stem}
 
 
 def _ai_note(rec, rel, line):
