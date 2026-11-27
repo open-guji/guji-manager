@@ -293,6 +293,29 @@ def test_load_cards_keys_by_bare_cell_and_old_alt_kept(tmp_path):
     assert not plan["改"]                                  # alt 没被冲掉：没变
 
 
+def test_attach_notes_and_ai_changed(tmp_path, monkeypatch):
+    """点校查证挂卡（QTW 11-27）：notes 里该格（册，u）的摘要进卡的 dian → pending_fields 出 ai；条目 doc 的 ai 变了算「改」。"""
+    from guji_manager import land_enrich as E
+    from guji_manager.datastore import workcopy as W
+    nd = tmp_path / "data" / "feedback" / "notes"
+    nd.mkdir(parents=True)
+    (nd / "vol31.jsonl").write_text(json.dumps({"book": "vol31", "u": 231, "cell": "vol31:2:2:11", "cands": ["已", "巳"],
+        "trace": [{"level": "L3", "char": "己", "conf": "high", "status": "pending", "why": "文意自指", "s": "倾向己·高"}]},
+        ensure_ascii=False) + "\n", encoding="utf-8")
+    monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
+    import guji_manager.u_stamp as U
+    monkeypatch.setattr(U, "u_map_lenient", lambda book, cells, ref=None: ({"2:2:11": 231}, []))
+    cards = {"2:2:11": {"id": "vol31:2:2:11"}, "9:9:9": {"id": "vol31:9:9:9"}}
+    assert E.attach_notes(cards, tmp_path, "vol31") == 1
+    from guji_manager.review.proof_fields import pending_fields
+    assert pending_fields(cards["2:2:11"])["ai"]["c"] == "己" and "dian" not in cards["9:9:9"]
+    # 条目 doc 补 ai → ai_changed
+    old = _store(tmp_path, [_cell("2:2:11")])
+    new = _store(tmp_path, [{**_cell("2:2:11"), "ai": {"c": "己"}}])
+    new_plan = land.plan_book(old, [{**_cell("2:2:11"), "ai": {"c": "己"}}], src="land")
+    assert land.ai_changed(old, new_plan["_store"], new_plan["改"]) == ["2:2:11"]
+
+
 def test_clean_book_cache_and_products(tmp_path):
     for d in ("cache/b1", "products/b1", "_packs/x/b1"):
         (tmp_path / d).mkdir(parents=True)

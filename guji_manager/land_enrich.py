@@ -101,7 +101,41 @@ def load_cards(ws: Path, book: str) -> dict[str, dict]:
             continue
         k = str(k)
         out[k[len(pre):] if k.startswith(pre) else k] = c
+    attach_notes(out, ws, book)
     return out
+
+
+def attach_notes(cards: dict[str, dict], ws: Path, book: str) -> int:
+    """点校查证挂卡（QTW 11-27）：数据目录 ``feedback/notes/<册>.jsonl`` 里该格的 trace 摘要写进卡的 ``dian``，
+    ``pending_fields`` 就带出 ``ai``／``ctx.why``／``dnote``。按（册，u）对位，没账／没 notes 就什么都不做；卡上已有 ``dian`` 的不覆盖。
+    出单（republish prep）与收尾对账（land）共用这一处，所以先发站后补摘要也行：land 再跑一遍，条目 doc 的 ai 变了就算「改」。返回挂上张数。"""
+    from .datastore.workcopy import data_dir
+    from .review.dian_trace import dian_for, load_notes
+    try:
+        f = data_dir(ws) / "feedback" / "notes" / f"{book}.jsonl"
+    except SystemExit:            # 工作区还没迁中心库：没有数据目录，就没有 notes
+        return 0
+    if not f.exists() or not cards:
+        return 0
+    idx = load_notes(f)
+    if not idx:
+        return 0
+    from .u_stamp import u_map_lenient
+    try:
+        us, _miss = u_map_lenient(book, list(cards))
+    except Exception:  # noqa: BLE001 —— 册没账或账读不了：只按 ctx 哈希／格号找
+        us = {}
+    n = 0
+    for cell, c in cards.items():
+        if c.get("dian"):
+            continue
+        d = dian_for(idx, cell=c.get("id") or f"{book}:{cell}", group=c.get("group"), ctx_hash=c.get("ctx_hash"),
+                     book=book, u=c.get("u") if c.get("u") is not None else us.get(cell),
+                     extra_cands=(c.get("grp") or {}).get("m"))
+        if d:
+            c["dian"] = d
+            n += 1
+    return n
 
 
 def enrich(cells: list[dict], *, ws: Path, book: str, products: Path, recheck: Path | None = None,

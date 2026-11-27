@@ -177,6 +177,12 @@ def cmd_audit(args) -> None:
             sys.exit(1)
         if lacking:
             print(f"⚠ {book} 有 {len(lacking)} 格没出相似字（取不到字块图？）：{lacking[:8]}", file=sys.stderr)
+        from ._cv import workspace_root
+        from .land_enrich import attach_notes
+        pre = f"{book}:"        # 点校查证（feedback/notes）挂卡：republish 出单读这份卡文件，pending_fields 带出 ai／dnote（QTW 11-27）
+        nd = attach_notes({str(c.get("id") or "")[len(pre):]: c for c in cs if str(c.get("id") or "").startswith(pre)}, workspace_root() or Path.cwd(), book)
+        if nd:
+            print(f"{book} 点校查证：挂上 {nd} 格", file=sys.stderr)
         dst = Path(args.cards_out) if args.cards_out else out_dir / f"{book}.cards.alt.json"
         dst.write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
         print(f"{book} 相似字：待审 {len(todo)} 格，出 alt {n} 格（字统网新取 {zi.n_fetched} 字）→ {dst}")

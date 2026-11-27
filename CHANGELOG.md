@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（GM3 11-27，QTW 031 册首发没带 ai）：点校查证（`feedback/notes/<册>.jsonl`）接进出单与收尾两条路。`land_enrich.attach_notes` 按（册，u）把 notes 摘要挂到卡的 `dian`；`load_cards`（land、republish 读的卡）与 `guji audit alt` 写卡时都调它，卡片就带 `ai`／`ctx.why`／`dnote`。`land` 新增 `ai_changed`：条目 doc 的 ai／dnote 空→有或变了算「改」要写，`sheet_stale` 也认，所以先发站、后补摘要，再跑一次 land 就补上。册没迁中心库或没 notes 时什么都不做。
+
 - PATCH（GM3 11-27）：放行格也能在网页看 AI 分析——`dian_trace.released_list` 取 notes 里最后一轮 `status=released` 的格，出 `[{u, ai}]`；`dian_attach` 加第 4 个参数写出该文件，ai-team `pending_list.py --released` 并进待审单顶层 `released`。顺带修 `dian_for` 没把分析状态 `st` 带进 `ai` 块的缺口。
 
 ## [0.6.43] - 2026-11-26

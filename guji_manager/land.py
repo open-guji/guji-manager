@@ -115,6 +115,22 @@ def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[st
     return out
 
 
+AI_KEYS = ("ai", "dnote")
+
+
+def ai_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[str]:
+    """doc 级改动里 AI 分析（``ai``／``dnote``）有变的格：先发站、后补摘要时旧条目没有、新有（QTW 11-27 031 册）。"""
+    out = []
+    for cell in cells:
+        o, n = old.find(cell), new.find(cell)
+        if not (o and n):
+            continue
+        od, nd = o[0].get("doc") or {}, n[0].get("doc") or {}
+        if any(od.get(k) != nd.get(k) for k in AI_KEYS):
+            out.append(cell)
+    return out
+
+
 def repair_reopened(store: P.ItemStore, by: str = "") -> list[str]:
     """上一版 land 把「已裁复审格＋补 alt」误重开了（op=machine:doc+reopen、人工来源、doc.review=human）：还原成 resolved。
     人裁事件不动，只把条目状态改回（QTW 11-25 004:92:4:14、019:120:6:19）。"""
@@ -140,8 +156,11 @@ def sheet_stale(data: Path, text_id: str, chapter: str, store: P.ItemStore) -> l
     out = []
     for r in store.by_state(*P.SHOWN):
         want = (r.get("doc") or {}).get("alt") or []
+        doc = r.get("doc") or {}
         if want and r["id"] in on and (on[r["id"]].get("alt") or []) != want:
             out.append(r["cell"])
+        elif r["id"] in on and any(doc.get(k) and on[r["id"]].get(k) != doc[k] for k in AI_KEYS):
+            out.append(r["cell"])         # 条目有 AI 分析、线上单没有或不同
     return sorted(out)
 
 
@@ -377,14 +396,17 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
         structural.append("alt")
+    ai_chg = ai_changed(store, plan["_store"], plan["改"])         # AI 分析（ai／dnote）空→有或变了：同样要写
+    if ai_chg:
+        structural.append("ai")
     stale = sheet_stale(data, text_id, chapter, plan["_store"])          # 条目有 alt、线上单没有：单要重派生
     if stale:
         structural.append("sheet")
     if restored:
         structural.append("restore")
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "sheet_stale": stale, "restored": restored,
-           "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
+    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "ai_changed": ai_chg, "sheet_stale": stale, "restored": restored,
+           "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else "") + (f"，AI 分析更新 {len(ai_chg)} 格" if ai_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
            "doc_only": [] if structural else plan["改"],
            # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
            "needs_rev_bump_check": bool(plan["挪格"])}
