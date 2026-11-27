@@ -229,6 +229,26 @@ def cmd_revive(a) -> None:
         sys.exit(1)
 
 
+def cmd_dedup_ids(a) -> None:
+    """本地账里 id 重复的行改名（切回旧切分时旧版本入账写出的重复 id，推库闸拦）。只改本地文件，推库另跑。"""
+    from .ledger import Ledger, fix_dup_ids, verify
+    _ws(a)
+    if not Ledger.load(a.book).exists:
+        sys.exit(f"✗ {a.book} 没有字格身份账")
+    fixed = fix_dup_ids(a.book, write=a.write)
+    for i, o, n in fixed:
+        print(f"第 {i} 个账行：{o} → {n}")
+    if not fixed:
+        print("没有重复 id")
+    elif not a.write:
+        print("（干跑；加 --write 真写）")
+    else:
+        errs = verify(Ledger.load(a.book))
+        print(json.dumps({"改名": len(fixed), "verify": errs[:5]}, ensure_ascii=False))
+        if errs:
+            sys.exit(1)
+
+
 def cmd_show(a) -> None:
     from .ledger import Ledger
     _ws(a)
@@ -337,6 +357,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     q.add_argument("pairs", nargs="+", metavar="旧u:新u", help="如 26626:34455（可多对）")
     q.add_argument("--why", default="", help="说明（看图确认等），记进账行")
     q.add_argument("--write", action="store_true", help="真写（只追加一行册级记录 page=0）；推库另跑 db push --only feedback/uid/<册>.jsonl")
+    q.add_argument("-w", "--workspace", default=None)
+
+    q = s.add_parser("dedup-ids", help="本地账里 id 重复的行改名加 -r<n>（切回旧切分时旧版本入账写出的重复 id，推库被拦时用；缺省只报）")
+    q.add_argument("book", help="cv 册（如 031）")
+    q.add_argument("--write", action="store_true", help="真写本地账；推库另跑 db push --only feedback/uid/<册>.jsonl")
     q.add_argument("-w", "--workspace", default=None)
 
     q = s.add_parser("revive", help="复活：已作废（gone）的 u 回到原格（新切分漏切了这格、看图确认后人工补回；缺省只报）")
@@ -830,7 +855,7 @@ def cmd_audit(a) -> None:
 
 
 def cmd(a) -> None:
-    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "retire-into": cmd_retire_into, "revive": cmd_revive, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
+    {"sync": cmd_sync, "audit": cmd_audit, "stamp": cmd_stamp, "items-u": cmd_items_u, "retire-into": cmd_retire_into, "revive": cmd_revive, "dedup-ids": cmd_dedup_ids, "check-u": cmd_check_u, "check-u-report": cmd_checku_report, "anchor-fill": cmd_anchor_fill, "tidy-recheck": cmd_tidy_recheck, "advance": cmd_advance, "init": cmd_init, "show": cmd_show, "verify": cmd_verify, "table": cmd_table,
      "migrate-plan": cmd_migrate_plan, "web-backfill": cmd_web_backfill}[a.uid_cmd](a)
 
 

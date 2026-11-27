@@ -548,3 +548,29 @@ def test_revive_gone_u(tmp_path):
     assert led.retired() == {} and led.cell_of(7) == f"{B}:229:1:1" and verify(led) == []
     assert led.by_sha(229, "S2")["id"] == d["id"]                    # cv 按 cells_sha 找行取到复活后的
     assert revive_line(led, 7, "229:1:1")[0] is None                 # 重记不重复
+
+
+def test_back_to_earlier_cut_gets_unique_id(tmp_path):
+    """QTW 11-26：重切让页回到账上更早的某份切分（cells_sha、map 都同）→ 新行 id 与旧行同，推库主键重。
+    append 加 -r<n>；旧版本已写出的重复 id 用 fix_dup_ids 改名。"""
+    import json as _j
+    from guji_manager.uid.ledger import Ledger, fix_dup_ids, make_line, verify
+    B = "031"
+    led = Ledger.load(B, tmp_path)
+    a = make_line(B, 3, "S1", {f"{B}:3:1:1": 1})
+    b = make_line(B, 3, "S2", {f"{B}:3:1:1": 1})
+    c = make_line(B, 3, "S1", {f"{B}:3:1:1": 1})
+    assert a["id"] == c["id"]
+    led.append([a, b])
+    led.append([c])
+    led = Ledger.load(B, tmp_path)
+    ids = [d["id"] for d in led.lines]
+    assert len(set(ids)) == 3 and ids[2] == ids[0] + "-r2" and led.page(3)["cells_sha"] == "S1" and verify(led) == []
+    # 老版本写出的重复：直接写文件
+    p = led.path
+    p.write_text(p.read_text() + _j.dumps(make_line(B, 3, "S2", {f"{B}:3:1:1": 1})) + "\n" + '{"kind":"other","id":"x"}\n')
+    fixed = fix_dup_ids(B, tmp_path)
+    assert [f[2] for f in fixed] == [ids[1] + "-r2"]
+    led = Ledger.load(B, tmp_path)
+    assert len({d["id"] for d in led.lines}) == 4 and p.read_text().rstrip().endswith('{"kind":"other","id":"x"}')
+    assert fix_dup_ids(B, tmp_path) == []

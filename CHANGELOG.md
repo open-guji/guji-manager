@@ -6,6 +6,10 @@
 
 ## [未发版]
 
+## [0.6.42] - 2026-11-27
+
+- 发版缘由：身份账切回旧切分的页入账 id 撞旧行、推库被拦（全唐文 031–060 首发卡住）。PATCH（CV0 11-27）：`Ledger.append` 撞号自动加 `-r<n>`；`uid sync` 推库前把本地已写出的重复 id 改名再推；新增 `guji uid dedup-ids <册> [--write]`。从 main（v0.6.41）切出、只收这一个修复（dev 上未发版的含一个要先建 D1 表的 MINOR，不夹带）。
+
 ## [0.6.41] - 2026-11-27
 
 - 发版缘由：整张待审单进 list_rows，清退 files。PATCH（11-27，GM4，清退 files）：整张待审单 `feedback/lists/proofing/<册>/<页>.pending.json` 改进 `list_rows`（dataset=proofing，一行一个 json 对象，逐字节还原）；单行超 1.8MB 的整份仍留 files（正文走 R2）。
