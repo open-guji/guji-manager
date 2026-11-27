@@ -543,7 +543,8 @@ def cmd_cos_check(args) -> None:
     table = S.read_table(src, args.book_id, vol, args.rev)
     meta = PM.read_pagemeta(src, args.book_id, vol, int(table["rev"]))
     led = C.read_ledger(src, args.book_id, vol, int(table["rev"]))
-    errs = C.check(table, meta, led, online=args.online, iou=args.iou, page_png=_page_png_fn(src))
+    errs = C.check(table, meta, led, online=args.online, iou=args.iou, page_png=_page_png_fn(src),
+                   iou_min=args.iou_min or _book_cfg(table).get("cos_iou_min"))
     tag = f"{args.book_id}/{vol} r{table['rev']:03d}"
     if errs:
         for e in errs[:20]:
@@ -603,7 +604,8 @@ def add_parser(sub) -> None:
     p.add_argument("--adopt", action="store_true", help="cos-tier：已由网站仓脚本传过的册，线上取回过闸后补账，不重出")
     p.add_argument("--force", action="store_true", help="cos-tier：桶里内容相同也重传")
     p.add_argument("--online", type=int, default=5, help="cos-check：线上抽查几个对象（缺省 5）")
-    p.add_argument("--iou", type=int, default=3, help="cos-check：抽几页核墨迹 IoU≥0.9（缺省 3）")
+    p.add_argument("--iou", type=int, default=3, help="cos-check：抽几页核墨迹 IoU（≥0.9，书配置 cos_iou_min 可放宽）与摆位分（≥0.95）（缺省 3）")
+    p.add_argument("--iou-min", type=float, default=None, help="cos-check：墨迹 IoU 线，盖过书配置 cos_iou_min（缺省 0.9）")
     p.add_argument("--reroot", action="store_true",
                    help="commons：修好的版本已传上 Commons，按旧页表逐页对上，沿用页序（页 id 不变）")
 
