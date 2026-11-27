@@ -90,7 +90,7 @@ def _sheets(todo: list[dict], ws: str, text: str, out: Path, per: int = 10) -> l
     lists, _, _ = load_db(ws, text, None)
     need: dict[str, dict] = {}
     for t in todo:
-        doc = lists.get(f"{int(re.sub(r'[^0-9]', '', t['vol']) or 0):03d}") or lists.get(t["vol"]) or {}
+        doc = lists.get(t["vol"]) or _by_number(lists, t["vol"]) or {}
         c = next((x for x in doc.get("cells") or [] if x.get("cell") == t["cell"]), None)
         if not c or not c.get("img"):
             continue
@@ -194,3 +194,12 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _by_number(lists: dict, vol: str) -> dict | None:
+    """按册号数值找单（1、01、001、vol01 同一册；用户 11-27 册号位数统一）。"""
+    digits = re.sub(r"[^0-9]", "", str(vol))
+    if not digits:
+        return None
+    n = int(digits)
+    return next((d for k, d in lists.items() if re.fullmatch(r"\d+", str(k)) and int(k) == n), None)
