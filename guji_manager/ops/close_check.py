@@ -18,6 +18,8 @@
   10/11 lines.md 与 pages.json 自洽（给了 --export-dir 才查）
   12 Step9 产物在（reports/<册>/<册>.md 与对勘 html）
   7/13 避諱表、收尾记录在（给了 --notes 才查）
+  15 国内书影（COS srcbw）：账在、对象数＝旁车源图数、抽查线上对象与墨迹 IoU（`datastore/cos_tier.check`；
+     册没有页表指针记 skip）。11-27 GM2 加（用户 11-26：上 COS 的必须是压缩版、压缩是流程一步）
 其余（3 4 5 6 9 14）只列为 manual，由人或会话按 runbook 逐项确认。
 """
 from __future__ import annotations
@@ -339,6 +341,27 @@ def _step9(reports: Path, book: str) -> dict:
                  f"{'有' if md.exists() else '缺'} {md.name}；对勘 html {len(html)} 份")
 
 
+def _cos(book: str) -> dict:
+    """国内书影（COS srcbw，1a 小步 `guji start source cos-tier`）：账在、对象数＝源图数、抽 3 个线上对象、抽 2 页 IoU。
+    册没登记页表（老册、试验册）记 skip。"""
+    from .._cv import sources as S
+    from ..cli_source import _locate, _src, _page_png_fn
+    from ..datastore import cos_tier as C
+    from ..datastore import pagemeta as PM
+    src = _src()
+    try:
+        book_id, vol = _locate(src, S, book)
+    except Exception as e:  # noqa: BLE001 —— 没有 R2 指针＝原图不走页表，不查
+        return _item("15", "国内书影", SKIP, f"没有页表指针（{type(e).__name__}）")
+    table = S.read_table(src, book_id, vol)
+    meta = PM.read_pagemeta(src, book_id, vol, int(table["rev"]))
+    led = C.read_ledger(src, book_id, vol, int(table["rev"]))
+    errs = C.check(table, meta, led, online=3, iou=2, page_png=_page_png_fn(src))
+    if errs:
+        return _item("15", "国内书影", FAIL, "；".join(errs[:3]) + (f" 等 {len(errs)} 条" if len(errs) > 3 else ""))
+    return _item("15", "国内书影", PASS, f"{book_id}/{vol} r{int(table['rev']):03d}：{len(led['objects'])} 张，宽 {led['width']}")
+
+
 def _notes(notes: Path) -> list[dict]:
     out = []
     av = sorted(notes.glob("避諱改字表*.md"))
@@ -377,6 +400,7 @@ def run(eng, ws: Path, pages, export_dir: Path | None = None, chapter: str | Non
         ("10", "lines.md／pages.json", lambda: _export(export_dir, chapter) if export_dir else
          [_item("10", "lines.md", SKIP, "没给 --export-dir"), _item("11", "pages.json", SKIP, "没给 --export-dir")]),
         ("12", "Step9 产物", lambda: [_step9(reports or ws / "reports", book)]),
+        ("15", "国内书影", lambda: [_cos(book)]),
         ("7", "避諱表／收尾记录", lambda: _notes(notes) if notes else
          [_item("7", "避諱改字表", SKIP, "没给 --notes"), _item("13", "收尾记录", SKIP, "没给 --notes")]),
     ]
@@ -387,7 +411,7 @@ def run(eng, ws: Path, pages, export_dir: Path | None = None, chapter: str | Non
             items.append(_item(no, name, ERROR, f"{type(e).__name__}: {e}"))
     items.extend(_item(no, txt, MANUAL) for no, txt in MANUAL_ITEMS)
     order = {s: i for i, s in enumerate(["1a", "1b", "1c", "2", "2b", "2c", "2d", "3", "4", "5", "6", "7", "8", "8b", "9",
-                                         "10", "11", "12", "13", "14"])}
+                                         "10", "11", "12", "13", "14", "15"])}
     items.sort(key=lambda it: order.get(it["no"], 99))
     machine = [it for it in items if it["status"] not in (MANUAL, SKIP)]
     return {"book": book, "workspace": str(ws), "pages": len(pages), "tier": tier,

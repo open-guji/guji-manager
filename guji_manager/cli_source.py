@@ -17,6 +17,10 @@
     guji source register <书id> <册> --dir <原图目录> --map <页号→页序表> [--ia <IA 标识> | --src-file <路径>=<网址> …] --ws … --book … --why …
                                                                  # 已有原图目录原样登记（老册，不重编码）（正式令牌）
     guji source replace <书id> <册> <页序> <png> --why …          # 换一页（人工处理后的图），页表出新版（正式令牌）
+    guji source cos-tier <书id> <册> [--width N] [--out 目录] [--upload | --adopt]
+                                                                 # 国内书影：每张源图 1-bit 无损 WebP（宽＝书配置 src_w，文淵閣缺省 1600、其他 3840），
+                                                                 # 过闸；--upload 传 COS srcbw 并记账 r<NNN>.cos.v<K>.json（COS_* 令牌＋正式令牌）
+    guji source cos-check <书id> <册> [--online 5] [--iou 3]      # 国内书影出口核（关口 A、v0.1；close-check 第 15 项同）
 
 令牌：`GUJI_DATA_TOKEN`（读：pull/show/list/check；写正式桶：ia/register/replace 要正式令牌）。
 """
@@ -458,9 +462,101 @@ def cmd_pagemeta_check(args) -> None:
         sys.exit(1)
 
 
+def _book_cfg(table: dict) -> dict:
+    """书配置里的 `src_w` 等：页表记的工作区与册名能对上本机中心库副本时取生效配置（合基础配置），取不到返回 {}。"""
+    try:
+        from ._cv import books_dir, workspace_root, book_config_effective
+        ws = workspace_root()
+        if not ws or not table.get("book"):
+            return {}
+        p = Path(books_dir(ws)) / f"{table['book']}.yaml"
+        return book_config_effective(p) if p.exists() else {}
+    except Exception:  # noqa: BLE001 —— 读不到书配置就按缺省宽度
+        return {}
+
+
+def _page_png_fn(src):
+    from ._cv import BlobCache
+    cache = BlobCache()
+
+    def get(sha: str) -> bytes:
+        if not cache.has(sha):
+            res = cache.ensure(src, [sha], bucket="main")
+            if res["missing"]:
+                raise FileNotFoundError(f"R2 上缺页图 {sha}")
+        return cache.path(sha).read_bytes()
+    return get
+
+
+def cmd_cos_tier(args) -> None:
+    """国内书影：每张源图出 1-bit 无损 WebP（宽 src_w），过闸，`--upload` 传 COS srcbw 并记账；`--adopt` 给已传的册补账。"""
+    from ._cv import sources as S
+    from .datastore import cos_tier as C
+    from .datastore import pagemeta as PM
+    vol = S.norm_vol(args.vol)
+    src = _src()
+    table = S.read_table(src, args.book_id, vol, args.rev)
+    if table.get("status", "final") != "final":
+        raise SystemExit(f"✗ {args.book_id}/{vol} r{table['rev']:03d} 不是 final（{table.get('status')}），不出国内书影")
+    meta = PM.read_pagemeta(src, args.book_id, vol, int(table["rev"]))
+    if meta is None:
+        raise SystemExit(f"✗ {args.book_id}/{vol} r{table['rev']:03d} 还没有页面范围旁车，先 guji start source pagemeta")
+    width, how = C.resolve_width(table, args.width, _book_cfg(table))
+    objects, pages = C.plan(table, meta, width)
+    tag = f"{args.book_id}/{vol} r{table['rev']:03d}"
+    print(f"{tag}：{len(pages)} 页 → {len(objects)} 张源图，宽 {width}（{how}）")
+    if args.dry_run:
+        print("（dry-run）不出图")
+        return
+    if args.adopt:
+        objects, bad = C.adopt(table, meta, width)
+        for b in bad[:20]:
+            print("  ✗", b)
+        if bad:
+            raise SystemExit(f"✗ {len(bad)} 个对象线上没有或不合规格，不记账；重出：去掉 --adopt 加 --upload")
+        how_built = "adopt"
+    else:
+        cache = Path(args.cache or Path.home() / ".cache" / "guji-source")
+        out = Path(args.out) if args.out else None
+        up = C.Cos() if args.upload else None
+        objects = C.build(src, table, meta, width, cache=cache, page_png=_page_png_fn(src), out=out, upload=up,
+                          force=args.force)
+        how_built = "upload" if up else "local"
+    total = sum(o["bytes"] for o in objects.values())
+    print(f"  ✓ {len(objects)} 张全过闸，共 {total / 1e6:.1f} MB，均 {total / max(1, len(objects)) / 1e3:.0f} KB")
+    if how_built == "local":
+        print(f"  （没传：加 --upload 传 COS 并记账）" + (f"，图在 {args.out}" if args.out else ""))
+        return
+    led = C.publish_ledger(src, C.make_ledger(table, meta, width, how, objects, pages, by=_actor(args),
+                                              why=args.why or ("补账（网站仓脚本已传）" if args.adopt else "国内书影上传"),
+                                              how=how_built))
+    print(f"  ✓ 账 r{table['rev']:03d}.cos.v{led['v']}（网站出 manifest 抄这份的 bim:cos）")
+
+
+def cmd_cos_check(args) -> None:
+    """国内书影出口核（关口 A、v0.1）：账在、对象数＝源图数、每页有 bim:cos；抽查线上对象与墨迹 IoU。"""
+    from ._cv import sources as S
+    from .datastore import cos_tier as C
+    from .datastore import pagemeta as PM
+    vol = S.norm_vol(args.vol)
+    src = _src()
+    table = S.read_table(src, args.book_id, vol, args.rev)
+    meta = PM.read_pagemeta(src, args.book_id, vol, int(table["rev"]))
+    led = C.read_ledger(src, args.book_id, vol, int(table["rev"]))
+    errs = C.check(table, meta, led, online=args.online, iou=args.iou, page_png=_page_png_fn(src))
+    tag = f"{args.book_id}/{vol} r{table['rev']:03d}"
+    if errs:
+        for e in errs[:20]:
+            print("  ✗", e)
+        sys.exit(1)
+    print(f"✓ {tag} 国内书影：{len(led['objects'])} 张，宽 {led['width']}，账 v{led.get('v')}"
+          f"（线上抽 {args.online}、IoU 抽 {args.iou} 都过）")
+
+
 ACTIONS = {"pull": cmd_pull, "show": cmd_show, "list": cmd_list, "check": cmd_check,
             "ia": cmd_ia, "commons": cmd_commons, "commons-pack": cmd_commons_pack, "spreads": cmd_spreads, "register": cmd_register, "replace": cmd_replace,
-            "pagemeta": cmd_pagemeta, "pagemeta-check": cmd_pagemeta_check}
+            "pagemeta": cmd_pagemeta, "pagemeta-check": cmd_pagemeta_check,
+            "cos-tier": cmd_cos_tier, "cos-check": cmd_cos_check}
 
 
 def add_parser(sub) -> None:
@@ -502,6 +598,12 @@ def add_parser(sub) -> None:
     p.add_argument("--no-fit", action="store_true", help="pagemeta：单页扫描逐页各自检测（旧法 detect_content），不按册统一框尺寸")
     p.add_argument("--save", help="pagemeta：把算出的逐页记录存成 json（出审查图用）")
     p.add_argument("--no-pagemeta", action="store_true", help="register／ia／commons：标 final 也不产页面范围（只给过渡期用，会被验收脚本点名）")
+    p.add_argument("--width", type=int, default=None, help="cos-tier：国内书影宽，盖过书配置 src_w（缺省文淵閣 1600、其他 3840）")
+    p.add_argument("--upload", action="store_true", help="cos-tier：传 COS srcbw（要 COS_* 令牌）并记账")
+    p.add_argument("--adopt", action="store_true", help="cos-tier：已由网站仓脚本传过的册，线上取回过闸后补账，不重出")
+    p.add_argument("--force", action="store_true", help="cos-tier：桶里内容相同也重传")
+    p.add_argument("--online", type=int, default=5, help="cos-check：线上抽查几个对象（缺省 5）")
+    p.add_argument("--iou", type=int, default=3, help="cos-check：抽几页核墨迹 IoU≥0.9（缺省 3）")
     p.add_argument("--reroot", action="store_true",
                    help="commons：修好的版本已传上 Commons，按旧页表逐页对上，沿用页序（页 id 不变）")
 
@@ -509,7 +611,7 @@ def add_parser(sub) -> None:
 def cmd_source(args) -> None:
     pos = list(args.pos or [])
     a = args.action
-    need = {"pull": 1, "list": 1, "spreads": 1, "show": 2, "check": 2, "ia": 2, "commons": 2, "commons-pack": 2, "register": 2, "replace": 4, "pagemeta": 2, "pagemeta-check": 2}[a]
+    need = {"pull": 1, "list": 1, "spreads": 1, "show": 2, "check": 2, "ia": 2, "commons": 2, "commons-pack": 2, "register": 2, "replace": 4, "pagemeta": 2, "pagemeta-check": 2, "cos-tier": 2, "cos-check": 2}[a]
     if a == "pull" and args.book_id:
         need = 0
     if len(pos) < need:
