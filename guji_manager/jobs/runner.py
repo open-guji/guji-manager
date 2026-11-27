@@ -1070,6 +1070,10 @@ def _maybe_pending_settle(say=print) -> None:
                            capture_output=True, text=True, timeout=3600, env=env)
         tail = [x for x in (r.stdout + r.stderr).splitlines() if "resolved" in x or x.startswith("✗")]
         say("；".join(tail[-8:]) if tail else f"待审条目对账退出码 {r.returncode}")
+        # 看板待审数跟着条目走（清理计划 2.7）：对账后顺手刷 open 数与最后变更时间
+        r = subprocess.run([str(VENV / "bin" / "guji"), "progress-sync", "--fix", "--pending-only"],
+                           capture_output=True, text=True, timeout=1800, env=env)
+        say(f"看板待审数刷新退出码 {r.returncode}：{(r.stdout.splitlines() or [''])[0]}")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"待审条目对账没跑成：{e}")
 

@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("central-gc", help="中心库定期清理（产物包按保留规则清）；见 guji_manager.central_gc", add_help=False)
     sub.add_parser("triage", help="参校字快审分流（skip/pass/withdraw/review）；见 guji_manager.review_triage", add_help=False)
     sub.add_parser("review-pages", help="人审页模板库（预选、一字一卡、版本、台账）；见 guji_manager.review_pages", add_help=False)
-    sub.add_parser("progress-sync", help="后台看板自动对账：线上单／包口径／迭代轮次落后了就补；见 guji_manager.progress_sync", add_help=False)
+    sub.add_parser("progress-sync", help="后台看板自动对账：待审数／包口径／迭代轮次落后了就补；见 guji_manager.progress_sync", add_help=False)
     sub.add_parser("iterate", help="降人审迭代的轮报告、金标、抽检台账、杠杆排序、冻结日历；见 guji_manager.iterate", add_help=False)
     sub.add_parser("suggest", help="诊断信号→A 档开关建议，点头后写册 yaml；见 guji_manager.suggest", add_help=False)
     sub.add_parser("pair-attr", help="形近字对归属表（刻形／文意／暂归一）的查看与校验；见 guji_manager.pair_attribution", add_help=False)
