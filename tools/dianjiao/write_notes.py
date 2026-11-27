@@ -43,10 +43,10 @@ def row_to_note(r: dict, level: str, model: str, batch: str) -> dict:
     detail = (r.get("详情") or r.get("理由") or "").strip()
     item = {"level": level, "model": model, "char": (r.get("AI判") or "").strip(), "conf": (r.get("置信") or "").strip(),
             "why": detail[:300], "s": (r.get("一句话") or "").strip()[:40],
-            "status": "found" if ev else "not_found", "evidence": ev, "log": _log(r.get("检索") or "")}
+            "status": status or ("found" if ev else "not_found"), "evidence": ev, "log": _log(r.get("检索") or "")}
     cands = [c for c in re.split(r"[/、,\s]+", r.get("候选") or "") if c]
     note = {"book": r["册"].strip(), "u": int(r["u"]), "cell": (r.get("格号") or "").strip() or None,
-            "batch": batch, "st": status, "trace": [item]}
+            "batch": batch, "trace": [item]}
     if cands:
         note["cands"] = cands
     return note

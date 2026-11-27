@@ -272,13 +272,8 @@ def _list_row(rec, rel, line):
 
 
 def _ai_note(rec, rel, line):
-    p = PurePosixPath(rel)
-    tr = rec.get("trace") if isinstance(rec.get("trace"), list) else []
-    last = tr[-1] if tr and isinstance(tr[-1], dict) else {}
-    cols = {"vol": p.stem, "cell": _str(rec.get("cell")), "batch": _str(rec.get("batch")),
-            "level": _str(last.get("level")), "model": _str(last.get("model")),
-            "char": _str(last.get("char")), "conf": _str(last.get("conf"))}
-    return (rel, line), cols
+    # book 取行里的 book（册），老行没有就用文件名（feedback/notes/<册>.jsonl）；u、batch、char、conf、st、lv、model 是虚拟列，不写
+    return (rel, line), {"book": _str(rec.get("book")) or PurePosixPath(rel).stem}
 
 
 def _consumed(rec, rel, line):

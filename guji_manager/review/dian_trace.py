@@ -175,6 +175,13 @@ def find_note(idx: dict, *, cell: str | None = None, group: str | None = None, c
     return None
 
 
+def _row_st(row: dict) -> str | None:
+    """分析状态 released／pending／unsure：存在 trace 最后一轮的 `status`（与 ai_notes.st 虚拟列同一处）。"""
+    tr = row.get("trace") or []
+    st = (tr[-1] or {}).get("status") if tr else None
+    return st if st in ("released", "pending", "unsure") else None
+
+
 def dian_for(idx: dict, *, cell: str | None = None, group: str | None = None, ctx_hash: str | None = None,
              cands: list[str] | None = None, book: str | None = None, u: int | None = None,
              extra_cands: list[str] | None = None) -> dict | None:

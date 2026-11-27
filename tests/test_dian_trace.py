@@ -57,7 +57,7 @@ def test_find_by_u_and_long_why(tmp_path):
 
 
 def test_ai_block_and_out_of_cands():
-    tr = [{"level": "L3", "char": "己", "conf": "high", "why": "文意自指，三家註卷24作己", "s": "倾向己·高；三家註同",
+    tr = [{"level": "L3", "char": "己", "conf": "high", "status": "pending", "why": "文意自指，三家註卷24作己", "s": "倾向己·高；三家註同",
            "log": [{"src": "维基文库三家註卷024", "r": "同字", "t": "窗口8"}]}]
     d = summarize_trace(tr, ["已", "巳"], "pending")
     ai = d["ai"]
@@ -71,4 +71,4 @@ def test_write_notes_row():
     sp = importlib.util.spec_from_file_location("wn", p); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
     n = m.row_to_note({"册": "10", "u": "881", "格号": "10:98:7:5a", "AI判": "曰", "置信": "high", "状态": "pending",
                        "一句话": "倾向曰", "详情": "述贊曰", "检索": "三家註卷15|同字|窗口8 ; ctext|取不到|", "候选": "日/曰"}, "L3", "m", "b")
-    assert n["st"] == "pending" and n["trace"][0]["log"][1] == {"src": "ctext", "r": "取不到", "t": ""} and n["u"] == 881
+    assert n["trace"][0]["status"] == "pending" and n["trace"][0]["log"][1] == {"src": "ctext", "r": "取不到", "t": ""} and n["u"] == 881
