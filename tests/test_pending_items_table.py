@@ -70,7 +70,7 @@ def test_classify_pending_items():
     assert classify("feedback/lists/pending/vol03/001.items.jsonl") == "pending_items"
     assert classify("feedback/lists/pending/vol03/001.pending.json") == "files"
     assert classify("feedback/lists/pending/001.items.jsonl") == "files"        # 层级不对的照旧整文件
-    assert classify("feedback/lists/proofing/vol03/001.pending.json") == "files"
+    assert classify("feedback/lists/proofing/vol03/001.pending.json") == "list_rows"    # 整张待审单（11-26 起）
 
 
 def test_import_rows_current_view_and_verify(repo, conn):
@@ -156,7 +156,7 @@ def test_classify_list_rows():
     assert classify("feedback/lists/u_void/vol02.jsonl") == "list_rows"
     assert classify("feedback/lists/opinions/96mid1ogzk/text_versions.json") == "files"
     assert classify("feedback/lists/stale_verdicts.tsv") == "files"
-    assert classify("feedback/lists/proofing/vol03/001.pending.json") == "files"
+    assert classify("feedback/lists/proofing/vol03/001.pending.json") == "list_rows"    # 整张待审单（11-26 起）
 
 
 def test_list_rows_import_verify_and_materialize(repo, conn, tmp_path):
@@ -180,3 +180,33 @@ def test_list_rows_import_verify_and_materialize(repo, conn, tmp_path):
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
     for rel in (LST, FRZ, "W/feedback/lists/web/96mid1ogzk/bad.jsonl"):
         assert (out / rel[2:]).read_bytes() == f[rel]         # 含空行、逐字节
+
+
+def test_proofing_sheet_rows_and_oversize(repo, conn, tmp_path):
+    """整张待审单一行一个 json 对象进 list_rows；一行超过 D1 单行上限的退回 files（11-26）。"""
+    from guji_manager.datastore import scope
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _base()
+    small = "W/feedback/lists/proofing/96mid1ogzk/001.pending.json"
+    big = "W/feedback/lists/proofing/96mid1ogzk/002.pending.json"
+    f[small] = (_line(rev=3, cells=[{"cell": "1:1:1", "id": "pi_1"}]) + "\n").encode()
+    f[big] = (_line(rev=3, blob="x" * (scope.ROW_MAX_BYTES + 10)) + "\n").encode()
+    c1 = _commit(repo, f, "c1")
+    rep = import_commit(conn, repo, c1)
+    assert rep.per_table["list_rows"]["insert"] == 1
+    row = conn.execute("SELECT dataset, book, name FROM list_rows").fetchone()
+    assert tuple(row) == ("proofing", "96mid1ogzk", "001.pending")
+    tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchall())
+    assert tbls == {"feedback/lists/proofing/96mid1ogzk/001.pending.json": "list_rows",
+                    "feedback/lists/proofing/96mid1ogzk/002.pending.json": "files"}
+    # 超行上限的整份进 files（正文在 R2，测试替身读不回，只验其余文件不受影响）
+    assert conn.execute("SELECT body_r2 FROM files WHERE src_path LIKE '%002.pending.json'").fetchone()[0] == 1
+    bad = verify_commit(conn, repo, c1)["workspaces"]["tws"].get("mismatches") or []
+    assert all("002.pending.json" in m for m in bad), bad
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
+    assert (out / small[2:]).read_bytes() == f[small]

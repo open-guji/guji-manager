@@ -121,8 +121,11 @@ GLYPH_FILES = {
 
 GS = "output/glyph_store/"
 PENDING_SUFFIX = ".items.jsonl"
-#: 逐行进 list_rows 的清单目录（feedback/lists/<目录>/…jsonl）。proofing 是导出物、别的是一次性清单，不在此列
+#: 逐行进 list_rows 的清单目录（feedback/lists/<目录>/…jsonl）。proofing（整张待审单 `<章>.pending.json`，一行一个 json 对象）
+#: 11-26 起也进 list_rows（用户定「彻底清 files」）；一行超过 ROW_MAX_BYTES（D1 单行 2 MB 上限）的整文件退回 files。
 LIST_ROW_DATASETS = frozenset({"web", "opinions", "freeze", "ledger", "u_void"})
+PROOFING_SUFFIX = ".pending.json"
+ROW_MAX_BYTES = 1_800_000
 
 
 def excluded(rel: str) -> bool:
@@ -156,6 +159,8 @@ def classify(rel: str) -> str | None:
             return "pending_items"
         if (len(parts) >= 4 and parts[1] == "lists" and parts[2] in LIST_ROW_DATASETS
                 and p.suffix == ".jsonl"):
+            return "list_rows"
+        if len(parts) == 5 and parts[1] == "lists" and parts[2] == "proofing" and p.name.endswith(PROOFING_SUFFIX):
             return "list_rows"
         if len(parts) >= 3 and parts[1] == "lists":
             return "files"
@@ -360,6 +365,9 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
         fsha = sha256(data)
         if tbl == "list_rows" and not _all_json_lines(data):
             res.problems.append(f"{rel}: 有不是 json 的行，整文件进 files")
+            tbl = "files"
+        elif tbl == "list_rows" and any(len(ln) > ROW_MAX_BYTES for ln in data.split(b"\n")):
+            res.problems.append(f"{rel}: 有一行超过 {ROW_MAX_BYTES} 字节（D1 单行 2 MB 上限），整文件进 files")
             tbl = "files"
         if tbl in BLOB_TABLES:
             rows.append(Row(tbl, (rel,), {"sha256": fsha, "bytes": len(data)}, fsha, rel))
