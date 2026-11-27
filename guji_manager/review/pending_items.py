@@ -218,6 +218,16 @@ class ItemStore:
 # ---- 机器一轮：按新单逐格比 ----
 
 
+BACKFILL_KEYS = ("alt", "ai", "dnote", "dout", "refs")      # 人工条目缺这些键时可补（候选字、点校 AI 摘要）；ctx 不补（人工条目可能已有机器 ctx）
+
+
+def _backfill(old_doc: dict, c: dict, new_doc: dict) -> dict:
+    """old_doc 缺的 BACKFILL_KEYS 从新单这格补上；没有可补的原样返回（同一对象）。"""
+    add = {k: (c.get(k) or new_doc.get(k)) for k in BACKFILL_KEYS
+           if old_doc.get(k) in (None, [], (), "", {}) and (c.get(k) or new_doc.get(k))}
+    return {**old_doc, **add} if add else old_doc
+
+
 def _keep_resolved(r: dict, doc: dict, fp: str, fp_reopen: bool = True) -> bool:
     """已裁条目（resolved）在新单上又被判待审，要不要重开。人裁不该被「同一块图又判待审」推翻：
     - 新单这格是复审格（`recheck`，人明确要重看）→ 重开；
@@ -297,9 +307,7 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
         if keep_src and str(r.get("src") or "").startswith(keep_src):
             # 人工加的格（手加、点坏格等）：字段一律以人为准，机器不碰（补缺的键也算「改」，会让没变的册被判有变）
             old_doc = r.get("doc") or {}
-            doc = old_doc
-            if doc.get("alt") in (None, [], ()) and (c.get("alt") or doc_alt):        # 唯一的例外：手加格没有候选字时补 alt（别的键一律不碰）
-                doc = {**old_doc, "alt": c.get("alt") or doc_alt}
+            doc = _backfill(old_doc, c, doc)          # 唯一的例外：手加格缺候选字／AI 摘要时只补缺的键（别的键一律不碰）
         upd: dict = {}
         ops = []
         if u is not None and r.get("u") is None:
@@ -331,9 +339,11 @@ def reconcile(store: ItemStore, cells: Iterable[dict], *, src: str, fps: dict[st
             if upd:                              # 格号挪了、指纹补上等照记，字段不动
                 upd.pop("doc", None)
             old_doc = r.get("doc") or {}
-            if old_doc.get("recheck") and old_doc.get("alt") in (None, [], ()) and (c.get("alt") or doc_alt):
-                upd["doc"] = {**old_doc, "alt": c.get("alt") or doc_alt}     # 复审格已裁但仍挂在单上、没有候选字：只补 alt（QTW 11-25 004:92:4:14）
-                ops.append("doc")
+            if old_doc.get("recheck"):
+                nd = _backfill(old_doc, c, doc)       # 复审格已裁但仍挂在单上、缺候选字／AI 摘要：只补缺的键（QTW 11-25 004:92:4:14）
+                if nd is not old_doc:
+                    upd["doc"] = nd
+                    ops.append("doc")
         elif st != want:
             upd["state"] = want
             ops.append("reopen" if want == "open" else "state")

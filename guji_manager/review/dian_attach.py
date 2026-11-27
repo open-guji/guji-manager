@@ -17,13 +17,27 @@ from .dian_trace import dian_for, load_notes, released_list
 
 
 def attach_dian(cards: list[dict], idx: dict) -> tuple[list[dict], int]:
-    """逐卡找 trace：先按（卡的 group／ctx_hash，卡上有才用），再按卡 id（册:页:列:格）。返回 (cards, 挂上的张数)。"""
+    """逐卡找 trace：先按（册，u），再按（卡的 group／ctx_hash，卡上有才用），最后按卡 id（册:页:列:格）。返回 (cards, 挂上的张数)。
+    卡上没有 book／u（audit alt 的卡只有 id）时，从 id 取册号、从字格身份账取 u。"""
     n = 0
+    us_by_book: dict[str, dict] = {}
     for c in cards:
         if c.get("dian"):
             continue
+        cid = str(c.get("id") or "")
+        book = c.get("book") or (cid.split(":", 1)[0] if cid.count(":") == 3 else None)
+        u = c.get("u")
+        if u is None and book and cid.count(":") == 3:
+            if book not in us_by_book:
+                ids = [x.get("id", "").split(":", 1)[1] for x in cards if str(x.get("id", "")).startswith(f"{book}:")]
+                try:
+                    from ..u_stamp import u_map
+                    us_by_book[book] = u_map(book, ids)
+                except Exception:  # noqa: BLE001 —— 没账就只按 ctx／格号找
+                    us_by_book[book] = {}
+            u = us_by_book[book].get(cid.split(":", 1)[1])
         d = dian_for(idx, cell=c.get("id"), group=c.get("group"), ctx_hash=c.get("ctx_hash"),
-                   book=c.get("book"), u=c.get("u"), extra_cands=(c.get("grp") or {}).get("m"))
+                   book=book, u=u, extra_cands=(c.get("grp") or {}).get("m"))
         if d:
             c["dian"] = d
             n += 1
