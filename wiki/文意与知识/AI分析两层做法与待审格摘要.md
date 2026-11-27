@@ -68,7 +68,11 @@
 
 1. 要看图的格**不写放行事件**，状态记 `pending`（有倾向）或 `unsure`，摘要照写（一句话、详情、检索），用户审时直接看到 AI 分析。
 2. 待审格上必须带 AI 摘要：出单或 land 时按（册，u）挂 `ai`。核对法：中心库 `ai_notes` 里该（册，u）有行，且状态不是 `released`。
-3. **notes 的状态不能写错**：没放行的格记 `released` 会让网页把它显示成「已放行」。**不要把「该格已有任何裁定」当 `released`**，只有真的放行（AI 裁定事件已过 seed_admit，或人裁定了）才写 `released`。
+3. **notes 的状态不能写错**：没放行的格记 `released` 会让网页把它显示成「已放行」。**不要把「该格已有任何裁定」当 `released`**。`released` 的定义（GM3 11-27，答殿本 ZM）：该格有**有效**的裁定事件，满足下面任一条——
+   - 人裁定了（`level=human`）；
+   - AI 裁定事件且版本 seed_admit 认：group=O 的 `ctx-m1`、`vis-o1`、`src-1`（子类在书级开关收的范围内），其他字组是本组 `prompt.md` 的 `ver`（如 `l2`），或版本等价表里登记给本组的版本；
+   - 管线自己已放行（该格不在 seed_admit 产物的待审里；看图 L4 缓存 `vis1:<哈希>` 的放行属于这一条，由管线判，不是 AI 裁定事件）。
+   其余一律不是 released：**版本 seed_admit 不认的（如 `ctx-wenyi-1`）不算**，记 `pending`（有倾向）或 `unsure`（判不了）；要让它算，须用 `guji text ctx-ruling write` 重写成 `ctx-m1`。注意：事件写了但待审条目还没对账关闭（`collect`／land 没跑）时，条目仍显示 open，这不影响它是 `released`，以事件为准，不以条目状态为准。
 4. 用户在网站审完后，若要按用户定的字重写成 ctx-m1，由书线（如 ZM）用 `guji text ctx-ruling write` 写，告诉他是哪些格、什么字。
 5. 抽样证据图（单格裁图）只留作内部证据，放 ai-team 各书经验目录，不发给用户看。
 
