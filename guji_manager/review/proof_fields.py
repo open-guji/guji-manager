@@ -97,6 +97,8 @@ def pending_fields(card: dict) -> dict:
         refs = _refs(dian.get("refs"))
         if refs:
             out["refs"] = refs
+        if isinstance(dian.get("ai"), dict):
+            out["ai"] = dian["ai"]         # AI 分析摘要（一句话常显、详情与检索记录折叠），网站优先用它
     ref = card.get("ref")
     if ref and ref.get("char"):
         out["ref"] = {"c": ref["char"], "op": ref.get("op")}

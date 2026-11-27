@@ -33,7 +33,7 @@ def test_classify_routes_files_to_tables():
     assert classify("feedback/anchors/vol02.jsonl") == "anchors"
     assert classify("feedback/anchor_patches/vol02/x.png") == "anchor_patches_meta"
     assert classify("feedback/verdicts/page-type/items.jsonl") == "verdicts"
-    assert classify("feedback/notes/vol48.jsonl") == "files"
+    assert classify("feedback/notes/vol48.jsonl") == "ai_notes"
     assert classify("feedback/rulings/ver_equiv.yaml") == "files"          # 裁定版本等价表（GM4 方案②）随中心库同步
     assert classify("feedback/rulings/x.json") is None
     assert classify("feedback/lists/x.txt") == "files"
