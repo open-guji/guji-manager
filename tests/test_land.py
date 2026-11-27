@@ -495,3 +495,17 @@ def test_with_released_adds_header_from_notes(tmp_path, monkeypatch):
     assert [r["u"] for r in sheet["released"]] == [9]
     sheet2 = land.with_released(tmp_path, "b", {"cells": [{"cell": "5:5:5"}]})        # 已在待审格里的不重复
     assert "released" not in sheet2
+
+
+def test_ai_summary_change_counts_as_changed_and_applies(tmp_path, monkeypatch):
+    import guji_manager.datastore.workcopy as W
+    monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
+    ws = tmp_path / "ws"
+    data = tmp_path / "data"
+    s = P.ItemStore(P.items_path(data, "t", "005"), "t", "005")
+    P.reconcile(s, [_cell("1:1:1")], src="seed", fps={"1:1:1": "f"})
+    s.save()
+    cells = [{**_cell("1:1:1"), "ai": {"s": "摘要"}, "dnote": "n"}]
+    r = land.land(ws, "vol05", text_id="t", chapter="005", res={"cells": cells, "fps": {"1:1:1": "f"}, "digest": "d2"},
+                  apply=False, by="x")
+    assert r["changed"] and r["alt_changed"] == ["1:1:1"]
