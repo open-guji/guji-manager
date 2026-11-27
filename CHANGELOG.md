@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（CV2 2026-11-26）：`review-pages ab-items`：切分 A/B（两份 row_segment 产物）只收切法变了的列，出 col_check items——框＝新切法、红线＝旧切法被换掉的线；`--flag boundary_net` 只收判官改过的列。原是 ai-team 一次性脚本（字间判官 72 列审查页）。
+
 ## [0.6.41] - 2026-11-27
 
 - 发版缘由：整张待审单进 list_rows，清退 files。PATCH（11-27，GM4，清退 files）：整张待审单 `feedback/lists/proofing/<册>/<页>.pending.json` 改进 `list_rows`（dataset=proofing，一行一个 json 对象，逐字节还原）；单行超 1.8MB 的整份仍留 files（正文走 R2）。
