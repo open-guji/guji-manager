@@ -238,3 +238,16 @@ def test_perf_push_and_top_on_d1(conn, monkeypatch):
     top = perf_push.remote_top(days=1)
     assert top[0]["step"] == "seg" and top[0]["pages_run"] == 3 and top[0]["p50_s"] == 2.0
     assert perf_push.remote_top(days=1, book="vol02") == []
+
+
+def test_salvage_log_fills_lost_attempt_once(conn):
+    """执行方重起后补传失联那次的本机日志尾巴（11-27 全唐文 056 #17959），只填空着的，记一条事件。"""
+    a = _sub(conn, "h1")
+    j, att = S.claim(conn, "w1")
+    assert S.salvage_log(conn, j["id"], att["n"], "x\n== row_segment p0128 完成\n", who="w1") == att["id"]
+    d = S.detail(conn, a["id"])
+    assert d["attempts_rows"][0]["log_tail"].endswith("p0128 完成\n")
+    ev = [e for e in d["events"] if e["stage"] == "salvage"]
+    assert ev and "p0128" in ev[-1]["msg"]
+    assert S.salvage_log(conn, j["id"], att["n"], "again") is None      # 已有就不覆盖
+    assert S.salvage_log(conn, j["id"], 99, "none") is None

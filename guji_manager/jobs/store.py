@@ -424,6 +424,25 @@ def _heartbeat_pg(conn, attempt_id, *, stage, progress) -> str:
 
 
 @_routed
+def salvage_log(conn, job_id: int, n: int, tail: str, *, who: str = "") -> int | None:
+    """执行方重起后补传上次没收尾那次领单的本机日志尾巴（失联单原先只留在执行机上，11-27 全唐文 056 #17959）。
+    只填 log_tail 还空着的那次；返回 attempt id，没有可填的返回 None。"""
+    with conn.transaction():
+        row = _one(conn.execute("UPDATE jobs.attempt SET log_tail=%s WHERE job_id=%s AND n=%s AND log_tail IS NULL"
+                                " RETURNING id", ((tail or "")[-8000:] or None, job_id, n)))
+        if not row:
+            return None
+        aid = row["id"]
+        _event(conn, job_id, aid, "salvage", _salvage_msg(n, who, tail), level="warn")
+        return aid
+
+
+def _salvage_msg(n: int, who: str, tail: str) -> str:
+    last = next((x.strip() for x in reversed((tail or "").splitlines()) if x.strip()), "")
+    return f"补传第 {n} 次领单的本机日志尾巴（{who or '执行方'}重起后；那次没收尾）。末行：{last[:300]}"
+
+
+@_routed
 def event(conn, job_id: int, attempt_id: int | None, stage: str | None, msg: str, *, level: str = "info",
           secs: float | None = None, data: dict | None = None) -> None:
     with conn.transaction():

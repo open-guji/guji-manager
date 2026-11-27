@@ -271,6 +271,18 @@ def heartbeat(conn, attempt_id: int, *, stage=None, progress=None, seen: dict | 
     return "cancel" if (res[1] and res[1][0]["cancel_requested"]) else ""
 
 
+def salvage_log(conn, job_id: int, n: int, tail: str, *, who: str = "") -> int | None:
+    """同 store.salvage_log。"""
+    from .store import _salvage_msg
+    res = conn.batch([("UPDATE attempt SET log_tail = ?3 WHERE job_id = ?1 AND n = ?2 AND log_tail IS NULL RETURNING id",
+                       [job_id, n, (tail or "")[-8000:] or None])])
+    if not res[0]:
+        return None
+    aid = res[0][0]["id"]
+    event(conn, job_id, aid, "salvage", _salvage_msg(n, who, tail), level="warn")
+    return aid
+
+
 def event(conn, job_id, attempt_id, stage, msg, *, level="info", secs=None, data=None) -> None:
     conn.batch([("INSERT INTO event (job_id, attempt_id, stage, level, msg, secs, data) VALUES (?,?,?,?,?,?,?)",
                  [job_id, attempt_id, stage, level, msg[:4000], secs,

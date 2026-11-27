@@ -875,6 +875,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     db(S.worker_seen, worker, state="idle", session=session, runner=rc, done=0, started=True, note="")
     say(f"执行方 {worker} 上线（runner {rc or '?'}，空闲 {idle_minutes or 0} 分钟后退出）")
     XT.start(HOME, say)                  # 报上次存活／退出原因，装 SIGTERM/SIGHUP 处理，起存活时间戳
+    _salvage_logs(db, say)               # 上次没收尾的单（失联）：本机日志尾巴补传进任务库，再清目录
     try:
         while True:
             try:
@@ -1170,6 +1171,28 @@ _CACHES = (Path.home() / ".cache" / "uv", Path.home() / ".cache" / "guji-data")
 
 def _free_gb() -> float:
     return shutil.disk_usage(HOME).free / 2**30
+
+
+def _salvage_logs(db, say=print) -> int:
+    """执行方起来时（本机只一个执行方，有锁），``~/.guji-jobs/job<单>-a<次>/`` 还在的都是上一个进程没收尾的——
+    多半是整机暂停或会话被收掉、单已判失联。把 run.log 尾巴补进那次领单（只填空着的），失联单就能看出断在哪一步哪一页
+    （11-27 全唐文 056 #17959：row_segment p128 后断，日志只在执行机上）。补完的移到 failed-logs。返回补了几份。"""
+    n_done = 0
+    for d in sorted(HOME.glob("job*-a*")):
+        m = re.fullmatch(r"job(\d+)-a(\d+)", d.name)
+        log = d / "run.log"
+        if not (m and d.is_dir() and log.is_file()):
+            continue
+        jid, n = int(m.group(1)), int(m.group(2))
+        try:
+            tail = redact(log.read_text(encoding="utf-8", errors="replace")[-8000:])
+            if db(S.salvage_log, jid, n, tail, who=S.who()):
+                n_done += 1
+                say(f"补传 #{jid} 第 {n} 次领单的本机日志尾巴（上次没收尾）")
+            _retire_dir(d, "failed", jid, n)
+        except Exception as e:      # noqa: BLE001 —— 补传失败不挡开工，目录留给 _disk_gate 清
+            say(f"补传 #{jid} 第 {n} 次日志失败：{e}")
+    return n_done
 
 
 def _clean_job_dirs() -> None:
