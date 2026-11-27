@@ -65,6 +65,22 @@ def test_ai_block_and_out_of_cands():
     assert pending_fields({"id": "x", "dian": d, "doubts": []})["ai"]["s"] == "倾向己·高；三家註同"
 
 
+def test_released_list(tmp_path):
+    from guji_manager.review.dian_trace import released_list
+    rows = [{"book": "vol11", "u": 9, "cell": "11:1:1:1", "cands": ["已", "巳"],
+             "trace": [{"level": "L3", "char": "已", "conf": "high", "status": "released", "why": "x", "s": "已·高"}]},
+            {"book": "vol11", "u": 3, "cell": "11:1:1:2", "cands": ["日", "曰"],
+             "trace": [{"level": "L3", "char": "曰", "conf": "high", "status": "released", "why": "y"}]},
+            {"book": "vol11", "u": 5, "cell": "11:1:1:3", "trace": [{"level": "L3", "char": "己", "status": "pending"}]}]
+    p = tmp_path / "n.jsonl"
+    p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    idx = load_notes(p)
+    out = released_list(idx)
+    assert [x["u"] for x in out] == [3, 9] and out[1]["ai"]["st"] == "released" and out[1]["ai"]["s"] == "已·高"
+    assert [x["u"] for x in released_list(idx, {"11:1:1:1"})] == [3]
+    assert dian_for(idx, cell="x", book="vol11", u=9)["ai"]["st"] == "released"
+
+
 def test_write_notes_row():
     import importlib.util, pathlib
     p = pathlib.Path(__file__).parent.parent / "tools/dianjiao/write_notes.py"

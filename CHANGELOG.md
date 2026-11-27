@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（GM3 11-27）：放行格也能在网页看 AI 分析——`dian_trace.released_list` 取 notes 里最后一轮 `status=released` 的格，出 `[{u, ai}]`；`dian_attach` 加第 4 个参数写出该文件，ai-team `pending_list.py --released` 并进待审单顶层 `released`。顺带修 `dian_for` 没把分析状态 `st` 带进 `ai` 块的缺口。
+
 ## [0.6.43] - 2026-11-26
 
 - 发版缘由：AI 分析摘要进新表 ai_notes（#1103），待审单带 ai 对象；notes 按 册+u 挂。
