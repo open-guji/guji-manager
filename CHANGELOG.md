@@ -8,6 +8,11 @@
 
 - PATCH（11-27，GM2，WYG 请求；用户 11-26 定上 COS 必须是压缩版、压缩是流程一步）：新增 `guji start source cos-tier <书id> <册>`——读页表＋旁车，每张源图出 1-bit 无损 WebP（宽＝`--width`＞书配置 `src_w`＞缺省：文淵閣 1600、其他 3840），过闸（VP8L、只有 0/255、尺寸对）才传 COS `srcbw`，传完记只增不改的账 `r<NNN>.cos.v<K>.json`（实际宽度、对象 md5、每页 `bim:cos`）；`--adopt` 给网站仓脚本已传的册补账。新增 `guji start source cos-check`（账、对象数、线上抽查、墨迹 IoU≥0.9），并进 close-check 第 15 项（两档都计；没有页表指针的册 skip）。代码 `datastore/cos_tier.py`，原网站仓 `ops/iiif/src_bw_tier.py` 等三支脚本的逻辑搬进来。
 - PATCH（11-27，GM4，清退 files）：`feedback/lists/` 下的 `.tsv`／`.json` 小清单（stale_verdicts.tsv、known-errors.tsv、opinions 老的 text_versions.json）按块进 `file_chunks`，往返逐字节同，不再占 files；本机文件照旧，cv 读法不变。
+
+## [0.6.46] - 2026-11-27
+
+- 发版缘由：`guji land --text` 刷新导出参数错误（MJ 11-27 报，非殿本都会碰到）。
+
 - PATCH（11-27，GM2，MJ 报）：`guji land --text` 刷新导出改调本包 `output/guji_format_export`，参数同 cv `republish.py from-pack`（char-cord、`--keys cv`、book-text dev 现行 `--text-version`、`--meta`、`--prev-char`）。原拼 `guji export format <册> -w …` 在 cv 0.9.7 吃不到册后参数、非殿本无 meta 退出、也不出 char.json。
 
 ## [0.6.45] - 2026-11-27
