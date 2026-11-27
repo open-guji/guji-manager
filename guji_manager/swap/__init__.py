@@ -13,7 +13,7 @@ auto_cycle 以前做的「票落成人裁」「手加格补回」「引擎 workt
 * 开跑前、每批之间都核字形库账本不空、不比基准少一成以上、磁盘够；不过就停在原地不动。
 * 状态写 ``<工作区>/reports/_swap/state.json``，崩了/容器重启后同样的命令接着做（已核对的册跳过）。
 * 格号变动（增删格、改号）交 ``swap.booktext`` 按格级对照表落 book-text；守卫拦下的册（guard-stop）、
-  land 拒绝的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 GM3，修好后 ``guji swap book-text --sheet``。不在这里自动重试。
+  land 拒绝的册（blocked）只记入状态并在最后列出：切坏的交切分线，锚点挪不了的交 GM3，修好后 ``guji swap book-text``。不在这里自动重试。
 """
 
 from __future__ import annotations
@@ -518,7 +518,6 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--no-pr", action="store_true", help="book-text：1.x 推 swap/<册>-1x 后不自动开草稿 PR（缺省开，需 gh）")
     p.add_argument("--table", help="finish-merged：指定对照表 tsv（缺省取 book-text lineage/revisions/<册>-*.tsv 最新一张）")
     p.add_argument("--commit", help="finish-merged：合并提交号（记进 metrics）")
-    p.add_argument("--sheet", action="store_true", help="book-text：推好文本后，把 reports/<册>/_publish/ 里已出的新单补推上线并 db sync")
     p.add_argument("--fix", action="store_true", help="doctor：取缺的模型（cv 与各册引擎 worktree）、book-text 稀疏检出补本书目录")
     p.add_argument("--env", action="store_true", help="doctor：打印可 eval 的 export 行（PATH、PYTHONPATH、GUJI_CV、GUJI_WORKSPACE）")
 

@@ -263,7 +263,7 @@ def cmd_pending(a) -> int:
                 sys.exit("✗ reconcile 要 --sheet <新出的 pending.json>")
             doc = json.loads(Path(a.sheet).read_text(encoding="utf-8"))
             us = _item_us(a, doc)
-            res = P.reconcile(store, doc.get("cells") or [], src=a.src or f"rev:{doc.get('rev') or '?'}", fps=fps,
+            res = P.reconcile(store, doc.get("cells") or [], src=a.src or "pipeline", fps=fps,
                               by=by, close_missing=not a.keep_missing, us=us)
         print(json.dumps({k: (len(v) if isinstance(v, list) else v) for k, v in res.items()}, ensure_ascii=False))
         if res.get("撤下仍判待审"):

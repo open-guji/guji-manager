@@ -16,7 +16,7 @@ sync 按追加合并（`datastore.workcopy`），不会冲突。
 | `fp` | 图块指纹：字块图（Step4 `char_patch`）的 sha1，同人裁锚的 `content_sha`；没有产物时为空 |
 | `state` | `open` 待审、`withdrawn` 人工撤下、`resolved` 已有人裁（留着显示结果）、`closed` 机器不再判待审 |
 | `doc` | 网站卡片要的全部字段（与 `pending.json` 的一格相同：`why`、候选、`img`、`note`、`prior`、`recheck`…） |
-| `src` | 谁开的：`pack:<产物包>`／`import:<rev>`／`human:<谁>`／`script:<名>` |
+| `src` | 谁开的（origin，不带批号）：`pipeline`／`human:<谁>`／`script:<名>`；历史行还有 `land:<书>`／`pack:<包>`／`rev:<批>`／`import:<rev>`，不改，读的时候都当机器出的 |
 | `ver`／`op`／`by`／`at`／`why` | 版本号与这次改动 |
 
 格号与指纹**两个都记**（sheldon 11-10）：reconcile 先按 u 认（有账的册），再按指纹认，认不出再按格号认；按格号认上但指纹变了的，条目照旧、
