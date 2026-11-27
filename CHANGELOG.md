@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-27，CV0，册号位数统一第一步）：用户 11-27 定册号位数按全书册数（1–9 册 1 位、10–99 两位、100 起三位），迁移前后 1、01、001 并存，比对册号处改按数值认：`ops/exit_check.find_chapter`（字面没对上再按数值／`n`）、`pending_stats` 非正文页表（`_nonbody_for`，先字面再数值）、`review/vis_review` 取单（`_by_number`）。原来对得上的照旧先认字面，行为不变；`swap.chapter_of` 暂不动，随迁移工具一起改。L0，不碰 cv 指纹。方案：https://claude.ai/artifact/GFATExpvckttdKaHSHRuTz
 - PATCH（11-27）：放行格回库事件（`ops/lib_backfill.admit`）的 OCR 通道从 `payload.channel` 改叫 `payload.ocr_channel`，给裁定事件来源 `channel` 腾位置，并写 `level=machine／by=lib_backfill／channel=script`（仍不算钉）；`feedback/consumers._admit_backfills` 重放先读 `ocr_channel`、没有再读老事件的 `channel`，库内证据格式不变。
 
 ## [0.6.50] - 2026-11-27
