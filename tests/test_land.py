@@ -436,3 +436,18 @@ def test_sync_fig_boxes_follows_rebased_cord():
     fig = {"figures": [{"id": "f1", "kind": "inline", "page": 158, "box": [1039, 2107, 96, 117]}]}
     assert cc.sync_fig_boxes(char, cord, fig) == 1 and fig["figures"][0]["box"] == [1039, 2106, 96, 117]
     assert cc.sync_fig_boxes(char, cord, fig) == 0
+
+
+def test_warm_if_cold_runs_parallel_warm_only_when_cache_empty(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(land, "run_killing", lambda cmd, env, timeout: (calls.append(cmd), True)[1])
+    monkeypatch.setattr(land, "MIN_FREE_GB", 0)
+    assert land.warm_if_cold(tmp_path, "b", jobs=4) is True
+    w = calls[0]
+    assert "warm" in w and w[w.index("--jobs") + 1] == "4" and w[w.index("--book") + 1] == "b"
+    d = tmp_path / "cache" / "b"
+    d.mkdir(parents=True)
+    for i in range(25):
+        (d / f"{i}.png").write_bytes(b"1")
+    calls.clear()
+    assert land.warm_if_cold(tmp_path, "b") is False and not calls
