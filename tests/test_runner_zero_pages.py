@@ -1,4 +1,6 @@
 """执行方判「一页都没跑」与抓各步第一条失败页（11-26 全唐文 055 #17657 / #17802）。"""
+from pathlib import Path
+
 from guji_manager.jobs import runner as R
 
 ZERO = """── [1/13] border_detect（独立子进程）
@@ -58,12 +60,29 @@ def test_clear_local_derived(tmp_path):
     (rs / "_prev").mkdir(parents=True)
     (rs / "p0001.json").write_text("{}")
     (tmp_path / "products" / "03" / "row_segment.bak-20261101").mkdir()
-    assert R._clear_local_derived(str(tmp_path), "03") == 3
+    assert R._clear_local_derived(str(tmp_path / "products"), str(tmp_path / "feedback"), "03") == 3
     assert (rs / "p0001.json").exists() and not (rs / "_prev").exists()
     assert not (tmp_path / "products" / "03" / "row_segment.bak-20261101").exists()
     assert not (tmp_path / "feedback" / "bindings" / "03").exists()
     assert (tmp_path / "feedback" / "bindings" / "04").exists()
-    assert R._clear_local_derived(str(tmp_path), "../x") == 0
+    assert R._clear_local_derived(str(tmp_path / "products"), str(tmp_path / "feedback"), "../x") == 0
+
+
+def test_cv_roots_follow_central_marker(tmp_path, monkeypatch):
+    """中心库工作区（有 .central.json）：人裁根在 ~/.guji-data/<分支>/<ws>/feedback，不在工作区下（11-27）。"""
+    import json
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / ".central.json").write_text(json.dumps({"ws": "shiji", "branch": "main"}))
+    monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home"))
+    for k in ("GUJI_PRODUCTS_DIR", "GUJI_FEEDBACK_DIR", "GUJI_DATA_BRANCH"):
+        monkeypatch.delenv(k, raising=False)
+    j = object.__new__(R.Job)
+    j.ws, j.dry, j.dir, j.spec, j.id, j.prep_override = str(ws), False, tmp_path, {}, 1, None
+    j.ev = lambda *a, **k: None
+    prod, fb = j._cv_roots()
+    assert Path(prod) == ws.resolve() / "products"
+    assert Path(fb) == tmp_path / "home" / "main" / "shiji" / "feedback"
 
 
 def test_bindings_cache_not_synced_to_central():
