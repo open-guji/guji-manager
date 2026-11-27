@@ -30,7 +30,6 @@ def _load(name: str):
     return mod
 
 
-rp = _load("republish")
 
 
 def _yaml(books: Path, book: str, rev: int | None) -> None:
