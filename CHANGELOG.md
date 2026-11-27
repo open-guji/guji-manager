@@ -6,10 +6,12 @@
 
 ## [未发版]
 
+## [0.6.43] - 测试中
+
 - PATCH（CV0 11-27，网站 #924 会员票）：登录会员的 voter 是 36 位成员 uid（UUIDv7），开头是毫秒时间戳，前 6 位同一阵注册的会员会撞；新增 `guji_manager/voter.py` 的 `voter_tag`：UUID 形取去连字符后的后 16 位随机段，匿名 16 位原样。意见 id 尾巴、刷票同源、去重、人裁事件「意见来源」、u 回填配票都改用它；隐藏单对公开短标识也认。匿名票的 id 与事件文字不变。网站公开 `who` 要用同一规则（`voter_tag(voter)[:6]`）。
 - PATCH（11-27，CV1，QTW 报误报）：`seg pins-stale` 对有 geom 的钉子，几何字段变了时改按钉子框在新旧列图间的实际最大位移判（用 cv ColumnMapper 换算，cv ≥ v0.9.6），≤3px 记 ok（同 cv 换算送人核门槛），stale 说明里带位移。全唐文 ms4→ms5（outer_bar 开→关）4 列误报（032:69:1、046:87:1、053:76:8、060:3:3）属此类。旧 cv 退回只比字段。
 
-- MINOR（GM3 11-27，新表 ai_notes）：AI 分析摘要（`feedback/notes/<册>.jsonl`，浅层、深搜、放行与不确定都写）逐行进中心库新表 `ai_notes`（原归 `files`），模式同 `pending_items`／`list_rows`：book 取行里的册、u／batch／char／conf／st（trace 最后一轮 status）等是由 raw 现算的虚拟列（schema 与 CV0 迁移一致），索引 `ai_notes_u`；非 json 行的文件退回 files。**D1 要先建表（schema_d1.sql 的 ai_notes），再升 manager。** notes 行加顶层 `st`（released／pending／unsure）；摘要三层：一句话 `s`（≤40 字）、详情 `why`（≤300 字）、检索记录 `log`（[{src,r,t}]，检索过的都写，含查无）；`summarize_trace` 出 `ai` 对象，待审单卡 `ai` 字段（网站折叠显示）；`write_notes.py` 新列（一句话、详情、检索）。
+- PATCH（GM3 11-27，新表 ai_notes，同 pending_items 先例按 PATCH）：AI 分析摘要（`feedback/notes/<册>.jsonl`，浅层、深搜、放行与不确定都写）逐行进中心库新表 `ai_notes`（原归 `files`），模式同 `pending_items`／`list_rows`：book 取行里的册、u／batch／char／conf／st（trace 最后一轮 status）等是由 raw 现算的虚拟列（schema 与 CV0 迁移一致），索引 `ai_notes_u`；非 json 行的文件退回 files。**D1 要先建表（schema_d1.sql 的 ai_notes），再升 manager。** notes 行加顶层 `st`（released／pending／unsure）；摘要三层：一句话 `s`（≤40 字）、详情 `why`（≤300 字）、检索记录 `log`（[{src,r,t}]，检索过的都写，含查无）；`summarize_trace` 出 `ai` 对象，待审单卡 `ai` 字段（网站折叠显示）；`write_notes.py` 新列（一句话、详情、检索）。
 - PATCH（CV2 2026-11-26）：`review-pages ab-items`：切分 A/B（两份 row_segment 产物）只收切法变了的列，出 col_check items——框＝新切法、红线＝旧切法被换掉的线；`--flag boundary_net` 只收判官改过的列。原是 ai-team 一次性脚本（字间判官 72 列审查页）。
 
 ## [0.6.42] - 2026-11-27
