@@ -1,5 +1,7 @@
 """guji land：待审条目对账（没变不动，变了就地覆盖）与 pipeline --land 路由。"""
 import json
+import subprocess
+from pathlib import Path
 
 from guji_manager import land
 from guji_manager.review import pending_items as P
@@ -509,3 +511,81 @@ def test_ai_summary_change_counts_as_changed_and_applies(tmp_path, monkeypatch):
     r = land.land(ws, "vol05", text_id="t", chapter="005", res={"cells": cells, "fps": {"1:1:1": "f"}, "digest": "d2"},
                   apply=False, by="x")
     assert r["changed"] and r["alt_changed"] == ["1:1:1"]
+
+
+def test_refresh_export_uses_char_cord_args_like_from_pack(tmp_path, monkeypatch):
+    """MJ 11-27：不走 `guji export format <册> -w …`（cv 0.9.7 把册后参数当 REMAINDER），
+    改调本包导出器，参数同 republish.py from-pack：char-cord、--keys cv、dev 上的 --text-version、--meta、--prev-char。"""
+    from guji_manager import land_text as T
+    from guji_manager.swap import booktext as B
+    bt = tmp_path / "bt"
+    (bt / "Book" / "x").mkdir(parents=True)
+    monkeypatch.setattr(B, "_git", lambda *a, **k: "")
+    monkeypatch.setattr(B, "_bt_dir", lambda repo, tid: bt / "Book" / "x")
+    idx = {"chapters": [{"n": 1, "file": "001", "text_version": "0.1.3"}]}
+    dev_char = _char([("1:1:1", "甲")])
+    monkeypatch.setattr(T, "_show_dev", lambda src, rel: idx if rel.endswith("index.json") else dev_char)
+    monkeypatch.setattr(T, "export_meta", lambda book, d: (d / f"meta_{book}.json", (d / f"meta_{book}.json").write_text("{}"))[0])
+    seen = {}
+
+    def fake_run(cmd, env=None, timeout=None):
+        seen["cmd"], seen["env"] = cmd, env
+        out = Path(cmd[cmd.index("--out") + 1])
+        (out / "001.char.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(T.subprocess, "run", fake_run)
+    ws = tmp_path / "ws"
+    out = T.refresh_export(ws, "01", chapter="001", book_text=bt, text_id="x")
+    cmd = seen["cmd"]
+    assert cmd[1:3] == ["-m", "guji_manager.output.guji_format_export"]
+    assert "-w" not in cmd and "format" not in cmd[:4]
+    got = dict(zip(cmd[3::2], cmd[4::2]))
+    assert got["--book"] == "01" and got["--chapter"] == "001" and got["--out"] == str(out)
+    assert got["--format"] == "char-cord" and got["--keys"] == "cv" and got["--text-version"] == "0.1.3"
+    assert got["--meta"].endswith("meta_01.json")
+    assert json.loads(Path(got["--prev-char"]).read_text(encoding="utf-8")) == dev_char
+    assert seen["env"]["GUJI_WORKSPACE"] == str(ws)
+
+
+def test_refresh_export_fails_when_no_char_even_if_exit_0(tmp_path, monkeypatch):
+    """导出退出 0 却没出 char.json（老命令只出 pages）要停；旧导出目录先清掉，不能让旧 char.json 混过。"""
+    import pytest
+    from guji_manager import land_text as T
+    from guji_manager.swap import booktext as B
+    bt = tmp_path / "bt"
+    (bt / "Book" / "x").mkdir(parents=True)
+    monkeypatch.setattr(B, "_git", lambda *a, **k: "")
+    monkeypatch.setattr(B, "_bt_dir", lambda repo, tid: bt / "Book" / "x")
+    monkeypatch.setattr(T, "_show_dev", lambda src, rel: {"text_version": "0.1.0"} if rel.endswith("index.json") else None)
+    monkeypatch.setattr(T, "export_meta", lambda book, d: d / "m.json")
+    ws = tmp_path / "ws"
+    stale = T.export_dir(ws, "01")
+    stale.mkdir(parents=True)
+    (stale / "001.char.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(T.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0))
+    with pytest.raises(SystemExit, match="没出 001.char.json"):
+        T.refresh_export(ws, "01", chapter="001", book_text=bt, text_id="x")
+
+
+def test_dev_text_version_missing_stops(tmp_path, monkeypatch):
+    import pytest
+    from guji_manager import land_text as T
+    from guji_manager.swap import booktext as B
+    monkeypatch.setattr(B, "_bt_dir", lambda repo, tid: tmp_path / "Book" / "x")
+    monkeypatch.setattr(T, "_show_dev", lambda src, rel: {"chapters": [{"n": 2, "text_version": "0.1.1"}]})
+    with pytest.raises(SystemExit, match="没有 text_version"):
+        T.dev_text_version(tmp_path, "x", "001")
+
+
+def test_export_meta_non_dianben_from_book_config(tmp_path, monkeypatch):
+    """非殿本没有 meta_<册>.json：按册配置现生成（同 republish.meta_file）。"""
+    from types import SimpleNamespace
+    from guji_manager import _cv, land_text as T
+    monkeypatch.setattr(_cv, "cv_repo", lambda: tmp_path / "nocv", raising=False)
+    monkeypatch.setattr(_cv, "volume_of", lambda b: SimpleNamespace(book_id="99k3i35yww", volume=1), raising=False)
+    monkeypatch.setattr(T, "_book_dict", lambda b: {"book_title": "脈經", "book_edition": "x"})
+    f = T.export_meta("01", tmp_path / "o")
+    m = json.loads(f.read_text(encoding="utf-8"))["defaults"]
+    assert m["book"] == {"id": "99k3i35yww", "title": "脈經", "edition": "x"}
+    assert m["volume"] == {"index": 1, "cv_book": "01"}
