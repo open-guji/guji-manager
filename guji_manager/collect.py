@@ -527,6 +527,39 @@ def batch_cells(book: str, batches: list[str], products_root: str | None) -> tup
     return out, miss
 
 
+def batch_u_cells(book: str, batches: list[str], char: dict) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    """``--batch`` 里「只给 u 锚、没有页表锚」的人裁事件（target.anchor={"u":N}、page/col/slot 空）：
+    绑定表按「页:列:格」认锚，这类事件判 unanchored 落不进去（11-27 全唐文寇/𡨥 213、市 98）。
+    这里改按 u 直接在 book-text ``*.char.json`` 里查格（u 是册内永久格号，真源就在这份文件里）。
+    每个 u 取批次内最新一条（replay_key，后到覆盖）；查不到或多于一格就不落并列出；返回 ({格号: (字, 批次)}, 说明)。"""
+    from ._cv import EventLog, feedback_root, replay_key
+    evs = [e for e in EventLog(feedback_root()).iter_all() if getattr(e, "batch", None) in batches
+           and e.kind == "confirm" and e.target.unit == "cell" and e.target.key.startswith(f"{book}:")
+           and isinstance(e.target.anchor, dict) and e.target.anchor.get("u") is not None
+           and e.target.page is None and e.target.col is None and e.target.slot is None
+           and e.payload.get("level", "human") == "human" and (e.payload.get("shape") or "").strip()]
+    if not evs:
+        return {}, []
+    latest: dict[int, object] = {}
+    for e in sorted(evs, key=replay_key):
+        latest[int(e.target.anchor["u"])] = e
+    index: dict[int, list[str]] = {}
+    for pg in char.get("pages") or []:
+        for col in pg.get("columns") or []:
+            for c in col.get("cells") or []:
+                if c.get("u") is not None:
+                    index.setdefault(int(c["u"]), []).append(c["a"])
+    out: dict[str, tuple[str, str]] = {}
+    notes: list[str] = []
+    for u, e in latest.items():
+        hit = index.get(u) or []
+        if len(hit) != 1:
+            notes.append(f"u={u}（事件 {bare(e.target.key)}）在 book-text 里查到 {len(hit)} 格，不落")
+            continue
+        out[hit[0]] = (str(e.payload["shape"]).strip(), e.batch)
+    return out, notes
+
+
 def resolve_items(ws: Path, text_id: str, chapter: str, cells: dict[str, str], by: str, why: str) -> int:
     """线上单上这些格还开着的条目标已裁，重导整张单。返回标了几条。"""
     from .datastore.workcopy import data_dir
@@ -718,10 +751,18 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         notes = []
         if a.batch:
             got, miss = batch_cells(book, a.batch, meta.get("products_root"))
-            notes += miss
+            u_got, u_notes = batch_u_cells(book, a.batch, char)
+            miss = [m for m in miss if not any(m.startswith(f"{k} 绑定") for k in u_got)]
+            notes += miss + u_notes
             for k, v in got.items():
                 cells.setdefault(k, v)
+            for k, (_c, b_) in u_got.items():
+                cells.setdefault(k, b_)
         want = {k: (hc[k], src) for k, src in cells.items() if k in hc and hc[k] not in PLACEHOLDERS}
+        if a.batch:                                # 只给 u 锚的批次事件：按 u 直接查格（见 batch_u_cells）；绑定表认得的格以 human_chars 为准
+            for k, (c_, b_) in u_got.items():
+                if k not in want and c_ not in PLACEHOLDERS:
+                    want[k] = (c_, b_)
         if a.dry_run:                              # 演练没写票：这次新票按票上的字算（真跑时写完再从 human_chars 取）
             for k, (c, _) in votes_now.items():
                 want[k] = (c, "票（未写）")
@@ -758,6 +799,9 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         except Exception as e:  # noqa: BLE001
             print(f"  ⚠ 核不了格框（{e}）：全部按「等重放」处理，不写 book-text")
             box = lambda _a: "核不了格框"  # noqa: E731
+        if a.batch and u_got:                      # u 直接在 book-text 里查到的格，格号就是 book-text 自己的，不用产物核格框
+            _box0 = box
+            box = lambda _a: None if _a in u_got else _box0(_a)  # noqa: E731
         plan = plan_edits(char, want, box, same)
         rep = {k: [list(x) for x in v] for k, v in plan.items()}
         (out / "落文本.json").write_text(json.dumps({"plan": rep, "notes": notes}, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -350,3 +350,24 @@ def test_sweep_unconsumed_routes_only_web_batches(monkeypatch, tmp_path):
     assert out["routed"] == ["H-web-vol20-r1"] and out["remaining"] == {("ZM-x", "gold_add"): 5, ("H-web-vol13-r1", "glyphdb_admit"): 2}
     assert any("route" in c and "H-web-vol20-r1" in c for c in calls) and any("sync" in c for c in calls)
     assert not any("ZM-x" in c or "H-web-vol13-r1" in c for c in calls)
+
+
+def test_batch_u_cells_looks_up_u_in_char_and_takes_latest(monkeypatch):
+    """只给 u 锚（page/col/slot 空）的人裁批次事件：按 u 在 char.json 查格，同 u 取最新；查不到不落。"""
+    import types
+
+    def ev(i, ts, u, shape, batch="B1", key="040:1:1:2"):
+        tgt = types.SimpleNamespace(unit="cell", key=key, anchor={"u": u}, page=None, col=None, slot=None)
+        return types.SimpleNamespace(id=i, ts=ts, batch=batch, seq=1, kind="confirm", target=tgt,
+                                     payload={"level": "human", "shape": shape})
+
+    evs = [ev("e1", "2026-11-27T12:00:00Z", 11, "市"), ev("e2", "2026-11-27T12:30:00Z", 11, "畝", batch="B2"),
+           ev("e3", "2026-11-27T12:00:00Z", 99, "寇", key="040:1:1:3")]
+    import guji_manager._cv as cv
+    monkeypatch.setattr(cv, "EventLog", lambda root: types.SimpleNamespace(iter_all=lambda: iter(evs)), raising=False)
+    monkeypatch.setattr(cv, "feedback_root", lambda: ".", raising=False)
+    monkeypatch.setattr(cv, "replay_key", lambda e: (e.ts, e.batch, e.seq), raising=False)
+    char = _char("甲乙丙", {"1:1:2": {"u": 11}})
+    out, notes = C.batch_u_cells("040", ["B1", "B2"], char)
+    assert out == {"1:1:2": ("畝", "B2")}
+    assert any("u=99" in n for n in notes)
