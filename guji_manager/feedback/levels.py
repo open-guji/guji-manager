@@ -6,7 +6,7 @@ cv `open_guji_cv.feedback.events.event_level`、中心库 `events.level` 虚拟�
 `tests/test_event_levels.py` 用同一张用例矩阵逐条比对四处，已知的分歧登记在 `KNOWN_DIVERGENCES`，多一条少一条都会红。
 本模块不经 `_cv` 取 cv 的函数：钉 0.7.x patch 线的执行机也要按同一口径数。
 
-裁定事件的**来源三字段**（`payload.level／by／channel`）见 cv `doc/formats/人裁事件规范.md` §4.1；本模块的 `provenance()` 是
+裁定事件的**来源三字段**（`payload.level／by／channel`）见 cv `doc/formats/裁定事件规范.md` §4.1；本模块的 `provenance()` 是
 manager 写入点统一取这三个键的入口（现在无写入点在用，2.4 改必填时逐个接）。
 
 - `counts_as_pin`（human 或 ai）：**会改产物、会把格藏出待审队列的读者都用它**（字形库入库、已裁、对勘状态、
