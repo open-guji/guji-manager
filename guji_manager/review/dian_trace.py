@@ -142,6 +142,13 @@ def summarize_trace(trace: list[dict], cands: list[str] | None = None, st: str |
     return out
 
 
+def norm_vol(v) -> str:
+    """册标签归一（去 vol 前缀、前导 0）：037／37、vol35／035 视为同一册。u 是册内编号，必须带册才唯一。"""
+    s = str(v).strip().lower()
+    s = s[3:] if s.startswith("vol") else s
+    return s.lstrip("0") or "0"
+
+
 def load_notes(path: str | Path) -> dict:
     """读 `feedback/notes/<册>.jsonl`，返回索引：`{("hash", group, hash): row, ("cell", cell): row}`；后写的覆盖先写的。"""
     idx: dict = {}
@@ -158,16 +165,17 @@ def load_notes(path: str | Path) -> dict:
             idx[("hash", row.get("group"), h)] = row
         if row.get("cell"):
             idx[("cell", row["cell"])] = row
-        if row.get("u") is not None and row.get("book"):     # 字格永久编号 u（11-25 起以 u 为准）
-            idx[("u", str(row["book"]), int(row["u"]))] = row
+        bk = row.get("book") or p.stem      # 老行没有 book 就用文件名（feedback/notes/<册>.jsonl，同 datastore.scope）
+        if row.get("u") is not None and bk:     # 字格永久编号 u（11-25 起以 u 为准；u 是册内编号，键必须带册）
+            idx[("u", norm_vol(bk), int(row["u"]))] = row
     return idx
 
 
 def find_note(idx: dict, *, cell: str | None = None, group: str | None = None, ctx_hash: str | None = None,
               book: str | None = None, u: int | None = None) -> dict | None:
     """先按（册，u）找，再按（组，ctx 哈希）（重切后仍命中），最后按格号。"""
-    if book is not None and u is not None and ("u", str(book), int(u)) in idx:
-        return idx[("u", str(book), int(u))]
+    if book is not None and u is not None and ("u", norm_vol(book), int(u)) in idx:
+        return idx[("u", norm_vol(book), int(u))]
     if group and ctx_hash and ("hash", group, ctx_hash) in idx:
         return idx[("hash", group, ctx_hash)]
     if cell:
@@ -209,5 +217,5 @@ def released_list(idx: dict, cell_ids: set | None = None) -> list[dict]:
             continue
         ai = _ai_block(row.get("trace") or [], list(row.get("cands") or []), "released")
         if ai:
-            out.append({"u": int(row["u"]), "ai": ai})
-    return sorted(out, key=lambda x: x["u"])
+            out.append({"u": int(row["u"]), "book": key[1], "ai": ai})     # u 是册内编号，带上册供页面区分
+    return sorted(out, key=lambda x: (x["book"], x["u"]))
