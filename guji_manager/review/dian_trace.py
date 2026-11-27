@@ -16,18 +16,59 @@ trace 存放：`feedback/notes/<册>.jsonl`，每行 `{group, prompt_ver, ctx:{l
   判出的组员字照样当倾向字。
 - 候选外字 `out`：各级给出的、高／中把握、不在候选里的字（去重，高级别在前），进待审单 `dout`，
   网页当可选按钮显示、不预选（GM3 11-26：候选外的字人审可以直接选）。
-- `why`≤400 字：`L1 日/曰分歧；L2 mid：…；L3 已：…`，每级一句，超长从后截断；候选外真字（如「白」）写进 why。
+- `why`≤400 字：`机器两路分歧（日／曰）；浅层文意判『日』（把握中等）：…；联网深判『已』（很有把握）：…`，每级一句，超长从后截断；
+  候选外真字（如「白」）写进 why。**给用户看的字样一律白话：不出 L1／L2／L3、high／mid／low 等代号和英文**（`plain_zh` 兜底替换）。
 - `refs`：各级 evidence 的 url（仅 http/https，去重，高级别在前，最多 5 条），标题 `t`＝来源类型＋原句前 30 字，≤60 字。
 """
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 WHY_MAX = 400          # 11-26 由 200 放宽：待审单要让人直接看到 AI 分析（判为何字、理由、出处），不必再搜
 REFS_MAX = 5
 _KIND = {"wikipedia": "维基百科", "other_book": "他书", "db": "数据库"}
 _LEVEL_ORDER = {"L1": 1, "L2": 2, "L3": 3}
+
+
+# ── 面向用户的文字：不出内部层级代号、不出英文（GM3 11-27，sheldon 要求；写法见 wiki「AI分析两层做法与待审格摘要」第七节）──
+_CONF_ZH = {"high": "很有把握", "mid": "把握中等", "low": "把握不大"}
+_PLAIN_RULES = [      # 顺序有讲究：长的先换
+    (re.compile(r"未升\s*L3"), "没做联网深判"),
+    (re.compile(r"未联网\s*(?:升\s*)?L3"), "没做联网深判"),
+    (re.compile(r"升\s*L3"), "做联网深判"),
+    (re.compile(r"L3\s*(?:联网)?(?:深判|深搜)?"), "联网深判"),
+    (re.compile(r"L2\s*(?:浅层)?(?:文意)?(?:判)?\s*"), "浅层文意判："),
+    (re.compile(r"\bL1\b\s*"), "机器"),
+    (re.compile(r"A\s*路"), "第一路"),
+    (re.compile(r"B\s*路"), "第二路"),
+    (re.compile(r"正序"), "正读"),
+    (re.compile(r"倒序"), "倒读"),
+    (re.compile(r"[（(]\s*(high|mid|low)\s*[：:]\s*([^（）()]*)[）)]"), lambda m: "（" + _CONF_ZH[m.group(1)] + "：" + m.group(2) + "）"),
+    (re.compile(r"[（(]\s*(high|mid|low)\s*[）)]"), lambda m: "（" + _CONF_ZH[m.group(1)] + "）"),
+    (re.compile(r"(?<![A-Za-z])(high|mid|low)(?![A-Za-z])"), lambda m: _CONF_ZH[m.group(1)]),
+    (re.compile(r"(?<![A-Za-z])not_found(?![A-Za-z])"), "没查到"),
+]
+_JARGON = re.compile(r"\bL[123]\b|hard_pair|near_form_guard|seed_admit|ctx-m\d|vis-o\d|\bgroup\b|形近守卫|易混守卫|金标|(?<![A-Za-z])(?:high|mid|low|not_found|found|released|pending|unsure|confirmed|contradicts_L\d)(?![A-Za-z])")
+
+
+def plain_zh(text: str) -> str:
+    """把摘要里漏进来的内部代号（L1／L2／L3）、置信缩写（high／mid／low）、正序倒序等换成白话。
+
+    只做确定的字面替换，救急用；根本办法是写摘要时就用白话（提示词模板第七节）。网址不动。"""
+    if not text:
+        return text
+    parts = re.split(r"(https?://\S+)", text)
+    for i in range(0, len(parts), 2):
+        for pat, rep in _PLAIN_RULES:
+            parts[i] = pat.sub(rep, parts[i])
+    return "".join(parts)
+
+
+def jargon_hits(text: str) -> list[str]:
+    """摘要里还剩的内部代号／英文状态词（不含网址）；写入时用来拦。"""
+    return sorted(set(_JARGON.findall(re.sub(r"https?://\S+", "", text or ""))))
 
 
 def _lvl(t: dict) -> int:
@@ -38,8 +79,11 @@ def _l1_text(t: dict) -> str:
     r = t.get("routes") or {}
     a, b = (r.get("A") or [None])[0], (r.get("B") or [None])[0]
     if a and b:
-        return f"L1 两路{'同为' + a if a == b else '分歧(' + a + '/' + b + ')'}"
-    return "L1 未定"
+        return f"机器两路{'同为' + a if a == b else '分歧（' + a + '／' + b + '）'}"
+    return "机器未定"
+
+
+_LEVEL_ZH = {"L2": "浅层文意判", "L3": "联网深判"}
 
 
 def _level_text(t: dict) -> str:
@@ -47,11 +91,11 @@ def _level_text(t: dict) -> str:
     if lv == "L1":
         return _l1_text(t)
     ch = t.get("char") or "—"
-    conf = t.get("conf") or ""
-    head = f"{lv} {ch}" + (f"({conf})" if conf else "")
+    conf = _CONF_ZH.get(str(t.get("conf") or ""), "")
+    head = f"{_LEVEL_ZH.get(lv, '文意判')}『{ch}』" + (f"（{conf}）" if conf else "")
     if t.get("status") == "not_found":
-        head += " 未查到"
-    body = str(t.get("why") or t.get("note") or "").strip()
+        head += " 没查到"
+    body = plain_zh(str(t.get("why") or t.get("note") or "").strip())
     return head + (f"：{body}" if body else "")
 
 
@@ -103,10 +147,10 @@ def _ai_block(trace: list[dict], cands: list[str], st: str | None) -> dict | Non
     ch = best.get("char") or ""
     if not ch:
         return None
-    d = str(best.get("why") or "").strip()
-    s = str(best.get("s") or "").strip() or (d[:38] + "…" if len(d) > 40 else d)
+    d = plain_zh(str(best.get("why") or "").strip())
+    s = plain_zh(str(best.get("s") or "").strip()) or (d[:38] + "…" if len(d) > 40 else d)
     out: dict = {"c": ch, "k": best.get("conf") or "", "lv": best.get("level") or "", "s": s[:40], "d": d[:300],
-                 "log": [{k: str(v)[:60] for k, v in e.items() if k in ("src", "r", "t", "u") and v}
+                 "log": [{k: (str(v) if k == "u" else plain_zh(str(v)))[:60] for k, v in e.items() if k in ("src", "r", "t", "u") and v}
                          for e in (best.get("log") or []) if isinstance(e, dict)][:12]}
     if st:
         out["st"] = st

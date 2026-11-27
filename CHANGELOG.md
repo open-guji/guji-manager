@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM3，sheldon 反馈）：AI 判字摘要给用户看的字样一律白话——`dian_trace` 加 `plain_zh`／`jargon_hits`，`dian.why` 不再产出「L2 已(mid)」改「浅层文意判『已』（把握中等）」，`ai` 块 s／d／log 兜底换白话；`tools/dianjiao/write_notes.py` 写入前换、剩内部词报错；新增统一提示词模板 `tools/dianjiao/prompt_ai_analysis.md`（禁内部代号英文、禁自相矛盾、不套别组提醒）。
+
 - PATCH（11-27，GM3，QTW 提）：新增 `tools/dianjiao/carve_pairs.py` 与 `carve_pairs/全唐文.tsv`——各书「按刻形记」的字对不走 AI 放行（按对拦，各书可挂自己的表）。
 
 - PATCH（11-27，GM3，文档）：wiki「AI分析两层做法与待审格摘要」第三节放行标准改为「两次独立判断一致且都高置信即放行」（Sheldon 11-27 晚定，高置信 56/56 对），取代 11-26 易混字组阈值。

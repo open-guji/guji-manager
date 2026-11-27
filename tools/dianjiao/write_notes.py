@@ -10,6 +10,8 @@
           浅层判没检索就留空（网站显示「无检索」）；**检索过的要写，包括没查到的**
   - 出处：URL 或本地文件，多条「 | 」分隔，每条「URL 原句前30字」
   兼容旧列「理由」＝详情。
+  **一句话／详情／检索都是给用户看的：纯中文白话，不写 L2／L3、high／mid／low 等代号和英文**（写法见 wiki 第七节）；
+  漏进来的会被自动换成白话，换不掉的（如 pending、found）直接报错。
 用法：python3 write_notes.py in.tsv <feedback根>/notes/<册>.jsonl --level L2|L3 --model <模型> [--batch 名]
 一格一行追加（后写覆盖先写）。键：book＋u。写完 `guji db push`，notes 进 ai_notes 表，出待审单时 dian_attach 带上。
 """
@@ -20,6 +22,10 @@ import csv
 import json
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from guji_manager.review.dian_trace import jargon_hits, plain_zh  # noqa: E402
 
 URL = re.compile(r"(https?://\S+)\s*(.*)")
 
@@ -40,10 +46,13 @@ def row_to_note(r: dict, level: str, model: str, batch: str) -> dict:
         if m:
             ev.append({"url": m.group(1), "quote": m.group(2)[:60], "source_kind": "other_book"})
     status = (r.get("状态") or "").strip()
-    detail = (r.get("详情") or r.get("理由") or "").strip()
+    detail = plain_zh((r.get("详情") or r.get("理由") or "").strip())      # 给用户看的字样：内部代号／英文兜底换白话（模板第七节）
     item = {"level": level, "model": model, "char": (r.get("AI判") or "").strip(), "conf": (r.get("置信") or "").strip(),
-            "why": detail[:300], "s": (r.get("一句话") or "").strip()[:40],
-            "status": status or ("found" if ev else "not_found"), "evidence": ev, "log": _log(r.get("检索") or "")}
+            "why": detail[:300], "s": plain_zh((r.get("一句话") or "").strip())[:40],
+            "status": status or ("found" if ev else "not_found"), "evidence": ev, "log": [{k: plain_zh(v) for k, v in e.items()} for e in _log(r.get("检索") or "")]}
+    bad = jargon_hits(" ".join([item["s"], item["why"], *(v for e in item["log"] for v in e.values())]))
+    if bad:
+        sys.exit(f"✗ u={r.get('u')} 摘要里还有内部代号或英文状态词 {bad}：给用户看的话要纯中文白话，见 wiki「AI分析两层做法与待审格摘要」第七节")
     cands = [c for c in re.split(r"[/、,\s]+", r.get("候选") or "") if c]
     note = {"book": r["册"].strip(), "u": int(r["u"]), "cell": (r.get("格号") or "").strip() or None,
             "batch": batch, "trace": [item]}
