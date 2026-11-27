@@ -50,16 +50,16 @@ import pytest
 
 from guji_manager.feedback.levels import SETTLED_VS, provenance, settles_cell
 
-#: 中心库 `events.level` 虚拟列表达式（拷自 guji-workspace-data `d1/migrations/2026-11-26-events-u-level.sql`；
+#: 中心库 `events.level` 虚拟列表达式（拷自 guji-workspace-data `d1/migrations/2026-11-27-events-level-narrow.sql`（11-27 收窄到本模块口径）；
 #: 同级目录有那个仓时 `test_sql_copy_matches_workspace_data` 核对这份拷贝没过期）。
 LEVEL_SQL = """CASE
        WHEN stream = 'uid' THEN 'ledger'
        WHEN stream IN ('rulings', 'vision') THEN 'ai'
+       WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
+       WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'model'
        WHEN json_extract(raw, '$.payload.level') IN ('human', 'ai', 'machine') THEN json_extract(raw, '$.payload.level')
        WHEN kind IN ('needs_review', 'cell_review', 'admit_candidate') THEN 'note'
        WHEN COALESCE(actor, 'user') <> 'model' THEN 'human'
-       WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
-       WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'ai'
        WHEN (CASE WHEN instr(batch, '~') > 0 THEN substr(batch, 1, instr(batch, '~') - 1) ELSE batch END) IN (
             'H-mojibake-fix-20260927', 'r74-v01', 'r77-重绑', 'r79-v01', 'SJ-ry-rebind-1120', 'SJ-sheldon-1123',
             'SJ-L1取消归一-human24', 'SJ-v02-rebind-1124', 'SJ-歲暫歸一-1125') THEN 'human'
@@ -108,11 +108,7 @@ def _category(r, py, sql_lv):
 
 #: 已知分歧（manager Python 算「不落定」、中心库／Worker 算「落定」；反过来的一条没有）。**这是 11-27 摸底，不是设计**：
 #: 要不要拉齐、往哪边拉，等协调者／用户定；拉齐后把对应项删掉，这个测试会因「少了一类」提醒你。
-KNOWN_DIVERGENCES = {
-    "explicit-level-beats-source-in-db",
-    "model-llm-vision-source-is-ai-in-db",
-    "user-with-model-source-is-human-in-db",
-}
+KNOWN_DIVERGENCES: set[str] = set()   # 11-27 用户定收窄，库表达式已改成与本模块一致（guji-workspace-data #47）
 
 
 def test_manager_vs_central_db_level():
@@ -183,7 +179,7 @@ def test_sql_copy_matches_workspace_data():
     d = _workspace_data_dir()
     if d is None:
         pytest.skip("找不到 guji-workspace-data（可设 GUJI_WORKSPACE_DATA_DIR）")
-    mig = (d / "d1/migrations/2026-11-26-events-u-level.sql").read_text(encoding="utf-8")
+    mig = (d / "d1/migrations/2026-11-27-events-level-narrow.sql").read_text(encoding="utf-8")
     m = re.search(r"ADD COLUMN level TEXT GENERATED ALWAYS AS \((.*?)\) VIRTUAL", mig, re.S)
     assert m and m.group(1).strip() == LEVEL_SQL.strip(), "中心库 events.level 表达式变了：同步本文件 LEVEL_SQL，并重看 KNOWN_DIVERGENCES"
     ts = (d / "worker/src/pendinglive.ts").read_text(encoding="utf-8")
