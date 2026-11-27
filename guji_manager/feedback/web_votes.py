@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..formats.guji_char_cord import UNK_DEFAULT
-from ..voter import voter_tag
+from ..voter import voter_ident, voter_tag
 
 CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
 A_RE = re.compile(r"^(\d+):(\d+):(-?\d+)([ab]?)$")
@@ -119,7 +119,7 @@ def latest_votes(votes: list[dict], site_book: str, rev: str, *, u_any_rev: bool
         if v["choice"] == "char" and len(v.get("char") or "") != 1:
             dropped["选字档没给单字"] += 1
             continue
-        k = (("u", vote_u(v)) if vote_u(v) is not None else v["a"], v["voter"])
+        k = (("u", vote_u(v)) if vote_u(v) is not None else v["a"], voter_ident(v))
         if k not in best or (v.get("ts") or 0) >= (best[k].get("ts") or 0):
             best[k] = v
     return sorted(best.values(), key=lambda v: (cell_order(v["a"]), v.get("ts") or 0)), dict(dropped)
@@ -252,7 +252,7 @@ class Draft:
 
     def row(self, source: str) -> dict:
         """控制台 ``/api/events`` 一行。"""
-        ids = "、".join(f"{voter_tag(v['voter'])[:16]}" for v in self.votes)
+        ids = "、".join(f"{voter_tag(voter_ident(v))[:16]}" for v in self.votes)
         note = "；".join(v["note"] for v in self.votes if v.get("note"))
         return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}"}
 

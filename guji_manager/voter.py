@@ -22,3 +22,9 @@ def voter_tag(voter: str | None) -> str:
     if _UUID.match(v):
         return v.replace("-", "").lower()[-16:]
     return v
+
+
+def voter_ident(v: dict) -> str:
+    """一票的投票人身份：网站会员号迁移（11-27，36 位 uid → 8 位会员号）后的票带 ``voter_prev``＝原 uid，
+    按原值认，与迁移前已导入的票、人裁事件「意见来源」对得上；没有 ``voter_prev`` 就是 ``voter``。"""
+    return str(v.get("voter_prev") or v.get("voter") or "")
