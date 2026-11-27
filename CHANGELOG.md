@@ -6,7 +6,9 @@
 
 ## [未发版]
 
-## [0.6.50] - 测试中
+## [0.6.50] - 2026-11-27
+
+- 发版说明：护栏 `guji eval guard` 云端会话没有书的字形库，**未验证**，已请有真工作区的书线补跑。
 
 - PATCH（11-27，GM4，SJ 报）：点校 AI 摘要对位 `dian_trace.load_notes`／`find_note` 按（册，u）建键并**归一册标签**（去 `vol` 前缀、前导 0：037／37、vol35／035 同册），老行没有 `book` 就用文件名 `<册>.jsonl`；`released_list` 每条加 `book`（u 是册内编号，跨册会撞号，页面合并多册时据此区分）。网站现算侧（Worker pending-live）已同步按（册，u）匹配，见 guji-workspace-data#45。
 
