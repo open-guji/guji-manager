@@ -222,3 +222,33 @@ def test_proofing_sheet_roundtrip(repo, conn, tmp_path):
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
     assert (out / small[2:]).read_bytes() == f[small]
+
+
+def test_classify_ai_notes():
+    from guji_manager.datastore.scope import classify
+    assert classify("feedback/notes/vol10.jsonl") == "ai_notes"
+    assert classify("feedback/notes/vol10.json") != "ai_notes"
+
+
+NOTE = "W/feedback/notes/vol10.jsonl"
+
+
+def test_ai_notes_import_and_materialize(repo, conn, tmp_path):
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _base()
+    f[NOTE] = (_line(book="vol10", u=881, batch="b1",
+                     trace=[{"level": "L3", "model": "m", "char": "曰", "conf": "high", "status": "pending"}])
+               + "\n" + _line(u=5, trace=[]) + "\n").encode()
+    c1 = _commit(repo, f, "c1")
+    rep = import_commit(conn, repo, c1)
+    assert rep.per_table["ai_notes"]["insert"] == 2
+    rows = conn.execute("SELECT book, u, batch, char, conf, st, lv FROM ai_notes ORDER BY src_line").fetchall()
+    assert [tuple(r) for r in rows] == [("vol10", 881, "b1", "曰", "high", "pending", "L3"), ("vol10", 5, None, None, None, None, None)]
+    assert verify_commit(conn, repo, c1)["ok"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/notes/",), with_images=False)
+    assert (out / NOTE[2:]).read_bytes() == f[NOTE]

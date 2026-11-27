@@ -276,13 +276,39 @@ def basis_status(item: dict, store=None) -> tuple[str, str]:
         if now["geom"] != old["geom"]:
             diff = [k for k in ("page_w", "left", "right", "top_y", "bottom_y", "ruled")
                     if now["geom"].get(k) != old["geom"].get(k)]
-            return "stale", "列图几何变了（" + "、".join(diff) + "），cv 重跑时会把钉子换算到新列图，位移大的送人核"
+            d = pin_shift((item.get("expected") or {}).get("cells") or [], old["geom"], now["geom"])
+            if d is not None and d <= SHIFT_OK_PX:
+                return "ok", ""
+            how = "" if d is None else f"，钉子框最大位移 {d:.1f}px"
+            return "stale", ("列图几何变了（" + "、".join(diff) + how
+                             + "），cv 重跑时会把钉子换算到新列图，位移大的送人核")
         return "ok", ""
     if now["col_sha"] != old.get("col_sha"):
         return "stale", "列窗口（框／文字带／剥边）变了，坐标对不上新列图（老钉子没记几何底，比的是整条记录）"
     if old.get("cw_fp") and now["cw_fp"] != old["cw_fp"]:
         return "maybe", "column_warp 指纹变了（代码或参数），列窗口没变；看叠框图核一下"
     return "ok", ""
+
+
+#: 几何字段变了、但钉子框在新旧列图间最大位移不超过这么多 px 的，pins-stale 记 ok（同 cv row_segment 换算送人核的门槛
+#: `MANUAL_REMAP_FLAG_PX`）。outer_bar 开↔关只动外侧线，内侧列几乎不动，原先逐项比字段会误报（QTW 11-27，4 列）。
+SHIFT_OK_PX = 3.0
+
+
+def pin_shift(cells: list[dict], old_geom: dict, new_geom: dict) -> float | None:
+    """钉子格框从旧几何的列图换到新几何的列图，角点最大位移（px）。cv 太旧（没有换算函数）或几何不全 → None。"""
+    if not cells:
+        return None
+    try:
+        from ._cv import ColumnMapper, geom_vline, remap_manual_spec
+
+        def mapper(g):
+            return ColumnMapper(int(g["page_w"]), geom_vline(g["left"]), geom_vline(g["right"]),
+                                float(g["top_y"]), float(g["bottom_y"]), ruled=bool(g.get("ruled")))
+        _, worst = remap_manual_spec(cells, mapper(old_geom), mapper(new_geom))
+        return float(worst)
+    except Exception:  # noqa: BLE001 —— 算不了就照旧报 stale
+        return None
 
 
 def backfill_geom(item: dict, store=None) -> tuple[dict | None, str]:

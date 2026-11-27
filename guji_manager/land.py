@@ -145,6 +145,39 @@ def sheet_stale(data: Path, text_id: str, chapter: str, store: P.ItemStore) -> l
     return sorted(out)
 
 
+def cache_is_cold(ws: Path, book: str, enough: int = 20) -> bool:
+    """这册的字块缓存（``<ws>/cache/<册>``）空或几乎空：human_cells 要进程内逐页渲 cell_shrink／column_warp，
+    全唐文 004（204 页）单进程 30 多分钟，先并行 warm 只要 4 分钟（QTW 11-27）。"""
+    d = Path(ws) / "cache" / book
+    if not d.is_dir():
+        return True
+    n = 0
+    for _root, _dirs, files in os.walk(d):
+        n += len(files)
+        if n >= enough:
+            return False
+    return True
+
+
+def warm_if_cold(ws: Path, book: str, jobs: int | None = None) -> bool:
+    """缓存空就先 ``cache warm --book <册> --jobs <核数>``（进度由 warm 自己打）；返回是否真跑了。
+    盘不够、超时、出错只告警：human_cells 照样能算，只是慢。"""
+    if not cache_is_cold(ws, book):
+        return False
+    import shutil
+    free = shutil.disk_usage(ws).free / 2 ** 30
+    if free < MIN_FREE_GB:
+        print(f"⚠ {book} 字块缓存是空的，但盘只剩 {free:.1f}G（<{MIN_FREE_GB:g}G）：不预热，算人裁会慢（先 land --disk-report 清盘）", file=sys.stderr)
+        return False
+    jobs = max(1, jobs or os.cpu_count() or 1)
+    print(f"⚠ {book} 字块缓存是空的：先并行 cache warm（--jobs {jobs}），免得算人裁时单进程逐页渲染", file=sys.stderr)
+    env = {**os.environ, "GUJI_WORKSPACE": str(ws)}
+    cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "cache", "warm", "--book", book, "-w", str(ws), "--jobs", str(jobs)]
+    if not run_killing(cmd, env, WARM_TIMEOUT):
+        print(f"✗ {book} cache warm 超过 {WARM_TIMEOUT // 60} 分钟没完：已终止，继续算人裁（会慢）", file=sys.stderr)
+    return True
+
+
 def human_cells(ws: Path, book: str) -> set[str]:
     """事件日志里这一册有人裁的格号（cv ``human_chars``：后到覆盖、过绑定表）；读不了就抛，不当「没有」。"""
     from ._cv import human_chars
@@ -686,6 +719,8 @@ def cmd_land(a) -> int:
             res = doc if isinstance(doc, dict) else {"cells": doc}
         else:
             res, files_dir = prepare(ws, b, a)
+        if not (a.pending_json or a.no_human_deduct):
+            warm_if_cold(ws, b)                   # 算人裁（human_cells）要字块图：缓存空先并行预热
         r = land(ws, b, text_id=a.text_id, chapter=chapter_of(b), res=res, apply=a.apply, by=by, digest=res.get("digest"),
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None,
                  human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
