@@ -397,9 +397,8 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
         elif tbl == "list_rows" and any(len(ln) > ROW_MAX_BYTES for ln in data.split(b"\n")):
             res.problems.append(f"{rel}: 有一行超过 {ROW_MAX_BYTES} 字节（D1 单行 2 MB 上限），整文件进 files")
             tbl = "files"
-        if tbl == "files" and rel.endswith(PROOFING_SUFFIX) and "/lists/proofing/" in rel and _is_utf8(data) \
-                and len(data) >= ROW_MAX_BYTES // 2:
-            # 超大整张待审单（逐行进不了 list_rows）：按块进 file_chunks，不再占 files（GM4 11-27）
+        if tbl == "files" and rel.endswith(PROOFING_SUFFIX) and "/lists/proofing/" in rel and _is_utf8(data):
+            # 逐行进不了 list_rows 的整张待审单（单行超限、或缩进多行不是逐行 json）：按块进 file_chunks，不再占 files（GM4 11-27）
             tbl = "file_chunks"
         if tbl == "files" and rel.startswith("feedback/lists/") and PurePosixPath(rel).suffix in (".tsv", ".json") \
                 and _is_utf8(data):

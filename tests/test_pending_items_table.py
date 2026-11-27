@@ -218,6 +218,8 @@ def test_proofing_oversize_sheet_chunks(repo, conn, tmp_path):
     multi = "W/feedback/lists/proofing/96mid1ogzk/003.pending.json"
     f[one] = (_line(rev=3, blob="師" * (scope.ROW_MAX_BYTES + 10)) + "\n").encode()
     f[multi] = json.dumps({"rev": 3, "cells": [{"c": "x" * 2000, "i": i} for i in range(1000)]}, ensure_ascii=False, indent=2).encode()
+    small_multi = "W/feedback/lists/proofing/96mid1ogzk/004.pending.json"      # 不大但缩进多行，逐行进不了 list_rows，也进 file_chunks
+    f[small_multi] = json.dumps({"rev": 3, "cells": [{"i": 1}]}, indent=2).encode()
     c1 = _commit(repo, f, "c1")
     import_commit(conn, repo, c1)
     tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchall())
@@ -228,7 +230,7 @@ def test_proofing_oversize_sheet_chunks(repo, conn, tmp_path):
     assert rep["ok"], rep["workspaces"]["tws"]["mismatches"]
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
-    for rel in (one, multi):
+    for rel in (one, multi, small_multi):
         assert (out / rel[2:]).read_bytes() == f[rel]
 
 

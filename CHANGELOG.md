@@ -7,6 +7,12 @@
 ## [未发版]
 
 - PATCH（11-27，GM4，清退 files）：`feedback/lists/` 下的 `.tsv`／`.json` 小清单（stale_verdicts.tsv、known-errors.tsv、opinions 老的 text_versions.json）按块进 `file_chunks`，往返逐字节同，不再占 files；本机文件照旧，cv 读法不变。
+- PATCH（11-27，GM2，MJ 报）：`guji land --text` 刷新导出改调本包 `output/guji_format_export`，参数同 cv `republish.py from-pack`（char-cord、`--keys cv`、book-text dev 现行 `--text-version`、`--meta`、`--prev-char`）。原拼 `guji export format <册> -w …` 在 cv 0.9.7 吃不到册后参数、非殿本无 meta 退出、也不出 char.json。
+
+## [0.6.45] - 2026-11-27
+
+- 发版缘由：补 0.6.44 漏收的一张 proofing 单，让 files 里 proofing 行清零。
+- PATCH（11-27，GM4，清退 files）：`proofing/**.pending.json` 逐行进不了 `list_rows` 的（缩进多行、单行超限）一律进 `file_chunks`，不再按大小判（原先只收 ≥0.9 MB，北行古本、99k3i35yww 三张里漏了 633 KB 那张）。
 
 ## [0.6.44] - 2026-11-27
 
