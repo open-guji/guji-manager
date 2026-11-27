@@ -138,7 +138,9 @@ class Job:
             try:
                 # 先续租（查租约归属），再写看板：整机暂停醒来后租约已被收回、单在别处重跑时，要立刻停手，
                 # 不能先被看板写中心库（可能卡几分钟）拖住，更不能再报「我在跑这单」
-                why = db(S.heartbeat, self.aid, stage=self.stage, progress=self.progress,
+                mem = _mem_note()
+                prog = f"{self.progress or ''}｜{mem}"[-500:] if mem else self.progress
+                why = db(S.heartbeat, self.aid, stage=self.stage, progress=prog,
                          seen={"name": S.who(), "state": "busy", "job_id": self.id})   # 续租＋报到（D1 上一次请求）
                 if why != "lost":
                     BOARD.publish(db)
@@ -875,6 +877,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     db(S.worker_seen, worker, state="idle", session=session, runner=rc, done=0, started=True, note="")
     say(f"执行方 {worker} 上线（runner {rc or '?'}，空闲 {idle_minutes or 0} 分钟后退出）")
     XT.start(HOME, say)                  # 报上次存活／退出原因，装 SIGTERM/SIGHUP 处理，起存活时间戳
+    _salvage_logs(db, say)               # 上次没收尾的单（失联）：本机日志尾巴补传进任务库，再清目录
     try:
         while True:
             try:
@@ -1170,6 +1173,109 @@ _CACHES = (Path.home() / ".cache" / "uv", Path.home() / ".cache" / "guji-data")
 
 def _free_gb() -> float:
     return shutil.disk_usage(HOME).free / 2**30
+
+
+def _read_int(p: Path) -> int | None:
+    try:
+        v = p.read_text(encoding="ascii").strip()
+    except OSError:
+        return None
+    return int(v) if v.isdigit() else None
+
+
+def _cgroup_mem_dir() -> tuple[Path, int] | None:
+    """本进程所在内存 cgroup 的目录与版本（1／2）。执行方跑在会话的 Bash cgroup 里（上限约 13.4G），按它被杀。"""
+    try:
+        lines = Path("/proc/self/cgroup").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for ln in lines:
+        parts = ln.split(":", 2)
+        if len(parts) == 3 and "memory" in parts[1].split(","):
+            d = Path("/sys/fs/cgroup/memory" + parts[2])
+            if (d / "memory.usage_in_bytes").exists():
+                return d, 1
+    for ln in lines:
+        parts = ln.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            d = Path("/sys/fs/cgroup" + parts[2])
+            if (d / "memory.current").exists():
+                return d, 2
+    return None
+
+
+def _mem_note() -> str:
+    """心跳带上 cgroup 内存：已用（不算页缓存）／上限、峰值、OOM 次数。失联单靠最后一拍看得出是不是内存顶满
+    （11-27 全唐文 056 #17959：三次都在 row_segment 里失联，事后分不清是暂停还是 cgroup 杀）。读不到返回空串。"""
+    got = _cgroup_mem_dir()
+    if not got:
+        return ""
+    d, v = got
+    stat: dict[str, int] = {}
+    try:
+        for ln in (d / "memory.stat").read_text(encoding="ascii").splitlines():
+            k, _, x = ln.partition(" ")
+            if x.isdigit():
+                stat[k] = int(x)
+    except OSError:
+        pass
+    if v == 1:
+        use, lim, peak = (_read_int(d / f) for f in ("memory.usage_in_bytes", "memory.limit_in_bytes",
+                                                     "memory.max_usage_in_bytes"))
+        cache = stat.get("total_cache", 0)
+        oom = None
+        try:
+            for ln in (d / "memory.oom_control").read_text(encoding="ascii").splitlines():
+                if ln.startswith("oom_kill "):
+                    oom = int(ln.split()[1])
+        except (OSError, ValueError):
+            pass
+    else:
+        use, peak = _read_int(d / "memory.current"), _read_int(d / "memory.peak")
+        lim = _read_int(d / "memory.max")
+        cache = stat.get("file", 0)
+        oom = None
+        try:
+            for ln in (d / "memory.events").read_text(encoding="ascii").splitlines():
+                if ln.startswith("oom_kill "):
+                    oom = int(ln.split()[1])
+        except (OSError, ValueError):
+            pass
+    if use is None:
+        return ""
+    g = 1 << 30
+    out = f"内存 {max(0, use - cache) / g:.1f}"
+    if lim and lim < 1 << 60:
+        out += f"/{lim / g:.1f}G"
+    else:
+        out += "G"
+    if peak:
+        out += f" 峰 {peak / g:.1f}G"
+    if oom:
+        out += f" OOM {oom}"
+    return out
+
+
+def _salvage_logs(db, say=print) -> int:
+    """执行方起来时（本机只一个执行方，有锁），``~/.guji-jobs/job<单>-a<次>/`` 还在的都是上一个进程没收尾的——
+    多半是整机暂停或会话被收掉、单已判失联。把 run.log 尾巴补进那次领单（只填空着的），失联单就能看出断在哪一步哪一页
+    （11-27 全唐文 056 #17959：row_segment p128 后断，日志只在执行机上）。补完的移到 failed-logs。返回补了几份。"""
+    n_done = 0
+    for d in sorted(HOME.glob("job*-a*")):
+        m = re.fullmatch(r"job(\d+)-a(\d+)", d.name)
+        log = d / "run.log"
+        if not (m and d.is_dir() and log.is_file()):
+            continue
+        jid, n = int(m.group(1)), int(m.group(2))
+        try:
+            tail = redact(log.read_text(encoding="utf-8", errors="replace")[-8000:])
+            if db(S.salvage_log, jid, n, tail, who=S.who()):
+                n_done += 1
+                say(f"补传 #{jid} 第 {n} 次领单的本机日志尾巴（上次没收尾）")
+            _retire_dir(d, "failed", jid, n)
+        except Exception as e:      # noqa: BLE001 —— 补传失败不挡开工，目录留给 _disk_gate 清
+            say(f"补传 #{jid} 第 {n} 次日志失败：{e}")
+    return n_done
 
 
 def _clean_job_dirs() -> None:

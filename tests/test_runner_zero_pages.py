@@ -91,3 +91,31 @@ def test_bindings_cache_not_synced_to_central():
     """人裁绑定缓存是本机派生物，不进中心库（推不上去，旧算法的缓存也就不会传到别的机器）。"""
     from guji_manager.datastore import scope
     assert scope.classify("feedback/bindings/03/p0094.json") is None
+
+
+def test_salvage_logs_uploads_and_retires(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "HOME", tmp_path)
+    monkeypatch.setattr(R, "FAILED_LOGS", tmp_path / "failed-logs")
+    d = tmp_path / "job17959-a8"
+    d.mkdir()
+    (d / "run.log").write_text("== row_segment p0128 完成\n")
+    (tmp_path / "jobx-a1").mkdir()          # 名字不对的不碰
+    got = []
+    db = lambda fn, *a, **k: got.append((fn.__name__, a)) or 5
+    assert R._salvage_logs(db, say=lambda *_: None) == 1
+    assert got[0][0] == "salvage_log" and got[0][1][:2] == (17959, 8)
+    assert not d.exists() and (tmp_path / "failed-logs" / "job17959-a8.log").exists()
+    assert (tmp_path / "jobx-a1").exists()
+
+
+def test_mem_note_cgroup_v1(tmp_path, monkeypatch):
+    g = 1 << 30
+    (tmp_path / "memory.usage_in_bytes").write_text(str(10 * g))
+    (tmp_path / "memory.limit_in_bytes").write_text(str(int(13.4 * g)))
+    (tmp_path / "memory.max_usage_in_bytes").write_text(str(13 * g))
+    (tmp_path / "memory.stat").write_text(f"cache 1\ntotal_cache {2 * g}\n")
+    (tmp_path / "memory.oom_control").write_text("oom_kill_disable 0\nunder_oom 0\noom_kill 2\n")
+    monkeypatch.setattr(R, "_cgroup_mem_dir", lambda: (tmp_path, 1))
+    assert R._mem_note() == "内存 8.0/13.4G 峰 13.0G OOM 2"
+    monkeypatch.setattr(R, "_cgroup_mem_dir", lambda: None)
+    assert R._mem_note() == ""
