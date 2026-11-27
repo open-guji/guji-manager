@@ -46,12 +46,27 @@ def now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _numeric_twin(p: Path, chapter: str, suffix: str) -> Path:
+    """册号按数值认（用户 11-27 册号位数统一）：字面路径不在、章号是数字时，找同一目录里数值相同的那份
+    （改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）。都不在就给字面路径（新建按调用方给的写）。"""
+    if p.exists() or not chapter.isdigit() or not p.parent.is_dir():
+        return p
+    n = int(chapter)
+    for q in sorted(p.parent.glob(f"*{suffix}")):
+        stem = q.name[: -len(suffix)]
+        if stem.isdigit() and int(stem) == n:
+            return q
+    return p
+
+
 def items_path(data: Path, text_id: str, chapter: str) -> Path:
-    return Path(data) / "feedback" / "lists" / "pending" / text_id / f"{chapter}.items.jsonl"
+    p = Path(data) / "feedback" / "lists" / "pending" / text_id / f"{chapter}.items.jsonl"
+    return _numeric_twin(p, str(chapter), ".items.jsonl")
 
 
 def sheet_path(data: Path, text_id: str, chapter: str) -> Path:
-    return Path(data) / "feedback" / "lists" / "proofing" / text_id / f"{chapter}.pending.json"
+    p = Path(data) / "feedback" / "lists" / "proofing" / text_id / f"{chapter}.pending.json"
+    return _numeric_twin(p, str(chapter), ".pending.json")
 
 
 def norm_cell(x: str) -> str:
