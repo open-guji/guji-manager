@@ -6,6 +6,24 @@
 
 ## [未发版]
 
+## [0.6.50] - 2026-11-27
+
+- 发版说明：护栏 `guji eval guard` 云端会话没有书的字形库，**未验证**，已请有真工作区的书线补跑。
+
+- PATCH（11-27，GM4，SJ 报）：点校 AI 摘要对位 `dian_trace.load_notes`／`find_note` 按（册，u）建键并**归一册标签**（去 `vol` 前缀、前导 0：037／37、vol35／035 同册），老行没有 `book` 就用文件名 `<册>.jsonl`；`released_list` 每条加 `book`（u 是册内编号，跨册会撞号，页面合并多册时据此区分）。网站现算侧（Worker pending-live）已同步按（册，u）匹配，见 guji-workspace-data#45。
+
+- PATCH（11-27，CV0 线程，清理计划 1.6／1.8／1.4；行为不变，只多 `machine` 一档与新函数）：「算落定」口径只在 `feedback/levels.py` 定义一处——新增 `settles_cell`（confirm＋格＋`SETTLED_VS`＋算钉）、`SETTLED_VS`、`provenance()`（裁定事件来源三字段 `payload.level／by／channel` 的统一取法，校验取值）；`payload.level=machine` 明确不算钉；`web_votes.HUMAN_VS` 改引用 `SETTLED_VS`、`latest_human` 改调 `settles_cell`。`tests/test_event_levels.py` 加四处一致性矩阵（manager／cv／中心库 `events.level` 表达式／Worker `HUMAN_VS`），登记 3 类已知分歧。新文档 `doc/4-反馈迭代/裁定事件写入点清单-2026-11-27.md`（各写入点现不写三字段，只列不改）、`按u配事件审计-2026-11-27.md`（只按 u 配的地方，只列不修）。
+
+- PATCH（11-27，GM3，SJ 报）：`write_notes.py` 状态 released 必须带 `--release-batch`（放行事件批名），摘要文字写「已放行」而状态不是 released 也拦；模板与 wiki 加「放行事件没进库不写已放行」。
+
+- PATCH（11-27，GM3，sheldon 反馈）：AI 判字摘要给用户看的字样一律白话——`dian_trace` 加 `plain_zh`／`jargon_hits`，`dian.why` 不再产出「L2 已(mid)」改「浅层文意判『已』（把握中等）」，`ai` 块 s／d／log 兜底换白话；`tools/dianjiao/write_notes.py` 写入前换、剩内部词报错；新增统一提示词模板 `tools/dianjiao/prompt_ai_analysis.md`（禁内部代号英文、禁自相矛盾、不套别组提醒）。
+
+- PATCH（11-27，GM3，QTW 提）：新增 `tools/dianjiao/carve_pairs.py` 与 `carve_pairs/全唐文.tsv`——各书「按刻形记」的字对不走 AI 放行（按对拦，各书可挂自己的表）。
+
+- PATCH（11-27，GM3，文档）：wiki「AI分析两层做法与待审格摘要」第三节放行标准改为「两次独立判断一致且都高置信即放行」（Sheldon 11-27 晚定，高置信 56/56 对），取代 11-26 易混字组阈值。
+
+- PATCH（11-27，GM2，CV0 采纳执行方建议）：执行方切 cv（`Job.checkout`，eval／command 单）遇「未跟踪文件会被新版本跟踪」时自动让路：只处理 checkout 报出的那几个文件，先带时间戳备份到工作区外（缺省 `~/.guji-jobs/checkout-bak/<UTC 时间>-<pid>/<仓名>/`，`GUJI_CHECKOUT_BAK` 可改），再移走、重切，备份路径进单子事件和 run.log；不整仓 clean，清单里有仓外／已跟踪／不存在的路径就一个都不动、照原错失败。新模块 `guji_manager.jobs.safe_checkout`（也可 `python -m` 用）。准备脚本 rerun_prep.sh 同一规则在 cv 仓。
+
 ## [0.6.49] - 2026-11-27
 
 - PATCH（11-27，GM4）：`guji collect --batch` 在「没票、`--no-ai`、批次事件全是只给 u 锚的」时不再算全书绑定表（`current_human`，QTW 004 要 30 多分钟，一格也用不上）。

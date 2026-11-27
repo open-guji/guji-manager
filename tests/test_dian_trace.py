@@ -16,7 +16,7 @@ def test_l2_mid_with_l3_evidence():
     ]
     d = summarize_trace(tr, CANDS)
     assert d["char"] == "日" and len(d["why"]) <= 400
-    assert d["why"].startswith("L1 两路分歧(日/曰)")
+    assert d["why"].startswith("机器两路分歧（日／曰）")
     assert d["refs"] == [{"u": "https://zh.wikipedia.org/wiki/x", "t": "维基百科：魏方泰字日乾"}]
 
 
@@ -88,3 +88,42 @@ def test_write_notes_row():
     n = m.row_to_note({"册": "10", "u": "881", "格号": "10:98:7:5a", "AI判": "曰", "置信": "high", "状态": "pending",
                        "一句话": "倾向曰", "详情": "述贊曰", "检索": "三家註卷15|同字|窗口8 ; ctext|取不到|", "候选": "日/曰"}, "L3", "m", "b")
     assert n["trace"][0]["status"] == "pending" and n["trace"][0]["log"][1] == {"src": "ctext", "r": "取不到", "t": ""} and n["u"] == 881
+
+
+def test_notes_keyed_by_vol_and_u_across_collisions(tmp_path):
+    """u 是册内编号：别的册撞号的 u 不能挂到本册；册标签 037／37／vol35 视为同一册；老行没有 book 用文件名。"""
+    import json
+    from guji_manager.review import dian_trace as T
+    f = tmp_path / "037.jsonl"
+    rows = [
+        {"book": "26", "u": 26933, "cell": "26:146:8:8a", "cands": ["甲"], "trace": [{"status": "released", "char": "字"}]},
+        {"book": "38", "u": 26933, "cell": "38:114:1:8b", "cands": ["乙"], "trace": [{"status": "released", "char": "字"}]},
+        {"u": 5, "cell": "037:1:1:1", "cands": ["丙"], "trace": []},
+    ]
+    f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    idx = T.load_notes(f)
+    assert T.find_note(idx, book="26", u=26933)["cands"] == ["甲"]
+    assert T.find_note(idx, book="038", u=26933)["cands"] == ["乙"]
+    assert T.find_note(idx, book="99", u=26933) is None
+    assert T.find_note(idx, book="37", u=5)["cands"] == ["丙"]
+    assert T.find_note(idx, book="vol37", u=5)["cands"] == ["丙"]
+    rel = T.released_list(idx)
+    assert [(r["book"], r["u"]) for r in rel] == [("26", 26933), ("38", 26933)]
+
+def test_plain_zh_no_internal_codes():
+    from guji_manager.review.dian_trace import jargon_hits, plain_zh
+    src = "L2 正序已(mid：已不知，副詞)倒序已(mid：已不知，副詞)；现字已；考證段无对位本，未升L3；未看图。"
+    out = plain_zh(src)
+    assert out == "浅层文意判：正读已（把握中等：已不知，副詞）倒读已（把握中等：已不知，副詞）；现字已；考證段无对位本，没做联网深判；未看图。"
+    assert jargon_hits(out) == [] and jargon_hits(src)
+    assert plain_zh("见 https://x.org/high/L2 mid") == "见 https://x.org/high/L2 把握中等"
+
+
+def test_summary_text_has_no_jargon():
+    tr = [{"level": "L1", "routes": {"A": ["日", "mid"], "B": ["曰", "high"]}},
+          {"level": "L2", "char": "日", "conf": "mid", "why": "L2 mid 書名", "s": "正序日(mid)"},
+          {"level": "L3", "char": "曰", "conf": "high", "why": "对位同字", "log": [{"src": "三家註", "r": "同字", "t": "high"}]}]
+    d = summarize_trace(tr, CANDS, "pending")
+    from guji_manager.review.dian_trace import jargon_hits
+    assert jargon_hits(d["why"]) == []
+    assert jargon_hits(" ".join([d["ai"]["s"], d["ai"]["d"], json.dumps(d["ai"]["log"], ensure_ascii=False)])) == []
