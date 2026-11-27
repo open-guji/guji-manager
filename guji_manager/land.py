@@ -586,7 +586,9 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
             lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
             extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
         ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None, need_alt=hand)
-    cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
+    from .u_stamp import u_map
+    us0 = u_map(book, [c["cell"] for c in res["cells"]])
+    cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book), _E.load_dian(ws, book), us0, book)    # 点校 AI 摘要按（册，u）挂
     if rc:
         cells = _E.merge_recheck(cells, rc)
     if rows:

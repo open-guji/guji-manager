@@ -39,12 +39,34 @@ def read_recheck(path: Path, book: str) -> dict[str, dict]:
     return out
 
 
-def merge_cards(cells: list[dict], cards: dict[str, dict]) -> list[dict]:
-    """第 1 步：每格并入 ``pending_fields(card)``；卡里没有的格只带 cv 给的 cell/review/img。cv 给的键优先（img 是按内容寻址的单格图）。"""
+def load_dian(ws: Path, book: str) -> dict:
+    """中心库本机副本里这册的点校 AI 摘要（``feedback/notes/<册>.jsonl``，按（册，u）对位）。没有就空。"""
+    from .datastore.workcopy import data_dir
+    from .review.dian_trace import load_notes
+    try:
+        return load_notes(data_dir(ws) / "feedback" / "notes" / f"{book}.jsonl")
+    except (OSError, ValueError, SystemExit):
+        return {}
+
+
+def merge_cards(cells: list[dict], cards: dict[str, dict], notes: dict | None = None, us: dict | None = None,
+                book: str | None = None) -> list[dict]:
+    """第 1 步：每格并入 ``pending_fields(card)``；卡里没有的格只带 cv 给的 cell/review/img。cv 给的键优先（img 是按内容寻址的单格图）。
+    ``notes``（``load_dian``）给了就把点校 AI 摘要（ai／ctx／dnote／dout／refs）挂上：按（册，u）对位，再按 ctx 哈希、格号；
+    卡上已有 ``dian`` 的不覆盖。没有卡的格也按（册，u）找（先发后补）。"""
+    from .review.dian_trace import dian_for
     from .review.proof_fields import pending_fields
     out = []
     for c in cells:
         card = cards.get(c["cell"])
+        if notes:
+            card = dict(card) if card else {}
+            if not card.get("dian"):
+                d = dian_for(notes, cell=f"{book}:{c['cell']}" if book else c["cell"], group=card.get("group"),
+                             ctx_hash=card.get("ctx_hash"), book=book, u=(us or {}).get(c["cell"]),
+                             extra_cands=(card.get("grp") or {}).get("m"))
+                if d:
+                    card["dian"] = d
         extra = pending_fields(card) if card else {}
         out.append({**extra, **c})
     return out
