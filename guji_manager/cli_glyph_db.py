@@ -100,6 +100,28 @@ def cmd_glyph_db(args):
     db_path = glyph_db_path()
     store_dir = glyph_store_path(args.store)
     db = GlyphDB(db_path)
+    if args.action == "rebind-audit":   # 回库贴错图核查（ops/rebind_audit.py）：默认只读出 TSV
+        from .ops import rebind_audit as RA
+        try:
+            if args.undo:
+                if not args.undo_file:
+                    raise SystemExit("--undo 要给 --undo-file")
+                print(RA.undo(db, args.undo_file))
+            elif args.apply:
+                if not (args.tsv and args.undo_file and args.confirmed_by):
+                    raise SystemExit("--apply 要给 --tsv（已审的分类表）、--undo-file、--confirmed-by")
+                print(RA.apply(db, RA.read_tsv(args.tsv), args.confirmed_by, args.undo_file))
+            else:
+                if not (args.after and args.before):
+                    raise SystemExit("rebind-audit 要给 --after / --before（进库时间窗，ISO）")
+                bk = {b.strip() for b in args.books.split(",") if b.strip()} if args.books else None
+                rows = RA.plan(db, args.after, args.before, bk)
+                if args.tsv:
+                    RA.write_tsv(rows, args.tsv)
+                print(f"{len(rows)} 例：{RA.summary(rows)}" + (f"；已写 {args.tsv}" if args.tsv else ""))
+        finally:
+            db.close()
+        return
     try:
         if args.action == "export":
             from ._cv import export_store
@@ -263,7 +285,7 @@ def add_parser(sub) -> None:
     p.add_argument("action",
                    choices=["stats", "export", "rebuild",
                             "import-font", "drop-edition", "repair", "selfcheck",
-                            "set-edition", "font-pack-push", "backfill", "backfill-audit", "text-check", *PIN_ACTIONS])
+                            "set-edition", "font-pack-push", "backfill", "backfill-audit", "text-check", "rebind-audit", *PIN_ACTIONS])
     p.add_argument("-w", "--workspace", default=None,
                    help="工作区仓根（含 books/、output/glyph.db）。同 v2 命令那个 -w：给了就覆盖"
                         "本次调用的 GUJI_WORKSPACE，不给就退回读环境变量。任务卡 #54 第13条：这个"
@@ -327,6 +349,10 @@ def add_parser(sub) -> None:
                    help="backfill 用：做抢首位核验（缺省不做）：候选整批模拟进库，本册放行格的库首位被抢、又没救回格的字不进")
     p.add_argument("--steal-cells-max", type=int, default=None,
                    help="backfill 用：抢首位核验每册最多回放几格放行格（缺省 8000，0＝全部）")
+    p.add_argument("--tsv", default=None, help="rebind-audit 用：逐例分类表路径（plan 写出；--apply 读它，可先人看）")
+    p.add_argument("--confirmed-by", default=None, help="rebind-audit --apply 用：谁确认的（必填，记进撤库原因）")
+    p.add_argument("--undo-file", default=None, help="rebind-audit：--apply 记撤掉的旧例（含图）的 jsonl；--undo 读它回退")
+    p.add_argument("--undo", action="store_true", help="rebind-audit 用：按 --undo-file 回退")
     p.add_argument("--title", default=None, help="书名")
     p.add_argument("--pin", type=int, default=None,
                    help="pin-build / pin-verify / snapshot-upload 用：字形库版本号 N（g<N>）")
