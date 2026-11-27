@@ -6,6 +6,12 @@
 
 ## [未发版]
 
+## [0.6.49] - 2026-11-27
+
+- PATCH（11-27，GM4）：`guji collect --batch` 在「没票、`--no-ai`、批次事件全是只给 u 锚的」时不再算全书绑定表（`current_human`，QTW 004 要 30 多分钟，一格也用不上）。
+
+- PATCH（11-27，GM4）：`guji collect --batch` 对「只给 u 锚、page/col/slot 空」的人裁事件（全唐文寇/𡨥 213、市 98）改按 u 直接在 book-text `*.char.json` 里查格落字（同 u 取批次内最新，查不到或多于一格不落并列出，不用产物核格框）；之前这类事件绑定表判 unanchored 落不进去。新增 `collect.batch_u_cells`。
+
 ## [0.6.48] - 2026-11-27
 
 - 发版缘由：网站会员号迁移（voter 36 位 uid → 8 位会员号，旧票带 voter_prev），manager 要先认 voter_prev 网站才能真跑迁移。
