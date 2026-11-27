@@ -7,6 +7,10 @@
 ## [未发版]
 
 - MINOR（11-27，CV2）：review-pages `cut_check` 1.4.0：折线卡（项带 `poly`）加「这条线不对」按钮，不拖线也能标错，记 `label=bad`、`bad:["poly"]`；Sheldon 审史記折线页时反映 1.3.0 折线卡只有「看不出」、没法点错。旧项不受影响。
+
+## [0.6.47] - 2026-11-27
+
+- 发版缘由：清退 files——feedback/lists 下 tsv／json 小清单按块进 `file_chunks`（#1130），带上 #1134 与 wiki 更新（#1133–#1140）。PATCH。
 - PATCH（11-27，GM2，WYG 请求；用户 11-26 定上 COS 必须是压缩版、压缩是流程一步）：新增 `guji start source cos-tier <书id> <册>`——读页表＋旁车，每张源图出 1-bit 无损 WebP（宽＝`--width`＞书配置 `src_w`＞缺省：文淵閣 1600、其他 3840），过闸（VP8L、只有 0/255、尺寸对）才传 COS `srcbw`，传完记只增不改的账 `r<NNN>.cos.v<K>.json`（实际宽度、对象 md5、每页 `bim:cos`）；`--adopt` 给网站仓脚本已传的册补账。新增 `guji start source cos-check`（账、对象数、线上抽查、墨迹 IoU≥0.9），并进 close-check 第 15 项（两档都计；没有页表指针的册 skip）。代码 `datastore/cos_tier.py`，原网站仓 `ops/iiif/src_bw_tier.py` 等三支脚本的逻辑搬进来。
 - PATCH（11-27，GM4，清退 files）：`feedback/lists/` 下的 `.tsv`／`.json` 小清单（stale_verdicts.tsv、known-errors.tsv、opinions 老的 text_versions.json）按块进 `file_chunks`，往返逐字节同，不再占 files；本机文件照旧，cv 读法不变。
 
