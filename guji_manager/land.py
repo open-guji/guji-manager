@@ -682,7 +682,7 @@ def text_step(ws: Path, a, books: list[str], results: list[dict]) -> None:
     for b in books:
         ch = chapter_of(b)
         store = P.ItemStore.open(data_dir(ws), a.text_id, ch)
-        exp = T.refresh_export(ws, b, chapter=ch)
+        exp = T.refresh_export(ws, b, chapter=ch, book_text=Path(a.book_text), text_id=a.text_id)
         plan = T.text_plan(ws, b, text_id=a.text_id, book_text=Path(a.book_text), pending=T.open_pending(store), export=exp)
         r = by.get(b) or {}
         r["text"] = {k: v for k, v in plan.items() if k != "changes"}

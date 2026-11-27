@@ -6,6 +6,11 @@
 
 ## [未发版]
 
+## [0.6.46] - 2026-11-27
+
+- 发版缘由：`guji land --text` 刷新导出参数错误（MJ 11-27 报，非殿本都会碰到）。
+- PATCH（11-27，GM2，MJ 报）：`guji land --text` 刷新导出改调本包 `output/guji_format_export`，参数同 cv `republish.py from-pack`（char-cord、`--keys cv`、book-text dev 现行 `--text-version`、`--meta`、`--prev-char`）。原拼 `guji export format <册> -w …` 在 cv 0.9.7 吃不到册后参数、非殿本无 meta 退出、也不出 char.json。
+
 ## [0.6.45] - 2026-11-27
 
 - 发版缘由：补 0.6.44 漏收的一张 proofing 单，让 files 里 proofing 行清零。
