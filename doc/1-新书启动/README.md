@@ -7,7 +7,7 @@
 
 | 小步 | 输入 | 输出 | 命令 | 教程 |
 |---|---|---|---|---|
-| 1a 元数据与资源 | book ID、已知资源 | book-index 条目；原图进 R2 与页表；整理本进中心库 `corpus/`；工作区仓、书仓 `code/`；册进中心库 | `guji start source`、`guji start corpus init`、`guji start code release`、`guji db init／push` | [元数据与资源](../../wiki/新书启动/元数据与资源.md) |
+| 1a 元数据与资源 | book ID、已知资源 | book-index 条目；原图进 R2 与页表；国内书影（压缩版）进 COS `srcbw` 并记账；整理本进中心库 `corpus/`；工作区仓、书仓 `code/`；册进中心库 | `guji start source`（含 `cos-tier`）、`guji start corpus init`、`guji start code release`、`guji db init／push` | [元数据与资源](../../wiki/新书启动/元数据与资源.md) |
 | 1b 页面分析与参数 | 原图、整理本 | 版式档案（工作区 README）；页型声明；套书 `seg_set`；册 yaml 与书级开关；开书体检单、目标人审率 | `guji start pagekinds`、`guji start suggest`、`guji pipeline binarize／calibrate／survey`、`guji pipeline pending-stats` | [页面分析与参数](../../wiki/新书启动/页面分析与参数.md) |
 | 1c 选页试运行 | 册配置、页型、套书 | dev_set 试跑叠图；整理本页钉位；借库首跑；首批字形入库并钉 `glyph_pin` | `guji start source pull`、`guji pipeline <管线> <册> --pages dev_set --no-pack`、`guji pipeline product overlay`、`guji pipeline seg check`、`guji pipeline triage`、`guji pipeline review-pages` | [选页试运行](../../wiki/新书启动/选页试运行.md) |
 
@@ -25,6 +25,7 @@
 |---|---|---|
 | 1a | book-index 有 Work／Book，Book 只挂一个最新原图资源 | `check_schema.py`、`check_v2.py` 过 |
 | 1a | 原图在 R2，页表页数对，对开拆页核对图看过 | `guji start source commons … --dry-run` |
+| 1a | 国内书影已压缩上 COS：每册账在、对象数＝源图数、抽页 IoU ≥0.9 | `guji start source cos-check <书id> <册>`（close-check 第 15 项同） |
 | 1a | 有逐列整理本，或记下「没有」 | 中心库 `corpus/` |
 | 1a | 册在中心库 | `guji db status`：behind 0、unpushed [] |
 | 1b | 版式档案写好；每个新页型有叠图给用户看过（只告知） | `guji start pagekinds` 无漏 |
