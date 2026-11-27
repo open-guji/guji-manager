@@ -90,6 +90,26 @@ def test_write_notes_row():
     assert n["trace"][0]["status"] == "pending" and n["trace"][0]["log"][1] == {"src": "ctext", "r": "取不到", "t": ""} and n["u"] == 881
 
 
+def test_notes_keyed_by_vol_and_u_across_collisions(tmp_path):
+    """u 是册内编号：别的册撞号的 u 不能挂到本册；册标签 037／37／vol35 视为同一册；老行没有 book 用文件名。"""
+    import json
+    from guji_manager.review import dian_trace as T
+    f = tmp_path / "037.jsonl"
+    rows = [
+        {"book": "26", "u": 26933, "cell": "26:146:8:8a", "cands": ["甲"], "trace": [{"status": "released", "char": "字"}]},
+        {"book": "38", "u": 26933, "cell": "38:114:1:8b", "cands": ["乙"], "trace": [{"status": "released", "char": "字"}]},
+        {"u": 5, "cell": "037:1:1:1", "cands": ["丙"], "trace": []},
+    ]
+    f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    idx = T.load_notes(f)
+    assert T.find_note(idx, book="26", u=26933)["cands"] == ["甲"]
+    assert T.find_note(idx, book="038", u=26933)["cands"] == ["乙"]
+    assert T.find_note(idx, book="99", u=26933) is None
+    assert T.find_note(idx, book="37", u=5)["cands"] == ["丙"]
+    assert T.find_note(idx, book="vol37", u=5)["cands"] == ["丙"]
+    rel = T.released_list(idx)
+    assert [(r["book"], r["u"]) for r in rel] == [("26", 26933), ("38", 26933)]
+
 def test_plain_zh_no_internal_codes():
     from guji_manager.review.dian_trace import jargon_hits, plain_zh
     src = "L2 正序已(mid：已不知，副詞)倒序已(mid：已不知，副詞)；现字已；考證段无对位本，未升L3；未看图。"
