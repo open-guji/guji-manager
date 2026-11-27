@@ -57,20 +57,33 @@ def test_plan_apply_undo(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         RA.apply(g, rows, "", tmp_path / "u.jsonl", cache=_Cache(tmp_path / "c"))
-    r = RA.apply(g, rows, "Sheldon", tmp_path / "u.jsonl", cache=_Cache(tmp_path / "c"))
-    assert r["withdrawn"] == 1 and r["rebound"] == 1
+    r0 = RA.apply(g, rows, "Sheldon", tmp_path / "u0.jsonl", cache=_Cache(tmp_path / "c"))
+    assert r0["withdrawn"] == 1 and r0["rebound"] == 0      # 缺省只 withdraw
+    r = RA.apply(g, rows, "Sheldon", tmp_path / "u.jsonl", cache=_Cache(tmp_path / "c"), include_rebind=True)
+    assert r["rebound"] == 1
     have = {x[0] for x in g.conn.execute("SELECT instance_id FROM admissions")}
     assert have == {"v2:03:94:5:1", "v2:03:94:5:3", "v2:03:94:5:5", "v2:03:95:1:1"}
 
     n = RA.undo(g, tmp_path / "u.jsonl")
+    n0 = RA.undo(g, tmp_path / "u0.jsonl")
     have = {x[0] for x in g.conn.execute("SELECT instance_id FROM admissions")}
-    assert have == {"v2:03:94:5:2", "v2:03:94:5:3", "v2:03:94:5:4", "v2:03:94:5:5", "v2:03:95:1:1"} and n["restored"] == 2
+    assert have == {"v2:03:94:5:2", "v2:03:94:5:3", "v2:03:94:5:4", "v2:03:94:5:5", "v2:03:95:1:1"} and n["restored"] == 1 and n0["restored"] == 1
 
 
 def test_rebind_without_image_keeps_old(tmp_path):
     g = _db(tmp_path)
     rows = RA.plan(g, "2026-11-26T19:00", "2026-11-26T21:30", bindings_of=lambda b: BIND, has_products=lambda b, p: True)
     (tmp_path / "c").mkdir()
-    r = RA.apply(g, rows, "Sheldon", tmp_path / "u.jsonl", cache=_Cache(tmp_path / "c"))
+    r = RA.apply(g, rows, "Sheldon", tmp_path / "u.jsonl", cache=_Cache(tmp_path / "c"), include_rebind=True)
     assert r["rebind_no_image"] == 1
+    assert g.conn.execute("SELECT 1 FROM admissions WHERE instance_id='v2:03:94:5:2'").fetchone()
+
+
+def test_rebind_skips_when_new_cell_already_in_lib(tmp_path):
+    g = _db(tmp_path)
+    g.admit_instance("v2:03:94:5:1", "應", _png(), provenance="human", shape="應", evidence={"event": "new"}, page="94", col=5, idx=1)
+    g.conn.commit()
+    rows = RA.plan(g, "2026-11-26T19:00", "2026-11-26T21:30", bindings_of=lambda b: BIND, has_products=lambda b, p: True)
+    r = RA.apply(g, rows, "Sheldon", tmp_path / "u.jsonl", cache=_Cache(tmp_path), include_rebind=True)
+    assert r["rebind_skip_exists"] == 1
     assert g.conn.execute("SELECT 1 FROM admissions WHERE instance_id='v2:03:94:5:2'").fetchone()

@@ -117,9 +117,13 @@ def _snapshot(db, iid: str) -> dict | None:
             "png": base64.b64encode(bytes(png)).decode(), "page": page, "col": col, "idx": idx}
 
 
-def apply(db, rows: list[dict], confirmed_by: str, undo_path: str | Path, cache=None, batch: str = "rebind-audit") -> dict:
+def apply(db, rows: list[dict], confirmed_by: str, undo_path: str | Path, cache=None, batch: str = "rebind-audit",
+          include_rebind: bool = False) -> dict:
     """真写。`confirmed_by` 必填（谁确认的，记进撤库原因与 undo）。只处理 action 为 rebind／withdraw 的行。
-    撤掉的旧例（含图）记进 `undo_path`（jsonl，追加）。重入库取图失败（缓存没有）的 rebind 行不撤旧例。"""
+    撤掉的旧例（含图）记进 `undo_path`（jsonl，追加）。重入库取图失败（缓存没有）的 rebind 行不撤旧例。
+
+    缺省**只执行 withdraw**（CV0 11-27：SJ 给无框旧人裁补带锚 confirm，rebind 类由新事件正常回库，免得重复入库）。
+    `include_rebind=True` 才处理 rebind，且新格已在库里的跳过（`rebind_skip_exists`），不撤旧例。"""
     if not (confirmed_by or "").strip():
         raise ValueError("apply 必须说明谁确认的（--confirmed-by）")
     import cv2
@@ -128,12 +132,16 @@ def apply(db, rows: list[dict], confirmed_by: str, undo_path: str | Path, cache=
     if cache is None:
         from .._cv import ImageCache
         cache = ImageCache()
-    res = {"withdrawn": 0, "rebound": 0, "rebind_no_image": 0, "rebind_exists": 0, "missing": 0}
+    res = {"withdrawn": 0, "rebound": 0, "rebind_no_image": 0, "rebind_exists": 0, "rebind_skip_exists": 0, "missing": 0}
     reason = f"{batch}:{confirmed_by}"
     with open(undo_path, "a", encoding="utf-8") as uf:
         for r in rows:
             act = r["action"]
-            if act not in ("rebind", "withdraw"):
+            if act not in ("rebind", "withdraw") or (act == "rebind" and not include_rebind):
+                continue
+            if act == "rebind" and db.conn.execute("SELECT 1 FROM admissions WHERE instance_id=?",
+                                                    (r["new_instance"],)).fetchone():
+                res["rebind_skip_exists"] += 1
                 continue
             snap = _snapshot(db, r["instance"])
             if snap is None:

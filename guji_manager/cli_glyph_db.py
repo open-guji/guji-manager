@@ -110,7 +110,8 @@ def cmd_glyph_db(args):
             elif args.apply:
                 if not (args.tsv and args.undo_file and args.confirmed_by):
                     raise SystemExit("--apply 要给 --tsv（已审的分类表）、--undo-file、--confirmed-by")
-                print(RA.apply(db, RA.read_tsv(args.tsv), args.confirmed_by, args.undo_file))
+                print(RA.apply(db, RA.read_tsv(args.tsv), args.confirmed_by, args.undo_file,
+                               include_rebind=args.include_rebind))
             else:
                 if not (args.after and args.before):
                     raise SystemExit("rebind-audit 要给 --after / --before（进库时间窗，ISO）")
@@ -353,6 +354,7 @@ def add_parser(sub) -> None:
     p.add_argument("--confirmed-by", default=None, help="rebind-audit --apply 用：谁确认的（必填，记进撤库原因）")
     p.add_argument("--undo-file", default=None, help="rebind-audit：--apply 记撤掉的旧例（含图）的 jsonl；--undo 读它回退")
     p.add_argument("--undo", action="store_true", help="rebind-audit 用：按 --undo-file 回退")
+    p.add_argument("--include-rebind", action="store_true", help="rebind-audit --apply 用：也执行 rebind（缺省只执行 withdraw）")
     p.add_argument("--title", default=None, help="书名")
     p.add_argument("--pin", type=int, default=None,
                    help="pin-build / pin-verify / snapshot-upload 用：字形库版本号 N（g<N>）")
