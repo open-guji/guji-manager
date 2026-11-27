@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM4，清退 files）：整张待审单 `feedback/lists/proofing/<册>/<页>.pending.json` 改进 `list_rows`（dataset=proofing，一行一个 json 对象，逐字节还原）；单行超 1.8MB 的整份仍留 files（正文走 R2）。
+
 ## [0.6.40] - 2026-11-26
 
 - 发版缘由：铺底后清人裁绑定缓存改按本单环境下 cv 解析的产物根／人裁根（#1095）——中心库工作区的绑定缓存在 `~/.guji-data/<分支>/<ws>/feedback/`，v0.6.39 按 `<工作区>/feedback` 清会扑空（史記 03 worker-46 疑案）。PATCH。
