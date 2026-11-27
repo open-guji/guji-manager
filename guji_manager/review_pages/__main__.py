@@ -23,6 +23,7 @@
   build glyph_quality --items <分片>/items.jsonl --root <分片> ...   字块质量页；可直接吃 dataset 金标信封（--all-crops 连已标的也上）
   build seg_cut --items 人裁切线候选.jsonl --root <放列图的目录> ...   人裁切线页（小字并成一格，点图画切线）
   build col_check --items 列.jsonl ...                             整列切分抽查页（一页书一屏，点切错的格）
+  ab-items   --old <旧产物>/<册> --new <新产物>/<册> --pages-dir D --out-dir O [--flag 前缀]   切分 A/B：只收切法变了的列 → col_check items（框＝新、红线＝旧，见 col_ab.py）
   colcheck-apply --results DIR --out F                             整列抽查结果 → jsonl（列号、全对/有错/看不出、错格）
   cutcheck-apply --results DIR --out F                             逐格切线结果 → jsonl（格号、全对/有错/看不出、错的切线 top/bottom）
   segcut-apply --results DIR --out F                               人裁切线结果 → jsonl（格号、结论、列图/页图切线坐标）
@@ -70,6 +71,10 @@ def main(argv=None):
     p.add_argument("--root", help="glyph_quality：items 里图路径的相对根（dataset 分片目录）")
     p.add_argument("--all-crops", action="store_true", help="glyph_quality：信封里已有标签的字块也上页（复核用）")
     p.add_argument("--box", type=int, help="glyph_quality：字块放大框边长（px，缺省 120）；cut_check：卡片图高（px，缺省 220，一屏放更多格就调小）")
+    p = sub.add_parser("ab-items"); p.add_argument("--old", required=True); p.add_argument("--new", required=True)
+    p.add_argument("--pages-dir", required=True, help="原页图目录"); p.add_argument("--page-name", default="{page}.png")
+    p.add_argument("--out-dir", required=True); p.add_argument("--flag", help="只收新产物列 flags 带这个前缀的列（如 boundary_net）")
+    p.add_argument("--vol-name", help="页面上显示的册名（缺省用目录名）")
     p = sub.add_parser("seg-cards"); p.add_argument("--per-page", required=True, help="seg_causes 逐页.tsv")
     p.add_argument("--per-cell", required=True, help="seg_causes 逐格.tsv"); p.add_argument("--out", required=True)
     p = sub.add_parser("expand"); p.add_argument("--cards", required=True); p.add_argument("--results", required=True)
@@ -193,6 +198,10 @@ def main(argv=None):
     elif a.cmd == "cold-pages":
         from . import cold_start
         print(json.dumps(cold_start.write_pages(a.out_dir, a.book, a.tag), ensure_ascii=False))
+    elif a.cmd == "ab-items":
+        from . import col_ab
+        its = col_ab.build_items(a.old, a.new, a.pages_dir, a.out_dir, a.flag, a.vol_name, a.page_name)
+        print(f"{len(its)} 列 → {Path(a.out_dir) / 'items.jsonl'}（再 build col_check）")
     elif a.cmd == "seg-cards":
         from . import seg_causes
         cs = seg_causes.build_cards(a.per_page, a.per_cell)
