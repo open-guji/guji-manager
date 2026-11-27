@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..formats.guji_char_cord import UNK_DEFAULT
+from ..voter import voter_tag
 
 CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
 A_RE = re.compile(r"^(\d+):(\d+):(-?\d+)([ab]?)$")
@@ -251,7 +252,7 @@ class Draft:
 
     def row(self, source: str) -> dict:
         """控制台 ``/api/events`` 一行。"""
-        ids = "、".join(f"{v['voter'][:16]}" for v in self.votes)
+        ids = "、".join(f"{voter_tag(v['voter'])[:16]}" for v in self.votes)
         note = "；".join(v["note"] for v in self.votes if v.get("note"))
         return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}"}
 

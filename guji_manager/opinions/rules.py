@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 
 from .schema import Opinion, cell_key, norm_class
+from ..voter import voter_tag
 
 RULES_PATH = Path(__file__).resolve().parent / "rules.json"   # 原 cv 仓 config/opinions/rules.json，随包走
 DEFAULT_RULES = {
@@ -191,10 +192,10 @@ def reply_body(tri: dict, op: Opinion) -> str:
 def flood_flags(op: Opinion, pool: list[Opinion], rules: dict) -> list[str]:
     f = rules.get("flood") or {}
     out = []
-    w = (op.voter or "")[:6]
+    w = voter_tag(op.voter)[:6]
     if w:
         day = op.ts[:10]
-        same = [o for o in pool if (o.voter or "")[:6] == w and o.ts[:10] == day]
+        same = [o for o in pool if voter_tag(o.voter)[:6] == w and o.ts[:10] == day]
         if len(same) >= f.get("per_source_per_day", 60):
             dis = [o for o in same if (o.proposal or {}).get("text") not in (None, (o.target or {}).get("check"))]
             if len(dis) / len(same) >= f.get("disagree_ratio", 0.8):
@@ -202,7 +203,7 @@ def flood_flags(op: Opinion, pool: list[Opinion], rules: dict) -> list[str]:
     t = op.target or {}
     if t.get("start"):
         near = [o for o in pool if o.vol == op.vol and (o.target or {}).get("start") == t["start"]]
-        ws = {(o.voter or "")[:6] for o in near}
+        ws = {voter_tag(o.voter)[:6] for o in near}
         if len(ws) >= f.get("burst_sources", 5):
             ts = sorted(dt.datetime.fromisoformat(o.ts.replace("Z", "+00:00")) for o in near if o.ts)
             if ts and (ts[-1] - ts[0]).total_seconds() < f.get("burst_seconds", 3600):

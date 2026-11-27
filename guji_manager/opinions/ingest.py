@@ -27,6 +27,7 @@ from pathlib import Path
 
 from .schema import Opinion, cell_key, make_id, ms_to_iso, now_iso
 from .store import OpinionStore
+from ..voter import voter_tag
 
 SITE = "https://www.openguji.com"
 REV_FILE_RE = re.compile(r"^\d{3}-r\d+\.jsonl$")
@@ -76,7 +77,7 @@ def _hidden(hidden: set[str], prefix: str, voter: str) -> bool:
     """隐藏单的 id 是 ``<前缀>|<voter 全值>``；公开读只有 voter 前 6 位，按前缀比。"""
     if not hidden or not voter:
         return False
-    return any(h.startswith(prefix + "|") and h[len(prefix) + 1:].startswith(voter) for h in hidden)
+    return any(h.startswith(prefix + "|") and (h[len(prefix) + 1:].startswith(voter) or voter_tag(h[len(prefix) + 1:]).startswith(voter)) for h in hidden)
 
 
 def vol3(v) -> str:
@@ -119,7 +120,7 @@ def from_fix_record(r: dict, book: str, hidden: set[str] = frozenset(), source: 
     if is_test(r):
         return Incoming(drop="测试票", source=source)
     kind, vol, tv, voter = r.get("kind") or "char", str(r.get("volume") or ""), r.get("text_version"), r.get("voter") or ""
-    v3, w6 = vol3(vol), voter[:6]
+    v3, w6 = vol3(vol), voter_tag(voter)[:6]
     if kind == "char":
         cell = r.get("cell_id")
         if not cell:
@@ -208,7 +209,7 @@ def from_cellreview(r: dict, book: str, source: str = "") -> Incoming:
     prop = {"choice": choice, **({"text": r["char"]} if r.get("char") and choice != "figure" else {}),
             **({"alt": r["alt"]} if choice == "figure" and r.get("alt") else {})}
     extra = {k: r[k] for k in ("shown", "pick_src", "pick_rank", "pivot") if r.get(k) not in (None, "")}
-    op = _op("cellreview", book, v3, f"cr:{rev}:{book}:{a}|{voter[:6]}", f"cr:{rev}:{book}:{a}", voter, r.get("ts"),
+    op = _op("cellreview", book, v3, f"cr:{rev}:{book}:{a}|{voter_tag(voter)[:6]}", f"cr:{rev}:{book}:{a}", voter, r.get("ts"),
              {"start": a, "end": a, "rev": rev, **({"check": r["shown"]} if r.get("shown") else {})},
              CHOICE_CATEGORY[choice], prop, r.get("note"), extra)
     return Incoming(op=op, source=source)
@@ -444,9 +445,9 @@ def mark_dups(store: OpinionStore, new_ids: set[str], by: str = "ingest") -> lis
             continue
         ops.sort(key=lambda o: (o.ts, o.id))
         root = ops[0]
-        seen = {(root.voter or "")[:6]}
+        seen = {voter_tag(root.voter)[:6]}
         for o in ops[1:]:
-            w = (o.voter or "")[:6]
+            w = voter_tag(o.voter)[:6]
             if o.id in new_ids and st.get(o.id) != "dup" and w not in seen:
                 store.log(o.id, "dup", {"of": root.id}, by=by)
                 out.append((o.id, root.id))
