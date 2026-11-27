@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- MINOR（11-27，GM1，MBJ／WYG 开书经验）：新增 `guji start new <书id> --title …`（`cli_new.py`）——新书仓一次出齐 workspace.yaml、.gitignore（含 `_packs/ reports/ perf/`）、README（含「新会话怎么起」）、开书进度.yaml、开书经验.md、layout_profile.yaml、实验记录/README.md、日志.md、tools/；已有文件不覆盖（`--force`）。文档：doc/1-新书启动 入口条件与出口补 repo_create、按页行款、cut_gate；wiki 开书体检补第 8、9 条；新书启动-常见坑补 12 条（取件 429、db init 顺序、book_edition、按页行款、pagemeta src-sizes、book-text 首建等）。未做：`source fetch`、`source split-vols`、db init 自动写 book_edition（在 cv）。
+
 - MINOR（11-27，CV2）：review-pages `cut_check` 1.4.0：折线卡（项带 `poly`）加「这条线不对」按钮，不拖线也能标错，记 `label=bad`、`bad:["poly"]`；Sheldon 审史記折线页时反映 1.3.0 折线卡只有「看不出」、没法点错。旧项不受影响。
 
 ## [0.6.47] - 2026-11-27

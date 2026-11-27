@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 
-from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
+from . import cli_new, cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
 from . import pin_state, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
@@ -37,6 +37,7 @@ COMMANDS: dict = {
     **cli_glyph.COMMANDS,      # recheck、glyphlib、pua-table、rekey-cells、promote、corpus
     **cli_glyph_db.COMMANDS,   # glyph-db
     **cli_model.COMMANDS,      # model、font
+    **cli_new.COMMANDS,        # new（新书仓初始文件，GM1 11-27）
     **cli_code.COMMANDS,       # code（书级代码，2026-11-09，cv v0.7.0）
     # P3 jobs（2026-11-04），原 cv jobs/cli.py
     **_jobs_cli.COMMANDS,      # job
