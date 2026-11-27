@@ -252,3 +252,28 @@ def test_ai_notes_import_and_materialize(repo, conn, tmp_path):
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/notes/",), with_images=False)
     assert (out / NOTE[2:]).read_bytes() == f[NOTE]
+
+
+def test_misc_jsonl_rows(repo, conn, tmp_path):
+    """candidates/*.jsonl 与 feedback/*.jsonl 逐行进 list_rows（11-27）；tsv／非 jsonl 仍整文件。"""
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.scope import classify
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    assert classify("feedback/candidates/a.jsonl") == "list_rows"
+    assert classify("feedback/promote.jsonl") == "list_rows"
+    assert classify("feedback/lists/known-errors.tsv") == "files"
+    f = _base()
+    f["W/feedback/candidates/a.jsonl"] = (_line(x=1) + "\n" + _line(x=2) + "\n").encode()
+    f["W/feedback/promote.jsonl"] = (_line(y=1) + "\n").encode()
+    c1 = _commit(repo, f, "c1")
+    import_commit(conn, repo, c1)
+    rows = conn.execute("SELECT dataset, book, name FROM list_rows ORDER BY src_path, src_line").fetchall()
+    assert [tuple(r) for r in rows] == [("candidates", None, "a"), ("candidates", None, "a"), ("feedback_misc", None, "promote")]
+    assert verify_commit(conn, repo, c1)["ok"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/",), with_images=False)
+    for rel in ("W/feedback/candidates/a.jsonl", "W/feedback/promote.jsonl"):
+        assert (out / rel[2:]).read_bytes() == f[rel]

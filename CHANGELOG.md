@@ -10,6 +10,7 @@
 
 - 发版缘由：史記 11-26 回库贴错图的防再犯与补救（#1105）。
 - PATCH（11-27，CV3，史記回库贴错图 #1105）：`glyphdb_admit` 本机没有该页现行切分产物时不再按事件原键取字块缓存（缓存是现行切分、事件键是裁决当时的，换过切分的页取到邻格）：`_bindings_lookup` 返回 None，默认不取图不进库、计 `res.no_products`，`GUJI_ADMIT_NO_PRODUCTS_OK=1` 放行旧行为。新增 `guji glyph-db rebind-audit`：窗口内人裁回库例按 cv `book_bindings` 分 keep／rebind／withdraw（默认只读出 TSV；`--apply` 缺省只执行 withdraw，rebind 须 `--include-rebind`，须 `--confirmed-by` 与 `--undo-file`，`--undo` 回退）。
+- PATCH（11-27，GM4，清退 files）：`feedback/candidates/*.jsonl` 与 `feedback/*.jsonl`（promote、抽样裁定等零散台账）逐行进 `list_rows`（dataset=candidates／feedback_misc）；非 jsonl（tsv、json）仍整文件。
 
 - PATCH（GM3 11-27）：放行格也能在网页看 AI 分析——`dian_trace.released_list` 取 notes 里最后一轮 `status=released` 的格，出 `[{u, ai}]`；`dian_attach` 加第 4 个参数写出该文件，ai-team `pending_list.py --released` 并进待审单顶层 `released`。顺带修 `dian_for` 没把分析状态 `st` 带进 `ai` 块的缺口。
 
