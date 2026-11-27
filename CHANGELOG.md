@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-27，GM3，SJ 报）：`write_notes.py` 状态 released 必须带 `--release-batch`（放行事件批名），摘要文字写「已放行」而状态不是 released 也拦；模板与 wiki 加「放行事件没进库不写已放行」。
+
 - PATCH（11-27，GM3，sheldon 反馈）：AI 判字摘要给用户看的字样一律白话——`dian_trace` 加 `plain_zh`／`jargon_hits`，`dian.why` 不再产出「L2 已(mid)」改「浅层文意判『已』（把握中等）」，`ai` 块 s／d／log 兜底换白话；`tools/dianjiao/write_notes.py` 写入前换、剩内部词报错；新增统一提示词模板 `tools/dianjiao/prompt_ai_analysis.md`（禁内部代号英文、禁自相矛盾、不套别组提醒）。
 
 - PATCH（11-27，GM3，QTW 提）：新增 `tools/dianjiao/carve_pairs.py` 与 `carve_pairs/全唐文.tsv`——各书「按刻形记」的字对不走 AI 放行（按对拦，各书可挂自己的表）。
