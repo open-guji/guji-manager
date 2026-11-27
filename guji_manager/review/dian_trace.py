@@ -193,4 +193,21 @@ def dian_for(idx: dict, *, cell: str | None = None, group: str | None = None, ct
         return None
     base = list(cands or row.get("cands") or [])
     base += [c for c in (extra_cands or ()) if c not in base]
-    return summarize_trace(row.get("trace") or [], base)
+    return summarize_trace(row.get("trace") or [], base, _row_st(row))
+
+
+def released_list(idx: dict, cell_ids: set | None = None) -> list[dict]:
+    """放行格的 AI 摘要：`[{u, ai}]`，写进待审单顶层 `released`（网站放行格也能看 AI 分析；GM3 11-27）。
+
+    只取最后一轮 `status == released` 且有 u 的行；`cell_ids` 给了就跳过其中的格号（已在待审格里的不重复）。按 u 排序。"""
+    seen, out = set(), []
+    for key, row in idx.items():
+        if key[0] != "u" or id(row) in seen:
+            continue
+        seen.add(id(row))
+        if _row_st(row) != "released" or (cell_ids and row.get("cell") in cell_ids):
+            continue
+        ai = _ai_block(row.get("trace") or [], list(row.get("cands") or []), "released")
+        if ai:
+            out.append({"u": int(row["u"]), "ai": ai})
+    return sorted(out, key=lambda x: x["u"])

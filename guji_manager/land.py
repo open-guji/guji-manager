@@ -103,14 +103,22 @@ def human_deduct(store: P.ItemStore, cells: list[dict], human: set[str]) -> tupl
     return keep, drop
 
 
+#: 这些键有变要写（网站看得见的候选字、AI 摘要）；doc 里别的键只是噪声，不单独触发写
+VISIBLE_KEYS = ("alt", "ai", "dnote", "dout", "refs")
+
+
 def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[str]:
-    """doc 级改动里相似字（``alt``）有变的格：旧条目没有 alt、新有（出单时 audit alt 没跑，网站显示「机器没定出字」），或内容变了。"""
+    """doc 级改动里网站看得见的键有变的格：相似字（``alt``）空→有或变了（出单时 audit alt 没跑，网站显示「机器没定出字」），
+    点校 AI 摘要（``ai``／``dnote``／``dout``／``refs``，以及 src=punct_llm 的 ``ctx``）新增或变了（QTW 11-27：031 的 8 格摘要算进「改」却没写）。"""
     out = []
     for cell in cells:
         o, n = old.find(cell), new.find(cell)
         if not (o and n):
             continue
-        if ((o[0].get("doc") or {}).get("alt") or []) != ((n[0].get("doc") or {}).get("alt") or []):
+        od, nd = o[0].get("doc") or {}, n[0].get("doc") or {}
+        if any((od.get(k) or []) != (nd.get(k) or []) for k in ("alt",)) \
+                or any(od.get(k) != nd.get(k) for k in VISIBLE_KEYS[1:]) \
+                or ((nd.get("ctx") or {}).get("src") == "punct_llm" and od.get("ctx") != nd.get("ctx")):
             out.append(cell)
     return out
 
@@ -258,6 +266,22 @@ def upload_sprites(sprites: list[dict], files_dir: Path) -> dict:
     return stats
 
 
+def with_released(ws: Path, book: str, sheet: dict) -> dict:
+    """单头 ``released``＝放行格的 AI 摘要 ``[{u, ai}]``（GM3 11-27）：从本机中心库副本的 notes 现算，单上已有的格不重复；
+    没有 notes 就保持单头原有的 released。"""
+    from .review.dian_trace import released_list
+    idx = _E.load_dian(ws, book)
+    if not idx:
+        return sheet
+    ids = set()
+    for c in sheet.get("cells") or []:
+        ids |= {c.get("cell"), f"{book}:{c.get('cell')}"}
+    rel = released_list(idx, ids)
+    if rel:
+        sheet["released"] = rel
+    return sheet
+
+
 def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str, work: P.ItemStore, sprites: list[dict],
                   files_dir: Path | None, sync: bool = True) -> dict:
     """有变的册落地：条目带上单图 → 传 R2 → 存条目 → 导出整张单写回（**rev 不变**）→ 只推这两个文件（``db sync --only``）。"""
@@ -269,7 +293,7 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
     if files_dir and sprites:
         out["uploaded"] = upload_sprites(sprites, files_dir)
     out["written"] = work.save()
-    sheet = P.export_sheet(work, head)
+    sheet = with_released(ws, book, P.export_sheet(work, head))
     atomic_write(sheet_p, json.dumps(sheet, ensure_ascii=False))
     out["cells"] = len(sheet["cells"])
     if sync:
@@ -284,7 +308,7 @@ def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str
             if db_only(ws, "pull", [rels[1]], force=True) == 0 and db_only(ws, "sync", [rels[0]]) == 0:
                 merged = P.ItemStore.open(data, text_id, chapter)
                 head2 = json.loads(sheet_p.read_text(encoding="utf-8"))
-                sheet = P.export_sheet(merged, head2)
+                sheet = with_released(ws, book, P.export_sheet(merged, head2))
                 sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
                 out["cells"] = len(sheet["cells"])
                 out["synced"] = db_only(ws, "sync", rels) == 0
@@ -586,7 +610,9 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
             lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
             extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
         ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None, need_alt=hand)
-    cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book))
+    from .u_stamp import u_map
+    us0 = u_map(book, [c["cell"] for c in res["cells"]])
+    cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book), _E.load_dian(ws, book), us0, book)    # 点校 AI 摘要按（册，u）挂
     if rc:
         cells = _E.merge_recheck(cells, rc)
     if rows:

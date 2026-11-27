@@ -56,7 +56,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("tsv")
     ap.add_argument("out")
-    ap.add_argument("--level", default="L3")
+    ap.add_argument("--level", default="L2", help="L2＝浅层文意（未联网）；L3＝联网深搜。缺省 L2：没联网就别标 L3（GM3 11-27，QTW 031 的 9 条标错）")
     ap.add_argument("--model", default="")
     ap.add_argument("--batch", default="")
     a = ap.parse_args(argv)

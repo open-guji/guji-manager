@@ -9,3 +9,9 @@ _LIVE = ("GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD", "GUJI_DATA_TOKEN_READ", "GUJ
 def _no_live_central_db(monkeypatch):
     for k in _LIVE:
         monkeypatch.delenv(k, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _admit_no_products_ok(monkeypatch):
+    """多数测试没有切分产物、按原键取图；专测无产物拒绝的用例自己 delenv。"""
+    monkeypatch.setenv("GUJI_ADMIT_NO_PRODUCTS_OK", "1")

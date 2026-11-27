@@ -38,7 +38,7 @@ def fingerprint(row: Row) -> str:
 
 #: 文件从别的表改归到这些表（待审条目 files → pending_items，GM4 11-26）：source_files 的指纹带上表名，
 #: 文件内容没变也会把 source_files.tbl 改过来（还原按它找表）。只对这些表加，别的 source_files 行指纹不变、不必重推
-RECLASSIFIED = frozenset({"pending_items", "list_rows", "ai_notes"})
+RECLASSIFIED = frozenset({"pending_items", "list_rows", "ai_notes", "file_chunks"})
 
 
 def r2_key(sha: str, ext: str = "png") -> str:
@@ -91,6 +91,9 @@ TABLES: dict[str, TableSpec] = {t.name: t for t in (
     TableSpec("list_rows", ("src_path", "src_line"), has_doc=False),
     # AI 分析摘要（feedback/notes/<册>.jsonl：浅层、深搜、放行与不确定都写）一行一条，GM3 11-27；book、u、char 等由 raw 现算
     TableSpec("ai_notes", ("src_path", "src_line"), has_doc=False),
+    # 超过 D1 单行上限、又不是逐行 json 的整文件（目前只有两张超大整张待审单），按固定字数切块，一块一行，GM4 11-27；
+    # 还原＝按块号直接拼（不加换行），source_files.n_lines＝块数、final_newline＝0
+    TableSpec("file_chunks", ("src_path", "src_line"), has_doc=False),
     TableSpec("files", ("src_path",)),
     TableSpec("glyph_sources", ("source_id",), has_doc=False),
     TableSpec("glyph_instances", ("instance_id",), has_doc=False, key_ordered=True),
@@ -128,6 +131,13 @@ PENDING_SUFFIX = ".items.jsonl"
 LIST_ROW_DATASETS = frozenset({"web", "opinions", "freeze", "ledger", "u_void"})
 PROOFING_SUFFIX = ".pending.json"
 ROW_MAX_BYTES = 1_800_000
+#: file_chunks 每块的字符数：按 UTF-8 最坏 4 字节也只有 1.2 MB，在 D1 单行 2 MB 以内
+CHUNK_CHARS = 300_000
+
+
+def split_chunks(text: str) -> list[str]:
+    """整文件按字符切块（拼回逐字节相同）；空文件 → 0 块。"""
+    return [text[i:i + CHUNK_CHARS] for i in range(0, len(text), CHUNK_CHARS)]
 
 
 def excluded(rel: str) -> bool:
@@ -167,13 +177,13 @@ def classify(rel: str) -> str | None:
         if len(parts) >= 3 and parts[1] == "lists":
             return "files"
         if len(parts) == 3 and parts[1] == "candidates":
-            return "files"
+            return "list_rows" if p.suffix == ".jsonl" else "files"     # 一次性候选清单，逐行进 list_rows（GM4 11-27 清退 files）
         if len(parts) == 3 and parts[1] == "rulings" and p.suffix in (".yaml", ".yml"):
             return "files"                 # 裁定版本等价登记表 ver_equiv.yaml（GM4 方案②，cv 读、随中心库同步，11-24）
         if len(parts) == 3 and parts[1] == "notes" and p.suffix == ".jsonl":
             return "ai_notes"              # AI 分析摘要／各级查证备注（trace），逐行进 ai_notes 表（GM3 11-27）；管线不读
         if len(parts) == 2:
-            return "files"
+            return "list_rows" if p.suffix == ".jsonl" else "files"     # feedback/*.jsonl 的零散台账（promote、抽样裁定等）
         return None
     if len(parts) >= 3 and parts[0] == "review" and parts[1] == "batches":
         return "files"
@@ -268,7 +278,16 @@ def _list_row(rec, rel, line):
     p = PurePosixPath(rel)
     # web/<书>/x.jsonl、opinions/<书>/x.jsonl 的书在第四段；freeze/<册>.jsonl 等没有书目录
     book = p.parts[3] if len(p.parts) >= 5 else None
-    return (rel, line), {"dataset": p.parts[2], "book": book, "name": p.stem}
+    if p.parts[1] == "lists":
+        dataset = p.parts[2]
+    else:                                  # candidates/x.jsonl、feedback/x.jsonl：没有 lists 层
+        dataset = p.parts[1] if len(p.parts) == 3 else "feedback_misc"
+        book = None
+    return (rel, line), {"dataset": dataset, "book": book, "name": p.stem}
+
+
+def _chunk(rec, rel, line):
+    return (rel, line), {}
 
 
 def _ai_note(rec, rel, line):
@@ -310,6 +329,7 @@ LINE_PARSERS: dict[str, Callable] = {
     "pending_items": _pending,
     "list_rows": _list_row,
     "ai_notes": _ai_note,
+    "file_chunks": _chunk,
     "glyph_sources": _glyph(
         ("source_id", "collection", "title", "volume", "edition_tag", "script_style", "era",
          "cols_per_page", "chars_per_col", "pipeline_version", "notes", "kind", "created_at"),
@@ -377,8 +397,20 @@ def scan_files(files: Iterable[tuple[str, Callable[[], bytes]]], ws_dir: str) ->
         elif tbl == "list_rows" and any(len(ln) > ROW_MAX_BYTES for ln in data.split(b"\n")):
             res.problems.append(f"{rel}: 有一行超过 {ROW_MAX_BYTES} 字节（D1 单行 2 MB 上限），整文件进 files")
             tbl = "files"
+        if tbl == "files" and rel.endswith(PROOFING_SUFFIX) and "/lists/proofing/" in rel and _is_utf8(data) \
+                and len(data) >= ROW_MAX_BYTES // 2:
+            # 超大整张待审单（逐行进不了 list_rows）：按块进 file_chunks，不再占 files（GM4 11-27）
+            tbl = "file_chunks"
         if tbl in BLOB_TABLES:
             rows.append(Row(tbl, (rel,), {"sha256": fsha, "bytes": len(data)}, fsha, rel))
+            continue
+        if tbl == "file_chunks":
+            chunks = split_chunks(data.decode("utf-8"))
+            rows.append(Row("source_files", (rel,),
+                            {"tbl": tbl, "sha256": fsha, "bytes": len(data),
+                             "n_lines": len(chunks), "final_newline": False}, fsha, rel))
+            for i, ch in enumerate(chunks):
+                rows.append(Row(tbl, (rel, i), {}, ch, rel, i))
             continue
         lines, final = split_lines(data)
         rows.append(Row("source_files", (rel,),

@@ -451,3 +451,61 @@ def test_warm_if_cold_runs_parallel_warm_only_when_cache_empty(tmp_path, monkeyp
         (d / f"{i}.png").write_bytes(b"1")
     calls.clear()
     assert land.warm_if_cold(tmp_path, "b") is False and not calls
+
+
+_NOTE = {"book": "b", "u": 7, "cell": "b:1:2:3", "cands": ["甲", "乙"],
+         "trace": [{"level": "L2", "char": "甲", "conf": "high", "why": "文意", "status": "pending"}]}
+
+
+def test_merge_cards_attaches_notes_by_book_u():
+    from guji_manager import land_enrich as E
+    from guji_manager.review.dian_trace import find_note  # noqa: F401
+    idx = {("u", "b", 7): _NOTE}
+    out = E.merge_cards([{"cell": "1:2:3", "review": "pending"}], {}, idx, {"1:2:3": 7}, "b")
+    assert out[0]["ctx"]["c"] == "甲" and out[0]["ctx"]["src"] == "punct_llm"
+    assert E.merge_cards([{"cell": "1:2:3"}], {}, idx, {"1:2:3": 8}, "b")[0].get("ctx") is None
+
+
+def test_hand_item_backfills_ai_without_touching_other_keys(tmp_path):
+    s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
+    s.put(None, op="open", by="x", at="2026-11-01", id="pi_1", cell="1:2:3", fp="f", state="open",
+          doc={"why": ["人工"], "review": "pending"}, src="human:qtw-web")
+    s.save()
+    s = P.ItemStore(s.path, "t", "001")
+    P.reconcile(s, [{"cell": "1:2:3", "review": "pending", "why": ["机器"], "ai": {"s": "摘要"}, "dnote": "n"}],
+                src="land:b", fps={"1:2:3": "f"}, keep_src=land.HAND_SRC, fp_reopen=False)
+    d = s.find("1:2:3")[0]["doc"]
+    assert d["ai"] == {"s": "摘要"} and d["dnote"] == "n" and d["why"] == ["人工"]
+
+
+def test_attach_dian_finds_note_from_card_id(monkeypatch):
+    from guji_manager.review import dian_attach as DA
+    import guji_manager.u_stamp as U
+    monkeypatch.setattr(U, "u_map", lambda book, ids: {i: 7 for i in ids})
+    cards, n = DA.attach_dian([{"id": "b:1:2:3"}], {("u", "b", 7): _NOTE})
+    assert n == 1 and cards[0]["dian"]["char"] == "甲"
+
+
+def test_with_released_adds_header_from_notes(tmp_path, monkeypatch):
+    import guji_manager.land_enrich as E
+    row = {"book": "b", "u": 9, "cell": "b:5:5:5", "cands": ["甲"],
+           "trace": [{"level": "L2", "char": "甲", "conf": "high", "why": "文意", "status": "released"}]}
+    monkeypatch.setattr(E, "load_dian", lambda ws, book: {("u", "b", 9): row})
+    sheet = land.with_released(tmp_path, "b", {"cells": [{"cell": "1:2:3"}]})
+    assert [r["u"] for r in sheet["released"]] == [9]
+    sheet2 = land.with_released(tmp_path, "b", {"cells": [{"cell": "5:5:5"}]})        # 已在待审格里的不重复
+    assert "released" not in sheet2
+
+
+def test_ai_summary_change_counts_as_changed_and_applies(tmp_path, monkeypatch):
+    import guji_manager.datastore.workcopy as W
+    monkeypatch.setattr(W, "data_dir", lambda ws: tmp_path / "data")
+    ws = tmp_path / "ws"
+    data = tmp_path / "data"
+    s = P.ItemStore(P.items_path(data, "t", "005"), "t", "005")
+    P.reconcile(s, [_cell("1:1:1")], src="seed", fps={"1:1:1": "f"})
+    s.save()
+    cells = [{**_cell("1:1:1"), "ai": {"s": "摘要"}, "dnote": "n"}]
+    r = land.land(ws, "vol05", text_id="t", chapter="005", res={"cells": cells, "fps": {"1:1:1": "f"}, "digest": "d2"},
+                  apply=False, by="x")
+    assert r["changed"] and r["alt_changed"] == ["1:1:1"]

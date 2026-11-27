@@ -183,7 +183,7 @@ def test_list_rows_import_verify_and_materialize(repo, conn, tmp_path):
 
 
 def test_proofing_sheet_rows_and_oversize(repo, conn, tmp_path):
-    """整张待审单一行一个 json 对象进 list_rows；一行超过 D1 单行上限的退回 files（11-26）。"""
+    """整张待审单一行一个 json 对象进 list_rows；一行超过 D1 单行上限的按块进 file_chunks（11-27）。"""
     from guji_manager.datastore import scope
     from guji_manager.datastore.importer import import_commit
     from guji_manager.datastore.materialize import materialize
@@ -202,9 +202,34 @@ def test_proofing_sheet_rows_and_oversize(repo, conn, tmp_path):
     assert tuple(row) == ("proofing", "96mid1ogzk", "001.pending")
     tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchall())
     assert tbls == {"feedback/lists/proofing/96mid1ogzk/001.pending.json": "list_rows",
-                    "feedback/lists/proofing/96mid1ogzk/002.pending.json": "files"}
-    # 超行上限的整份进 files（正文在 R2，测试替身读不回，故不对它做 verify／materialize）
-    assert conn.execute("SELECT body_r2 FROM files WHERE src_path LIKE '%002.pending.json'").fetchone()[0] == 1
+                    "feedback/lists/proofing/96mid1ogzk/002.pending.json": "file_chunks"}   # 超行上限的整份按块进 file_chunks（11-27）
+
+
+def test_proofing_oversize_sheet_chunks(repo, conn, tmp_path):
+    """超行上限的整张待审单（单行或缩进多行）按块进 file_chunks，不进 files；还原与核对逐字节同（GM4 11-27）。"""
+    from guji_manager.datastore import scope
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _base()
+    one = "W/feedback/lists/proofing/96mid1ogzk/002.pending.json"
+    multi = "W/feedback/lists/proofing/96mid1ogzk/003.pending.json"
+    f[one] = (_line(rev=3, blob="師" * (scope.ROW_MAX_BYTES + 10)) + "\n").encode()
+    f[multi] = json.dumps({"rev": 3, "cells": [{"c": "x" * 2000, "i": i} for i in range(1000)]}, ensure_ascii=False, indent=2).encode()
+    c1 = _commit(repo, f, "c1")
+    import_commit(conn, repo, c1)
+    tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchall())
+    assert set(tbls.values()) == {"file_chunks"}
+    assert conn.execute("SELECT count(*) FROM files WHERE src_path LIKE 'feedback/lists/proofing/%'").fetchone()[0] == 0
+    assert conn.execute("SELECT max(length(raw)) FROM file_chunks").fetchone()[0] <= scope.CHUNK_CHARS
+    rep = verify_commit(conn, repo, c1)
+    assert rep["ok"], rep["workspaces"]["tws"]["mismatches"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
+    for rel in (one, multi):
+        assert (out / rel[2:]).read_bytes() == f[rel]
 
 
 def test_proofing_sheet_roundtrip(repo, conn, tmp_path):
@@ -252,3 +277,28 @@ def test_ai_notes_import_and_materialize(repo, conn, tmp_path):
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/notes/",), with_images=False)
     assert (out / NOTE[2:]).read_bytes() == f[NOTE]
+
+
+def test_misc_jsonl_rows(repo, conn, tmp_path):
+    """candidates/*.jsonl 与 feedback/*.jsonl 逐行进 list_rows（11-27）；tsv／非 jsonl 仍整文件。"""
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.scope import classify
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    assert classify("feedback/candidates/a.jsonl") == "list_rows"
+    assert classify("feedback/promote.jsonl") == "list_rows"
+    assert classify("feedback/lists/known-errors.tsv") == "files"
+    f = _base()
+    f["W/feedback/candidates/a.jsonl"] = (_line(x=1) + "\n" + _line(x=2) + "\n").encode()
+    f["W/feedback/promote.jsonl"] = (_line(y=1) + "\n").encode()
+    c1 = _commit(repo, f, "c1")
+    import_commit(conn, repo, c1)
+    rows = conn.execute("SELECT dataset, book, name FROM list_rows ORDER BY src_path, src_line").fetchall()
+    assert [tuple(r) for r in rows] == [("candidates", None, "a"), ("candidates", None, "a"), ("feedback_misc", None, "promote")]
+    assert verify_commit(conn, repo, c1)["ok"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/",), with_images=False)
+    for rel in ("W/feedback/candidates/a.jsonl", "W/feedback/promote.jsonl"):
+        assert (out / rel[2:]).read_bytes() == f[rel]

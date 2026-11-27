@@ -167,3 +167,18 @@ def test_open_store_root_and_ids(tmp_path):
     i = S.make_id("machine:l1", "k", 2)
     assert i.startswith("op_machine-l1_") and i.endswith("_2") and S.ID_RE.match(i)
     assert S.norm_class("B'") == "B′"
+
+
+def test_text_versions_new_name_and_old_fallback(tmp_path):
+    """text_versions 写成一行紧凑 json（text_versions.jsonl，才能进 list_rows）；老名字 .json 仍读得到（GM4 11-27）。"""
+    from guji_manager.opinions.store import LocalBackend, OpinionStore
+    root = tmp_path / "bk"
+    root.mkdir()
+    (root / "text_versions.json").write_text('{\n "v1": {"a": 1}\n}\n', encoding="utf-8")
+    st = OpinionStore("bk", LocalBackend(root)).load()
+    assert st.text_versions == {"v1": {"a": 1}}
+    assert st.set_text_versions({"v1": {"a": 1}, "v2": {}})
+    st.save()
+    new = (root / "text_versions.jsonl").read_text(encoding="utf-8")
+    assert new.count("\n") == 1 and new.endswith("\n")
+    assert OpinionStore("bk", LocalBackend(root)).load().text_versions == {"v1": {"a": 1}, "v2": {}}

@@ -455,6 +455,18 @@ CREATE TABLE IF NOT EXISTS ai_notes (
   PRIMARY KEY ("ws", "src_path", "src_line"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
+CREATE TABLE IF NOT EXISTS file_chunks (
+  "ws" TEXT NOT NULL,
+  "src_path" TEXT NOT NULL,
+  "src_line" INTEGER NOT NULL,
+  "raw" TEXT NOT NULL,
+  "rev" INTEGER NOT NULL,
+  "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  "row_sha" TEXT,
+  -- 超过 D1 单行上限、又不是逐行 json 的整文件（两张超大整张待审单）按 30 万字符切块，src_line＝块号；拼回不加换行，GM4 11-27
+  PRIMARY KEY ("ws", "src_path", "src_line"),
+  FOREIGN KEY (ws) REFERENCES workspaces(ws)
+);
 CREATE TABLE IF NOT EXISTS verdicts (
   "ws" TEXT NOT NULL,
   "src_path" TEXT NOT NULL,

@@ -9,6 +9,7 @@ P1 只实现 `gold_add`（事件 → 金标条目），另外两个（glyphdb_ad
 from __future__ import annotations
 
 import json
+import os
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,7 @@ class ConsumeResult:
     no_lib: int = 0            # 正常裁决但按 no_glyph_lib 标志不建库的条数（非错误）
     occluded: int = 0          # 其中：印章遮挡格（不论事件 no_glyph_lib 是什么，一律不建库）
     unbound: int = 0           # glyphdb_admit：绑定判不该采信（重切后待审／作废），不取图、不进库（非错误）
+    no_products: int = 0       # glyphdb_admit：本机没有这页现行切分产物、绑定算不出，不取图（换到有产物的机器再消费）
     superseded: int = 0        # glyphdb_admit：库里这一格已是更晚的人裁，旧票不再覆盖（非错误）
     withdrawn: int = 0         # glyphdb_admit：更晚的人裁判切坏／非字／破损，撤掉库里旧的人裁刻例
     frame_heavy: int = 0       # glyphdb_admit：字块带框重（同字对照，`seg_defect.lib_frame_heavy`），不进库（也计入 no_lib）
@@ -50,7 +52,7 @@ class ConsumeResult:
     def to_dict(self) -> dict:
         return {"consumer": self.consumer, "events": self.n_events, "added": self.added,
                 "updated": self.updated, "skipped": self.skipped, "no_lib": self.no_lib,
-                "occluded": self.occluded, "unbound": self.unbound,
+                "occluded": self.occluded, "unbound": self.unbound, "no_products": self.no_products,
                 "superseded": self.superseded, "withdrawn": self.withdrawn,
                 "frame_heavy": self.frame_heavy, "frame_heavy_keys": self.frame_heavy_keys,
                 "errors": self.errors}
@@ -585,6 +587,9 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
             res.occluded += 1
             continue
         patch_from = _bound_key(e, book, bind_of, bind_memo)
+        if patch_from == NO_PRODUCTS:
+            res.no_products += 1
+            continue
         if patch_from is None:
             res.unbound += 1
             continue
@@ -750,20 +755,36 @@ def _apply_approx(db, db_id: str, shape: str, e: Event) -> None:
         db.clear_approx(db_id, at=e.ts)
 
 
-def _bindings_lookup(book: str, page: int) -> dict[str, dict]:
-    """(book, page) → 该页裁决事件的绑定行 `{event_id: row}`；这页没有现行切分产物、或算不出 → 空
-    （照旧按原键）。没有切分时绑定一律判 void／unanchored，那不是「裁决不该采信」，是本机没产物
-    （`glyph-db rebuild` 补放人裁、只有字块缓存的机器）。"""
+#: 本机没有这页的现行切分产物、算不出绑定（与「查到了、但没有这条事件的行」不同）。
+NO_BINDINGS = None
+
+
+def no_products_ok() -> bool:
+    """置 `GUJI_ADMIT_NO_PRODUCTS_OK=1` 才允许无产物时按原键取图（测试、明知缓存与裁决同版时用）。"""
+    return os.environ.get("GUJI_ADMIT_NO_PRODUCTS_OK", "") not in ("", "0")
+
+
+def _bindings_lookup(book: str, page: int) -> dict[str, dict] | None:
+    """(book, page) → 该页裁决事件的绑定行 `{event_id: row}`；这页没有现行切分产物、或算不出 → `NO_BINDINGS`（None）。
+    没有切分时绑定一律判 void／unanchored，那不是「裁决不该采信」，是本机没产物
+    （`glyph-db rebuild` 补放人裁、只有字块缓存的机器）。
+
+    ⚠️ 以前这里返回 `{}`，`_bound_key` 当「没有这条的绑定」按原键取图：字块缓存是现行切分的，
+    事件键是裁决当时（更早切分）的，换过切分的页就贴错图（史記 11-26 回库 7,257 例，
+    v2:03:94:5:2b 收成「應」图上是「故」）。现在无产物就是无产物：默认不取图、不进库，计 `res.no_products`。"""
     try:
         from .._cv import ProductStore
         from .._cv import _cells_versions, book_bindings
         store = ProductStore()
         v = _cells_versions(book, page, store)
         if not v or v[-1][0] != "current":
-            return {}
+            return NO_BINDINGS
         return book_bindings(book, store=store, pages=[page])
     except Exception:
-        return {}
+        return NO_BINDINGS
+
+
+NO_PRODUCTS = "\0no_products"
 
 
 def _bound_key(e: Event, book: str, bindings_of, memo: dict) -> str | None:
@@ -775,7 +796,10 @@ def _bound_key(e: Event, book: str, bindings_of, memo: dict) -> str | None:
     bk, page = book or parts[0], int(parts[1])
     if (bk, page) not in memo:
         memo[(bk, page)] = bindings_of(bk, page)
-    row = memo[(bk, page)].get(e.id)
+    binds = memo[(bk, page)]
+    if binds is NO_BINDINGS:
+        return e.target.key if no_products_ok() else NO_PRODUCTS
+    row = binds.get(e.id)
     if row is None:
         return e.target.key
     return usable(row)

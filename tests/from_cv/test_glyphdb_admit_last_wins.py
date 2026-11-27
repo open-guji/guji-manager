@@ -160,3 +160,15 @@ def test_different_char_auto_still_evicts_and_admits(auto_db):
     r = glyphdb_admit([(_ev({"v": "confirm", "shape": "由"}, "2026-11-09T00:00:00Z", "diff"), None)],
                       db_path=str(auto_db))
     assert _prov(auto_db) == "human" and _lib(auto_db) == "由" and r.updated == 1
+
+
+def test_no_products_refuses_original_key(db, monkeypatch):
+    """本机没有这页现行切分产物（只有字块缓存）：不按原键取图（史記 11-26 回库贴错图），计 no_products。"""
+    monkeypatch.delenv("GUJI_ADMIT_NO_PRODUCTS_OK", raising=False)
+    e = _ev({"v": "confirm", "shape": "由"}, "2026-10-24T18:15:12Z", "new")
+    r = glyphdb_admit([(e, None)], db_path=str(db), bindings_of=lambda b, p: None)
+    assert r.no_products == 1 and r.added == 0 and not r.errors
+    assert _lib(db) == "之"
+    # 查到了页、只是没有这条事件的行：照旧按原键（缓存在不在另说，不贴错图的前提是页有产物）
+    r2 = glyphdb_admit([(e, None)], db_path=str(db), bindings_of=lambda b, p: {})
+    assert r2.no_products == 0
