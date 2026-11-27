@@ -77,6 +77,8 @@ def test_cv_roots_follow_central_marker(tmp_path, monkeypatch):
     monkeypatch.setenv("GUJI_DATA_HOME", str(tmp_path / "home"))
     for k in ("GUJI_PRODUCTS_DIR", "GUJI_FEEDBACK_DIR", "GUJI_DATA_BRANCH"):
         monkeypatch.delenv(k, raising=False)
+    import sys
+    monkeypatch.setattr(R, "VENV", Path(sys.executable).parent.parent)   # CI 上没有执行机的 venv，用跑测试的解释器
     j = object.__new__(R.Job)
     j.ws, j.dry, j.dir, j.spec, j.id, j.prep_override = str(ws), False, tmp_path, {}, 1, None
     j.ev = lambda *a, **k: None
