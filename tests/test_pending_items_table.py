@@ -174,7 +174,7 @@ def test_list_rows_import_verify_and_materialize(repo, conn, tmp_path):
                                         ("opinions", "96mid1ogzk", "opinions", "op_1", 5),
                                         ("opinions", "96mid1ogzk", "opinions", "op_2", None)]
     left = {r[0] for r in conn.execute("SELECT src_path FROM files WHERE kind = 'list'")}
-    assert left == {"feedback/lists/stale_verdicts.tsv", "feedback/lists/web/96mid1ogzk/bad.jsonl", "feedback/lists/x.txt"}
+    assert left == {"feedback/lists/web/96mid1ogzk/bad.jsonl", "feedback/lists/x.txt"}      # stale_verdicts.tsv 按块进 file_chunks（11-27）
     assert verify_commit(conn, repo, c1)["ok"]
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
@@ -303,4 +303,29 @@ def test_misc_jsonl_rows(repo, conn, tmp_path):
     out = tmp_path / "out"
     materialize(SqlSource(conn), "tws", out, prefixes=("feedback/",), with_images=False)
     for rel in ("W/feedback/candidates/a.jsonl", "W/feedback/promote.jsonl"):
+        assert (out / rel[2:]).read_bytes() == f[rel]
+
+
+def test_tsv_json_lists_go_to_file_chunks(repo, conn, tmp_path):
+    """feedback/lists 下的 .tsv／.json 小清单按块进 file_chunks，往返逐字节同（11-27，清退 files）。"""
+    from guji_manager.datastore.importer import import_commit
+    from guji_manager.datastore.materialize import materialize
+    from guji_manager.datastore.sqlsource import SqlSource
+    from guji_manager.datastore.verify import verify_commit
+
+    f = _base()
+    f["W/feedback/lists/stale_verdicts.tsv"] = "vol02:3:3:1\t20260925T2341\t用户 2026-09-26\n".encode()
+    f["W/feedback/lists/known-errors.tsv"] = "cell\tshown\nvol01:9:7:17\t曰\n".encode()
+    f["W/feedback/lists/opinions/96mid1ogzk/text_versions.json"] = b'{\n "v1": 1\n}\n'
+    c1 = _commit(repo, f, "c1")
+    import_commit(conn, repo, c1)
+    tbls = dict(conn.execute("SELECT src_path, tbl FROM source_files WHERE src_path LIKE 'feedback/lists/%'").fetchall())
+    assert {k: v for k, v in tbls.items() if k != "feedback/lists/x.txt"} == {
+        "feedback/lists/stale_verdicts.tsv": "file_chunks", "feedback/lists/known-errors.tsv": "file_chunks",
+        "feedback/lists/opinions/96mid1ogzk/text_versions.json": "file_chunks"}
+    assert verify_commit(conn, repo, c1)["ok"]
+    out = tmp_path / "out"
+    materialize(SqlSource(conn), "tws", out, prefixes=("feedback/lists/",), with_images=False)
+    for rel in ("W/feedback/lists/stale_verdicts.tsv", "W/feedback/lists/known-errors.tsv",
+                "W/feedback/lists/opinions/96mid1ogzk/text_versions.json"):
         assert (out / rel[2:]).read_bytes() == f[rel]
