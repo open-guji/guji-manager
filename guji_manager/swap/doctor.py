@@ -1,9 +1,10 @@
 """换单开跑前自检：``guji swap doctor -w <工作区> --book-text <检出> [--cv <cv 检出>] [--books …] [--fix] [--env]``
 
 ZM 11-18 换单提速第 3 项（A31）：殿本换单每次开新容器都要踩一遍同样的坑——PATH 上没有 guji、PYTHONPATH 指错 cv、
-少令牌、``-w`` 写成工作区 id 而不是路径、book-text 稀疏检出没有本书目录或 scripts、引擎 worktree 里没有 CNN 权重
-（apply 里 CNN alt 才炸，已经跑了十几分钟）。这里一次查完，缺啥列啥；``--fix`` 只做不碰数据的补齐：
-取 cv 与各引擎 worktree 缺的模型（``guji model fetch`` 同一个函数）、book-text 稀疏检出补上本书目录与 scripts。
+少令牌、``-w`` 写成工作区 id 而不是路径、book-text 稀疏检出没有本书目录或 scripts、cv 里没有 CNN 权重
+（算相似字时才炸，已经跑了十几分钟）。这里一次查完，缺啥列啥；``--fix`` 只做不碰数据的补齐：
+取 cv 缺的模型（``guji model fetch`` 同一个函数）、book-text 稀疏检出补上本书目录与 scripts。
+2026-11-27：换单改走 ``guji land``，不再用 ``auto_cycle`` 与各册引擎 worktree，所以不再查引擎。
 ``--env`` 打印可 ``eval`` 的 export 行（PATH、PYTHONPATH、GUJI_CV、GUJI_WORKSPACE、PYTHONIOENCODING）。
 
 令牌不在这里取：先按项目规矩 ``eval "$(python3 <guji-dev-secret>/gsecrets.py export)"``。
@@ -17,7 +18,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-ENGINES = Path(os.environ.get("GUJI_ENGINES_DIR") or Path.home() / ".guji-engines")
 TOKENS = (("GUJI_DATA_TOKEN", "中心库读写（db pull/sync、取包）", ("GUJI_DATA_TOKEN", "GUJI_DATA_TOKEN_PROD")),
           ("GH_TOKEN", "触发网站发布 proofing-sync、推 book-text", ("GH_TOKEN", "GITHUB_TOKEN")),
           )
@@ -72,8 +72,8 @@ def check_workspace(ws_arg: str, r: Report) -> Path | None:
 
 def check_cv(cv_arg: str | None, r: Report) -> Path | None:
     cv = Path(cv_arg).expanduser().resolve() if cv_arg else None
-    if not cv or not (cv / "scripts" / "zhengli" / "auto_cycle.py").exists():
-        r.bad("cv 检出", f"{cv} 下没有 scripts/zhengli/auto_cycle.py：--cv 或 GUJI_CV 指到 open-guji-cv 检出")
+    if not cv or not (cv / "open_guji_cv" / "__init__.py").exists():
+        r.bad("cv 检出", f"{cv} 下没有 open_guji_cv 包：--cv 或 GUJI_CV 指到 open-guji-cv 检出")
         return None
     try:
         from .._cv import cv_repo
@@ -82,7 +82,7 @@ def check_cv(cv_arg: str | None, r: Report) -> Path | None:
         r.bad("cv 包", f"import open_guji_cv 失败（{e}）：uv pip install -e {cv}，或 PYTHONPATH={cv}")
         return cv
     if got != cv:
-        r.bad("cv 包", f"Python 用的 open_guji_cv 在 {got}，不是 --cv {cv}：auto_cycle 的子命令会用错版本。"
+        r.bad("cv 包", f"Python 用的 open_guji_cv 在 {got}，不是 --cv {cv}：land／cv 子命令会用错版本。"
                        f"PYTHONPATH={cv}（或在 {cv} 里 uv pip install -e .）")
     else:
         r.ok("cv 包", str(got))
@@ -198,52 +198,6 @@ def check_models(repo: Path, what: str, r: Report, fix: bool) -> None:
         r.ok(what, str(repo))
 
 
-def engines_for(ws: Path, books: list[str]) -> dict[str, list[str]]:
-    """各册 ★main 包的 cv_commit → 册。取不到的册记在 '?' 下。"""
-    import json
-    os.environ.setdefault("GUJI_WORKSPACE", str(ws))
-    from ..datastore import packs as PK
-    out: dict[str, list[str]] = {}
-    src = PK._client()
-    for b in books:
-        try:
-            lab = PK.main_label(b, src)
-            man = json.loads(PK._call(src, "GET", f"{PK._prefix(PK._ws_name(), b)}/{lab}/manifest.json", raw=True)) if lab else {}
-            out.setdefault(man.get("cv_commit") or "?", []).append(b)
-        except Exception:  # noqa: BLE001
-            out.setdefault("?", []).append(b)
-    return out
-
-
-def ensure_engine(cv: Path, commit: str) -> Path | None:
-    d = ENGINES / commit[:12]
-    if (d / ".git").exists():
-        return d
-    ENGINES.mkdir(parents=True, exist_ok=True)
-    if subprocess.run(["git", "cat-file", "-e", commit + "^{commit}"], cwd=cv, capture_output=True).returncode:
-        subprocess.run(["git", "fetch", "-q", "--depth=500", "origin", "dev"], cwd=cv, capture_output=True)
-    ok = subprocess.run(["git", "worktree", "add", "-f", str(d), commit], cwd=cv, capture_output=True).returncode == 0
-    return d if ok else None
-
-
-def check_engines(ws: Path, cv: Path, books: list[str], r: Report, fix: bool) -> None:
-    for commit, bs in engines_for(ws, books).items():
-        tag = f"引擎 {commit[:9]}（{','.join(bs[:4])}{'…' if len(bs) > 4 else ''}）"
-        if commit == "?":
-            r.bad(tag, "取不到 ★main 包或 manifest 没有 cv_commit（auto_cycle 会判 blocked）")
-            continue
-        d = ENGINES / commit[:12]
-        if not (d / ".git").exists():
-            if not fix:
-                r.warn(tag, f"还没有 worktree {d}（auto_cycle 会自己建；--fix 先建好并取模型）")
-                continue
-            d = ensure_engine(cv, commit)
-            if not d:
-                r.bad(tag, f"建不了 worktree（cv 检出 {cv} 里取不到这个提交）")
-                continue
-        check_models(d, tag, r, fix)
-
-
 def check_disk(ws: Path, r: Report) -> None:
     free = shutil.disk_usage(ws).free / 2 ** 30
     packs = ws / "_packs"
@@ -284,8 +238,6 @@ def cmd_doctor(a, books: list[str]) -> int:
     check_book_text(a.book_text, a.text_id, r, fix)
     if cv:
         check_models(cv, "cv 模型", r, fix)
-    if ws and cv and books:
-        check_engines(ws, cv, books, r, fix)
     print(r.text())
     if getattr(a, "env", False):
         print("\n# 开跑前 eval 下面几行（令牌另由 gsecrets.py export）：")
