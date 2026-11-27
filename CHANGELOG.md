@@ -6,6 +6,13 @@
 
 ## [未发版]
 
+## [0.6.48] - 2026-11-27
+
+- 发版缘由：网站会员号迁移（voter 36 位 uid → 8 位会员号，旧票带 voter_prev），manager 要先认 voter_prev 网站才能真跑迁移。
+- PATCH（CV0 11-27，网站会员号迁移）：网站把会员 voter 从 36 位 uid 换成 8 位会员号，迁移过的票带 `voter_prev`＝原 uid；新增 `voter.voter_ident`（有 `voter_prev` 按它认），同格同人去重、人裁事件「意见来源」、u 回填配票都改用它，迁移前后同一会员的票认成同一人，旧键清掉前不会算两票。
+- PATCH（11-27，GM2，汉书 WYG 报）：`cos-check`／close-check 第 15 项抽页时另算摆位分（两边墨迹各落在对方膨胀一格内的比例取小，≥0.95，不放宽），墨迹 IoU 线可由书配置 `cos_iou_min`（或 `--iou-min`）放宽，缺省仍 0.9。汉书小注密的页 1600 宽 IoU 0.88–0.90 是笔画偏粗、摆位 ≥0.986，不是错位。
+- PATCH（11-27，CV2）：review-pages `cut_check` 1.4.0：折线卡（项带 `poly`）加「这条线不对」按钮，不拖线也能标错，记 `label=bad`、`bad:["poly"]`；Sheldon 审史記折线页时反映 1.3.0 折线卡只有「看不出」、没法点错。旧项不受影响。
+
 ## [0.6.47] - 2026-11-27
 
 - 发版缘由：清退 files——feedback/lists 下 tsv／json 小清单按块进 `file_chunks`（#1130），带上 #1134 与 wiki 更新（#1133–#1140）。PATCH。

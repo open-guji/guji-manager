@@ -94,6 +94,9 @@ function card(it,i){
   const qb=document.createElement("div");qb.className="qb";
   if(it.poly){const b=document.createElement("button");b.type="button";b.dataset.v="fix";b.textContent="还原成原线";
     b.onclick=()=>{S.clear(it.id);const w=box.querySelector(".win svg.pe");w&&w.__draw();paint(box,it);stat()};qb.appendChild(b)}
+  // 1.4.0：折线卡加「这条线不对」（不拖线也能标错；记 label=bad、bad:["poly"]）
+  if(it.poly){const b=document.createElement("button");b.type="button";b.dataset.v="bad";b.textContent="这条线不对";
+    b.onclick=()=>{const r=lab(it);if(r&&r.v==="bad")S.clear(it.id);else S.set(it.id,{v:"bad",bad:["poly"]});const w=box.querySelector(".win svg.pe");w&&w.__draw();paint(box,it);stat()};qb.appendChild(b)}
   for(const [v,t] of [["unsure","看不出"]]){const b=document.createElement("button");b.type="button";b.dataset.v=v;b.textContent=t;
     b.onclick=()=>{const r=lab(it);if(r&&r.v===v)S.clear(it.id);else S.set(it.id,{v});paint(box,it);stat()};qb.appendChild(b)}
   box.appendChild(qb);paint(box,it);return box;
