@@ -103,14 +103,22 @@ def human_deduct(store: P.ItemStore, cells: list[dict], human: set[str]) -> tupl
     return keep, drop
 
 
+#: 这些键有变要写（网站看得见的候选字、AI 摘要）；doc 里别的键只是噪声，不单独触发写
+VISIBLE_KEYS = ("alt", "ai", "dnote", "dout", "refs")
+
+
 def alt_changed(old: P.ItemStore, new: P.ItemStore, cells: list[str]) -> list[str]:
-    """doc 级改动里相似字（``alt``）有变的格：旧条目没有 alt、新有（出单时 audit alt 没跑，网站显示「机器没定出字」），或内容变了。"""
+    """doc 级改动里网站看得见的键有变的格：相似字（``alt``）空→有或变了（出单时 audit alt 没跑，网站显示「机器没定出字」），
+    点校 AI 摘要（``ai``／``dnote``／``dout``／``refs``，以及 src=punct_llm 的 ``ctx``）新增或变了（QTW 11-27：031 的 8 格摘要算进「改」却没写）。"""
     out = []
     for cell in cells:
         o, n = old.find(cell), new.find(cell)
         if not (o and n):
             continue
-        if ((o[0].get("doc") or {}).get("alt") or []) != ((n[0].get("doc") or {}).get("alt") or []):
+        od, nd = o[0].get("doc") or {}, n[0].get("doc") or {}
+        if any((od.get(k) or []) != (nd.get(k) or []) for k in ("alt",)) \
+                or any(od.get(k) != nd.get(k) for k in VISIBLE_KEYS[1:]) \
+                or ((nd.get("ctx") or {}).get("src") == "punct_llm" and od.get("ctx") != nd.get("ctx")):
             out.append(cell)
     return out
 
