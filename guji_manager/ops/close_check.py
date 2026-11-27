@@ -345,7 +345,7 @@ def _cos(book: str) -> dict:
     """国内书影（COS srcbw，1a 小步 `guji start source cos-tier`）：账在、对象数＝源图数、抽 3 个线上对象、抽 2 页 IoU。
     册没登记页表（老册、试验册）记 skip。"""
     from .._cv import sources as S
-    from ..cli_source import _locate, _src, _page_png_fn
+    from ..cli_source import _book_cfg, _locate, _page_png_fn, _src
     from ..datastore import cos_tier as C
     from ..datastore import pagemeta as PM
     src = _src()
@@ -356,7 +356,8 @@ def _cos(book: str) -> dict:
     table = S.read_table(src, book_id, vol)
     meta = PM.read_pagemeta(src, book_id, vol, int(table["rev"]))
     led = C.read_ledger(src, book_id, vol, int(table["rev"]))
-    errs = C.check(table, meta, led, online=3, iou=2, page_png=_page_png_fn(src))
+    errs = C.check(table, meta, led, online=3, iou=2, page_png=_page_png_fn(src),
+                   iou_min=_book_cfg(table).get("cos_iou_min"))
     if errs:
         return _item("15", "国内书影", FAIL, "；".join(errs[:3]) + (f" 等 {len(errs)} 条" if len(errs) > 3 else ""))
     return _item("15", "国内书影", PASS, f"{book_id}/{vol} r{int(table['rev']):03d}：{len(led['objects'])} 张，宽 {led['width']}")

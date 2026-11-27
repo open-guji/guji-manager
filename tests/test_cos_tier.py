@@ -194,3 +194,35 @@ def test_cos_put_refuses_non_srcbw(monkeypatch):
     monkeypatch.setenv("COS_BUCKET", "bk-1")
     with pytest.raises(C.GateError):
         C.Cos().put("iiif/bk/01/src/x/full/2400,/0/default.webp", b"x")
+
+
+def test_thick_strokes_fail_iou_but_not_alignment():
+    from PIL import ImageFilter
+    P = _bw_page(1000, 1500)
+    thick = P.filter(ImageFilter.MinFilter(7))          # 笔画加粗（小注密的书缩宽二值后偏粗）
+    s, _, _ = C.scaled_size(1000, 1500, 1000)
+    M = C.cos_matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]], s)
+    iou, al = C.ink_scores(_png(P), C.encode(C.to_bw(thick, 1000)), M)
+    assert iou < 0.9 and al >= C.ALIGN_MIN
+    shifted = list(M)
+    shifted[2] += 25
+    assert C.ink_scores(_png(P), C.encode(C.to_bw(P, 1000)), shifted)[1] < C.ALIGN_MIN
+
+
+def test_check_iou_min_from_book_config(tmp_path):
+    from PIL import ImageFilter
+    big = _bw_page(1000, 1500)
+    page = _png(big)
+    sha = hashlib.sha256(page).hexdigest()
+    t = {"book_id": "bk0003", "vol": "01", "rev": 1, "sources": [],
+         "pages": [{"seq": "0002", "page": 1, "sha256": sha, "w": 1000, "h": 1500}]}
+    m = {"v": 1, "pages": {"0002": {"src": {"id": f"sha256:{sha}", "w": 1000, "h": 1500},
+                                    "H": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]}}}
+    thick = C.encode(C.to_bw(big.filter(ImageFilter.MinFilter(7)), 3840))
+    objs, pages = C.plan(t, m, 3840)
+    objs["p0002"].update(bytes=len(thick), md5=hashlib.md5(thick).hexdigest())
+    led = C.make_ledger(t, m, 3840, "缺省", objs, pages, by="t", why="t", how="upload")
+    errs = C.check(t, m, led, iou=1, page_png=lambda s: page, get=lambda k: thick)
+    assert errs and "IoU" in errs[0] and "摆位" in errs[0]
+    iou = C.ink_scores(page, thick, pages["0002"]["matrix"])[0]
+    assert C.check(t, m, led, iou=1, page_png=lambda s: page, get=lambda k: thick, iou_min=iou - 0.01) == []

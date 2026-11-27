@@ -41,7 +41,8 @@ WYG_W = 1600                      # 文淵閣整套（用户 11-26 定：实测�
 WYG_MARK = "文淵閣四庫全書"         # 源件 Commons 标题里有这几个字就按文淵閣
 BW_THRESHOLD = 160                # 黑白源图缩小后的二值阈（同网站仓 wyg_src_tier）
 METHOD = 4                        # method 6 体积一样、慢 25 倍
-IOU_MIN = 0.9
+IOU_MIN = 0.9                     # 规格（A20）缺省；小注密的书在书配置写 `cos_iou_min` 放宽（汉书 11-27）
+ALIGN_MIN = 0.95                  # 摆位分（容 1 格），任何书都不放宽：错位的最后一道闸
 PUBLIC_BASE = os.environ.get("GUJI_COS_PUBLIC_BASE", "https://data.openguji.com")
 IMAGE_CACHE = "public, max-age=2592000"
 _LEDGER_RE = re.compile(r"r(\d{3,})\.cos\.v(\d+)\.json$")
@@ -510,12 +511,19 @@ def adopt(table: dict, meta: dict, width: int, *, get: Callable[[str], bytes | N
 # ─── 核 ────────────────────────────────────────────────────────────────
 
 def ink_iou(page_png: bytes, cos_webp: bytes, matrix: list[float], scale_w: int = 200) -> float:
-    """COS 整页图按 matrix 摆到页图坐标，与页图比墨迹 IoU（都缩到 scale_w 宽再比）。
+    """墨迹 IoU（见 `ink_scores`）。"""
+    return ink_scores(page_png, cos_webp, matrix, scale_w)[0]
 
-    比的是摆位，不是笔画粗细：缩到 200 宽，史記 1600 宽实测摆对 0.92–0.96，错 25 像素（约 1% 页宽）就跌到 0.25。"""
-    from PIL import Image
-    Image.MAX_IMAGE_PIXELS = None
+
+def ink_scores(page_png: bytes, cos_webp: bytes, matrix: list[float], scale_w: int = 200) -> tuple[float, float]:
+    """COS 整页图按 matrix 摆到页图坐标，与页图比墨迹，都缩到 scale_w 宽再比。返回 (IoU, 摆位分)。
+
+    IoU 同时受笔画粗细影响：缩宽后按 160 二值偏粗，史記 1600 宽实测摆对 0.92–0.96，汉书小注密的页 0.88–0.90
+    （放大看小注清楚、不错位，11-27）。摆位分＝两边墨迹各自落在对方膨胀一格范围里的比例取小者，不看粗细：
+    汉书摆对 ≥0.986，错 25 像素（约 1% 页宽）跌到 0.39–0.79，IoU 跌到 0.17–0.31。"""
     import numpy as np
+    from PIL import Image, ImageFilter
+    Image.MAX_IMAGE_PIXELS = None
     with Image.open(io.BytesIO(page_png)) as p:
         P = p.convert("L")
     with Image.open(io.BytesIO(cos_webp)) as c:
@@ -530,14 +538,21 @@ def ink_iou(page_png: bytes, cos_webp: bytes, matrix: list[float], scale_w: int 
     a = np.asarray(P.resize(size, Image.BOX)) < 200
     b = np.asarray(W.resize(size, Image.BOX)) < 200
     union = int((a | b).sum())
-    return 1.0 if union == 0 else float((a & b).sum()) / union
+    iou = 1.0 if union == 0 else float((a & b).sum()) / union
+
+    def grow(m):
+        return np.asarray(Image.fromarray(m.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(3))) > 0
+    na, nb = int(a.sum()), int(b.sum())
+    prec = 1.0 if nb == 0 else float((b & grow(a)).sum()) / nb
+    rec = 1.0 if na == 0 else float((a & grow(b)).sum()) / na
+    return iou, min(prec, rec)
 
 
 def check(table: dict, meta: dict | None, led: dict | None, *, online: int = 0, iou: int = 0,
           page_png: Callable[[str], bytes] | None = None, get: Callable[[str], bytes | None] = public_get,
-          seed: int = 0) -> list[str]:
+          seed: int = 0, iou_min: float | None = None) -> list[str]:
     """出口核：账在、对页表这一版、对象数＝旁车里的源图数、每页有 bim:cos；`online` 抽几个对象线上取回核 md5 与闸；
-    `iou` 抽几页核墨迹 IoU ≥ 0.9。返回问题列表（空＝过）。"""
+    `iou` 抽几页核墨迹 IoU ≥ `iou_min`（缺省 0.9，书配置 `cos_iou_min` 可放宽）且摆位分 ≥ 0.95（不放宽）。返回问题列表（空＝过）。"""
     import random
 
     from .pagemeta import table_sha
@@ -590,7 +605,10 @@ def check(table: dict, meta: dict | None, led: dict | None, *, online: int = 0, 
             if data is None:
                 errs.append(f"{tag} {s} 线上取不到，没法核 IoU")
                 continue
-            v = ink_iou(page_png(rows[s]["sha256"]), data, lp[s]["matrix"])
-            if v < IOU_MIN:
-                errs.append(f"{tag} {s} 墨迹 IoU {v:.3f} < {IOU_MIN}")
+            v, al = ink_scores(page_png(rows[s]["sha256"]), data, lp[s]["matrix"])
+            lim = IOU_MIN if iou_min is None else float(iou_min)
+            if al < ALIGN_MIN:
+                errs.append(f"{tag} {s} 摆位分 {al:.3f} < {ALIGN_MIN}（COS 图与页图错位）")
+            elif v < lim:
+                errs.append(f"{tag} {s} 墨迹 IoU {v:.3f} < {lim}（摆位 {al:.3f} 没错；小注密的书可在书配置写 cos_iou_min）")
     return errs
