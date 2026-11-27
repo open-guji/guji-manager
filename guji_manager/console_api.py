@@ -221,6 +221,8 @@ _EXPORTS: dict[str, tuple[str, str | None]] = {
     "cutline_default_mode": ("guji_manager.review.cutline_default", 'cutline_default_mode'),
     # review.event_write
     "write_events": ("guji_manager.review.event_write", 'write_events'),
+    # feedback.levels：裁定事件来源三字段的统一取法（控制台写 confirm 时用，清理计划 2.4）
+    "provenance": ("guji_manager.feedback.levels", 'provenance'),
     # review.group_view
     "group_view": ("guji_manager.review.group_view", 'group_view'),
     # review.invert_cards

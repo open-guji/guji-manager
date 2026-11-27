@@ -65,6 +65,35 @@ def product_anchor(products, step: str, ids: dict) -> dict | None:
     return out or None
 
 
+def fill_provenance(payload: dict, *, reviewer: str | None, kind: str, unit: str) -> dict:
+    """裁定事件（`kind=confirm`、`unit=cell`）补来源三字段 `payload.level／by／channel`（2026-11-27，清理计划 2.4）。
+
+    **兜底**：调用方传了的一律不动（`web_vote`、`opinion`、`script` 等真实来源别被盖成 console）；
+    没传的按「控制台人点」补：`level=human`、`channel=console`、`by` 取 `payload.reviewer`／入参 `reviewer`。
+    `by` 取不到就拒写（谁判的字必须落得下来），取值不在枚举里也拒（`levels.provenance` 统一校验）。
+    不是裁定事件（切线、collate_* 等）原样返回。"""
+    if kind != "confirm" or unit != "cell":
+        return payload
+    from ..feedback.levels import provenance
+    by = payload.get("by") or payload.get("reviewer") or reviewer
+    try:
+        prov = provenance(payload.get("level") or "human", by or "", payload.get("channel") or "console")
+    except ValueError as e:
+        raise BadRequest(f"裁定事件缺来源：{e}（confirm 须带 payload.level／by／channel，或传 reviewer 走控制台兜底）") from e
+    return {**payload, **prov}
+
+
+def cell_book(key: str, ids: dict) -> dict:
+    """格键解析不出册（章号前缀 `01:11:6:10`：册名不以字母开头，`parse_card_id` 不认）时，完整格号的**第一段**就是册
+    （字格身份账 `cell_ref` 也按这段当册，2026-11-27 起新写的裁定事件顶层 `target.book` 必填，清理计划 2.3）。"""
+    from ..u_stamp import is_full_cell
+    if ids.get("book") or not is_full_cell(key):
+        return ids
+    bare = key.split(":")
+    return {**ids, "book": bare[0], "page": int(bare[1]), "col": int(bare[2]),
+            "slot": int(bare[3][:-1] if bare[3][-1:] in ("a", "b") else bare[3])}
+
+
 def check_cell_review(log, batch: str, events: list[dict]) -> None:
     """格级审阅（GUJI-364b）写入前校验：批次须是 cellreview-<清单 id>，格须在清单里，裁决须合法。
     不合法整批拒掉（400），不写半截。"""
@@ -114,6 +143,11 @@ def write_events(log, batches, verdicts, products, *, batch: str, step: str, uni
         # （历史 324 条只有 4 个不同值），量不出人裁一条要多久。UI 改造的验收
         # 指标就是这个耗时，没有它 D 刀无法证伪。
         ids = parse_card_id(row["id"])
+        if unit == "cell":
+            ids = cell_book(row["id"], ids)
+            if not ids.get("book"):
+                raise BadRequest(f"{row['id']!r} 解析不出册：unit=cell 的事件顶层 target.book 必填")
+            payload = fill_provenance(payload, reviewer=reviewer, kind=kind, unit=unit)
         if kind == "cutline" and ids.get("page") is not None and ids.get("col") is not None:
             # 切线坐标在列图里，列窗几何一变就漂（col_h 还可能不变）；写入时顺手记下页面坐标
             # 与几何签名，评测据此换算到当前列图（eval/colgeom.py）。取不到几何就不记，不挡写入。

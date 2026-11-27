@@ -248,11 +248,28 @@ def _pick(rec: dict, names: Iterable[str], conv=None) -> dict:
 
 
 # 各逐行表：把一条 json 记录 → (key, cols)
+def _event_book(tgt):
+    """`events.book`（册）：取 `target.book`；没有且是格事件、`target.key` 是完整格号（四段）时取第一段当册
+    （11-27 清理计划 2.3：网站票落的事件 key＝`01:11:6:10`，册名数字开头 `parse_card_id` 不认，book 曾为空）。
+    同 Worker `events.ts::eventColumns`，两处要一起改。"""
+    if not tgt:
+        return None
+    b = tgt.get("book")
+    if b not in (None, ""):
+        return _str(b)
+    key = tgt.get("key")
+    if tgt.get("unit") == "cell" and isinstance(key, str):
+        parts = key.split(":")
+        if len(parts) == 4 and parts[0]:
+            return parts[0]
+    return _str(b)
+
+
 def _events(rec, rel, line):
     tgt = rec.get("target") if isinstance(rec.get("target"), dict) else None
     cols = {
         "stream": "pin_state" if rel.endswith(".state.jsonl") else PurePosixPath(rel).parts[1],
-        "book": _str(tgt.get("book")) if tgt else None,
+        "book": _event_book(tgt),
         "batch": _str(rec.get("batch")), "seq": _int(rec.get("seq")),
         "kind": _str(rec.get("kind")), "actor": _str(rec.get("actor")),
         "reviewer": _str(rec.get("reviewer")), "ts": _str(rec.get("ts")),
