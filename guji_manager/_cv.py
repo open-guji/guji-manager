@@ -437,6 +437,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "seal_spans_col": ("feedback.pins_check", "seal_spans_col"),
     "check_pin_vs_chars": ("feedback.pins_check", "check_pin_vs_chars"),
     "get_judge": ("seg.cut_select", "get_judge"),
+    # pins-stale 按钉子框实际位移判（CV1 11-27；cv ≥ v0.9.6，旧 cv 没有就退回只比几何字段）
+    "ColumnMapper": ("steps._warpmap", "ColumnMapper"),
+    "remap_manual_spec": ("steps.row_segment", "_remap_manual_spec"),
+    "geom_vline": ("steps.row_segment", "_geom_vline"),
 }
 
 
