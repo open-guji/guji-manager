@@ -9,6 +9,7 @@
 ## [0.6.51] - 2026-11-27
 
 - 发版说明：PATCH，从 v0.6.50 的 main 切出，只挑入册号位数统一的四件（dev 上另有 MINOR 改动，留给下一版）；护栏 `guji eval guard` 云端会话没有字形库，**未验证**。
+- PATCH（11-27，CV3，#1159）：评测注册表登记识字候选 `cands`（cv 新增 `eval_cands.py`）；测试跟 cv dev 对齐（cv 已删 `republish.py`／`sprite_pub.py`）。
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧。
 - PATCH（11-27，CV0，册号位数统一）：新工具 `python -m guji_manager.ops.rename_volume`：老书 cv 内部册名改名（用户定只改不重跑）——产物、缓存、数据目录按册文件改名改写，manifest／缓存戳／u 账 sha 按对照表换，写 `_renamed.json` 给 cv status 认 rename_only；事件、字形库与实例 id 不改；dry-run／--apply --backup／--rollback。L0。
 - PATCH（11-27，CV0，册号位数统一第二步）：新工具 `python -m guji_manager.ops.renumber`：一部书的册号改位数（book-text cv 版本的章文件按前缀通配改名、`fig/<章>/`、`index.json` 的 `file` 与全部 `*_file`；数据目录 `feedback/lists/**/<书>/<章>.*` 改名；基础配置 `volume_width` 改、`chapter_width` 删）。缺省只出清单，`--apply` 写回滚清单，`--rollback` 还原；新旧并存算冲突整书不动；已发待审单 rev 不改写。不改任何已有代码路径，L0。脉经 dry-run：5 个改名、2 处编辑、无冲突。
