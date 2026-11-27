@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（CV0 11-27，QTW 全唐文 031–060 入账推库被拦）：页重切回到身份账上更早的某份切分时，新账行 id（页号＋切分哈希＋map）与旧行相同，中心库主键 (src_path, id) 重复、推库闸拒。`Ledger.append` 撞号自动加 `-r<n>`；`uid sync` 推库前把本地账里已写出的重复 id 改名再推；新增 `guji uid dedup-ids <册> [--write]` 手修。
 - PATCH（CV0 11-27，网站 #924 会员票）：登录会员的 voter 是 36 位成员 uid（UUIDv7），开头是毫秒时间戳，前 6 位同一阵注册的会员会撞；新增 `guji_manager/voter.py` 的 `voter_tag`：UUID 形取去连字符后的后 16 位随机段，匿名 16 位原样。意见 id 尾巴、刷票同源、去重、人裁事件「意见来源」、u 回填配票都改用它；隐藏单对公开短标识也认。匿名票的 id 与事件文字不变。网站公开 `who` 要用同一规则（`voter_tag(voter)[:6]`）。
 - PATCH（11-27，CV1，QTW 报误报）：`seg pins-stale` 对有 geom 的钉子，几何字段变了时改按钉子框在新旧列图间的实际最大位移判（用 cv ColumnMapper 换算，cv ≥ v0.9.6），≤3px 记 ok（同 cv 换算送人核门槛），stale 说明里带位移。全唐文 ms4→ms5（outer_bar 开→关）4 列误报（032:69:1、046:87:1、053:76:8、060:3:3）属此类。旧 cv 退回只比字段。
 
