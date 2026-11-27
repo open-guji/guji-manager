@@ -25,7 +25,7 @@
 
 ## 在哪里产生
 
-1. **出单**：cv `scripts/zhengli/republish.py`／`pending_list.py` 出待审单时，对每格调 `reasons_for_pending`，写 `pending_reason`、`pending_reason_detail`（读该版产物包的 seed_admit、align_ref、glyph_match）。
+1. **出单**：`guji land`（经 cv `pending-cells`／`pending_list.py`）出待审单时，对每格调 `reasons_for_pending`，写 `pending_reason`、`pending_reason_detail`（读该版产物包的 seed_admit、align_ref、glyph_match）。
 2. **复审格**：换单 `proof_cycle` 里机器推翻人裁的格进复审（X03）；其余 `--recheck` 格是 X04。
 3. **补单**：同字对照自检（`seg_defect --gate`）补上的格带 `src: seg_selfcheck`，原因 S04。
 4. **回填**：老单、老事件用 cv `scripts/zhengli/backfill_pending_reason.py`、`backfill_event_reason.py` 补。
