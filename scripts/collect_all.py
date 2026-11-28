@@ -63,6 +63,8 @@ def ensure_workspace(ws_root: Path, ws_id: str, dir_name: str, env) -> Path:
     if not (data_home / "main" / ws_id / "feedback").exists():
         e = dict(env, GUJI_DATA_TOKEN=env.get("GUJI_DATA_TOKEN_READ") or env.get("GUJI_DATA_TOKEN", ""))
         rc, out = sh(["guji", "db", "pull", "-w", str(ws)], env=e, timeout=3000)
+        if rc:                                      # 本地有未推文件会挡 pull；中心库为准，强拉
+            rc, out = sh(["guji", "db", "pull", "--force", "-w", str(ws)], env=e, timeout=3000)
         if rc:
             raise RuntimeError(f"db pull 失败：{out[-500:]}")
     return ws
@@ -80,14 +82,14 @@ def newest_ledger(ws: Path):
 
 def run_collect(ws: Path, book_id: str, book_text: str, env, extra):
     cmd = ["guji", "collect", "--books", "auto", "-w", str(ws), "--book-text", book_text,
-           "--text-id", book_id, "-j", "4", "--no-publish"] + extra
+           "--text-id", book_id, "-j", "4", "--no-publish", "--fresh"] + extra
     return sh(cmd, env=env)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws-root", default=str(Path.home() / "ws"))
-    ap.add_argument("--exclude", default=DEFAULT_EXCLUDE)
+    ap.add_argument("--exclude", default=os.environ.get("COLLECT_EXCLUDE", DEFAULT_EXCLUDE), help="不收的书 ID（逗号分隔；也读环境变量 COLLECT_EXCLUDE）")
     ap.add_argument("--only", default="", help="只做这些书 ID（逗号分隔）")
     ap.add_argument("--extra", default=os.environ.get("COLLECT_EXTRA_ARGS", ""), help="原样附给 guji collect")
     ap.add_argument("--dry-run", action="store_true", help="只列出要处理的书，不动任何东西")
@@ -118,7 +120,12 @@ def main():
             continue
         try:
             ws = ensure_workspace(ws_root, book_id, dirs[book_id], env)
+            runs = ws / "reports" / "_collect" / "runs"
+            before = {p.name for p in runs.glob("*.ledger.tsv")} if runs.exists() else set()
             rc, out = run_collect(ws, book_id, book_text, env, a.extra.split())
+            after = {p.name for p in runs.glob("*.ledger.tsv")} if runs.exists() else set()
+            if rc and not (after - before):         # 没出新台账＝没跑成，别拿旧台账冒充
+                raise RuntimeError(f"collect 失败（rc={rc}）：{out[-300:]}")
             led = newest_ledger(ws)
             blocked = [r for r in led if r.get("状态") == "blocked"]
             for r in blocked:                       # 字块图缺：拉原图和出单版包再试一次
