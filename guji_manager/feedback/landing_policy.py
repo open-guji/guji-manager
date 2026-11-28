@@ -14,10 +14,10 @@
    也认）：``{"<会员号>": {"tier": "editor", "books": [<范围>, …]}}``，值写成字符串＝只有等级。将来换成读网站会员接口，
    只换 ``load_roster``。等级阶梯 ``TIERS``：anon < member < reviewer < editor < admin < owner（网站角色 reader／reviewer／
    editor／admin 对应 member／reviewer／editor／admin；owner 是站方本人）。
-   **负责的范围** ``books`` 是个列表，每项可以是：版本（Book id，即网站书 id，直接写）、``work:<作品id>``、``collection:<丛书id>``
-   （11-28 用户定）。写了作品或丛书，就管它名下**所有版本**。版本怎么归到作品／丛书，由 ``Lineage`` 回答（``load_lineage``，
-   现读 JSON ``GUJI_BOOK_LINEAGE``：``{"<书id>": {"work": "<作品id>", "collections": ["<丛书id>", …]}}``；将来换成读 book-index，
-   只换这一个函数）；查不到的书只认版本这一项。
+   **负责的范围** ``books`` 是个 ID 列表，每项直接写 ID，不加前缀：版本（Book）、作品（Work）、丛编（Collection）的 ID 都行
+   （11-28 用户定）。写了作品或丛编，就管它名下**所有版本**。归属以 book-index 为准：Book 的 ``work_id``、``contained_in``
+   （丛编可嵌套，丛编的 ``contained_in`` 指向上层丛编；作品也可 ``contained_in`` 丛编）。读法在 ``BookIndexLineage``
+   （``GUJI_BOOK_INDEX`` 指向 book-index 检出）；没配或查不到的书只认它自己的 ID。测试可传一个 ``{书id: [祖先 id…]}`` 的 dict。
 2. **规则**：``Rules`` 一个数据类，可由 JSON（``GUJI_LANDING_RULES`` 或 ``rules:<路径>``）整份盖掉：
    ``solo_tiers``（缺省 editor、admin、owner：一票即落）、``book_owner_solo``（缺省真：名册里 ``books`` 覆盖这本书（版本／作品／丛书）的人，一票即落）、
    ``quorum``（缺省 0＝不开：其余人无论几票都不直接落；设 N＝至少 N 个 ``quorum_min_tier`` 以上的人同一结论才落）、
@@ -80,28 +80,68 @@ def load_roster(path: str | os.PathLike | None = None) -> dict[str, Standing]:
 
 # ───────────── 1b. 负责范围：版本／作品／丛书 ─────────────
 
-def load_lineage(path: str | os.PathLike | None = None) -> dict[str, dict]:
-    """版本归属：``{书id: {"work": 作品id, "collections": [丛书id…]}}``。读不到＝空（每本书只属于它自己）。
-    将来换成读 book-index 的 Book（work_id、丛书 Collection），返回同形的 dict 即可。"""
-    p = path or os.environ.get("GUJI_BOOK_LINEAGE")
-    if not p or not Path(p).is_file():
-        return {}
-    try:
-        return json.loads(Path(p).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+class BookIndexLineage:
+    """从 book-index 检出读版本的归属（source of truth）：Book.work_id、Book.contained_in[].id，丛编再往上沿
+    ``contained_in`` 走（防环），作品自己的 ``contained_in`` 也算。文件路径 ``<Book|Work|Collection>/<id 尾三字符各一级>/<id>-<题名>.json``
+    （同 book-index-manager ``storage.shard_dirs``）。读到的结果缓存。"""
+
+    def __init__(self, root: str | os.PathLike):
+        self.root = Path(root)
+        self._cache: dict[tuple[str, str], dict | None] = {}
+
+    def _rec(self, kind: str, id_: str) -> dict | None:
+        k = (kind, id_)
+        if k not in self._cache:
+            rec = None
+            if len(id_) >= 3 and "/" not in id_ and "\\" not in id_ and ".." not in id_:
+                d = self.root / kind / id_[-3] / id_[-2] / id_[-1]
+                for f in (sorted(d.glob(f"{id_}-*.json")) + [d / f"{id_}.json"]) if d.is_dir() else []:
+                    try:
+                        rec = json.loads(f.read_text(encoding="utf-8"))
+                        break
+                    except (OSError, ValueError):
+                        continue
+            self._cache[k] = rec
+        return self._cache[k]
+
+    def ancestors(self, book: str) -> set[str]:
+        out: set[str] = set()
+        todo: list[tuple[str, str]] = []
+        b = self._rec("Book", book)
+        if b:
+            if b.get("work_id"):
+                out.add(b["work_id"])
+                todo.append(("Work", b["work_id"]))
+            todo += [("Collection", c["id"]) for c in b.get("contained_in") or () if isinstance(c, dict) and c.get("id")]
+        seen: set[tuple[str, str]] = set()
+        while todo:
+            kind, i = todo.pop()
+            if (kind, i) in seen:
+                continue
+            seen.add((kind, i))
+            out.add(i)
+            r = self._rec(kind, i)
+            for c in (r or {}).get("contained_in") or ():
+                if isinstance(c, dict) and c.get("id"):
+                    todo.append(("Collection", c["id"]))
+        out.discard(book)
+        return out
 
 
-def scope_keys(book: str | None, lineage: dict[str, dict] | None = None) -> set[str]:
-    """一本书（版本）算在哪些范围里：自己、所属作品、所属各丛书。范围项的写法：``<书id>``｜``work:<id>``｜``collection:<id>``。"""
+def load_lineage(root: str | os.PathLike | None = None):
+    """归属来源：``GUJI_BOOK_INDEX`` 指向的 book-index 检出；没配＝没有归属信息（每本书只属于它自己）。"""
+    r = root or os.environ.get("GUJI_BOOK_INDEX")
+    return BookIndexLineage(r) if r and Path(r).is_dir() else {}
+
+
+def scope_keys(book: str | None, lineage=None) -> set[str]:
+    """一本书（版本）算在哪些范围里：自己的 ID、所属作品、所属各丛编（含上层）的 ID。``lineage`` 可以是
+    ``BookIndexLineage``，或 ``{书id: [祖先 id…]}``。"""
     if not book:
         return set()
-    ln = (load_lineage() if lineage is None else lineage).get(book) or {}
-    keys = {book}
-    if ln.get("work"):
-        keys.add(f"work:{ln['work']}")
-    keys.update(f"collection:{c}" for c in ln.get("collections") or ())
-    return keys
+    ln = load_lineage() if lineage is None else lineage
+    anc = ln.ancestors(book) if hasattr(ln, "ancestors") else (ln.get(book) or ())
+    return {book, *anc}
 
 
 def standing_of(voter: str, roster: dict[str, Standing] | None = None) -> Standing:
@@ -180,7 +220,7 @@ class RulesPolicy:
     name = "rules"
 
     def __init__(self, rules: Rules | None = None, roster: dict[str, Standing] | None = None,
-                 lineage: dict[str, dict] | None = None):
+                 lineage=None):
         self.rules = rules or Rules.load()
         self.roster = load_roster() if roster is None else roster
         self.lineage = load_lineage() if lineage is None else lineage
