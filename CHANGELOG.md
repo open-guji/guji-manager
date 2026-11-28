@@ -6,7 +6,7 @@
 
 ## [未发版]
 
-- PATCH（11-28，GM4，接 CV3 第三步 `glyph_vis`，L0）：新事件种类 `vis_glyph`（`<feedback>/rulings/glyph-vis-*.jsonl`，按图指纹缓存的看图结果）manager 侧不当人裁：`levels.event_level` 给 None（不算钉）、`u_stamp`（盖 u／`require_u`／推库闸 `lacks_u`）跳过、`source_rebase.GATE_EXEMPT_KINDS` 加入（换图源闸不管）。扫 `rulings/` 的 `RulingStore` 路径本就只收 `ctx_ruling`，同步口径（`datastore/scope`）按目录不变。
+- PATCH（11-28，GM4，接 CV3 第三步 `glyph_vis`，L0）：新事件种类 `vis_glyph`（`<feedback>/vis_glyph/*.jsonl`，单开目录，按图指纹缓存的看图结果；`target.unit=glyph_img`、`key=img_sha`）manager 侧不当人裁：`levels.event_level` 给 None（不算钉）、`u_stamp`（盖 u／`require_u`／推库闸 `lacks_u`）跳过、`source_rebase.GATE_EXEMPT_KINDS` 加入（换图源闸不管）。`datastore/scope.classify` 把 `feedback/vis_glyph/*.jsonl` 归进 events 表（随中心库同步）。
 
 - MINOR（11-28，GM4）：新增 `guji launch prepare <册> --label <main 包> -w <工作区> …`＝原 `tools/开书/出v01.py` 搬进包（`guji_manager/launch/v01.py`，tools 里留薄壳）：判停→交接单→第五步产物→导出→book-text 本地加章→local_check，不推任何东西；册已有 `_land/landed.json` 拒绝（非首发）。能进任务库 command 单并行。后续加 ship 段。L0。
 
