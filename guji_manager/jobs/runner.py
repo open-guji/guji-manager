@@ -478,8 +478,10 @@ class Job:
         # 走 `python -m open_guji_cv`，不走 bin/guji-cv：执行方 venv 的 guji-cv 脚本是装种子 cv 时生成的，切 cv 不重装，
         # 旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没有这个名（#18361 ImportError，11-28）
         # -w 必给（cv 带册命令不读 GUJI_WORKSPACE 兜底，#18364）；--pipeline 跟本单同一条，指纹按它换算
+        if not self.ws:
+            raise StageError("failed", "收尾改名要 -w <工作区>，本单准备段没报出工作区：不迁、不跑（免得 cv 报缺 -w 退出 2）")
         out = self.sh([str(VENV / "bin" / "python"), "-m", "open_guji_cv", "decide", "migrate-name", self.spec["book"],
-                       "-w", self.ws or "", "--pipeline", self.spec.get("pipeline") or "keben_body_v2"], write=True)
+                       "-w", self.ws, "--pipeline", self.spec.get("pipeline") or "keben_body_v2"], write=True)
         self.ev("收尾目录 seed_admit/→char_decide/ 原地改名（cv 改名版配老册，免整册重算）："
                 + redact(out.strip().splitlines()[-1] if out.strip() else "")[:300])
 
@@ -692,6 +694,10 @@ class Job:
         hb.start()
         sp = self.spec
         outcome, err, code = "succeeded", None, None
+        from .. import __version__ as mver
+        # 本进程载入的版本（不是磁盘检出的）：准备段打的 guji-manager <提交号> 是磁盘的，两者可能不同（#18377）
+        self.log.write(f"[runner] 执行方进程 guji-manager {mver}\n")
+        self.log.flush()
         try:
             _check_kind(sp.get("kind"))
             self.step("prep", self.prep)
@@ -845,20 +851,43 @@ def _managed() -> bool:
     return (MANAGER_ROOT / ".git").exists() and want.exists() and want.resolve() == MANAGER_ROOT
 
 
+#: 本进程起来时载入的 guji_manager 目录树号（`work()` 开头记）。比「本进程的代码」和 origin/main，不比磁盘：
+#: 准备脚本里的 ensure_manager 会先把磁盘检出切到 main，磁盘等于 origin/main 而进程还是旧代码
+#: （11-28 worker-6 进程 0.7.14、磁盘 0.7.16，不认 manager_min 照领 #18377/#18378，跑的还是缺 -w 的旧 migrate-name）。
+_LOADED_MANAGER_TREE: str | None = None
+
+
+def _tree_of(rev: str) -> str | None:
+    try:
+        r = subprocess.run(["git", "-C", str(MANAGER_ROOT), "rev-parse", f"{rev}:guji_manager"],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def _remember_loaded_manager() -> None:
+    """记下本进程载入的代码对应的树号。只在受管检出（ensure_manager 那份）上记；读不出就留 None，退回比磁盘 HEAD。"""
+    global _LOADED_MANAGER_TREE
+    if _managed():
+        _LOADED_MANAGER_TREE = _tree_of("HEAD")
+
+
 def _manager_outdated() -> bool:
-    """本包所在检出（ensure_manager 可编辑安装的那份）落后 origin/main 没有。别的装法（开发机检出、wheel）不管。"""
+    """本进程载入的 manager 代码落后 origin/main 没有（ensure_manager 可编辑安装的那份；别的装法如开发机检出、wheel 不管）。
+
+    比的是起来时记下的树号（`_LOADED_MANAGER_TREE`），没记才比磁盘 HEAD：磁盘可能已被准备脚本切新，进程没换。"""
     if not _managed():
         return False
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         subprocess.run(["git", "-C", str(MANAGER_ROOT), "fetch", "-q", "--depth", "1", "origin", "main"],
                        capture_output=True, timeout=120, env=env, check=True)
-        r = subprocess.run(["git", "-C", str(MANAGER_ROOT), "rev-parse", "HEAD:guji_manager", "FETCH_HEAD:guji_manager"],
-                           capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return False
-    ids = r.stdout.split()
-    return r.returncode == 0 and len(ids) == 2 and ids[0] != ids[1]
+    cur = _LOADED_MANAGER_TREE or _tree_of("HEAD")
+    tip = _tree_of("FETCH_HEAD")
+    return bool(cur and tip and cur != tip)
 
 
 #: 自更新 exec 时传给新进程的目标（runner HEAD + manager HEAD），新进程发现仍过期就不再 exec（见 work）
@@ -993,6 +1022,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
     warned_loop = False
     idle_since = time.time()
     from .. import __version__ as mver
+    _remember_loaded_manager()
     rc = f"{_runner_commit() or '?'} m{mver}"   # 带上本执行方 manager 版本：`guji job workers` 一眼看全执行机的版本（GM2 11-23 普查）
     warned = None
     env_streak = 0                       # 连续几单环境类失败：本会话自己的毛病（令牌、网络）会让它一路失败，到 3 就暂停
