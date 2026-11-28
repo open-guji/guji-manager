@@ -241,21 +241,6 @@ def _use_pack(book: str, label: str) -> Path:
     return root
 
 
-def _sheet(args) -> dict | None:
-    """投票时网站上那张单（读 `prior`：投票人看到的旧人裁）。--sheet 给了就用；否则数据目录线上单 rev 对得上就用它。"""
-    from ._cv import feedback_root
-    if getattr(args, "sheet", None):
-        p = Path(args.sheet)
-    else:
-        p = feedback_root() / "lists" / "proofing" / args.site_book / f"{_chap(args).zfill(3)}.pending.json"
-    if not p.exists():
-        return None
-    doc = json.loads(p.read_text(encoding="utf-8"))
-    if doc.get("rev") != args.rev:
-        return None
-    return {**doc, "_path": str(p)}
-
-
 def _route(t, out: Path, rev: str) -> dict:
     """票按去向分流（A34 11-08）：text＝改文本批（□→字，走 1.x revise）；structure＝切分类（切坏无字、错位、破损、
     带备注的看不出），写成按页按列的清单交切分线（A22/A31）；exclude＝无字（排除名单）；recheck＝推翻旧裁回网站复审。
@@ -501,17 +486,13 @@ def cmd_draft(args) -> None:
         _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
                + "（" + "、".join(f"{a} {why}" for a, why in unbound[:8]) + ("…" if len(unbound) > 8 else "") + "）")
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
-    sheet = _sheet(args)
-    sheet_prior = {c["cell"]: (c.get("prior") or {}).get("id") for c in (sheet or {}).get("cells", [])
-                   if (c.get("prior") or {}).get("id")}
     from .charnorm import load_norm
-    t = triage(votes, args.book, human, include_none=args.include_none, check=check, sheet_prior=sheet_prior,
+    t = triage(votes, args.book, human, include_none=args.include_none, check=check,
                same=load_norm(args.book).same)
-    # 待审原因（sheldon 11-03 定）：照投票时那张单上的 pending_reason 写进事件；单对不上或格不在单上就 unknown
-    sheet_reason = {c["cell"]: c.get("pending_reason") or "unknown" for c in (sheet or {}).get("cells", [])}
+    # 整张单已撤，没有「投票时那张单」可读：待审原因一律 unknown
     for d in t.drafts:
         if d.payload:
-            d.payload["pending_reason"] = sheet_reason.get(d.a, "unknown")
+            d.payload["pending_reason"] = "unknown"
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -543,7 +524,7 @@ def cmd_draft(args) -> None:
             f.write("\t".join(r) + "\n")
     n_over = sum(1 for d in t.ready if d.payload.get("overrides"))
     meta = {"book": args.book, "site_book": args.site_book, "rev": args.rev, "votes_from": where,
-            "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
+            "recheck": len(rc), "overrides": n_over,
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
             "dropped": dropped, "old_sheet": len(old), "old_landed": n_old_in,
@@ -824,8 +805,6 @@ def add_parser(sub) -> None:
                    help="draft：「与已有人裁一致」不核旧人裁在现行产物上的绑定（缺省核：绑不上的旧人裁不算已有，票照写）")
     p.add_argument("--pack", default=None, help="draft：出单版产物包标签（republish 存的 rev-<rev>），取回当产物根，免重跑")
     p.add_argument("--tol", type=float, default=8.0, help="draft：格框容差（像素，缺省 8）")
-    p.add_argument("--sheet", default=None, help="draft：投票时的待审单（读 prior：复审格上有意推翻旧人裁）；"
-                                                 "缺省数据目录里同 rev 的线上单")
     p.add_argument("--include-none", action="store_true", default=True, help="draft：「无字」也写（2026-11-10 起缺省就写，此项保留兼容）")
     p.add_argument("--no-none", dest="include_none", action="store_false", help="draft：「无字」票不写（挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
