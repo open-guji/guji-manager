@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM4，接配置组层 cv #2064／manager #1260，L0）：`final_review` 读册 yaml 的 `params.char_decide|seed_admit.ruling_override_groups／ruling_*` 时先垫 cv `effective_defaults`（组∪书）再让册 yaml 盖过——键挪进组配置后不会读成空名单（一律不许越过参校本）；cv 没有这个读口或读不到时退回只看册 yaml。GM4 名下其余直读 yaml 处不用改：codepoints／pua_table_pin／src_w／cos_iou_min 组里禁写，仍只在书层；exp/config 读的是实验 yaml 不是书配置。
+
 - PATCH（CV0 2026-11-28，配 cv #2064 组层）：配置组共享层 `group-<组>`。`is_shared_ws` 认 `group-` 前缀（普通 push／sync 拒写），新 `versioned_prefix`：`config/group/v<N>.yaml` 已发布不可改不可删；新命令 `guji config-group publish <组> --from <yaml> [--note]`（`ops/group_config.py`，升级脚本身份出新版 v<N>，禁写检查用 cv `check_group_layer`，cv 没有组层就拒绝出版）；`guji db pull／sync` 在书的 `book_defaults.yaml` 写了 `groups.config: <组>@<版>` 时把组拉成只读副本（`refresh_group_configs`），库里没有该组或没有那一版报错、不当成没组。`config/group/` 走 `scope.classify` 现有的 `config/ → files`。新测 `tests/test_group_config_shared.py`。
 - PATCH（CV0 2026-11-28，GM2 审 #1258 的两条建议）：`pipeline_for` 改按 `inspect.signature` 判老 cv，不再吞 TypeError；`exp` 跑裸 `guji_default` 时各册版式不一致报错（要分开跑或写死 `guji_default@版式`）。
 
