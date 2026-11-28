@@ -308,3 +308,33 @@ def test_corpus_resource(monkeypatch, tmp_path):
     monkeypatch.setattr(CP, "fetch_blobs", lambda ws, n, v: {"not_in_r2": ["x.txt"], "differ_not_overwritten": []})
     with pytest.raises(R.Missing, match="R2 缺 1"):
         R.corpus(tmp_path, tmp_path, ["01"], {"01": {"corpus": [7, "册 yaml"]}})
+
+
+def test_guard_picks_dataset_guards_and_cost_per_book(fake, monkeypatch):
+    """没在框架里登记护栏、只在 dataset guards/ 有的 bench 也进发版护栏；cost 按书写时只跳 heavy 的那本（CV3 提议，11-28）。"""
+    spec, ds, tmp = fake
+    import dataclasses
+    (ds / "fake" / "bk2").mkdir(parents=True)
+    s2 = dataclasses.replace(spec, guards=(), gold={"bk": "fake/bk", "bk2": "fake/bk2"})
+    object.__setattr__(s2, "cost", {"bk2": "heavy", "default": "light"})
+    monkeypatch.setattr(type(s2), "cost_of", lambda self, b=None: self.cost.get(b, "light"), raising=False)
+    monkeypatch.setattr(B, "all_specs", lambda: [s2])
+    monkeypatch.setattr(B, "dataset_guards", lambda bid, book, d: [{"metric": "bad"}] if book in ("bk", "bk2") else [],
+                        raising=False)
+    ran = []
+    monkeypatch.setattr(cli, "run_one", lambda sp, book, a, **k: _ran(ran, sp, book, a))
+    a = cli._fix(_args(ds, tmp, action="guard", bench=[]))
+    with pytest.raises(SystemExit):
+        cli.cmd_guard(a)
+    assert ran == ["bk"]                                     # bk2 是 heavy，不带 --heavy 跳过
+    monkeypatch.setattr(B, "dataset_guards", lambda bid, book, d: [], raising=False)
+    ran.clear()
+    with pytest.raises(SystemExit):
+        cli.cmd_guard(a)
+    assert ran == []                                         # 哪里都没护栏：不跑
+
+
+def _ran(ran, sp, book, a):
+    ran.append(book)
+    r = B.BenchResult(sp.id, book, [], {"bad": 0}, "bad")
+    return r, None
