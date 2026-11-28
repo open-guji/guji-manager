@@ -273,7 +273,7 @@ def cmd_pending(a) -> int:
         else:
             # 缺省：对本章开着的条目现算（要工作区、该册 main 包、r5 全字表向量包：guji cache pull-rare-index）
             from .review.cands_attach import attach, cands_for_cards, cards_of_items
-            from open_guji_cv import cli_v2
+            from ._cv import cli_v2
             eng = cli_v2._engine(a.book, a.pipeline or cli_v2.DEFAULT_PIPELINE, quiet=True)
             cards = cards_of_items(a.book, store.by_state("open"))
             attach(cards, cands_for_cards(a.book, cards, ctx=eng.ctx, log=lambda m: print(m, file=sys.stderr)))
