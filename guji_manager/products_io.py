@@ -29,12 +29,15 @@ RULING_STEP = DECIDE_NEW
 
 
 def active_step() -> str:
-    """本机 cv 现在用的收尾步名：cv 改名版（open-guji-cv#2033）起是 char_decide，之前是 seed_admit。"""
+    """本机 cv 现在用的收尾步名：cv 改名版（open-guji-cv#2033，v0.9.16）起是 char_decide，之前是 seed_admit。
+
+    问 cv `decide_names.ADMIT_STEP_ACTIVE`（v0.9.14 起有）。不查 `STEPS`：那是步模块导入前的空注册表，
+    裸查恒判旧名（11-28 CV4：exp 的 `use_human_verdicts: false` 因此挂在旧键、被引擎忽略；同类见 runner #1272）。"""
     try:
-        from ._cv import STEPS
-        return DECIDE_NEW if DECIDE_NEW in STEPS else DECIDE_OLD
-    except Exception:  # noqa: BLE001
+        from ._cv import ADMIT_STEP_ACTIVE
+    except Exception:  # noqa: BLE001 —— 更老的 cv 没有 decide_names：收尾就叫 seed_admit
         return DECIDE_OLD
+    return DECIDE_NEW if ADMIT_STEP_ACTIVE == DECIDE_NEW else DECIDE_OLD
 
 
 def fold_params(params: dict | None) -> dict | None:

@@ -6,6 +6,11 @@
 
 ## [未发版]
 
+## [0.7.12] - 2026-11-28
+
+- PATCH（11-28，CV4 #1288，GM2 审改）：`products_io.active_step()` 改问 cv `decide_names.ADMIT_STEP_ACTIVE`。原先查 `STEPS`，步模块没导入时是空注册表、恒判旧名 seed_admit：`guji exp`／`guji bench` 在改名版 cv（v0.9.16 起、cv dev #2033 起）上把 `eval: use_human_verdicts: false` 挂在旧键 `seed_admit:`，引擎忽略，**评测带着人裁在跑**（殿本 vol01 decide 1114 格有 1024 格走 admit:human）。v0.7.6–v0.7.11 配改名版 cv 跑出的 exp/bench 收尾类结果要复核。L0。
+- PATCH（11-28，#1287）：`guji bench` cost 按书取（cost_of）；只在 dataset guards/ 登记护栏的 bench 也进 guard。
+
 ## [0.7.11] - 2026-11-28
 
 - PATCH（11-28，GM4，册号位数统一后收单被挡）：`swap.chapter_of(book)` 不再写死三位，按册 yaml 的生效配置取章号（`volume_width`，迁移期间没改号的书仍写着 `chapter_width` 的照旧）；找不到册 yaml 时 `volNN` 老规矩三位、纯数字册名按名字位数。史記改号后（`17.char.json`）collect 找不到字表、20 册落 0 格的根因。另加 `swap.chapter_variants`。新测 `tests/test_swap.py::test_chapter_of_follows_book_yaml_width`。
