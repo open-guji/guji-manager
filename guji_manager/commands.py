@@ -12,6 +12,7 @@ from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli
 from . import pin_state, cli_launch, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_settle, cli_parity, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
+from .bench import cli as _bench_cli
 from .uid import cli as _uid_cli
 from .cli_cellvotes import cmd_cellvotes
 from .cli_freeze import add_parser as _add_freeze
@@ -31,6 +32,7 @@ COMMANDS: dict = {
     **cli_ops.COMMANDS,        # snap、archive
     **cli_feedback.COMMANDS,   # events、gold
     **cli_eval.COMMANDS,       # eval、check、groups、progress、collate
+    **_bench_cli.COMMANDS,     # bench（benchmark 统一入口，CV0 11-28）
     # P2 第四批（2026-11-04），原 cv 同名模块
     **cli_close.COMMANDS,      # close-check、exit-check、audit、char-diff
     **cli_db.COMMANDS,         # db
