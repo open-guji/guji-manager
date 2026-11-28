@@ -54,8 +54,8 @@ function render(){
       pk.oninput=()=>{const x=S.raw(t.id);if(x){setV(t.id,x.v,pk.value.trim());paint(b,t)}};
       const o=document.createElement("div");o.className="opts";
       for(const v of ["relabel","evict","near_form"]){
-        const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=VN[v]+(v==="relabel"?"…":"");
-        bt.onclick=()=>{const x=S.raw(t.id);if(x&&x.v===v)setV(t.id,null);else setV(t.id,v,"");paint(b,t);if(S.raw(t.id)&&v!=="evict")pk.focus()};
+        const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=v==="relabel"&&t.sug?"改成「"+t.sug+"」":VN[v]+(v==="relabel"?"…":"");
+        bt.onclick=()=>{const x=S.raw(t.id);if(x&&x.v===v)setV(t.id,null);else setV(t.id,v,v==="relabel"?(t.sug||""):"");paint(b,t);if(S.raw(t.id)&&v!=="evict"&&!(v==="relabel"&&t.sug))pk.focus()};
         o.appendChild(bt);
       }
       b.append(w);if(t.ctx){const cx=document.createElement("div");cx.className="ctx";cx.textContent=t.ctx;b.append(cx)}
