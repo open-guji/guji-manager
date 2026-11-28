@@ -83,12 +83,40 @@ def _expect(table_pages: list[dict], path: str | None, skip: str | None = None) 
     print(f"  ✓ {len(table_pages) - len(skipped)} 页与 {Path(path).name} 逐字节相同{note}")
 
 
+def _aliases(book: str) -> list[str]:
+    """册 yaml 的 ``aliases``（册号位数统一改名留下的旧名）；读不到就空。"""
+    try:
+        from ._cv import book_yaml_path
+        import yaml
+        d = yaml.safe_load(book_yaml_path(book).read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return []
+    al = d.get("aliases") or []
+    return [str(a) for a in (al if isinstance(al, list) else [al])]
+
+
+def _resolve_alias(src, S, ws: str, book: str) -> tuple[str, str]:
+    """R2 指针按现名找；没有就按册 yaml 的 aliases 找旧名的指针（11-28 北行 bxgb→1 改名后 #18346 取原图 404）。"""
+    try:
+        return S.resolve(src, ws, book)
+    except FileNotFoundError as e:
+        for old in _aliases(book):
+            try:
+                got = S.resolve(src, ws, old)
+            except FileNotFoundError:
+                continue
+            print(f"⚠ R2 没有 {ws}/{book} 的原图登记，按旧名 {old} 的登记取（补登记：rename_volume --apply 会写新名指针）",
+                  file=sys.stderr)
+            return got
+        raise e
+
+
 def _locate(src, S, book: str) -> tuple[str, str]:
     """册 → (书 id, R2 册号)。R2 指针（`by-ws/<ws>/<册>.json`）只增不改，所以册号改了位数（全唐文 01→001，
     2026-11-03）指针还指旧号：册配置有 `book_id` 与册序、且与指针是同一书同一册序时，按配置的位数取
     （`core/volume_id`）；对不上（换图源等特例）以指针为准。"""
     from ._cv import volume_of
-    book_id, vol = S.resolve(src, _ws_id(), book)
+    book_id, vol = _resolve_alias(src, S, _ws_id(), book)
     try:
         v = volume_of(book)
     except Exception:  # noqa: BLE001 —— 读不到配置就照指针
