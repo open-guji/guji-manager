@@ -108,3 +108,14 @@ def test_publish_to_sqlite(fake, monkeypatch):
     assert P.publish(out, conn=conn) == rid                  # 同一次再发不重写
     h = P.history("t-fake", "bk", conn=conn)
     assert len(h) == 1 and h[0]["baseline"] == 1 and h[0]["primary_value"] == 1.0 and h[0]["status"] == "ok"
+
+
+def test_guard_fails_on_unverified(fake, monkeypatch):
+    spec, ds, tmp = fake
+    import dataclasses
+    s2 = dataclasses.replace(spec, guards=(B.Guard("not_there", "max", 0),))
+    monkeypatch.setattr(B, "all_specs", lambda: [s2])
+    a = cli._fix(_args(ds, tmp, action="guard", bench=[]))
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_guard(a)
+    assert e.value.code == 1
