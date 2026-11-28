@@ -25,7 +25,7 @@ def test_layer_both_keys():
 
 def test_steps_and_store():
     assert is_decide_step("seed_admit") and is_decide_step("char_decide") and not is_decide_step("align_ref")
-    assert RULING_STEP == "seed_admit"
+    assert RULING_STEP == "char_decide"
 
     class S:
         def read(self, book, step, pk, kind):
