@@ -482,6 +482,9 @@ def test_lib_audit_build_and_events(tmp_path):
     assert ev["review"] is True and ev["char_self"] == "官"     # 审阅页撤库 → cv evict_review 闸：文本撤下、重新人审
     assert sp[0]["payload"]["char"] == "宫" and sp[2]["payload"]["peer_char"] == "宮"
     assert all(s["kind"] == "glyph_audit" and s["payload"]["instance_id"] == s["key"] for s in sp)
+    # 撤库保留字（11-28）：只出库，不带 review，格里的字不动
+    keep = PA.to_specs(PA.lib_audit_decisions(side, [dict(id="v2:vol01:1:1:3", char="官", how="click", v="evict_keep", t=2)]), "b1", "t")
+    assert len(keep) == 1 and keep[0]["payload"]["v"] == "evict" and "review" not in keep[0]["payload"]
 
 
 def test_cli_pair_events(tmp_path, capsys):
