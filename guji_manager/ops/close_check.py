@@ -110,7 +110,7 @@ def _fresh(eng, pages, strict_cv: bool = False) -> dict:
     elif shared:
         data = {"shared_inputs": shared}
     if (bad.get("char_decide") or {}).get("missing") and _old_decide_dir(eng):
-        note += "（char_decide 缺页而旧目录 seed_admit/ 还在：cv P3 改名后没迁移，先跑 `guji-cv decide migrate-name`，不用重跑）"
+        note += "（char_decide 缺页而旧目录 seed_admit/ 还在：cv 改名版下这册还没迁移，用改名版 cv 的 `guji-cv decide migrate-name` 原地改名，不用重跑；cv 0.9.14 的这条命令只能 --dry-run）"
     return _item("1a", "产物新鲜", PASS if not bad else FAIL,
                  ("全部新鲜" if not bad else f"{len(bad)} 步有过期/缺失/失败") + note, data)
 
