@@ -93,6 +93,25 @@ def lock(cache: Path, book: str, timeout: float = 3600):
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
+# ------------------------------------------------------------------ 模型
+def models() -> dict:
+    """按 cv 自带的模型表（config/model-registry.json）把 models/ 缺的文件从 R2 补齐，同 `guji model fetch`（不给 -w）。
+
+    bench 跑 cv 走 `python -m open_guji_cv`，不载 manager 插件、不会自己取模型；干净会话里 models/ 是空的，
+    册配置开了 5a 相似度 CNN 之类（全唐文 glyph_sim_qtw_v2）的书切字一跑就缺文件。返回取回统计，进结果 env。"""
+    r = subprocess.run([guji_exe(), "model", "fetch", "--json"], capture_output=True, text=True, check=False)
+    if r.returncode:
+        raise Missing("models", f"guji model fetch 失败：{(r.stderr or r.stdout).strip()[-300:]}",
+                      "要 GUJI_DATA_TOKEN_READ：eval \"$(python3 ~/guji-dev-secret/gsecrets.py export)\"")
+    try:
+        d = json.loads(r.stdout[r.stdout.index("{"):])
+    except ValueError:
+        return {}
+    if d.get("not_in_r2"):
+        raise Missing("models", f"R2 里没有 {d['not_in_r2'][:3]}", "找模型负责线补传（guji model upload --execute）")
+    return {k: d[k] for k in ("registry", "missing", "placed") if k in d}
+
+
 # ------------------------------------------------------------------ 金标
 DATASET_REPO = "https://github.com/open-guji/open-guji-dataset"
 LEGACY_WS_REPO = "https://github.com/open-guji/guji-workspace"   # 迁仓过渡期旧总仓（同 jobs.runner.LEGACY_WORKSPACE_REPOS）

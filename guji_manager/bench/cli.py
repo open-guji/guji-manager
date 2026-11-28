@@ -62,6 +62,7 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
     rels = [r for r in ([spec.gold_rel(book, v) for v in vols] if vols else [spec.gold_rel(book)]) if r]
     if isinstance(spec.gold, dict) and isinstance(spec.gold.get(book), dict) and not vols:
         rels = list(spec.gold[book].values())             # 册一级显式表、没点名册：整本书的分片都取
+    rels += [r for r in getattr(spec, "gold_extra", ()) if r]   # bench 另要的兄弟分片（cv 11-28 起，旧 cv 没这个字段）
     ds = R.dataset_root(a.dataset, cache=cache, rels=rels, ref=getattr(a, "dataset_ref", None))
     res["dataset"] = str(ds)
     env["dataset"] = R.git_head(ds)
@@ -124,6 +125,8 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
                 labels[v] = lab
             res["products"] = str(link)
             env["products"] = labels
+    if "models" in need and not a.offline:
+        env["models"] = R.models()                         # cv 模型表里缺的文件从 R2 补齐（`python -m open_guji_cv` 不自取）
     if "bench5b" in need:
         res["bench5b"] = str(R.bench5b())
         env["bench5b"] = "train_bundle " + __import__("guji_manager.eval.bench_bundle", fromlist=["x"]).BUNDLE_SHA256[:12]
