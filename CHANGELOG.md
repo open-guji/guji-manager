@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，cv P3 seed_admit→char_decide 两名并认，GM2 名下；读口用 `products_io`）：冻结比对 `ops/freeze.compare_products` 把快照里的 `seed_admit/` 路径映射到 `char_decide/`（`guji-cv decide migrate-name` 后不误报缺文件）；包导入降级检查 `snap/importer.downgraded_steps` 跨两名取新鲜数；`jobs/auto_pages.REPLAY_FROM`、`ruling_hits.FETCH_STEPS`、取包 `datastore/packs.fetch_products` 的 steps 过滤两名都认；`lib_text_check` 失效两名都打、整册钩子认两名；`cli_perf` 历史 perf 行 seed_admit 归「4 定字」，本机 cv 有 `steps.char_decide*` 时同样挂分段钩子；close-check 1a 在 char_decide 缺页而 seed_admit/ 还在时提示先跑 migrate-name。写端（事件 target.step、suggest 补丁键）仍写旧名，等 CV4 切换通知。L0。
+
 - PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。
 
 - PATCH（11-28，GM4，接 CV3 第三步 `glyph_vis`，L0）：新事件种类 `vis_glyph`（`<feedback>/vis_glyph/*.jsonl`，单开目录，按图指纹缓存的看图结果；`target.unit=glyph_img`、`key=img_sha`）manager 侧不当人裁：`levels.event_level` 给 None（不算钉）、`u_stamp`（盖 u／`require_u`／推库闸 `lacks_u`）跳过、`source_rebase.GATE_EXEMPT_KINDS` 加入（换图源闸不管）。`datastore/scope.classify` 把 `feedback/vis_glyph/*.jsonl` 归进 events 表（随中心库同步）。

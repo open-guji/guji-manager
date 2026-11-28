@@ -314,7 +314,9 @@ def _apply(todo: list[dict], batch: str, dbp) -> dict:
     st = ProductStore()
     pages = {(r["key"].split(":")[0], int(r["key"].split(":")[1])) for r in todo if r["action"] == "invalidate"}
     for bk, pg in sorted(pages):
-        done["invalidated_pages"] += bool(st.manifest(bk, "seed_admit").invalidate(page_key(pg), "库文一致：库例晚于产物"))
+        from ..products_io import DECIDE_STEPS
+        hit = [st.manifest(bk, s).invalidate(page_key(pg), "库文一致：库例晚于产物") for s in DECIDE_STEPS]   # 两名都失效
+        done["invalidated_pages"] += bool(any(hit))
     done["review_added"] = _to_review([r for r in todo if r["action"] == "review"])
     return dict(done)
 
@@ -368,7 +370,8 @@ def auto_check(args, eng, steps: list[str]) -> None:
     import os
     if os.environ.get("GUJI_LIB_TEXT_CHECK", "1") == "0":
         return
-    if str(getattr(args, "pages", "")) != "all" or "seed_admit" not in steps:
+    from ..products_io import is_decide_step
+    if str(getattr(args, "pages", "")) != "all" or not any(is_decide_step(s) for s in steps):
         return
     book = eng.book.id
     try:
