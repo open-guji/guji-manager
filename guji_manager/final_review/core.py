@@ -1,5 +1,6 @@
 """纯逻辑：分类、分批、提示词、放行门槛。不依赖 cv，可单测。"""
 from __future__ import annotations
+from pathlib import Path
 
 import re
 from collections import Counter
@@ -33,11 +34,28 @@ PROMPT_TAIL = """候选都不对就填「其他」并在 why 写你认为的字�
 """
 
 
-def _admit_params(text: str) -> dict:
-    """册 yaml 里收尾步参数：`params.char_decide`／`params.seed_admit` 两个键都认（cv P3；同时写 cv 会报错，这里先新后旧）。"""
-    import yaml
-    p = (yaml.safe_load(text) or {}).get("params") or {}
+def _admit_of(params: dict | None) -> dict:
+    p = params or {}
     return p.get("char_decide") or p.get("seed_admit") or {}
+
+
+def _admit_params(text: str, defaults: dict | None = None) -> dict:
+    """收尾步参数：`params.char_decide`／`params.seed_admit` 两个键都认（cv P3；同时写 cv 会报错，这里先新后旧）。
+    `defaults`＝书级生效配置（组∪书，`effective_defaults_of`）：组层（cv #2064）把键挪进组配置后，册 yaml 里读不到，
+    要先垫它；册 yaml 里写了的键盖过它。"""
+    import yaml
+    own = _admit_of((yaml.safe_load(text) or {}).get("params"))
+    return {**_admit_of((defaults or {}).get("params")), **own}
+
+
+def effective_defaults_of(book_yaml) -> dict:
+    """册 yaml 所在数据目录的书级生效配置（cv `effective_defaults`，含组层）；cv 没有这个读口（旧版）或读不到返回空，
+    退回只看册 yaml（行为同组层之前）。"""
+    try:
+        from .._cv import effective_defaults
+        return effective_defaults(Path(book_yaml)) or {}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def prompt_for(cls: str, book: str = "一部古籍刻本") -> str:
@@ -186,11 +204,11 @@ def gold_check(rows: list[dict], gold: dict[str, str]) -> dict:
     return {"gold": len(gold), "covered": sum(1 for r in rows if r["id"] in gold), "checked": len(adm), "wrong": wrong}
 
 
-def override_groups_from_yaml(text: str) -> set[str] | None:
+def override_groups_from_yaml(text: str, defaults: dict | None = None) -> set[str] | None:
     """册/书 yaml 的 `params.seed_admit.ruling_override_groups`（cv #1064）→ 组名集合；没写返回 None（缺省不核）。
     写法可以是列表或空格/逗号分隔的字符串；空列表＝一律不许越过参校本（返回空集）。"""
     import yaml
-    v = (_admit_params(text).get("ruling_override_groups"))
+    v = (_admit_params(text, defaults).get("ruling_override_groups"))
     if v is None:
         return None
     if isinstance(v, str):
@@ -198,8 +216,8 @@ def override_groups_from_yaml(text: str) -> set[str] | None:
     return {str(x) for x in v if str(x)}
 
 
-def seed_admit_params_from_yaml(text: str) -> dict:
+def seed_admit_params_from_yaml(text: str, defaults: dict | None = None) -> dict:
     """册/书 yaml 的 `params.seed_admit`（只取终审用到的键）：ruling_glyph_min_score/margin、ruling_ref_lead_min_unseen/oov。"""
     import yaml
-    sa = _admit_params(text)
+    sa = _admit_params(text, defaults)
     return {k: sa.get(k) for k in ("ruling_glyph_min_score", "ruling_glyph_min_margin", "ruling_ref_lead_min_unseen", "ruling_ref_lead_min_oov")}
