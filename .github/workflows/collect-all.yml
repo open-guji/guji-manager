@@ -1,0 +1,85 @@
+name: collect-all
+
+# 定时批量收单（GM4）：读网站票，对有新票的书跑 guji collect，落 book-text dev，再触发网站发布。
+# 脚本 scripts/collect_all.py；不需要 AI。第一次请用 workflow_dispatch 手动试跑，看 Summary。
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 只做这些书 ID（逗号分隔，留空＝所有有票的书）
+        required: false
+        default: ''
+      dry_run:
+        description: 只列出要处理的书
+        type: boolean
+        default: false
+
+concurrency:
+  group: collect-all
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GUJI_ACTOR: GM4
+      GUJI_DATA_URL: https://data.open-guji.com
+      GUJI_DATA_TOKEN_PROD: ${{ secrets.GUJI_DATA_TOKEN_PROD }}
+      GUJI_DATA_TOKEN_READ: ${{ secrets.GUJI_DATA_TOKEN_READ }}
+      GH_TOKEN_WEB: ${{ secrets.GUJI_WEB_DISPATCH_TOKEN }}
+      GUJI_BOOK_TEXT: ${{ github.workspace }}/book-text
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: guji-manager
+      - uses: actions/checkout@v4
+        with:
+          repository: open-guji/open-guji-cv
+          ref: dev
+          path: open-guji-cv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 装 cv 与 manager
+        run: |
+          pip install -e "./open-guji-cv[torch]" -e ./guji-manager
+          echo "PYTHONPATH=$PWD/open-guji-cv:$PWD/guji-manager" >> "$GITHUB_ENV"
+      - name: 取模型
+        run: GUJI_DATA_TOKEN="$GUJI_DATA_TOKEN_READ" guji model fetch
+      - name: 缓存数据目录（省去每轮整库 db pull）
+        uses: actions/cache@v4
+        with:
+          path: ~/.guji-data
+          key: guji-data-${{ github.run_id }}
+          restore-keys: guji-data-
+      - name: 看有哪些书有票
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: python guji-manager/scripts/collect_all.py --dry-run
+      - name: book-text dev 稀疏检出（只取要用的书，避免整仓 7G）
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          BT_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
+        run: |
+          git clone --depth 1 --branch dev --filter=blob:none --no-checkout \
+            "https://x-access-token:${BT_TOKEN}@github.com/open-guji/book-text" book-text
+          cd book-text
+          git sparse-checkout init --cone
+          git sparse-checkout set scripts docs
+          git checkout
+          git config user.name "GM4"; git config user.email "gm4@users.noreply.github.com"
+      - name: 收单
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd book-text
+          # 按有票的书扩充稀疏目录（Book/<c1>/<c2>/<c3>/<id>）
+          for b in $(python ../guji-manager/scripts/collect_all.py --dry-run | sed -n "s/^有票的书： //p" | python -c "import sys,ast;print(' '.join(ast.literal_eval(sys.stdin.read() or '{}')))"); do
+            git sparse-checkout add "Book/${b: -3:1}/${b: -2:1}/${b: -1}/$b"
+          done
+          cd ..
+          python guji-manager/scripts/collect_all.py --ws-root "$HOME/ws" --only "${{ github.event.inputs.only }}"
