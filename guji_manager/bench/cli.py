@@ -19,18 +19,25 @@ def _B():
 
 
 def _versions() -> dict:
-    import importlib.metadata as md
+    """cv、manager 版本。cv 用 cv 自己的口径（`core.cv_version.describe`：git 检出按 tag 算，同 run 记录、产物包的
+    cv_version），不用 `importlib.metadata`——可编辑安装的元数据只在重装时更新，升了版本号还报旧的（CV0 11-28 实测
+    dev 0.9.16+ 报成 0.9.13）。manager 用包里的 `__version__`。"""
     out = {}
-    for dist, key in (("open-guji-cv", "cv"), ("guji-manager", "manager")):
-        try:
-            out[key] = md.version(dist)
-        except Exception:                                  # noqa: BLE001
-            out[key] = None
+    try:
+        from .._cv import core_cv_version as CVV
+        out["cv"], commit = CVV.describe()
+    except Exception:                                      # noqa: BLE001
+        out["cv"], commit = None, None
+    try:
+        from .. import __version__ as mv
+        out["manager"] = mv
+    except Exception:                                      # noqa: BLE001
+        out["manager"] = None
     try:
         import importlib.util
-        out["cv_git"] = R.git_head(Path(importlib.util.find_spec("open_guji_cv").origin).resolve().parents[1])
+        out["cv_git"] = R.git_head(Path(importlib.util.find_spec("open_guji_cv").origin).resolve().parents[1]) or commit
     except Exception:                                      # noqa: BLE001
-        pass
+        out["cv_git"] = commit
     return out
 
 

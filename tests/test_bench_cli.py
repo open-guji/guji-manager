@@ -225,3 +225,13 @@ def test_products_fetch_via_tmp(monkeypatch, tmp_path):
     with pytest.raises(OSError):
         R.products(tmp_path, "bk", "v2", tmp_path)
     assert not (root / "v2").exists() and not list(root.parent.glob(".tmp-*"))
+
+
+def test_versions_use_cv_own_describe(monkeypatch):
+    """cv 版本走 cv 自己的 describe，不读 importlib.metadata（可编辑安装下是旧号，CV0 11-28）。"""
+    import importlib.metadata as md
+    from guji_manager import _cv
+    monkeypatch.setattr(md, "version", lambda d: "0.0.0-stale")
+    monkeypatch.setattr(_cv.core_cv_version, "describe", lambda repo=None: ("9.9.9", "c" * 40))
+    v = cli._versions()
+    assert v["cv"] == "9.9.9" and v["manager"] != "0.0.0-stale"
