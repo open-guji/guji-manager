@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，CV4 急）：`central-gc` 加第 7 条保留规则——测试集仓各 bench 分片 `bench.yaml` 点名的冻结包（`snapshot_packs` 三种写法、decide-bench 的 `books[].pack`）一律保留；读不了测试集仓时 `--apply` 拒删。本机没测试集仓就无内容克隆、只取 bench.yaml。起因：rough-bench 冻结包（冻结当时的 main 包）换两次 main 后被清。现网核过 17 份 bench 冻结包都在 R2、都判保留。
+
 ## [0.7.12] - 2026-11-28
 
 - PATCH（11-28，CV4 #1288，GM2 审改）：`products_io.active_step()` 改问 cv `decide_names.ADMIT_STEP_ACTIVE`。原先查 `STEPS`，步模块没导入时是空注册表、恒判旧名 seed_admit：`guji exp`／`guji bench` 在改名版 cv（v0.9.16 起、cv dev #2033 起）上把 `eval: use_human_verdicts: false` 挂在旧键 `seed_admit:`，引擎忽略，**评测带着人裁在跑**（殿本 vol01 decide 1114 格有 1024 格走 admit:human）。v0.7.6–v0.7.11 配改名版 cv 跑出的 exp/bench 收尾类结果要复核。L0。
