@@ -357,8 +357,11 @@ PERF_HOOKS: dict[str, dict] = {
     "open_guji_cv.steps.seed_admit_common": {"funcs": ("_page_patch", "_hard_blocked")},
     "open_guji_cv.steps.seed_admit_lanes": {
         "funcs": ("_edge_pair_pass", "_follow_ref_pass", "_human_unbound_pass", "_pua_rule_pass", "_rare_ref_pass",
-                  "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass", "_symbol_ref_blank_pass"),
+                  "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass"),
     },
+    # cv #1998（11-28，CV4 P1a）把 seed_admit 按位置拆成 cell_state／groups／pick／veto／altcut／reasons／page_params，
+    # `_symbol_ref_blank_pass` 搬到 seed_admit_cell_state（旧 cv 没这模块，import 失败就跳过）
+    "open_guji_cv.steps.seed_admit_cell_state": {"funcs": ("_symbol_ref_blank_pass",)},
     "open_guji_cv.steps.seed_admit_shapes": {
         "funcs": ("_book_knn_pass", "_near_knn_pass", "_pair_shape_pass", "_rr_shape_pass"),
     },
