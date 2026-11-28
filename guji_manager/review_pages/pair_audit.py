@@ -5,7 +5,7 @@
 - `near_pair`：一对形近字（畫/書、全/今…）各摆库里 3–5 个人裁刻例，待审格放中间，选 A / B / 都不是 /
   看不清 / 切分有问题。每格一份逐项文档（`makeStore`，`i_<格号>`）：`{id, pair, v, pick?, how, t}`，`v` ∈ a | b | neither | unclear | seg。
 - `lib_audit`：按字头列出库里该字的刻例，点哪个标「这条标错」并填应为的字。每例一份逐项文档：
-  `{id, char, v, to?, how, t}`，`v` ∈ relabel（`to` 是应为的字）| evict（撤库）| near_form（两个都没错，只是形近）。
+  `{id, char, v, to?, how, t}`，`v` ∈ relabel（`to` 是应为的字）| evict_keep（撤库保留字：出库，格里的字不动）| evict（撤库重审：出库，格回待审）| near_form（两个都没错，只是形近）。
 
 事件口径与体检卡一致（`feedback/glyph_audit.py`）：库里已有的刻例 → `glyph_audit` relabel / evict / near_form；
 还没进库的待审格 → `confirm`（`step=seed_admit`，同 `char_review ingest`）。写事件只追加本机日志，
@@ -68,7 +68,7 @@ def lib_audit_decisions(items: list[dict], docs: list[dict]) -> list[dict]:
             to = (d.get("to") or "").strip()
             if len(to) == 1 and to != cur:
                 out.append({"id": i, "cur": cur, "status": "relabel", "char": to})
-        elif v in ("evict", "near_form"):
+        elif v in ("evict", "evict_keep", "near_form"):
             out.append({"id": i, "cur": cur, "status": v, "peer": (d.get("to") or "").strip() or None})
     return out
 
@@ -97,6 +97,10 @@ def to_specs(decisions: list[dict], book: str, source: str) -> list[dict]:
             specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,
                           "payload": {"v": "evict", "instance_id": r["id"], "source": source,
                                       "review": True, "char_self": r.get("cur")}})
+        elif st == "evict_keep":
+            # 撤库保留字（Sheldon 2026-11-28）：图有污点或切分问题，不当刻例，但 book-text 这一格的字不动、不回待审
+            specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,
+                          "payload": {"v": "evict", "instance_id": r["id"], "source": source, "char_self": r.get("cur")}})
         elif st == "near_form":
             p = {"v": "near_form", "instance_id": r["id"], "char_self": r.get("cur"), "source": source}
             if r.get("peer"):

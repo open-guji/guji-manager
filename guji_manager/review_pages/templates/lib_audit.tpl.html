@@ -11,16 +11,16 @@
 .t .opts button{padding:3px 7px;font-size:12px}
 .t .opts button.sel{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .t .pk{width:3em;font:600 18px/1 var(--font-glyph);text-align:center}
-.t.v-relabel,.t.v-evict{border-color:var(--bad);background:var(--bad-bg)}.t.v-near_form{border-color:#b7791f}
+.t.v-relabel,.t.v-evict,.t.v-evict_keep{border-color:var(--bad);background:var(--bad-bg)}.t.v-near_form{border-color:#b7791f}
 </style>
 /*SHELL*/
 <script>
 const D=/*DATA*/null;
 /*COMMON_JS*//*STORE_JS*/
 // 每页 per_page 个字头。每个字头列出库里该字的刻例；人只点有问题的：
-// 「改成…」填应为的字（relabel）／「撤库」（evict，图不能当这个字的刻例）／「形近没错」（图就是这个字，只是与某字形近，可填那个字）。
+// 「改成…」填应为的字（relabel）／「撤库保留字」（evict_keep，图有污点或切分问题不当刻例，但格里的字不动）／「撤库重审」（evict，出库且这一格回待审）／「形近没错」（图就是这个字，只是与某字形近，可填那个字）。
 // 每点一下写一份逐项文档 i_<实例号>（通用件，重开读回）；没点的刻例不记结果（不等于认可）。
-const VN={relabel:"改成",evict:"撤库",near_form:"形近没错"};
+const VN={relabel:"改成",evict_keep:"撤库保留字",evict:"撤库重审",near_form:"形近没错"};
 const P=D.per_page, NP=Math.max(1,Math.ceil(D.groups.length/P));
 const gOf={};D.groups.forEach((g,i)=>g.tiles.forEach(t=>gOf[t.id]={g,i}));
 const S=makeStore({key:"lib-audit-"+D.book+"-"+D.tpl_version.split(".")[0],
@@ -53,9 +53,9 @@ function render(){
       const pk=document.createElement("input");pk.type="text";pk.className="pk";pk.maxLength=2;pk.setAttribute("aria-label","对应的字");
       pk.oninput=()=>{const x=S.raw(t.id);if(x){setV(t.id,x.v,pk.value.trim());paint(b,t)}};
       const o=document.createElement("div");o.className="opts";
-      for(const v of ["relabel","evict","near_form"]){
+      for(const v of ["relabel","evict_keep","evict","near_form"]){
         const bt=document.createElement("button");bt.type="button";bt.dataset.v=v;bt.textContent=v==="relabel"&&t.sug?"改成「"+t.sug+"」":VN[v]+(v==="relabel"?"…":"");
-        bt.onclick=()=>{const x=S.raw(t.id);if(x&&x.v===v)setV(t.id,null);else setV(t.id,v,v==="relabel"?(t.sug||""):"");paint(b,t);if(S.raw(t.id)&&v!=="evict"&&!(v==="relabel"&&t.sug))pk.focus()};
+        bt.onclick=()=>{const x=S.raw(t.id);if(x&&x.v===v)setV(t.id,null);else setV(t.id,v,v==="relabel"?(t.sug||""):"");paint(b,t);if(S.raw(t.id)&&v!=="evict"&&v!=="evict_keep"&&!(v==="relabel"&&t.sug))pk.focus()};
         o.appendChild(bt);
       }
       b.append(w);if(t.ctx){const cx=document.createElement("div");cx.className="ctx";cx.textContent=t.ctx;b.append(cx)}
