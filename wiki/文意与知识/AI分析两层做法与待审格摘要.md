@@ -72,10 +72,10 @@
 
 ## 三之三、人要看的字一律走线上待审单（用户 11-27 定）
 
-要用户看图判的字，**一律放在网站待审单上让用户直接审**，不另出图片清单、看图网页或拼图。易混组抽样看图也一样：抽样的格留在待审单，用户在网站上判，结果是人裁事件。
+要用户看图判的字，**一律放在网站待审单上让用户直接审**，不另出图片清单、看图网页或拼图。易混组抽样看图也一样：抽样的格留在待审单，用户在网站上判，结果是裁定事件。
 
 1. 要看图的格**不写放行事件**，状态记 `pending`（有倾向）或 `unsure`，摘要照写（一句话、详情、检索），用户审时直接看到 AI 分析。
-2. 待审格上必须带 AI 摘要：出单或 land 时按（册，u）挂 `ai`。核对法：中心库 `ai_notes` 里该（册，u）有行，且状态不是 `released`。
+2. 待审格上必须带 AI 摘要：land 时按（册，u）挂 `ai`。核对法：中心库 `ai_notes` 里该（册，u）有行，且状态不是 `released`。
 3. **notes 的状态不能写错**：没放行的格记 `released` 会让网页把它显示成「已放行」。**不要把「该格已有任何裁定」当 `released`**。`released` 的定义（GM3 11-27，答殿本 ZM）：该格有**有效**的裁定事件，满足下面任一条——
    - 人裁定了。**按来源判，不按标签判**：`kind=confirm`、payload 有 `shape`、键是完整格号、`actor` 不是模型，且不带模型或提示词标记（`model`、`prompt_ver`、批次名含 ai）；用户在网站审的、在对话里亲自定字后由人整理写入的（如 H-chat 批）都算。AI 出的批次即使经 `collect` 落成了 `level=human`（如 H-ai-wenyi 批）**不算人裁**，按下一条 AI 规则判，并报 GM4 把 level 改正；
    - AI 裁定事件且版本 seed_admit 认：group=O 的 `ctx-m1`、`vis-o1`、`src-1`（子类在书级开关收的范围内），其他字组是本组 `prompt.md` 的 `ver`（如 `l2`），或版本等价表里登记给本组的版本；
@@ -107,7 +107,7 @@ python3 tools/dianjiao/write_notes.py in.tsv <feedback>/notes/<册>.jsonl --leve
 # 4 推库（由 GM4 定时批量，notes 进 ai_notes）
 # notes 文件与裁定事件写好即可；collect／db sync（notes 进 ai_notes、裁定落 book-text）由 GM4 定时批量跑，各线别自己推库
 # 确需单独推 notes 先问 GM4（推前先 db pull、--dry-run）
-# 5 出单（挂卡）
+# 5 land（挂卡）
 guji audit alt <册>  # 写卡时已并入 notes；land 读同一份卡，再对账即补
 ```
 

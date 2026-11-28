@@ -5,7 +5,7 @@ guji-manager 用到四个库。每个库「怎么连」只写在连库配置 `da
 
 | 库名（配置里的键） | 放什么 | 放在哪 | 怎么连 | 谁写 | 谁读 | 规格 |
 |---|---|---|---|---|---|---|
-| `central` 中心库 | 册配置、人裁事件、字形库账、整文件、进度看板 | Cloudflare D1 `guji-data-main`（11-18 从 Neon 迁来） | guji-data Worker `data.open-guji.com/v1/sql` | 各线程、执行机（`guji db push/sync`）；控制台写看板 | 所有人（`guji db pull`）；cv 跑批经数据目录读 | [中心库.md](中心库.md) |
+| `central` 中心库 | 册配置、裁定事件、字形库账、整文件、进度看板 | Cloudflare D1 `guji-data-main`（11-18 从 Neon 迁来） | guji-data Worker `data.open-guji.com/v1/sql` | 各线程、执行机（`guji db push/sync`）；控制台写看板 | 所有人（`guji db pull`）；cv 跑批经数据目录读 | [中心库.md](中心库.md) |
 | `webinbox` 网站收件箱 | 读者的票、改字意见、讨论、线上待审单、网站键值 | 与中心库同一个 D1 库，表 `web_inbox` | Worker `/v1/web/inbox` | 网站边缘函数（webinbox 令牌）；`guji feedback pending` 放待审单 | `guji feedback cellvotes`、`opinions ingest`；网站 | [网站收件箱.md](网站收件箱.md) |
 | `jobs` 任务库 | 重跑／评测单、领单记录、进展、结果、执行方、耗时统计 | Cloudflare D1 `guji-jobs`（11-23 从美国机 Postgres 搬来，旧库只读保留到 12 月初） | guji-data Worker `/v1/sql?db=jobs` | `guji pipeline job submit`、执行方 | `guji pipeline job ls/show`、`guji pipeline perf`、控制台 | [任务库.md](任务库.md) |
 | `catalog` 目录库 | 书目、实体、book-text 元数据（只读） | 美国机 Postgres `catalog_latest`／`catalog_rN` | 直连（只在美国机上） | A11 的 book-index 同步任务（每 15 分钟） | 网站搜索、专名识别；manager 现不连 | [目录库.md](目录库.md) |
