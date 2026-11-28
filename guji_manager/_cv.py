@@ -15,6 +15,10 @@ from typing import Any
 #: 名字 → (cv 内模块, 属性名；None 表示模块本身)；与 cv `manager_api._EXPORTS` 同步，只给旧 cv 兜底用。
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
+    # 候选字线（CV3 2026-11-28）：`guji audit cands`（本版只登记门面名，跟上 cv manager_api）
+    "glyph_candidate_mod": ("steps.glyph_candidate", None),
+    "context_rank_mod": ("steps.context_rank", None),
+    "ctx_fill_mod": ("clustering.ctx_fill", None),
     "pending_cells": ("feedback.pending_cells", "pending_cells"),   # 换包收尾：产物→待审格（cv #1835，GM4 11-24）
     "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "groups_of": ("groups.registry", "groups_of"),
