@@ -477,8 +477,9 @@ class Job:
             return                       # 旧 cv：收尾仍叫 seed_admit，不用迁
         # 走 `python -m open_guji_cv`，不走 bin/guji-cv：执行方 venv 的 guji-cv 脚本是装种子 cv 时生成的，切 cv 不重装，
         # 旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没有这个名（#18361 ImportError，11-28）
-        out = self.sh([str(VENV / "bin" / "python"), "-m", "open_guji_cv", "decide", "migrate-name", self.spec["book"]],
-                      write=True)
+        # -w 必给（cv 带册命令不读 GUJI_WORKSPACE 兜底，#18364）；--pipeline 跟本单同一条，指纹按它换算
+        out = self.sh([str(VENV / "bin" / "python"), "-m", "open_guji_cv", "decide", "migrate-name", self.spec["book"],
+                       "-w", self.ws or "", "--pipeline", self.spec.get("pipeline") or "keben_body_v2"], write=True)
         self.ev("收尾目录 seed_admit/→char_decide/ 原地改名（cv 改名版配老册，免整册重算）："
                 + redact(out.strip().splitlines()[-1] if out.strip() else "")[:300])
 
