@@ -79,8 +79,6 @@ from .._cv import ProductStore
 
 CELLS_STEP = "row_segment"
 CELLS_KIND = "cells"
-ADMIT_STEP = "seed_admit"
-ADMIT_KIND = "seed_admit"
 
 DEFAULT_BASELINE_KG = 2
 

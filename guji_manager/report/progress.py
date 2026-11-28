@@ -30,7 +30,8 @@ from .._cv import Engine
 from .._cv import default_pipeline_id, load_pipeline
 from .._cv import page_key
 from .._cv import ProductStore
-from .._cv import ADMIT_STEP, CELLS_KIND, cells_step, page_slots
+from .._cv import CELLS_KIND, cells_step, page_slots
+from ..products_io import DECIDE_NEW
 from ..products_io import exists_decide
 
 COLS = ("stale", "review_new", "review_decided", "cut", "defect", "excluded", "cols_bad", "rebind")
@@ -96,7 +97,7 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
                 row["stale_steps"].append(f"slots:{type(e).__name__}")
                 row["stale"] += 1
         else:
-            row["stale_steps"].append(f"{ADMIT_STEP}:missing" if cells is not None else f"{step3}:missing")
+            row["stale_steps"].append(f"{DECIDE_NEW}:missing" if cells is not None else f"{step3}:missing")
             row["stale"] = len(row["stale_steps"])
         for k in COLS:
             totals[k] += row[k]
