@@ -5,6 +5,8 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+- PATCH（11-28，GM2，配 cv 组层 #2064，CV0 提）：`guji job precheck` 表里加一列「配置组」（取 cv 合层里的「组 wyg@1」层，没引组显示 —）；组里禁写钉子，钉子来源照旧只来自基础配置／册 yaml／运行覆盖。L0。
+
 
 - PATCH（CV0 2026-11-28，配 cv #2064 组层）：配置组共享层 `group-<组>`。`is_shared_ws` 认 `group-` 前缀（普通 push／sync 拒写），新 `versioned_prefix`：`config/group/v<N>.yaml` 已发布不可改不可删；新命令 `guji config-group publish <组> --from <yaml> [--note]`（`ops/group_config.py`，升级脚本身份出新版 v<N>，禁写检查用 cv `check_group_layer`，cv 没有组层就拒绝出版）；`guji db pull／sync` 在书的 `book_defaults.yaml` 写了 `groups.config: <组>@<版>` 时把组拉成只读副本（`refresh_group_configs`），库里没有该组或没有那一版报错、不当成没组。`config/group/` 走 `scope.classify` 现有的 `config/ → files`。新测 `tests/test_group_config_shared.py`。
 - PATCH（CV0 2026-11-28，GM2 审 #1258 的两条建议）：`pipeline_for` 改按 `inspect.signature` 判老 cv，不再吞 TypeError；`exp` 跑裸 `guji_default` 时各册版式不一致报错（要分开跑或写死 `guji_default@版式`）。
