@@ -105,7 +105,7 @@ def chapter_for(book: str, ws: Path, given: str | None = None) -> str:
         return f"{int(given):03d}"
     try:
         os.environ.setdefault("GUJI_WORKSPACE", str(ws))
-        from open_guji_cv.core.volume_id import chapter_of
+        from .._cv import chapter_of
         ch = chapter_of(book)
         if ch:
             return f"{int(ch):03d}" if str(ch).isdigit() else str(ch)
