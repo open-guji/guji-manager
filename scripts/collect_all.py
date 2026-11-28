@@ -126,7 +126,7 @@ def main():
             after = {p.name for p in runs.glob("*.ledger.tsv")} if runs.exists() else set()
             if rc and not (after - before):         # 没出新台账＝没跑成，别拿旧台账冒充
                 raise RuntimeError(f"collect 失败（rc={rc}）：{out[-300:]}")
-            led = newest_ledger(ws)
+            led = newest_ledger(ws) if (after - before) else []   # 本轮没出台账＝没有要收的，别拿旧台账冒充
             blocked = [r for r in led if r.get("状态") == "blocked"]
             for r in blocked:                       # 字块图缺：拉原图和出单版包再试一次
                 vol = r["册"]
