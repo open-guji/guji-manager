@@ -82,7 +82,7 @@ def resolve_step_dir(root: Path | str, book: str, step: str) -> Path:
 def read_decide(store: Any, book: str, pk: str) -> dict | None:
     """`ProductStore.read` 的两名版；返回定字层（没有该页返回 None）。"""
     f = _cv_attr("read_final_store")
-    if f:
+    if f and hasattr(store, "read_raw"):          # 假 store／旧 store 没有 read_raw 的走本地实现
         return f(store, book, pk)
     for s in DECIDE_STEPS:
         try:
