@@ -32,6 +32,7 @@ def active_step() -> str:
     """本机 cv 现在用的收尾步名：cv 改名版（open-guji-cv#2033）起是 char_decide，之前是 seed_admit。"""
     try:
         from ._cv import STEPS
+        from ._cv import steps as _registered  # noqa: F401  —— 没触发 Step 注册时 STEPS 是空的，会误判成旧名，exp 的评测口径（如 use_human_verdicts: false）就挂在旧键上被引擎忽略
         return DECIDE_NEW if DECIDE_NEW in STEPS else DECIDE_OLD
     except Exception:  # noqa: BLE001
         return DECIDE_OLD

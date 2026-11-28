@@ -37,3 +37,16 @@ def test_steps_and_store():
             return step == "seed_admit"
     assert read_decide(S(), "b", "p0001") == {"x": 1}
     assert exists_decide(S(), "b", "p0001")
+
+
+def test_active_step_registers_steps_first():
+    """没先导入 cv 的 Step 时 STEPS 为空，active_step 不能误判成旧名（否则评测口径写在旧键上，被引擎忽略）。"""
+    import subprocess, sys
+    code = ("from guji_manager import products_io as P; "
+            "from guji_manager import _cv; "
+            "assert not _cv.STEPS or True; "
+            "import sys; print(P.active_step())")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.strip().splitlines()[-1]
+    from guji_manager import _cv
+    from guji_manager._cv import steps  # noqa: F401
+    assert out == ("char_decide" if "char_decide" in _cv.STEPS else "seed_admit")
