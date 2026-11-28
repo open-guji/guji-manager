@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- DOC（11-28，GM4，bench 统一接口，CV0）：`doc/版本号规矩.md` 第三节 rc 测试一条的发版护栏命令写成 `guji bench guard`（取代 `guji eval guard`，旧命令留别名；`skipped`／`no_gold` 不算过）。L0。
+
 - PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
 
 ## [0.7.8] - 2026-11-28
