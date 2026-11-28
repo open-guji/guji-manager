@@ -262,7 +262,7 @@ def cmd_collate(args) -> None:
     pages = bk.resolve_pages(args.pages) if args.pages else body_pages(args.book)
     witnesses = load_witnesses(bk.references)
     print(f"{args.book}：{len(pages)} 页，证人 "
-          + "、".join(f"{w.label}({w.quality})" for w in witnesses), flush=True)
+          + "、".join(f"{w.label}({getattr(w, 'accuracy', None) or getattr(w, 'quality', '')})" for w in witnesses), flush=True)
 
     def progress(n, total, page):
         if n % 20 == 0 or n == total:
