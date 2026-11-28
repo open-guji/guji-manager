@@ -23,6 +23,7 @@
 
 不改什么
 --------
+- **R2 原图登记**（``source/by-ws/<ws>/<册>.json``）：``--apply`` 末尾给新名补一份指针（指向旧名同一书同一册，旧的不删）；漏了的书用 ``--r2-only --ws <工作区> --map 旧=新 … --apply`` 补（11-28 北行漏这步，取原图 404）。
 - **事件**（``feedback/events/``）：只追加，不改写；cv 读时按册 yaml 的 ``aliases`` 换名（cv #1970）。
 - **字形库**（``output/glyph_store/``）与一切实例 id（``v2:vol01:…``、``bare~r2~vol01~…``）：不透明编号，不改。
 - 原图目录（册 yaml ``raw_dir``）：照旧指向原处。
@@ -328,6 +329,26 @@ def rollback(backup: Path) -> None:
         src.rename(dst)
 
 
+def r2_pointers(amap: dict[str, str], ws: str, *, write: bool = True, src=None) -> list[str]:
+    """R2 原图登记（``source/by-ws/<ws>/<册>.json``）给新名补一份，指向旧名同一 (书 id, 册)。
+
+    指针只增不改，旧名那份留着。11-28 北行 bxgb→1 改名漏了这一步，执行机取原图 404（任务 #18346）。
+    返回每册一行结果；旧名没登记的册跳过（本来就不从 R2 取图）。"""
+    from ..datastore import sources as S
+    src = src or S._client()
+    out = []
+    for old, new in amap.items():
+        try:
+            book_id, vol = S.resolve(src, ws, old)
+        except FileNotFoundError:
+            out.append(f"{old}→{new}：旧名没有原图登记，跳过")
+            continue
+        if write:
+            S.write_pointer(src, ws, new, book_id, vol)
+        out.append(f"{old}→{new}：{'已写' if write else '要写'} {S.pointer_key(ws, new)} → {book_id}/{vol}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m guji_manager.ops.rename_volume", description=__doc__.split("\n")[0])
     ap.add_argument("--map", action="append", default=[], help="旧=新，一册一个，可重复")
@@ -337,6 +358,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--backup", type=Path, help="--apply 时的备份目录（必填）")
     ap.add_argument("--rollback", type=Path, help="按备份目录还原（配 --apply）")
+    ap.add_argument("--ws", default=None, help="中心库工作区 id（R2 原图登记用）；缺省取 --data-dir 的目录名")
+    ap.add_argument("--no-r2", action="store_true", help="--apply 时不补 R2 原图登记（新名指针）")
+    ap.add_argument("--r2-only", action="store_true", help="只补 R2 原图登记（已改过名、当时漏了这步的书），配 --map 与 --ws；加 --apply 才写")
     ap.add_argument("--repair", type=Path, help="已用旧版工具改过名的书：按当时的备份目录补改数据目录（配 --data-dir）")
     a = ap.parse_args(argv)
     if a.repair:
@@ -365,6 +389,13 @@ def main(argv: list[str] | None = None) -> int:
     amap = dict(x.split("=", 1) for x in a.map)
     if not amap:
         ap.error("至少一个 --map 旧=新")
+    ws = a.ws or (a.data_dir.name if a.data_dir else None)
+    if a.r2_only:
+        if not ws:
+            ap.error("--r2-only 要给 --ws 或 --data-dir")
+        for ln in r2_pointers(amap, ws, write=a.apply):
+            print(ln)
+        return 0
     plan = build_plan(amap, a.data_dir, a.products, a.cache)
     print(json.dumps(plan.summary(), ensure_ascii=False, indent=2))
     for m in plan.moves:
@@ -375,6 +406,16 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--apply 要给 --backup")
     apply(plan, a.backup)
     print(json.dumps(plan.counts, ensure_ascii=False))
+    if not a.no_r2:
+        if not ws:
+            print("⚠ 没补 R2 原图登记（不知道工作区 id）：补跑 --r2-only --ws <工作区> --map … --apply", file=sys.stderr)
+        else:
+            try:
+                for ln in r2_pointers(amap, ws):
+                    print(ln)
+            except Exception as e:  # noqa: BLE001 —— 本机改名已完成，指针补不上只提示
+                print(f"⚠ R2 原图登记没补上（{type(e).__name__}: {str(e)[:200]}）：补跑 --r2-only --ws {ws} --map … --apply",
+                      file=sys.stderr)
     return 0
 
 
