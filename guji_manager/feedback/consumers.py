@@ -1002,19 +1002,22 @@ def product_invalidate(events, product_store=None, dry_run: bool = False, **kw) 
             res.skipped += 1
             res.errors.append(f"{e.id}: 路由没给 extra.step，或事件没 book/page 且 key {t.key!r} 反解不出")
             continue
-        # 定字步 seed_admit／char_decide 两名并认：同时失效两名（没跑过的名不算错）
+        # 定字步 seed_admit／char_decide 两名并认：同时失效两名（没跑过的名不算错），一页只计一次
+        key = (book, DECIDE_NEW if is_decide_step(step) else step, page_key(page))
+        if key in done:
+            continue
+        done.add(key)
+        if dry_run:
+            res.added += 1
+            continue
+        hit = False
         for stp in (DECIDE_STEPS if is_decide_step(step) else (step,)):
-            key = (book, stp, page_key(page))
-            if key in done:
-                continue
-            done.add(key)
-            if dry_run:
-                res.added += 1
-                continue
             if st.manifest(book, stp).invalidate(key[2], f"人裁 {e.kind} {e.id}"):
-                res.added += 1
-            else:
-                res.skipped += 1
+                hit = True
+        if hit:
+            res.added += 1
+        else:
+            res.skipped += 1
     return res
 
 
