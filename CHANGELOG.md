@@ -5,6 +5,7 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+- PATCH（11-28，GM2）：借库同号放开——装的 cv 已含 #1989（`admit_instance` 遇借来同号先摘借来那份、本书例照本格图进；v0.9.13 起）时，回库选格／admit、consumers 回库重放与 glyphdb_admit 不再「同号一律不进」（#1209），按 cv 有没有 `_drop_borrowed_instance` 判；旧 cv 照旧跳过。#1212（取库旧图不认借来的同号）保留。
 - PATCH（11-28，GM2，cv P3 改名版读空复查收尾）：全仓复查拿 cv `ADMIT_STEP` 或字面 `seed_admit/` 拼定字产物路径的地方（改名版 cv 下老册会静默读空）：快审页 `review_pages/char_review.load` 写死 `seed_admit/` 改走 `decide_pages`；看板 `report/progress` 不再从 cv 取 ADMIT_STEP（缺页提示用 `products_io.active_step()`）；删 `render/reading_layout` 未用的 ADMIT_STEP／ADMIT_KIND 死常量；`tools/seg_check` 两个脚本两名并认；几处帮助文字改写两名。加护栏测试 `tests/test_decide_name_guard.py`：包里再出现这两种拼法就红。GM3 点的 vision／verdict_view／approx／reading_layout 读口 #1224、#1246 已修。L0。
 
 - PATCH（11-28，GM2）：跟上 cv dev 两处改动，dev CI 复绿（只动测试；报告读 accuracy 见 #1242）——cv #2030 `Witness.quality` 改名 `accuracy`：三个搬来的测试改传 accuracy；cv #2032 借组库缺省跳过本书自己的例：glyphlib 借法测试显式传空 `self_ids`，另加一条缺省跳过的断言。

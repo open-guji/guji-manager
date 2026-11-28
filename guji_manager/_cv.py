@@ -89,6 +89,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "release_pin": ("core.corpus_pin", "release_pin"),
     "core_corpus_files": ("core.corpus_files", None),
     "GlyphDB": ("clustering.glyph_db", "GlyphDB"),
+    "clustering_glyph_db": ("clustering.glyph_db", None),
     "assert_workspace_declared": ("core.workspace", "assert_workspace_declared"),
     "glyph_store_path": ("core.workspace", "glyph_store_path"),
     "clustering_font_pack": ("clustering.font_pack", None),

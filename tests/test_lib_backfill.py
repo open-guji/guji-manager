@@ -334,14 +334,27 @@ def _glyph_db(tmp_path, borrowed=(), edition=None):
     return db
 
 
-def test_borrowed_clash_and_ids(tmp_path):
-    """汉书 01 借史記（史記也有 01 册）：v2:01:… 同号的实例是别书那格，回库／人裁都不能进（GM2 11-28）。"""
-    from guji_manager.feedback.consumers import borrowed_clash
+def test_borrowed_clash_and_ids(tmp_path, monkeypatch):
+    """汉书 01 借史記（史記也有 01 册）：v2:01:… 同号的实例是别书那格；旧 cv 上回库／人裁都不能进（GM2 11-28）。"""
+    from guji_manager.feedback import consumers as C
+    monkeypatch.setattr(C, "cv_handles_borrow_clash", lambda: False)
     db = _glyph_db(tmp_path, borrowed=["v2:01:105:4:5"])
-    assert borrowed_clash(db, "v2:01:105:4:5") and not borrowed_clash(db, "v2:01:105:4:6")
+    assert C.borrowed_clash(db, "v2:01:105:4:5") and not C.borrowed_clash(db, "v2:01:105:4:6")
+    assert C.clash_blocks(db, "v2:01:105:4:5")
     db.close()
     assert LB._borrowed_ids(tmp_path / "g.db") == {"v2:01:105:4:5"}
     assert LB._borrowed_ids(tmp_path / "none.db") == frozenset()
+
+
+def test_borrowed_clash_lifted_when_cv_drops_borrowed(tmp_path, monkeypatch):
+    """cv #1989 起 admit_instance 遇同号先摘借来那份、本书例照本格图进：同号格照常选、照常进（不再一律跳过）。"""
+    from guji_manager.feedback import consumers as C
+    assert C.cv_handles_borrow_clash()           # 测试装的 cv dev 已含 #1989
+    monkeypatch.setattr(C, "cv_handles_borrow_clash", lambda: True)
+    db = _glyph_db(tmp_path, borrowed=["v2:01:105:4:5"])
+    assert C.borrowed_clash(db, "v2:01:105:4:5") and not C.clash_blocks(db, "v2:01:105:4:5")
+    db.close()
+    assert LB._borrowed_ids(tmp_path / "g.db") == frozenset()
 
 
 def test_borrowed_clash_no_table(tmp_path):
