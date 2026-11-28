@@ -123,6 +123,29 @@ def load_cards(ws: Path, book: str) -> dict[str, dict]:
             continue
         k = str(k)
         out[k[len(pre):] if k.startswith(pre) else k] = c
+    for k, x in _load_cands(ws, book).items():          # 候选字线：`guji audit cands` 的输出（cands/1）按格并进卡
+        if k in out:
+            out[k] = {**out[k], "cands": x}
+    return out
+
+
+def _load_cands(ws: Path, book: str) -> dict[str, dict]:
+    """``guji audit cands <册>`` 写的 ``reports/<册>/<册>.cards.cands.json`` → {不带册号的格号: cands/1}。
+    只认卡上有 ``cands`` 的格；文件缺／半截当没有（缺省关的书不受影响）。"""
+    f = Path(ws) / "reports" / book / f"{book}.cards.cands.json"
+    if not f.exists():
+        return {}
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    pre = f"{book}:"
+    out: dict[str, dict] = {}
+    for c in (doc["cards"] if isinstance(doc, dict) else doc):
+        k = c.get("cell") or c.get("a") or c.get("id")
+        if k and isinstance(c.get("cands"), dict) and c["cands"].get("list"):
+            k = str(k)
+            out[k[len(pre):] if k.startswith(pre) else k] = c["cands"]
     return out
 
 

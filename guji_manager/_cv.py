@@ -316,6 +316,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "pack_root": ("core.corpus_pin", "pack_root"),
     "versions": ("core.corpus_pin", "versions"),
     "NEVER_MATCH_FAMILIES": ("clustering.match", "NEVER_MATCH_FAMILIES"),
+    "near_registry_pairs": ("clustering.confusable", "registry_pairs"),
     "collect_vol": ("core.corpus_pin", "collect_vol"),
     "vol_manifest_path": ("core.corpus_pin", "vol_manifest_path"),
     "vol_versions": ("core.corpus_pin", "vol_versions"),

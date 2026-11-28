@@ -40,9 +40,6 @@ NOT_IN_FP: dict[tuple[str, str], str] = {
         "只读图：no_frame_skip 开且册配 ink（墨层书 raw 是二值图）时另读原图灰度判纯色页（cv#1821，缺省关，参数缺省不进 dump）；"
         "判纯色的阈值与 _no_frame 在本闸模块里，已进指纹",
     ("open_guji_cv.steps.seed_admit", "open_guji_cv.utils.image_io"): "只读图",
-    ("open_guji_cv.steps.seed_admit", "open_guji_cv.clustering.keben_counts"):
-        "只在 solo_5b_cov 开时读刻例数（cv#1278，缺省关；参数进指纹，缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
-        "册开 solo_5b 之前要把本模块并入该册指纹（随 solo_5b 启用的 PR 补）",
     ("open_guji_cv.steps.glyph_match", "open_guji_cv.clustering.sim_cnn"):
         "只在 sim_model 开时换精验（cv#1394，缺省 None＝关，参数缺省不进 dump，故关时产物逐字节不变，code_equiv 已证）；"
         "开着时权重 sha256＋sim_cnn 代码哈希经 sim_model_sha 进参数指纹，改 sim_cnn 照样判过期",
@@ -119,16 +116,7 @@ EXISTING_GAPS: dict[str, set[str]] = {
         "open_guji_cv.steps._warpmap",
     },
     "open_guji_cv.steps.seed_admit": {
-        "open_guji_cv.clustering.confusable",
         "open_guji_cv.clustering.exclusions",
-        "open_guji_cv.clustering.glyph_db",
-        "open_guji_cv.clustering.glyph_fp",
-        "open_guji_cv.clustering.normalize",
-        "open_guji_cv.feedback.mojibake",
-        "open_guji_cv.hanzi.symbols",
-        "open_guji_cv.shadow.gate",
-        "open_guji_cv.shadow.model",
-        "open_guji_cv.shadow.signals",
         "open_guji_cv.steps.align_ref",
         "open_guji_cv.utils.ji_yi_si",
     },
