@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 NEW, OLD = "char_decide", "seed_admit"
-RULING_STEP = OLD   # 事件写入用名；cv 改名版发布后改成 NEW
+RULING_STEP = NEW   # 事件写入用名；cv #2033（9f85c78）起新写入用 char_decide，旧事件不改（cv 读时两名同一步）
 STEP_NAMES = (NEW, OLD)
 
 

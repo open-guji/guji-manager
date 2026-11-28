@@ -32,5 +32,5 @@ def test_params_block():
         params_block({"seed_admit": {"a": 1}, "char_decide": {"a": 2}})
 
 
-def test_ruling_step_constant_old_until_cv_renames():
-    assert RULING_STEP == "seed_admit"
+def test_ruling_step_constant_new_after_cv_rename():
+    assert RULING_STEP == "char_decide"
