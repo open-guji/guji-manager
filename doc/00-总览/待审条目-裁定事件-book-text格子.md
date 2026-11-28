@@ -191,7 +191,7 @@
 
 | 残留 | 现状 | 收尾条件 |
 |---|---|---|
-| land 仍导出整张 `<章>.pending.json` | 只因网站 `proofing-sync` 靠它搬单格图；网站读单已走 Worker `pending-doc` 按章现拼，不读这张单 | proofing-sync 改按条目取图后停导 |
+| 库里存量整张 `<章>.pending.json`（`list_rows` 的 `proofing`） | **land 已停导**（2026-11-28）；`proofing-sync` 改取 Worker `/v1/web/pending-chapters`（各章开着条目数＋单格图登记）发图，网站读单走 `pending-doc`，都不读这张单。`collect`／`cellvotes` 的 `--rev`、`_collect/<rev>/`、`swap.LIVE` 还在读它 | collect 改按条目后，存量行下线 |
 | 条目 `src` 历史行带 `rev:046-r0`、`land:…` | 读时一律当机器出的；新开的只写 `pipeline`／`script:<名>`／`human:<谁>` | 不改历史行 |
 | 旧票键 `cr:<rev>:…` | 已一次性迁到 `cr:i:<书>:<条目>:<投票人>`，旧键只读保留 | — |
 | 存量事件 `payload.level`／`by`／`channel` 缺 | 由 `level` 虚拟列按规则推；新写入必填 | 不改历史行 |
