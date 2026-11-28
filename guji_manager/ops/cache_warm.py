@@ -46,14 +46,15 @@ def _page_keys(ctx, page: int) -> list[str]:
 def _init(book_id: str, pipeline_id: str) -> None:
     global _ctx
     from .._cv import load_book
-    from .._cv import load_pipeline
+    from .._cv import pipeline_for
     from .._cv import RunContext
     from .._cv import ImageCache
     from .._cv import ProductStore
     cache = ImageCache()
     cache.set_page_stamp = lambda *a, **k: None          # 戳由主进程串行补（见模块头 2.）
-    _ctx = RunContext(load_book(book_id), ProductStore(), cache, log=lambda s: None,
-                      pipeline=load_pipeline(pipeline_id))
+    book = load_book(book_id)
+    _ctx = RunContext(book, ProductStore(), cache, log=lambda s: None,
+                      pipeline=pipeline_for(book, pipeline_id))
 
 
 def _warm_page(page: int) -> tuple[int, int, str | None]:
