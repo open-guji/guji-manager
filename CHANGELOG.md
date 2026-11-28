@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（CV0 2026-11-28，GM2 审 #1258 的两条建议）：`pipeline_for` 改按 `inspect.signature` 判老 cv，不再吞 TypeError；`exp` 跑裸 `guji_default` 时各册版式不一致报错（要分开跑或写死 `guji_default@版式`）。
+
 - PATCH（CV0 2026-11-28，配 cv #2055 三链合一）：新模块 `pipeline_ref`——`pipeline_for(book, pid)` 按册展开管线（裸 `guji_default` 要带册才知道版式；老 cv 不收 `book=` 时退回 `load_pipeline(pid)`），`norm_pipeline` 把旧链 id 归一成 `guji_default@<版式>`。`cache warm`／`cache push-patches`／`ops.cache_warm`／`exp` 改用 `pipeline_for`（GM2 审 #2055 时点出）；耗时统计入库与 `guji perf` 显示的 pipeline 归一。任务库缺省仍是 `keben_body_v2`（GM2：旧 cv 不认新 id，各书升新 cv 后再换）。
 - PATCH（11-28，GM2，cv P3 跑批护栏，CV4 提）：执行方 `run_pipeline` 跑前查本机产物：cv 已是改名版（STEPS 有 char_decide）而本册只有 `seed_admit/`，先 `guji-cv decide migrate-name <册>` 原地改名换指纹再跑，免得收尾判缺失整册重算（出过 v0.1 的册等于违规重跑）；旧 cv 或已迁移不动。L0。
 

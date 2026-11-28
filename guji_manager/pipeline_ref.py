@@ -16,10 +16,18 @@ def pipeline_for(book, pid: str | None = None):
     """这册书要跑的管线对象。`pid` 不给按册推（cv `default_pipeline_id`）。"""
     from ._cv import default_pipeline_id, load_pipeline
     pid = pid or default_pipeline_id(book)
-    try:
+    if _takes_book(load_pipeline):
         return load_pipeline(pid, book=book)
-    except TypeError:                     # cv 早于 #2055：load_pipeline 不收 book=
-        return load_pipeline(pid)
+    return load_pipeline(pid)             # cv 早于 #2055：load_pipeline 不收 book=
+
+
+def _takes_book(fn) -> bool:
+    """`load_pipeline` 收不收 `book=`（按签名判，不靠吞 TypeError——新 cv 别处抛的 TypeError 不能被当成老 cv）。"""
+    import inspect
+    try:
+        return "book" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 def norm_pipeline(pid: str | None, layout: str | None = None) -> str | None:
