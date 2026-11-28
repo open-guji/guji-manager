@@ -291,15 +291,25 @@ def _hard_pair(c: Cell, x: Context) -> bool:
 
 
 def _near_pairs() -> frozenset[tuple[str, str]]:
-    """cv 手工形近表 NEVER_MATCH_FAMILIES（无序对）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
+    """cv 手工形近表（无序对，两端按码位排好）。读 cv 的形近字组登记表 `config/near_groups/v2.json` 里 `src` 含 hand 的对
+    （cv `manager_api.near_registry_pairs`，W1 第二期 2026-11-28）；cv 还没有这个读口（旧版）就退回 `NEVER_MATCH_FAMILIES`，
+    两者逐对相等（cv `tests/test_near_registry_readers.py`）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
     global _NEAR_PAIRS
     if _NEAR_PAIRS is None:
         try:
-            from .._cv import NEVER_MATCH_FAMILIES
-            _NEAR_PAIRS = frozenset(tuple(sorted(p)) for p in NEVER_MATCH_FAMILIES if len(p) == 2)
+            _NEAR_PAIRS = _hand_pairs_from_cv()
         except Exception:  # noqa: BLE001 —— 没装 cv 时不挡分类
             _NEAR_PAIRS = frozenset()
     return _NEAR_PAIRS
+
+
+def _hand_pairs_from_cv() -> frozenset[tuple[str, str]]:
+    from .. import _cv
+    try:
+        pairs = _cv.near_registry_pairs("hand")
+    except AttributeError:                 # cv 早于登记表第二期：没有 near_registry_pairs／registry_pairs
+        pairs = _cv.NEVER_MATCH_FAMILIES
+    return frozenset(tuple(sorted(p)) for p in pairs if len(p) == 2)
 
 
 _NEAR_PAIRS: frozenset[tuple[str, str]] | None = None
