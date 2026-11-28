@@ -6,7 +6,12 @@
 
 ## [未发版]
 
+## [0.7.13] - 2026-11-28
+
 - PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
+- PATCH（11-28，GM2，CV4 急）：`central-gc` 加第 7 条保留规则——测试集仓各 bench 分片 `bench.yaml` 点名的冻结包（`snapshot_packs` 三种写法、decide-bench 的 `books[].pack`）一律保留；读不了测试集仓时 `--apply` 拒删。本机没测试集仓就无内容克隆、只取 bench.yaml。起因：rough-bench 冻结包（冻结当时的 main 包）换两次 main 后被清。现网核过 17 份 bench 冻结包都在 R2、都判保留。
+
+- PATCH（11-28，#1290）：`guji bench void` 作废中心库结果（不删行，status=void、去基线、记原因）。
 - PATCH（11-28，GM2）：执行方遇到不认的单型记 blocked 并说明「交单方 manager 更新、等自更新后 retry」，不再掉进 command 分支报 `TypeError: 'NoneType' object is not iterable`（CV4 #18365：kind=bench 落到还没更新的执行方）。
 
 ## [0.7.12] - 2026-11-28
