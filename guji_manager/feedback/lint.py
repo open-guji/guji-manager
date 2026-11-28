@@ -167,7 +167,7 @@ def lint(feedback_root: Path) -> Report:
     rep = Report()
     seen: dict[str, tuple[str, str]] = {}
     events: list[Event] = []
-    for sub in ("events", "vision", "rulings"):
+    for sub in ("events", "vision", "rulings", "vis_glyph"):
         d = Path(feedback_root) / sub
         if d.is_dir():
             lint_dir(d, rep, seen, events)

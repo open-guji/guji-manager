@@ -181,6 +181,8 @@ def require_u(evs: list) -> None:
     for e in evs:
         t = getattr(e, "target", None)
         p = getattr(e, "payload", None) or {}
+        if getattr(e, "kind", None) in U_EXEMPT_KINDS:
+            continue
         if getattr(e, "kind", None) == "ctx_ruling":
             cell = p.get("cell")
             if isinstance(cell, str) and cell and _has_ledger(cell.split(":", 1)[0], cache) and not isinstance(p.get("u"), int):
@@ -193,6 +195,10 @@ def require_u(evs: list) -> None:
                           f"{'、'.join(bad[:5])}{' …' if len(bad) > 5 else ''}。先 guji uid advance <册>")
 
 
+#: 不是「格级人裁／按格裁定」、不盖 u 也不要求 u 的事件种类：`vis_glyph` 是按图指纹（img_sha）存的看图缓存，`payload.cell` 只给人看。
+U_EXEMPT_KINDS = frozenset({"vis_glyph"})
+
+
 def lacks_u(kind, target: dict | None, payload: dict | None, has_ledger) -> str | None:
     """一行事件（库表列的 dict 形态）是不是「册有账却没带 u」的格级人裁／按格裁定；是 → 格号，否 → None。
 
@@ -200,6 +206,8 @@ def lacks_u(kind, target: dict | None, payload: dict | None, has_ledger) -> str 
     绕过了 append 前盖 u，推库时在这里拦下（史記「歲暫歸一」批 11-25）。``has_ledger(册) -> bool``。"""
     t = target or {}
     p = payload or {}
+    if kind in U_EXEMPT_KINDS:
+        return None
     if kind == "ctx_ruling":
         cell = p.get("cell")
         if isinstance(cell, str) and ":" in cell and has_ledger(cell.split(":", 1)[0]) and not isinstance(p.get("u"), int):
@@ -252,7 +260,7 @@ def _stamp_all(evs: list) -> list:
     evs = list(evs)
     ref = _cell_ref()
     stamp_rulings([e for e in evs if getattr(e, "kind", None) == "ctx_ruling"], ref)
-    stamp_human([e for e in evs if getattr(e, "kind", None) != "ctx_ruling"], ref)
+    stamp_human([e for e in evs if getattr(e, "kind", None) not in ("ctx_ruling", *U_EXEMPT_KINDS)], ref)
     require_u(evs)
     return evs
 

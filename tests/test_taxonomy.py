@@ -65,3 +65,9 @@ def test_new_cause_field_names():
     assert classify({"pending_reason_cause": "E", "pending_reason_cause_detail": "一/二"}).sub == "R1"
     assert classify({"pending_reason_cause": "D", "occ": {"ref_blank": True}}).sub == "O3"
     assert classify({"cause": "D", "occ": {"ref_blank": True}}).sub == "O3"
+
+
+def test_vis_glyph_dir_goes_to_events():
+    """cv 第三步看图缓存 feedback/vis_glyph/*.jsonl 进 events 表（独立目录，CV3 11-28）。"""
+    from guji_manager.datastore.scope import classify
+    assert classify("feedback/vis_glyph/glyph-vis-20261128.jsonl") == "events"

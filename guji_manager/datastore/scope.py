@@ -155,8 +155,8 @@ def classify(rel: str) -> str | None:
     if len(parts) == 2 and parts[0] == "books" and p.suffix == ".yaml":
         return "books"
     if parts[0] == "feedback":
-        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid") and p.suffix == ".jsonl":
-            return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）
+        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid", "vis_glyph") and p.suffix == ".jsonl":
+            return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）；vis_glyph：cv 第三步看图缓存（CV3 11-28，单开目录，旧 cv 扫 rulings/ 不会碰到）
         if len(parts) == 3 and parts[1] == "pins" and p.name.endswith(".state.jsonl"):
             return "events"                # 钉状态流（删钉／过期，GM4 11-26）：事件形状，stream=pin_state
         if len(parts) == 3 and parts[1] == "consumed" and p.suffix == ".jsonl":
