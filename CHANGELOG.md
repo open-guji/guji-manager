@@ -5,6 +5,8 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+- PATCH（11-28，GM2，配 cv 组层 #2064，CV0 提）：`guji job precheck` 表里加一列「配置组」（取 cv 合层里的「组 wyg@1」层，没引组显示 —）；组里禁写钉子，钉子来源照旧只来自基础配置／册 yaml／运行覆盖。L0。
+
 
 - PATCH（11-28，GM4，接配置组层 cv #2064／manager #1260，L0）：`final_review` 读册 yaml 的 `params.char_decide|seed_admit.ruling_override_groups／ruling_*` 时先垫 cv `effective_defaults`（组∪书）再让册 yaml 盖过——键挪进组配置后不会读成空名单（一律不许越过参校本）；cv 没有这个读口或读不到时退回只看册 yaml。GM4 名下其余直读 yaml 处不用改：codepoints／pua_table_pin／src_w／cos_iou_min 组里禁写，仍只在书层；exp/config 读的是实验 yaml 不是书配置。
 
