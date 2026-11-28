@@ -107,7 +107,7 @@ def main(argv=None):
     p = sub.add_parser("cp-apply"); p.add_argument("--results", required=True); p.add_argument("--who", default="用户")
     p.add_argument("--items", help="出页时的 items.jsonl；给了就列出还没确认的组")
     p = sub.add_parser("unconfirmed"); p.add_argument("--items", required=True); p.add_argument("--results", required=True)
-    p = sub.add_parser("ctx2-export"); p.add_argument("--packs", required=True, help="<目录>/<册>/seed_admit/p*.json")
+    p = sub.add_parser("ctx2-export"); p.add_argument("--packs", required=True, help="<目录>/<册>/char_decide（或旧名 seed_admit）/p*.json")
     p.add_argument("--groups", default="日曰,己已巳"); p.add_argument("--out", required=True)
     p.add_argument("--half", action="store_true", help="只取半格（小注）"); p.add_argument("--include-admitted", action="store_true")
     p = sub.add_parser("ctx2-import"); p.add_argument("--cells", required=True); p.add_argument("--a", required=True)
