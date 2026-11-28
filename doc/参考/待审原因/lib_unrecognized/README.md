@@ -53,7 +53,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
 | 细分 | 意思 | 该谁处理 |
 |---|---|---|
 | `lib_other` | 库首位**不是**参校字。多半是糊墨、笔画粘连，库认成笔画少的形近字（畫→書、全→今、望→聖） | 只能看图：对话看图审，残缺、存疑的留人审 |
-| `human_unbound` | 有一条人裁绑丢了（重切后格号变），旧裁字和本格字对不上（所／乾、地／康） | 数据：重锚或作废那条人裁事件，书 Project |
+| `human_unbound` | 有一条人裁绑丢了（重切后格号变），旧裁字和本格字对不上（所／乾、地／康） | 数据：重锚或作废那条裁定事件，书 Project |
 | `doubt_blocked` | 带 `ref_lib_coord` 白名单外的疑问码（如 `coord_conflict`） | 看那个疑问码属于谁 |
 | `low_cov` | 库首位＝参校字，但 cov < 0.96 | 降门槛要 A24 拿固定样本回放（第 5 轮定 0.96 不降），否则看图 |
 | `near_rival` | 库首位＝参校字，但有语义不同的字差 < 0.01 紧咬 | 看图 |
@@ -74,7 +74,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
 | 全唐文（995ejelvk0，★main 005–015） | 3 | 0 | 1 | 1 | 0 | 0 | 1 |
 
 - 殿本 `clear` 15 格里 14 格在 vol01–19：那些册的线上单是第 3 轮以前出的，还没有 `ref_lib_coord`。第 6 轮重跑就消。
-- 史記 `clear` 3 格都带 `context_page_end`，等 A24 把它加进白名单就消；`human_unbound` 5 格要史記 Project 处理人裁事件。
+- 史記 `clear` 3 格都带 `context_page_end`，等 A24 把它加进白名单就消；`human_unbound` 5 格要史記 Project 处理裁定事件。
 - 全唐文 `clear` 1 格（005 54:1:1 割）是全唐文没开 `ref_lib_coord`，开不开归全唐文 Project。
 
 看图结论（殿本 69 格，A23 看，不是金标）：
@@ -120,7 +120,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
 按细分分流：
 
 1. **`clear`**：不用人看。查单子出自哪版 cv、册 yaml 有没有开 `ref_lib_coord`／`reference_trust`，下一轮重跑即消。
-2. **`human_unbound`**：把旧人裁事件重锚到新格号，或作废（cellvotes rebase）。清掉后，下一轮 `ref_lib_coord` 自己放。
+2. **`human_unbound`**：把旧裁定事件重锚到新格号，或作废（cellvotes rebase）。清掉后，下一轮 `ref_lib_coord` 自己放。
 3. **`doubt_blocked`**：按疑问码找负责人。比如 `coord_conflict` 是对位冲突，留审。
 4. **`lib_other`、`low_cov`、`near_rival`**：对话看图审，用 `guji_manager/review/vis_review.py`：
    ```bash
@@ -134,7 +134,7 @@ R.LIB_UNRECOGNIZED: lambda c, x: c.has_ref and c.char == c.ref,
    ```
    - 只有 `conf=high` 且字＝参校字的才 `admit_ok`；其余也写，记弃权，免得重看。
    - 图残缺、图像别的字的，一律不给 high，留人审。
-   - 产物包要是**出这版单的那个包**（`rev-<单号>` 或现行 ★main），窗口才和管线一致。第 6 轮重跑后邻格放行字如果变了，窗口对不上，那格照旧留审，不会错放。
+   - 产物包要是**这批条目对账时用的那个包**（现行 ★main；老的 `rev-<单号>` 包是整张换单时代存的），窗口才和管线一致。第 6 轮重跑后邻格放行字如果变了，窗口对不上，那格照旧留审，不会错放。
    - 11-06 殿本已写 25 格（`llm-vis-20261106-a23-l04`，rev 880398），用这个工具重算的窗口与它逐条一致。
 5. **人审回流**：人裁过的糊墨格照常进库，作糊墨刻例，下一轮同类格 cov 会上来。
 

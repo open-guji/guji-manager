@@ -70,6 +70,11 @@ def _fetch_kv(site_book: str, rev: str, token: str, site: str = SITE) -> list[di
             return items
 
 
+def _chap(args) -> str:
+    """章号：``--chapter``（没有整张单后的写法），或旧写法 ``--rev 004-r3`` 的前半。"""
+    return str(args.chapter) if getattr(args, "chapter", None) else str(args.rev).split("-r")[0]
+
+
 def _item_votes(args) -> tuple[list[dict], str]:
     """按条目记的票 → 按现行格号记的票（a＝条目现在的格号，rev＝--rev）。条目找不到的丢掉（计数）。"""
     from ._cv import feedback_root
@@ -82,7 +87,7 @@ def _item_votes(args) -> tuple[list[dict], str]:
         if not p.exists():
             raise SystemExit(f"没有 {p}（先 guji db pull；票刚投、还没同步就用 --from-kv）")
         raw, where = load_votes(p), str(p)
-    chap = args.rev.split("-r")[0]
+    chap = _chap(args)
     store = P.ItemStore.open(feedback_root().parent, args.site_book, chap)
     out, lost = [], 0
     mine = [v for v in raw if str(v.get("vol") or "").zfill(3) == chap.zfill(3)]
@@ -175,7 +180,7 @@ def _votes(args) -> tuple[list[dict], str]:
         args._n_rev_raw = len(items)                       # 按单版读到几条（读失败会直接抛，到这里就是读全了）
         if items:
             # 两种记法并存（旧网站按单版、新网站按条目）：只读了其中一种，另一种的票不会落——11-13 第五册 005-r13 的 25 票就这么漏的
-            chap = args.rev.split("-r")[0].zfill(3)
+            chap = _chap(args).zfill(3)
             n_item = sum(1 for v in _live_items(args) if str(v.get("vol") or "").zfill(3) == chap)
             if n_item:
                 _print(f"⚠ 这一册还有 {n_item} 条按条目记的票没读（本次按单版读了 {len(items)} 票）：另跑一遍 --items 落它们，别漏。")
@@ -242,7 +247,7 @@ def _sheet(args) -> dict | None:
     if getattr(args, "sheet", None):
         p = Path(args.sheet)
     else:
-        p = feedback_root() / "lists" / "proofing" / args.site_book / f"{args.rev.split('-r')[0].zfill(3)}.pending.json"
+        p = feedback_root() / "lists" / "proofing" / args.site_book / f"{_chap(args).zfill(3)}.pending.json"
     if not p.exists():
         return None
     doc = json.loads(p.read_text(encoding="utf-8"))
@@ -461,7 +466,7 @@ def cmd_draft(args) -> None:
     item_tab = None
     if getattr(args, "items", False):
         from .review import pending_items as P
-        item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, args.rev.split("-r")[0]).items
+        item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, _chap(args)).items
     shown_now = None
     if getattr(args, "char_json", None):
         from .swap.booktext import _chars
@@ -484,7 +489,7 @@ def cmd_draft(args) -> None:
     votes, dropped = latest_votes(raw, args.site_book, args.rev, u_any_rev=True)   # 带 u 的旧 rev 票也收（T2）
     from .feedback import landing_policy as LP
     policy = LP.get_policy(getattr(args, "policy", None))
-    votes, waiting = LP.apply_policy(policy, votes)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
+    votes, waiting = LP.apply_policy(policy, votes, args.site_book)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
     if waiting:
         _print(f"落票策略 {policy.name}：{len(waiting)} 格没到门槛，不落（票留在收件箱，条目仍开着；见 waiting.tsv）")
     human = human_all
@@ -680,8 +685,7 @@ def _resolve_items(meta: dict, rows: list[dict], res: dict, by: str) -> None:
             n += 1
     if n:
         store.save()
-        from .cli_pending import export
-        _print(f"条目标已裁 {n} 条；整张单 → {export(store, data)}")
+        _print(f"条目标已裁 {n} 条")
 
 
 def cmd_migrate(args) -> None:
@@ -810,7 +814,8 @@ def add_parser(sub) -> None:
     p.add_argument("book", help="cv 册 id，如 vol04")
     p.add_argument("dir", nargs="?", default=None, help="write：draft 的输出目录")
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
-    p.add_argument("--rev", help="draft：待审单版本，如 004-r3")
+    p.add_argument("--chapter", default=None, help="draft：章号 NNN（整张单已撤，按条目收票；缺省按旧写法 --rev 推）")
+    p.add_argument("--rev", help="draft：旧写法，待审单版本如 004-r3（整张单已撤，只用来推章号；给了 --chapter 可不给）")
     p.add_argument("--cord", default=None, help="draft：出单那一版 book-text 的 <册>.cord.json")
     p.add_argument("--policy", default=None, help="draft：落票策略（auto 缺省＝有票就落；quorum:N＝高等级一票即定、其余要 N 人同一结论；也读 GUJI_LANDING_POLICY）")
     p.add_argument("--char-json", default=None, help="draft --items：现行 book-text 的 <册>.char.json；旧单条目票并入前核「页面显示字＝现格字」（格号改过的对不上，不落）；不给则旧单票一律不并入")
@@ -851,6 +856,8 @@ def add_parser(sub) -> None:
 
 def cmd_cellvotes(args) -> None:
     if args.action == "draft":
+        if getattr(args, "chapter", None) and not args.rev:
+            args.rev = f"{args.chapter}-items"        # 整张单已撤：内部仍要一个标记串，用它认「这一趟按条目收」
         missing = [k for k in ("site_book", "rev", "out") if not getattr(args, k)]
         if missing:
             raise SystemExit("draft 要 " + "、".join("--" + k.replace("_", "-") for k in missing))

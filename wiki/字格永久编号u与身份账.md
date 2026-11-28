@@ -16,7 +16,7 @@
 | 跑管线、标 main | `guji pipeline products pack promote`（或 `push --main`） | 标 main 的机器 manager **≥0.6.16**，钩子会自动入账、推库 |
 | 交任务库单 | 照常交 | 执行机铺 main 底后自动 `uid sync`，不用管 |
 | 写人裁、裁定、待审条目 | 照常写 | 追加前自动盖 u；盖不上**整批报错不写**（见文末「常见问题」） |
-| 换单、落 book-text | `guji feedback swap run`、`swap book-text` | cv 要 **v0.7.110／111／112 或 dev**，manager **≥0.6.23**，否则导出不带 u 或不连续 |
+| 换包、落 book-text | `guji feedback swap run`、`swap book-text` | cv 要 **v0.7.110／111／112 或 dev**，manager **≥0.6.23**，否则导出不带 u 或不连续 |
 | 收网站票 | `guji feedback collect`、`cellvotes draft/write` | 票按 u 合到现格；u 已作废的票挂起（`moved`），进复审 |
 | 发链接给人看某个字 | 用 `?u=`（如 `/read/<书>/<章>?u=1234`） | 别再拼格号 |
 | 执行方 | 一台开 `GUJI_UID_AUDIT_S=14400`（补漏入账）；**只一台**开 `GUJI_UID_CHECKU_S=14400`（人裁自检报告） | — |
@@ -103,15 +103,15 @@ book-text 改字工具自己发过的号，入账时会被认领，不会撞号�
 | 东西 | 字段 | 谁读 |
 |---|---|---|
 | 文意裁定（`ctx_ruling`） | `payload.u` | cv `RulingStore` 按 (组, 册, u) 建索引（书级开关 `ruling_by_u`，三条 patch 线和 dev 都已开） |
-| 人裁事件（格级 confirm 等） | `target.anchor.u` | seed_admit、`rulings-hits`、网站票去重 |
-| 待审条目 | `u`；线上单 `cells[]` 每格也带 | 出单、落票按 u 先认（再按指纹、再按格号） |
+| 裁定事件（格级 confirm 等） | `target.anchor.u` | seed_admit、`rulings-hits`、网站票去重 |
+| 待审条目 | `u`；网站按章现拼的单每格也带 | land、落票按 u 先认（再按指纹、再按格号） |
 | 网站票 | D1 票表的 `u` 列 | `cellvotes` 按 u 分组；u 已作废的票挂起（`moved`） |
 | book-text | char v0.6 每格 `u`，顶层 `u_max`、`u_retired`；norm v0.3 条目带 `u` | 网站 `?u=`、标点专名按 u 挂 |
 | 字形库刻例 | **不带 u**（键仍是 `v2:册:页:列:格`） | 重切后**不 rekey**，读时按裁决事件顺移到现格；`rekey-cells` 只用于换图源 |
 
-**写入一律以 u 为准**：manager 里所有写人裁事件、裁定的地方，追加前都会自动盖 u。册有身份账而盖不上的，**整批报错不写**。格号照写，方便人读。读的时候，册有账而没带 u 的旧记录不再按格号作数。
+**写入一律以 u 为准**：manager 里所有写裁定事件、裁定的地方，追加前都会自动盖 u。册有身份账而盖不上的，**整批报错不写**。格号照写，方便人读。读的时候，册有账而没带 u 的旧记录不再按格号作数。
 
-## 导出与换单：book-text 的 u 怎么来
+## 导出与换包：book-text 的 u 怎么来
 
 导出 char 时按账给每格写 u；顶层 `u_max`、`u_retired` 取账上的。0.6.23 起导出还**保 u 连续**：会对照 book-text 现行的同章 char，旧版有、这次没导出、作废表里也没有的 u，一律记进 `u_retired`（`gone`），不复用。导出时会打出这样一行：
 
@@ -120,7 +120,7 @@ book-text 改字工具自己发过的号，入账时会被认领，不会撞号�
    旧版有、本次没导出的 u 1 个，记进 u_retired（gone，不复用）：33
 ```
 
-换单时新旧 char 都带 u，对照表就按 u 出（说明一栏写「按u」）：同一个 u 就是同一格；旧 u 不在新版就是删（新版 `u_retired` 里写明了并进哪个 u）；新 u 不在旧版就是新增。book-text 的 local_check 会核 u 连续。详见 [换包落book-text-增删格](换包落book-text-增删格)。
+换包时新旧 char 都带 u，对照表就按 u 出（说明一栏写「按u」）：同一个 u 就是同一格；旧 u 不在新版就是删（新版 `u_retired` 里写明了并进哪个 u）；新 u 不在旧版就是新增。book-text 的 local_check 会核 u 连续。详见 [换包落book-text-增删格](换包落book-text-增删格)。
 
 ## 常见问题
 

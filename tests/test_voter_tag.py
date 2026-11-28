@@ -33,3 +33,32 @@ def test_voter_prev_ident():
     assert voter_ident(new) == uid and voter_ident({"voter": "K7QM2XR9"}) == "K7QM2XR9"
     got, _ = latest_votes([old, new], "b", "r1")
     assert len(got) == 1
+
+
+def _code(body: str) -> str:
+    from guji_manager.voter import _CODE_ALPHABET as A, _CODE_WEIGHTS as W
+    return body + A[sum(w * A.index(c) for w, c in zip(W, body)) % 32]
+
+
+def test_member_code_recognised_and_distinct_from_anon():
+    from guji_manager.voter import is_member_code
+    c = _code("K7QM2XR")
+    assert len(c) == 8 and is_member_code(c) and is_member(c)
+    assert not is_member_code(c[:-1] + ("0" if c[-1] != "0" else "1"))   # 校验位错
+    assert not is_member_code("0123456789abcdef") and not is_member("0123456789abcdef")
+
+
+def test_voter_by_and_draft_row_provenance():
+    from guji_manager.voter import voter_by
+    from guji_manager.feedback.web_votes import Draft
+    c = _code("K7QM2XR")
+    uid = "01a21b61-03b1-7c9d-bc6a-153a060e15ba"
+    m = {"voter": c, "voter_prev": uid}
+    a = {"voter": "0123456789abcdef"}
+    assert voter_by(m) == f"member:{c}"                      # 迁移后的票取会员号，不取 voter_prev
+    assert voter_by({"voter": uid}).startswith("member:") and len(voter_by({"voter": uid})) == 7 + 16
+    assert voter_by(a) == "anon:0123456789abcdef"
+    row = Draft("v:1:2:3", "1:2:3", {"v": "confirm"}, [m, a, {"voter": c}]).row("网站精校意见")
+    assert row["level"] == "human" and row["channel"] == "web_vote"
+    assert row["by"] == f"member:{c}、anon:0123456789abcdef"
+    assert row["voters"] == {"member": 2, "anon": 1}

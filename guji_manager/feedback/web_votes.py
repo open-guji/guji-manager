@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..formats.guji_char_cord import UNK_DEFAULT
-from ..voter import voter_ident, voter_tag
+from ..voter import is_member, voter_by, voter_ident, voter_tag
 from .levels import SETTLED_VS, settles_cell
 
 CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
@@ -252,8 +252,12 @@ class Draft:
         """控制台 ``/api/events`` 一行。"""
         ids = "、".join(f"{voter_tag(voter_ident(v))[:16]}" for v in self.votes)
         note = "；".join(v["note"] for v in self.votes if v.get("note"))
-        # 来源三字段：网站投票落成的裁定＝人裁（读者点的），by＝投票人短标识，channel＝web_vote（2026-11-27，2.4）
-        prov = {"level": "human", "channel": "web_vote", **({"by": ids} if ids else {})}
+        # 来源三字段：网站投票落成的裁定＝人裁（读者点的），channel＝web_vote（2026-11-27，2.4）。
+        # by＝投票人，会员写 ``member:<会员号>``、匿名写 ``anon:<短标识>``（多人用「、」连），另记会员／匿名各几票。
+        by = "、".join(dict.fromkeys(voter_by(v) for v in self.votes))
+        n_mem = sum(1 for v in self.votes if is_member(str(v.get("voter") or "")))
+        prov = {"level": "human", "channel": "web_vote", **({"by": by} if by else {}),
+                "voters": {"member": n_mem, "anon": len(self.votes) - n_mem}}
         return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}", **prov}
 
 

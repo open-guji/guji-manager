@@ -6,7 +6,7 @@
 
 不另存「余项」。对不上的标点／专名锚点就是**待审格**：
 
-| 原因 | 码 | 判据（每次出单／换单／点校提交时按当前 book-text 现算） |
+| 原因 | 码 | 判据（每次 land／换包／点校提交时按当前 book-text 现算） |
 |---|---|---|
 | `anchor_miss` | A01 | F-OV-02 式：锚点指向不存在的格，或校验字（`pre_char`／专名 `text`）与该格现字不符 |
 | `add_del` | A02 | 同上，但落在增删格（对照表「新增」格、紧邻「删」格的新格）所在的句子里 |
@@ -41,13 +41,13 @@ guji feedback closeout fix-misplaced --repo … --vdir … --chapter NNN --cells
 对照表要用「dev 当前→正确」的表，不能复用换图那张（已挪过的会被再挪一次）。缺省只出计划；
 `--apply` 才写，审计行进 commit 信息和轮报告，另抽 30 条（固定种子）上审阅页复核，有错回退并关自动。
 
-## 换单叠改字（`swap/overlay_edits.py`）
+## 换包叠改字（`swap/overlay_edits.py`）
 
 在导出新 char 之后、交 auto_remap 之前：按对照表把 dev 上登记的人工改字叠到新 char，叠完核对位（格序不变、
 只有登记的格换字），不过抛 `AlignmentError`，整册停下。机器本轮又改了的格保留人改字，记 `overturned`（入新一轮待审单，X03）。
 
 ## 还没做
 
-- 出单（`guji land`，经 cv `pending-cells` 取待审格）调用 `derive`＋`stamp`，把 A 类写进线上单。
+- 收尾（`guji land`，经 cv `pending-cells` 取待审格）调用 `derive`＋`stamp`，把 A 类写进线上单。
 - 别仓 enum 副本（kaiyuanguji-web TS、看板、book-text 校验器）按 `python -m guji_manager.review.pending_reason --json` 同步。
 - 把 `derive`／`overlay`／`remap_lib`／红线串成 `swap book_text` 的一条龙。

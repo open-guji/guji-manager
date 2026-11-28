@@ -10,14 +10,13 @@
     guji pending import vol04 -w <工作区>                         # 从现行整张单导入（可重复执行，只动有变化的）
     guji pending reconcile vol04 --sheet <新出的 pending.json> [--fps <格号→指纹.json>] --src rev:<rev> -w <工作区>
                                                                   # 机器一轮：按新单逐格比，只动有变化的条目
-    guji pending export vol04 -w <工作区> [--out <文件>]          # 条目 → 整张 pending.json（缺省写回中心库的那份）
     guji pending audit vol04 -w <工作区> [--sheet <候选单.json>] [--norm <码位归一.json>]
                                                                   # 单子体检：不该进判字单的格（机器无字当推翻人裁、失效旧人裁当被推翻、
                                                                   # 锚点格混在判字单…）；有「拦」的类退出码 1。republish push 上线前也跑它
 
-改条目、导出之后跑 `guji db sync -w <工作区>`；加 `--sync` 顺带同步并触发网站 proofing-sync（只发这一章）；
+改条目之后跑 `guji db sync -w <工作区>`；加 `--sync` 顺带同步并触发网站 proofing-sync（只发这一章）；
 加 `--kv` 同步后直接把整张单写进网站 KV（/api/pending，需 CELLREVIEW_TOKEN；单里的图都已在 COS 才走这条，否则退回 --sync）。
-人改条目缺省同时导出整张单（网站照旧按整张单读），`--no-export` 不导。
+整张单已撤（11-28）：条目是唯一真源，不再导出整张 pending.json，网站由条目现拼。
 条目文件在数据目录 `feedback/lists/pending/<书>/<章>.items.jsonl`（只追加），随 `guji db sync` 进中心库。
 """
 from __future__ import annotations
@@ -37,9 +36,9 @@ WEB_REPO = "open-guji/kaiyuanguji-web"
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("pending", help="待审条目（一格一条）：列、撤下、放回、改说明、加复审、导入、reconcile、导出")
+    p = sub.add_parser("pending", help="待审条目（一格一条）：列、撤下、放回、改说明、加复审、导入、reconcile")
     p.add_argument("action", choices=["ls", "show", "withdraw", "restore", "note", "set", "add", "resolve",
-                                      "import", "reconcile", "export", "audit"])
+                                      "import", "reconcile", "audit"])
     p.add_argument("book", help="册号（如 vol04）")
     p.add_argument("refs", nargs="*", help="条目 id 或格号；note 的最后一个是说明")
     p.add_argument("--text-id", default=None, help="book-text 书 id（缺省取工作区目录名 <id>-<书名> 的 id）")
@@ -58,8 +57,6 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--fps", default=None, help="reconcile：{格号: 图块指纹} 的 json")
     p.add_argument("--norm", default=None, help="audit：码位归一表 json {另一码位: 本书码位}")
     p.add_argument("--keep-missing", action="store_true", help="reconcile：新单上没有的开着条目不关")
-    p.add_argument("--out", default=None, help="export：写到这里（缺省写回数据目录的整张单）")
-    p.add_argument("--no-export", action="store_true", help="人改条目后不重导整张单")
     p.add_argument("--sync", action="store_true", help="改完 guji db sync 并触发网站发布这一章")
     p.add_argument("--kv", action="store_true",
                    help="改完 guji db sync，再把整张单直接写进网站 KV（/api/pending，15 秒内读者可见，不跑 workflow、不等 CDN）；"
@@ -180,17 +177,6 @@ def _publish(a, ws: Path | None, chapter: str, data: Path | None = None) -> None
         subprocess.run(base)
 
 
-def export(store: P.ItemStore, data: Path, out: Path | None = None) -> Path:
-    """条目 → 整张单，写回（单头取现行那份）。"""
-    sheet = P.sheet_path(data, store.text_id, store.chapter)
-    head = json.loads(sheet.read_text(encoding="utf-8")) if sheet.exists() else {}
-    doc = P.export_sheet(store, head)
-    dst = Path(out) if out else sheet
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    return dst
-
-
 def _audit(a, data: Path, text_id: str, chapter: str) -> int:
     from .review import sheet_audit as SA
     src = Path(a.sheet) if a.sheet else P.sheet_path(data, text_id, chapter)
@@ -274,22 +260,6 @@ def cmd_pending(a) -> int:
             print("（--dry-run，没写）")
             return 0
         print(f"条目追加 {store.save()} 行 → {store.path}")
-        if act == "reconcile" or not a.no_export:
-            head_src = Path(a.sheet) if act == "reconcile" else None
-            sheet = P.sheet_path(data, text_id, chapter)
-            if head_src is not None:
-                head = json.loads(head_src.read_text(encoding="utf-8"))
-                doc = P.export_sheet(store, head)
-                dst = Path(a.out) if a.out else sheet
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-            else:
-                dst = export(store, data, a.out)
-            print(f"整张单 → {dst}")
-        _publish(a, ws, chapter, data)
-        return 0
-    if act == "export":
-        print(f"整张单 → {export(store, data, a.out)}")
         _publish(a, ws, chapter, data)
         return 0
     # 人工操作
@@ -323,8 +293,6 @@ def cmd_pending(a) -> int:
         print("（--dry-run，没写）")
         return 0
     store.save()
-    if not a.no_export:
-        print(f"整张单 → {export(store, data)}")
     _publish(a, ws, chapter, data)
     return 0
 
