@@ -212,7 +212,7 @@ def cmd_list(a) -> None:
             miss = [m.kind for m in R.check_env(s.needs)]
             flag = ("有金标" if has else "无金标") + (f"，缺 {','.join(miss)}" if miss else "")
         dep = f" [deprecated：{s.deprecated}]" if s.deprecated else ""
-        print(f"  {s.id:14s} {s.owner:5s} {s.primary:14s} {s.cost:6s} {s.title}{dep}" + (f"  〔{flag}〕" if flag else ""))
+        print(f"  {s.id:14s} {s.owner:5s} {s.primary:14s} {_cost(s):6s} {s.title}{dep}" + (f"  〔{flag}〕" if flag else ""))
     legacy.print_list(a)
 
 
@@ -333,20 +333,43 @@ def _gold_books(spec, a) -> list[str] | None:
     return sorted(p.name for p in d.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))) if d.is_dir() else []
 
 
+def _cost(spec, book=None) -> str:
+    """cv ≥ 11-28 的 `cost_of(书)`（cost 可按书写）；旧 cv 只有字符串 `cost`。"""
+    f = getattr(spec, "cost_of", None)
+    return f(book) if f else spec.cost
+
+
+def _dataset_guards(B, spec, book, a) -> list:
+    """dataset guards/*.yaml 里登记给这个 bench＋书的护栏（cv 11-28 起框架统一判；旧 cv 没有这个函数就当没有）。"""
+    f = getattr(B, "dataset_guards", None)
+    if not f:
+        return []
+    try:
+        ds = R.dataset_root(a.dataset, cache=R.cache_root(a.cache), rels=[])
+    except R.Missing:
+        return []
+    return f(spec.id, book, ds)
+
+
 def cmd_guard(a) -> None:
     """发版护栏：每个有护栏的 bench × 有金标的书；heavy 的要 --heavy。有金标却没跑成（skipped／no_gold）按不过算。"""
     B = _B()
     bad = 0
     for spec in B.all_specs():
-        if not spec.guards or spec.deprecated or (spec.cost == "heavy" and not a.heavy):
+        if spec.deprecated:
             continue
         gb = _gold_books(spec, a)
         if gb is None and not a.books:
-            print(f"✗ {spec.id}：读不到测试集仓，不知道哪些书有金标——发版护栏按不过算")
-            bad = True
+            if spec.guards:
+                print(f"✗ {spec.id}：读不到测试集仓，不知道哪些书有金标——发版护栏按不过算")
+                bad = True
             continue
         books = a.books or gb or []
         for book in books:
+            if _cost(spec, book) == "heavy" and not a.heavy:
+                continue
+            if not spec.guards and not _dataset_guards(B, spec, book, a):
+                continue                                 # 没登记护栏（框架里、dataset guards/ 里都没有）
             r, out = run_one(spec, book, a, against=None)
             _print(r, out)
             _maybe_publish(a, r, out)
