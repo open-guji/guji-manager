@@ -6,6 +6,12 @@
 
 ## [未发版]
 
+## [0.7.3] - 2026-11-28
+
+基于 v0.7.2，只带 #1177（执行机热修；dev 上另有 MINOR 待发，不在本版）。
+
+- PATCH（11-27，GM2，执行方总管报）：runner 自更新也走 `safe_checkout`——执行方 cv 检出的 `merge --ff-only origin/dev` 和退一步的 `checkout --detach origin/dev` 遇未跟踪文件冲突（worker-24、worker-7 被未跟踪 `config/groups/wu/rules.yaml` 挡住、反复退出），同 `Job.checkout`：只备份、移走报出的那几个到工作区外再试，日志记 `[safe_checkout]` 行。`safe_checkout` 新增通用 `run()`，认 merge 的报错说法；`checkout()` 行为不变。manager 自更新到 main 在先、不受影响，发版后卡住的机器重起即生效。L0。
+
 ## [0.7.2] - 2026-11-28
 
 基于 v0.7.1，只带 #1211（dev 上另有 MINOR 待发，不在本版）。
