@@ -94,3 +94,17 @@ def test_legacy_detection(fake):
 def test_registered_and_in_pipeline_step():
     from guji_manager import commands, steps
     assert "bench" in commands.COMMANDS and steps.STEP_OF["bench"] == "pipeline"
+
+
+def test_publish_to_sqlite(fake, monkeypatch):
+    spec, ds, tmp = fake
+    monkeypatch.setenv("GUJI_DATA_SQLITE", str(tmp / "c.db"))
+    from guji_manager.bench import publish as P
+    from guji_manager.datastore import d1conn
+    a = cli._fix(_args(ds, tmp, extra=["--book", "bk"]))
+    r, out = cli.run_one(spec, "bk", a)
+    conn = d1conn.connect()
+    rid = P.publish(out, conn=conn, baseline=True, note="基线")
+    assert P.publish(out, conn=conn) == rid                  # 同一次再发不重写
+    h = P.history("t-fake", "bk", conn=conn)
+    assert len(h) == 1 and h[0]["baseline"] == 1 and h[0]["primary_value"] == 1.0 and h[0]["status"] == "ok"

@@ -37,4 +37,8 @@
 ## 结果
 
 `./bench-results/<bench>/<书>/<时间>/`（`--out` 改）：`result.json`（schema 1：主指标、全部指标、护栏、对照、`env` 里的 cv／manager／测试集／书仓／中心库 rev／产物包标签）、`items.jsonl`（逐样本，翻转清单用）、`report.md`、`ctx.json`（资源路径）。
-status 只有 ok、regressed、skipped、no_gold，跑崩了记 failed（护栏按不过算）。写进中心库 `bench_runs`（`--publish`）待用户定。
+status 只有 ok、regressed、skipped、no_gold，跑崩了记 failed（护栏按不过算）。
+
+## 写进中心库（`--publish`）
+
+Sheldon 11-28 定：建 `bench_runs` 表，只有带 `--publish` 才写（`run`、`ab` 的 B、`guard` 都认），`--baseline` 标基线、`--note` 写一句。一次 run 一行（主键 `<bench>/<书>/<时间>`，重发不重写），存 result.json 原样与常用列（状态、主指标、cv／manager 版本、测试集、中心库 rev、参数、谁跑的），不存逐样本。跑崩的不发。`guji bench show <bench> --book <书> --central` 看库里历次。要写令牌与 `GUJI_ACTOR`。

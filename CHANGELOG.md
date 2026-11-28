@@ -6,7 +6,7 @@
 
 ## [未发版]
 
-- 新命令 `guji bench list|fetch|run|ab|guard|show`（CV0 2026-11-28，Sheldon 定「每个 benchmark 统一接口、命令接进 guji-manager」；要求 cv 含 `eval/bench.py`）：任何书上测任何 bench 一条命令，按 bench 登记的 needs 自动备资源（测试集仓、书仓克隆、中心库还原册配置／组配置、只取金标涉及页的原图、main 产物包、整拉字形库），缺什么报 skipped 并说怎么补；结果统一落 `bench-results/<bench>/<书>/<时间>/`（result.json schema 1、items.jsonl、report.md）；`ab` 出 B 对 A 翻转清单；老评测器经 `guji bench run <id>` 照旧跑（`bench/legacy.py`）。文档 `doc/2-自动化流程/bench统一入口.md`，新测 `tests/test_bench_cli.py`。
+- 新命令 `guji bench list|fetch|run|ab|guard|show`（CV0 2026-11-28，Sheldon 定「每个 benchmark 统一接口、命令接进 guji-manager」；要求 cv 含 `eval/bench.py`）：任何书上测任何 bench 一条命令，按 bench 登记的 needs 自动备资源（测试集仓、书仓克隆、中心库还原册配置／组配置、只取金标涉及页的原图、main 产物包、整拉字形库），缺什么报 skipped 并说怎么补；结果统一落 `bench-results/<bench>/<书>/<时间>/`（result.json schema 1、items.jsonl、report.md）；`ab` 出 B 对 A 翻转清单；老评测器经 `guji bench run <id>` 照旧跑（`bench/legacy.py`）。`--publish` 把结果写进中心库新表 `bench_runs`（Sheldon 11-28 定建表、只有 --publish 才写；`bench/publish.py`，首次发布自建表，schema_d1.sql 同步加），`show --central` 看库里历次。文档 `doc/2-自动化流程/bench统一入口.md`，新测 `tests/test_bench_cli.py`。
 - DOC（11-28，GM4，bench 统一接口，CV0）：`doc/版本号规矩.md` 第三节 rc 测试一条的发版护栏命令写成 `guji bench guard`（取代 `guji eval guard`，旧命令留别名；`skipped`／`no_gold` 不算过）。L0。
 
 - PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。

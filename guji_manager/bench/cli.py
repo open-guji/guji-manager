@@ -149,6 +149,17 @@ def _print(r, out: Path) -> None:
     print(f"    结果 {out}")
 
 
+def _maybe_publish(a, r, out: Path) -> None:
+    if not getattr(a, "publish", False) or r.status in ("failed",):
+        return
+    from . import publish as P
+    try:
+        rid = P.publish(out, baseline=a.baseline, note=a.note or "")
+        print(f"    已写中心库 bench_runs：{rid}")
+    except Exception as e:                                 # noqa: BLE001  结果已在本机，发布失败不算跑失败
+        print(f"    ✗ 写中心库失败（{type(e).__name__}: {e}）；结果仍在本机，可再 guji bench show … 后重发")
+
+
 # ------------------------------------------------------------------ 命令
 def cmd_list(a) -> None:
     B = _B()
@@ -205,6 +216,7 @@ def cmd_run(a) -> None:
             for book in a.books:
                 r, out = run_one(spec, book, a, params=a.params, against=Path(a.against) if a.against else None)
                 _print(r, out)
+                _maybe_publish(a, r, out)
                 bad |= r.status in ("regressed", "failed")
     sys.exit(1 if bad else 0)
 
@@ -220,6 +232,7 @@ def cmd_ab(a) -> None:
         sys.exit(2)
     rb, ob = run_one(spec, a.book, a, params=a.params, against=oa, tag="B")
     _print(rb, ob)
+    _maybe_publish(a, rb, ob)
     sys.exit(1 if (rb.against or {}).get("worse") else 0)
 
 
@@ -234,6 +247,7 @@ def cmd_guard(a) -> None:
         for book in books:
             r, out = run_one(spec, book, a, against=None)
             _print(r, out)
+            _maybe_publish(a, r, out)
             bad |= r.status in ("regressed", "failed")
     if a.legacy:
         bad |= legacy.guard(a)
@@ -241,6 +255,12 @@ def cmd_guard(a) -> None:
 
 
 def cmd_show(a) -> None:
+    if a.central:
+        from . import publish as P
+        for x in P.history(a.bench, a.book):
+            print(f"  {x['ran_at']}  {x['status']:9s} {x['primary_name']}={x['primary_value']}  n={x['n']}  "
+                  f"cv={x['cv']}{'  [基线]' if x['baseline'] else ''}  {x['by'] or ''}")
+        return
     root = _results_root(a) / a.bench / a.book
     runs = sorted(p for p in root.glob("*") if (p / "result.json").exists()) if root.exists() else []
     if not runs:
@@ -276,7 +296,11 @@ def add_parser(sub) -> None:
     p.add_argument("--step", default=None, help="list：只列量这个 Step 的")
     p.add_argument("--heavy", action="store_true", help="guard：连 heavy 级一起跑")
     p.add_argument("--legacy", action="store_true", help="guard：连老框架 guards/*.yaml 一起验（P2 前发版要带）")
-    p.add_argument("--history", action="store_true", help="show：列历次")
+    p.add_argument("--history", action="store_true", help="show：列历次（本机结果目录）")
+    p.add_argument("--central", action="store_true", help="show：列中心库 bench_runs 里的历次")
+    p.add_argument("--publish", action="store_true", help="run／ab／guard：结果写进中心库 bench_runs（不带就只在本机）")
+    p.add_argument("--baseline", action="store_true", help="配 --publish：标为基线")
+    p.add_argument("--note", default=None, help="配 --publish：一句说明")
     p.add_argument("--timeout", type=int, default=900, help="老评测器超时秒数")
 
 
