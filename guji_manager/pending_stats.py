@@ -2,7 +2,7 @@
 """全部待审格分类统计（A31，2026-10-28，sheldon「把统计待审并分类规范化、脚本化、直接查库」）。
 
 只查中心库，不下产物包、不拉原图，全套 99 册约 5 秒：
-  - 线上待审单：`files` 表 `feedback/lists/proofing/<文本号>/<册号>.pending.json`（每格自带成因码 cause，republish 发布时写入）
+  - 待审条目（11-28 起）：`pending_current` 表 open 条目，卡片字段在 `raw.doc`（成因码、ref、lib_top…），扣掉已有落定事件的格；`--legacy-files` 才读已撤的整张单 `files` 表 `feedback/lists/proofing/<文本号>/<册号>.pending.json`；`--from-dir` 离线读 `<册号>.pending.json`（可存网站 /api/pending 返回）
   - 全册格数：`progress.volume.cells_total`（算人审率）
   - 码位表：`files` 表 `config/codepoints.yaml`（判「码位已定」）
 分类规则见 `guji_manager/taxonomy.py`，跟进方与口径见 `doc/参考/待审原因/待审分类规范.md`。
@@ -123,18 +123,50 @@ def has_book_prompt(ws: str) -> bool:
         return cur.fetchone() is not None
 
 
-def load_db(ws: str, text: str, vols: set[int] | None):
-    """→ (lists {册号: doc}, cells_total {册号: n}, codepoints {另一码位: 本书码位})。"""
+def load_items(ws: str, text: str, vols: set[int] | None, settled: bool = True) -> dict:
+    """待审条目表（`pending_current`，state=open）→ {册号三位: {"cells": [卡片…]}}。11-28 整张单撤后的现行取数口。
+
+    卡片＝条目 `raw.doc`（网站卡片字段：pending_reason、ref、lib_top、ctx…）＋ `cell`、`u`、`id`；
+    `settled`（缺省开）按 `guji pending-settle` 同口径扣掉已有落定事件的格——＝网站 `/api/pending` 的 `cells`。关掉＝库里全部 open 条目。"""
+    from . import dbconfig
+    from .datastore.connect import connect
+    dbconfig.apply_env()
+    conn = connect()
+    rows = conn.execute("SELECT item_id, ver, vol, cell, state, at, raw FROM pending_current "
+                        "WHERE ws = ? AND book = ? AND state = 'open'", (ws, text)).fetchall()
+    items = []
+    for iid, ver, vol, cell, state, at, raw in rows:
+        m = re.findall(r"\d+", str(vol))
+        if not m or not cell or (vols is not None and int(m[-1]) not in vols):
+            continue
+        r = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        items.append({"id": iid, "ver": ver, "_vol": f"{int(m[-1]):03d}", "vol": vol, "cell": cell, "state": state, "at": at,
+                      "u": r.get("u"), "doc": r.get("doc") or {}})
+    if settled and items:
+        from .review import settle_sync as S
+        evs = S.load_events(conn, ws, [it["u"] for it in items if it["u"] is not None])
+        gone = {x["item"]["id"] for x in S.plan(items, evs)}
+        items = [it for it in items if it["id"] not in gone]
+    lists: dict = {}
+    for it in items:
+        lists.setdefault(it["_vol"], {"cells": []})["cells"].append({**it["doc"], "cell": it["cell"], "u": it["u"], "id": it["id"], "ver": it["ver"]})
+    return lists
+
+
+def load_db(ws: str, text: str, vols: set[int] | None, legacy_files: bool = False, settled: bool = True):
+    """→ (lists {册号: doc}, cells_total {册号: n}, codepoints {另一码位: 本书码位})。
+    待审单默认读条目表（`load_items`）；`legacy_files` 读已撤的整张单 files 表（11-28 起新出的单没有，只剩历史快照）。"""
     from ._cv import connect
+    lists = {} if legacy_files else load_items(ws, text, vols, settled)
     with connect() as con:
         cur = con.cursor()
-        cur.execute("select src_path, doc, raw from files where ws=%s and src_path like %s", (ws, f"feedback/lists/proofing/{text}/%.pending.json"))
-        lists = {}
-        for p, d, raw in cur.fetchall():
-            d = d if d is not None else raw   # 11-26：新写入的文件只有 raw，doc 为空
-            n = Path(p).name[:3]
-            if vols is None or int(n) in vols:
-                lists[n] = d if isinstance(d, dict) else json.loads(d)
+        if legacy_files:
+            cur.execute("select src_path, doc, raw from files where ws=%s and src_path like %s", (ws, f"feedback/lists/proofing/{text}/%.pending.json"))
+            for p, d, raw in cur.fetchall():
+                d = d if d is not None else raw   # 11-26：新写入的文件只有 raw，doc 为空
+                n = Path(p).name[:3]
+                if vols is None or int(n) in vols:
+                    lists[n] = d if isinstance(d, dict) else json.loads(d)
         cur.execute("select vol, cells_total from progress.volume where book_id=%s", (text,))
         total = {v: int(t) for v, t in cur.fetchall() if t}
         cur.execute("select raw from files where ws=%s and src_path='config/codepoints.yaml'", (ws,))
@@ -157,7 +189,10 @@ def load_dir(path: Path, vols: set[int] | None):
 
 @lru_cache(maxsize=None)
 def _group_of(ch: str) -> str | None:
-    from ._cv import groups_of
+    try:
+        from ._cv import groups_of
+    except (ImportError, AttributeError):    # 没装 cv（如只在轻量环境离线统计）：按字查字组不可用，字组类退化成粗类，单上自带 grp 的照用
+        return None
     gs = groups_of(ch)
     return gs[0].id if gs else None
 
@@ -287,7 +322,7 @@ def render(s: dict, prev: dict | None, top: int, diag: list[str] | None = None) 
     tot_cells = sum(v["cells"] or 0 for v in s["vols"].values())
     out = ["# 待审格分类统计", "",
            *([f"> **注意：{L3_MISSING}**", ""] if s.get("l3_missing") else []),
-           f"口径：线上待审单（中心库 `files` 表），{len(s['vols'])} 册，待审 **{n}** 格"
+           f"口径：待审条目（中心库 `pending_items`，已扣落定事件）或离线单，{len(s['vols'])} 册，待审 **{n}** 格"
            + (f"，占全册 {tot_cells} 格的 {n / tot_cells:.2%}" if tot_cells else "")
            + (f"；另有非正文页（职名、表格）待审 {s['n_nonbody']} 格，单列、不计入" if s.get("n_nonbody") else "")
            + "。分类规则 `guji_manager/taxonomy.py`；跟进方见 guji-manager `doc/参考/待审原因/待审分类规范.md`。"
@@ -348,7 +383,9 @@ def main(argv=None) -> int:
     ap.add_argument("--ws", default=DEFAULT_WS)
     ap.add_argument("--text", default=DEFAULT_TEXT, help="文本号（线上单目录名）")
     ap.add_argument("--vols", help="册号范围，如 20-50,56；缺省全部")
-    ap.add_argument("--from-dir", type=Path, help="离线：读目录里的 <册号>.pending.json，不连库")
+    ap.add_argument("--from-dir", type=Path, help="离线：读目录里的 <册号>.pending.json（`{\"cells\":[…]}`，可直接存网站 /api/pending?book=&vol= 的返回），不连库")
+    ap.add_argument("--legacy-files", action="store_true", help="读已撤的整张单（files 表 pending.json，历史快照）；缺省读待审条目表")
+    ap.add_argument("--all-open", action="store_true", help="条目表口径下不扣已落定的格（缺省扣，＝网站 cells）")
     ap.add_argument("--extra-codepoints", type=Path, help="再叠一份 {另一码位: 本书码位} 的 yaml（还没推库的码位）")
     ap.add_argument("--prev", type=Path, help="上一份 summary.json，报告里写增减")
     ap.add_argument("--glyph-db", type=Path, help="字形库 db（<工作区>/output/glyph-gN.db）：给了就把「整理本字库样本≤2」的成因 I 单列成 L4 库样本过少")
@@ -357,7 +394,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
     vols = parse_vols(a.vols)
-    lists, total, cp = load_dir(a.from_dir, vols) if a.from_dir else load_db(a.ws, a.text, vols)
+    lists, total, cp = load_dir(a.from_dir, vols) if a.from_dir else load_db(a.ws, a.text, vols, a.legacy_files, not a.all_open)
     extra = {}
     if a.extra_codepoints:
         import yaml
