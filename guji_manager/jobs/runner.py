@@ -111,6 +111,12 @@ def _token(name: str) -> str | None:
     return v or None
 
 
+# 问本单 cv 收尾步现在叫什么（11-28 GM2：原先查 `core.step.STEPS`，可那是空注册表、步模块没导入前恒为空，
+# 护栏在执行方从没触发过）。cv ≥0.9.14 有 decide_names.ADMIT_STEP_ACTIVE；更老的 cv 没有，就是 seed_admit。
+DECIDE_NAME_PROBE = ("try:\n from open_guji_cv.core.decide_names import ADMIT_STEP_ACTIVE as a\n"
+                     "except ImportError:\n a = 'seed_admit'\nprint(a)")
+
+
 class Job:
     """跑一条单。`db` 是主线程的库连接（`store.DB`，断线自动重连）；心跳另开一条连接在后台线程里。"""
 
@@ -442,10 +448,12 @@ class Job:
         base = Path(prod) / self.spec["book"]
         if not (base / "seed_admit").is_dir() or (base / "char_decide").is_dir():
             return
-        code = "from open_guji_cv.core.step import STEPS;print('char_decide' in STEPS)"
-        r = subprocess.run([str(VENV / "bin" / "python"), "-c", code], capture_output=True, text=True,
+        r = subprocess.run([str(VENV / "bin" / "python"), "-c", DECIDE_NAME_PROBE], capture_output=True, text=True,
                            env=self.env(), cwd=str(self.dir), timeout=120)
-        if r.returncode != 0 or r.stdout.strip().splitlines()[-1:] != ["True"]:
+        if r.returncode != 0:
+            self.ev("问不到本单 cv 收尾步现名，没迁 seed_admit/：" + redact(r.stderr.strip()[-300:]), level="warn")
+            return
+        if r.stdout.strip().splitlines()[-1:] != ["char_decide"]:
             return                       # 旧 cv：收尾仍叫 seed_admit，不用迁
         out = self.sh([str(VENV / "bin" / "guji-cv"), "decide", "migrate-name", self.spec["book"]], write=True)
         self.ev("收尾目录 seed_admit/→char_decide/ 原地改名（cv 改名版配老册，免整册重算）："

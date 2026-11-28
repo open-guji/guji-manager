@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，修 #1255）：执行方跑批前的收尾改名护栏从没触发过——探针查 `core.step.STEPS`，可那是步模块导入前的空注册表，恒判「旧 cv」。改问 `decide_names.ADMIT_STEP_ACTIVE`（cv ≥0.9.14 有，更老的当 seed_admit）；探针本身报错时记一条 warn 不再静默。实测：殿本 vol01 配 v0.9.16 跑 #18302，铺底包有 seed_admit 205 页却没迁。L0。
+
 - DOC（11-28，GM4，bench 统一接口，CV0）：`doc/版本号规矩.md` 第三节 rc 测试一条的发版护栏命令写成 `guji bench guard`（取代 `guji eval guard`，旧命令留别名；`skipped`／`no_gold` 不算过）。L0。
 
 - PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
