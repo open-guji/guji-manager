@@ -25,7 +25,7 @@ DECIDE_NEW = "char_decide"
 DECIDE_OLD = "seed_admit"
 DECIDE_STEPS = (DECIDE_NEW, DECIDE_OLD)
 #: 人裁／AI 裁定事件 target.step 的写名（cv 兼容读口上线、各读端全认新名前继续写旧名）
-RULING_STEP = DECIDE_OLD
+RULING_STEP = DECIDE_NEW
 
 
 def active_step() -> str:
