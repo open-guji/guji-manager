@@ -211,6 +211,7 @@ WHERE j.status = 'queued'
   AND (?3 IS NULL OR j.kind IN (SELECT value FROM json_each(?3)))
   AND (?4 IS NULL OR j.id = ?4)
   AND (j.run_after IS NULL OR j.run_after <= {now} OR ?4 IS NOT NULL)
+  AND coalesce(json_extract(j.spec, '$.manager_min_n'), 0) <= ?6
 ORDER BY j.priority,
   EXISTS (SELECT 1 FROM attempt l WHERE l.job_id = j.id AND l.outcome = 'lost') DESC,
   EXISTS (SELECT 1 FROM attempt f WHERE f.job_id = j.id AND f.worker = ?2 AND f.outcome = 'failed'),
@@ -219,7 +220,9 @@ LIMIT 1""".format(now=NOW)
 
 
 def _claim_stmts(t, worker, session, affinity, kinds, only, lease_min) -> list[tuple[str, list]]:
-    pick_args = [t, worker, json.dumps(kinds) if kinds else None, only, affinity]
+    from .spec import version_n
+    from .. import __version__
+    pick_args = [t, worker, json.dumps(kinds) if kinds else None, only, affinity, version_n(__version__)]
     return [
         (f"UPDATE job SET status = 'running', attempts = attempts + 1, started_at = coalesce(started_at, {NOW}),"
          f" stage = 'claimed', progress = NULL, error = NULL, run_after = NULL, updated_at = {NOW}, mark = ?1"

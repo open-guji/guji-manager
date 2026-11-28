@@ -6,6 +6,10 @@
 
 ## [未发版]
 
+## [0.7.15] - 2026-11-28
+
+- PATCH（11-28，GM2，#18365 第 4 次＋CV0 提）：任务单可带执行方 manager 版本下限 `manager_min`（`guji job submit --manager-min`；`guji bench run --job` 缺省填交单机版本）；新版执行方领单 SQL 按自己版本过滤，旧执行方由 D1 触发器 `attempt_manager_min` 挡（schema_d1.sql，`guji job init` 才建）。不给就不写进单子，旧单指纹不变。
+
 ## [0.7.14] - 2026-11-28
 
 - PATCH（11-28，GM2，CV4 报 #18365 第 2 次）：`guji bench` 取书仓改成与跑批准备同一取法——先用本机 `~/<书仓名>`（会话挂上的私仓，更新也经它 fetch），直连 GitHub 克隆不了再退回旧总仓目录；不再在没凭据的执行机上直接克隆私有书仓报 could not read Username。

@@ -238,3 +238,33 @@ def test_perf_push_and_top_on_d1(conn, monkeypatch):
     top = perf_push.remote_top(days=1)
     assert top[0]["step"] == "seg" and top[0]["pages_run"] == 3 and top[0]["p50_s"] == 2.0
     assert perf_push.remote_top(days=1, book="vol02") == []
+
+
+def test_manager_min_new_worker_skips_old_worker_trigger_rolls_back(conn, monkeypatch):
+    """单子要 manager≥X：新版执行方领单 SQL 先按自己版本过滤（跳过、去领别的）；
+    旧版执行方的领单 SQL 不认这个字段，由 schema 里的触发器整批回滚，单子留在排队（#18365）。"""
+    import guji_manager
+    from guji_manager.jobs import spec as SP
+    hi = S.submit(conn, _spec("vol01", manager_min="9.0.0", manager_min_n=SP.version_n("9.0.0")), "h1", by="A", why="测")
+    lo = _sub(conn, "h2", book="vol02")
+    j, _ = S.claim(conn, "w-new", seen={"session": None, "done": 0})   # 本包版本 < 9.0.0：跳过 hi
+    assert j["id"] == lo["id"]
+    assert S.claim(conn, "w-new") is None
+    # 旧执行方：领单 SQL 不过滤（版本当成很大），但 worker 表登记的是旧版本 → 触发器挡
+    _set(conn, "INSERT INTO worker (name, runner) VALUES (?, ?)", "w-old", "9e97761c m0.7.12")
+    monkeypatch.setattr(guji_manager, "__version__", "99.0.0")
+    with pytest.raises(Exception, match="manager_min"):
+        S.claim(conn, "w-old")
+    row = S.detail(conn, hi["id"])
+    assert row["status"] == "queued" and row["attempts"] == 0 and not row["attempts_rows"]
+    # 登记版本够了才领得到
+    _set(conn, "UPDATE worker SET runner = ? WHERE name = ?", "b7a637c7 m9.0.1", "w-old")
+    j, att = S.claim(conn, "w-old")
+    assert j["id"] == hi["id"] and att["worker"] == "w-old"
+
+
+def test_version_n():
+    from guji_manager.jobs import spec as SP
+    assert SP.version_n("0.7.14") == 7014 and SP.version_n("1.2.3.dev4") == 1_002_003
+    with pytest.raises(SP.SpecError):
+        SP.version_n("0.7")

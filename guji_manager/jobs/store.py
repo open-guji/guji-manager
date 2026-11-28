@@ -341,6 +341,7 @@ WITH c AS (
     AND (%(kinds)s::text[] IS NULL OR j.kind = ANY(%(kinds)s))
     AND (%(only)s::bigint IS NULL OR j.id = %(only)s)
     AND (j.run_after IS NULL OR j.run_after <= now() OR %(only)s::bigint IS NOT NULL)
+    AND coalesce((j.spec->>'manager_min_n')::bigint, 0) <= %(mv)s
   ORDER BY j.priority,
     -- 失联被收回的单同优先级里先领（原本已在跑，created_at 不变会排到更早交的整批单后面，史記 r72／r79 重领等 44–50 分）
     EXISTS (SELECT 1 FROM jobs.attempt l WHERE l.job_id = j.id AND l.outcome = 'lost') DESC,
@@ -373,12 +374,19 @@ def claim(conn, worker: str, *, session: str | None = None, affinity: str | None
     return got
 
 
+def _manager_n() -> int:
+    from .spec import version_n
+    from .. import __version__
+    return version_n(__version__)
+
+
 def _claim_pg(conn, worker, *, session, affinity, kinds, only):
     import psycopg
     for _ in range(5):
         try:
             with conn.transaction():
-                j = _one(conn.execute(_CLAIM, {"kinds": kinds, "aff": affinity, "only": only, "who": worker}))
+                j = _one(conn.execute(_CLAIM, {"kinds": kinds, "aff": affinity, "only": only, "who": worker,
+                                                  "mv": _manager_n()}))
                 if j is None:
                     return None
                 # 领单序号接着这条单历来的最大序号往下排：retry 把 attempts（重试额度）清零，但旧 attempt 还在

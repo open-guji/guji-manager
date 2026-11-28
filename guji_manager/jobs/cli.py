@@ -75,6 +75,8 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--no-pack", action="store_true", help="跑完不存包")
     s.add_argument("--run", action="append", default=[], help="command／eval：一条 guji 命令（引号括起，可多次）")
     s.add_argument("--why", default=None, help="为什么跑（谁要、要回答什么问题）")
+    s.add_argument("--manager-min", default=None,
+                   help="执行方 manager 版本下限 X.Y.Z：低于它的执行方不领（等它自更新）；单子要新版 manager 才认的东西时用")
     s.add_argument("--rc-pack", default=None, help="收轮检查（--kind roundcheck）：候选包标签")
     s.add_argument("--rc-main", default=None, help="收轮检查：对照包，main（缺省）或包标签")
     s.add_argument("--rc-ledger-book", default=None, help="收轮检查：根因台账里的书名（殿本／史記／全唐文）；给了就带台账")
@@ -315,6 +317,8 @@ def cmd_job(a) -> None:
     if act == "submit":
         try:
             raw = _spec_from_args(a)
+            if getattr(a, "manager_min", None):
+                raw["manager_min"] = a.manager_min
             if not getattr(a, "no_book_check", False):
                 from .book_check import check as _book_check
                 bad = _book_check(raw, default_glob=SP.DEFAULT_WS_GLOB)
