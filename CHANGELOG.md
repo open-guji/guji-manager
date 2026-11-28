@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（CV0 11-28，GM2 问）：`datastore/schema_d1.sql` 对齐线上 guji-data-main——events 的 payload／target 改为由 raw 现算的虚拟列，加 u／level 虚拟列（与线上同式），pending_items 加 reason 虚拟列，补线上早已手加的 7 条索引与 voids 视图。线上不变（导入按 pragma_table_info 取列，本来就不写虚拟列）；只影响本机 SQLite（测试、备份还原），`settle_sync` 按 `e.u` 查在本机也能跑了。
 - PATCH（11-28，CV0）：待审原因：cv align_ref 产物的 `none_cols`（reference_profile 列级无参照，CV0 11-28，脉经第 2 册缺文小注）里的格算「参照缺是设计」（`ref_by_design`），不再判 seg_page_unaligned／seg_col_unaligned／ref_gap。
 
 - PATCH（11-28，GM2）：`_cv._FALLBACK` 登记 cv #2008（收尾改名兼容读口）在 `manager_api` 新导出的 12 个名字（ADMIT_STEPS、read_final、final_dir、invalidate_final 等），修 `tests/test_cv_surface.py` 对 cv dev 变红。只登记，不改行为。L0。
