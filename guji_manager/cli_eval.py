@@ -326,7 +326,7 @@ def add_parser(sub) -> None:
                         "同 seg_harness.py 的同名开关）")
     p.add_argument("--save-dir", default="",
                    help="每个评测器的脚本 JSON 与报告存到这个目录（下次拿来 --against）；"
-                        "评测器 id 可写 @read／@read-3a／@read-3b 一次跑一套")
+                        "评测器 id 可写 @read／@read-3a／@read-rare（旧名 @read-3b）／@near 一次跑一套")
     p.add_argument("--against", default="",
                    help="上一次 --save-dir 的目录：逐项比指标、列误认／错例清单的新增与消失")
     p = sub.add_parser("check", help="[v2] 判据与体检：quality | rulers | round | rate | throughput | ledger")

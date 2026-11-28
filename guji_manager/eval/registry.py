@@ -272,25 +272,7 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
-    _e("context_correction", "context-correction", pythonpath=True,
-       title="上下文裁决", needs=("corpus", "heavy"),
-       note="⚠ 不传 --out 会把 report.json 写进数据集仓，必须显式给报告路径"),
-    _e("confusable_lm", "confusable-context", pythonpath=True,
-       title="形近字上下文", needs=("corpus", "heavy"),
-       note="位置参数是 cases.json 文件"),
-    # 外部大模型上下文裁决（Step6，2026-09-10 立项，未接生产）：位置参数不是
-    # 数据集分片，是本仓自产的评测集文件 output/llm_context_evalset/evalset.json
-    # （build_llm_context_evalset.py 从 context-correction 金标里挖出「现有
-    # gated_ngram 判错」的槽位建出来的），所以 arg_kind=none、把路径放进 extra。
-    # 注册表只挂安全默认 --provider mock（不发网络请求、不用花钱）；真跑 GLM/
-    # 千问要设 GLM_API_KEY / DASHSCOPE_API_KEY，另外手动带 --provider 跑，
-    # 见 open-guji/overview Step6-上下文裁决/方案-外部LLM.md。
-    _e("llm_context", "llm_context_evalset", arg_kind="none", pythonpath=True,
-       title="外部 LLM 上下文裁决（mock 默认）",
-       extra=("output/llm_context_evalset/evalset.json", "--provider", "mock",
-             "--prompt-version", "candidates"),
-       note="注册表默认跑 mock（验证链路，不代表真实准确率）；"
-           "真调用需要 API key，见方案文档"),
+    # context_correction／confusable_lm／llm_context 已搬进 cv bench（`guji bench run context-correction｜confusable-lm｜llm-context`，CV4 cv#2094，11-28）
     _e("font_fallback", "char-ocr", arg_kind="book_out", pythonpath=True,
        title="字体回退", needs=("products", "engine")),
     _e("guard_ceiling", "glyph-match/triplets", arg_kind="none", pythonpath=True,
@@ -308,12 +290,7 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
        needs=("products",),
        note="金标路径写死在脚本里（page-type/expected.json）；--book/--products 可选，"
            "不走注册表的位置参数机制；只读现成 cells 产物，不重跑管线"),
-    # 粗校基准（M9 D6-5，GUJI-669）：冻结的页＋标签，在快照上重跑 seed_admit（或从 --from 起），
-    # 报正文送审率与有标签格的错放；只跑现行代码时和分片 report.json 记的建库基线比。
-    _e("rough_bench", "rough-bench", pythonpath=True,
-       title="粗校基准（人审率／错放）", needs=("products", "heavy", "corpus"),
-       note="要工作区（GUJI_WORKSPACE：册配置、原图、glyph.db）和读令牌（快照包从 R2 取）；"
-            "专家改动用 --var B.yaml 跑，新增错放必须为 0。口径见 exp/rough_bench.py"),
+    # rough_bench 已并进 cv bench decide（`guji bench run decide --arg set=rough`，CV4 cv#2091，11-28）；评分口径仍在 exp/rough_bench.py
     # 结构感知识别（2026-09-21 合并进来的那条线；补进注册表，`test_registry_covers_every_eval_script`
     # 钉的就是「scripts/eval_*.py 一个都不许漏登记」）
     _e("struct_rerank", "rare-char", arg_kind="none", out_flag="--json", pythonpath=True,
@@ -332,9 +309,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
 # 套里只放自带图块或不碰库的，一台干净机器 `--allow heavy` 就能跑。
 SUITES: dict[str, tuple[str, ...]] = {
     "read-3a": ("advset", "advset_shiji", "advset_qtw", "match_pool", "match_pool_shiji"),
-    "read-3b": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
+    "read-rare": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
 }
-SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
+# 旧套名：11-28 起「3b」指形近字组分析 glyph_near（`@near`），旧生僻字候选改叫 `@read-rare`；`@read-3b` 留作别名（P2 收口时删）
+SUITES["read-3b"] = SUITES["read-rare"]
+SUITES["read"] = SUITES["read-3a"] + SUITES["read-rare"]
 # 要全唐文字形库的（先 export GUJI_GLYPH_DB=<全唐文 glyph.db>）：5a 相似度、A6 形近字组、A3 归一图端到端
 # 识字候选线（3c／4b／卡片），见 open-guji-dataset/char-candidates/README.md
 SUITES["cands"] = ("cands",)
