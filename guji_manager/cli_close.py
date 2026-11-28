@@ -183,6 +183,29 @@ def cmd_audit(args) -> None:
         if todo and not n:
             # 一格都没出多半是环境问题（缺 torch／checkpoint、取不到字块图），不能让下游照出一张没有相似字的单子
             print(f"✗ {book} 待审 {len(todo)} 格一格相似字都没出，见上面的原因", file=sys.stderr); sys.exit(1)
+    elif args.action == "cands":
+        # 给待审卡现算 cands/1（review/cands_attach.py）：3c 按图候选＋4b 上下文排序，与产线新步骤同一份算法，
+        # 不重跑整册；--cards 可接 `audit alt` 的输出（同卡并存 alt 与 cands），再交 pending_list.py --cards 并进 pending.json。
+        from .review.cands_attach import attach, cands_for_cards
+        if args.cards:
+            doc = json.loads(Path(args.cards).read_text(encoding="utf-8"))
+            cs = doc["cards"] if isinstance(doc, dict) else doc
+        else:
+            from .review.cards import cards
+            cs = cards(book, "all", limit=10 ** 7, only="all", store=eng.store, gate_cut=False,
+                       skip_decided=False, cls="*")["cards"]
+        todo = [c for c in cs if not c.get("admit")]
+        if not todo:
+            print(f"{book} 没有待审卡，不出 cands")
+            return
+        res = cands_for_cards(book, todo, ctx=eng.ctx, log=lambda m: print(m, file=sys.stderr))
+        n = attach(cs, res)
+        dst = Path(args.cards_out) if args.cards_out else out_dir / f"{book}.cards.cands.json"
+        dst.write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
+        print(f"{book} 候选列表：待审 {len(todo)} 格，出 cands {n} 格 → {dst}")
+        if not n:
+            print(f"✗ {book} 待审 {len(todo)} 格一格 cands 都没出：缺字块图或 r5／全字表向量包（guji cache pull-rare-index）", file=sys.stderr)
+            sys.exit(1)
     elif args.action == "alt-eval":
         # 相似字效果：人裁过之后，拿人定的字回头看 alt 里排第几（doc/research/人审找字-…md §6）
         from ._cv import human_chars
@@ -258,8 +281,9 @@ def add_parser(sub) -> None:
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("audit", help="[v2] 定版检查清单：admitted = 放行错穷举；jys = 己/已/巳 全族；"
                                      "count = 用户审完当场核数；sheet = 生成请审单（只读）；"
-                                     "alt = 给待审卡算好相似字（并进待审单）；alt-eval = 人裁后量相似字命中")
-    p.add_argument("action", choices=["admitted", "jys", "count", "sheet", "reasons", "changes", "alt", "alt-eval"])
+                                     "alt = 给待审卡算好相似字（并进待审单）；alt-eval = 人裁后量相似字命中；"
+                                     "cands = 给待审卡现算候选列表 cands/1（候选字线，不重跑整册）")
+    p.add_argument("action", choices=["admitted", "jys", "count", "sheet", "reasons", "changes", "alt", "alt-eval", "cands"])
     p.add_argument("--base", default=None, help="changes：上一基线的产物根（与它比放行变化）")
     p.add_argument("--since", default=None, help="count：只数这个时间之后的事件（ISO，如 2026-10-06T08:00）")
     p.add_argument("--expect", default=None, help="count：请审单字位清单文件，一行一个，报漏审与单外多审")
