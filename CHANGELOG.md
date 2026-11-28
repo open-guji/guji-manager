@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，文渊阁组库 glyphlib-wyg，WYG 提）：`guji glyphlib build` 扩成多来源——`-w` 可多次，实例 id 各带来源前缀；`--with-auto`／`--auto-from <工作区>` 另收放行格回库例（证据带 backfill 与 verify），出库前再过一遍字体模板核验，`label_status` 保留 auto；`--per-char` 为多来源合计、人裁在前；`--diverse` 按 5a 底座向量挑互相不像的；`--suspect-ids 工作区:清单`（认 CV3 带 ws、instance 列的 tsv）、`--suspect-chars`、`--suspect-since` 标记疑点，`--drop-suspect` 剔除，库里留着疑点的拒推。来源书真源缺来源行（借库书首次回库后的汉书）时补一条最小来源行，并核对「选了多少、装进多少」，不一致拒出。单来源用法与输出不变。
+
 - PATCH（11-28，GM2，cv P3 seed_admit→char_decide 两名并认，GM2 名下；读口用 `products_io`）：冻结比对 `ops/freeze.compare_products` 把快照里的 `seed_admit/` 路径映射到 `char_decide/`（`guji-cv decide migrate-name` 后不误报缺文件）；包导入降级检查 `snap/importer.downgraded_steps` 跨两名取新鲜数；`jobs/auto_pages.REPLAY_FROM`、`ruling_hits.FETCH_STEPS`、取包 `datastore/packs.fetch_products` 的 steps 过滤两名都认；`lib_text_check` 失效两名都打、整册钩子认两名；`cli_perf` 历史 perf 行 seed_admit 归「4 定字」，本机 cv 有 `steps.char_decide*` 时同样挂分段钩子；close-check 1a 在 char_decide 缺页而 seed_admit/ 还在时提示先跑 migrate-name。写端（事件 target.step、suggest 补丁键）仍写旧名，等 CV4 切换通知。L0。
 
 - PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。

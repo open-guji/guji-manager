@@ -302,8 +302,34 @@ def cmd_glyphlib(args) -> None:
     if not args.workspace:
         print("✗ 要给 -w 来源书的工作区", file=sys.stderr)
         sys.exit(2)
-    res = gl.build(Path(args.workspace).expanduser().resolve(), args.name, min_batches=args.min_confirm,
-                   per_char=args.per_char, actor=actor, note=args.note, gate_waive=args.gate_waive or "")
+    wss = args.workspace if isinstance(args.workspace, list) else [args.workspace]
+    suspect: dict[str, dict] = {}
+    for spec in args.suspect_since or []:
+        w, _, day = spec.partition(":")
+        suspect.setdefault(w, {})["since"] = day
+    for spec in args.suspect_ids or []:
+        w, _, f = spec.partition(":")
+        rows = [x.split("\t") for x in Path(f).read_text(encoding="utf-8").splitlines() if x.strip()]
+        head = rows[0] if rows else []
+        if "instance" in head:          # 带表头的清单（如 CV3 疑错标-留一法-422.tsv：ws、instance 两列）：只取这本书的
+            iw, ii = (head.index("ws") if "ws" in head else None), head.index("instance")
+            ids = {r[ii] for r in rows[1:] if len(r) > ii and (iw is None or r[iw] == w)}
+        else:
+            ids = {r[0].strip() for r in rows}
+        suspect.setdefault(w, {}).setdefault("ids", set()).update(ids)
+    for spec in args.suspect_chars or []:
+        w, _, chs = spec.partition(":")
+        suspect.setdefault(w, {})["chars"] = suspect.get(w, {}).get("chars", "") + chs
+    res = gl.build([Path(w).expanduser().resolve() for w in wss] if len(wss) > 1
+                   else Path(wss[0]).expanduser().resolve(), args.name, min_batches=args.min_confirm,
+                   per_char=args.per_char, actor=actor, note=args.note, gate_waive=args.gate_waive or "",
+                   with_auto=set(args.auto_from) if args.auto_from else args.with_auto, diverse=args.diverse, suspect=suspect or None,
+                   drop_suspect=args.drop_suspect)
+    if args.push and res.get("suspect_in_lib"):
+        print(f"✗ 库里有 {res['suspect_in_lib']} 张标了疑点的刻例，不推（共享库只能写一次）；"
+              f"先查清，或加 --drop-suspect 重出", file=sys.stderr)
+        cli_v2._out(res)
+        sys.exit(1)
     if args.push:
         from .cli_db import _pg_conn
         from ._cv import upload_files
@@ -432,9 +458,22 @@ def add_parser(sub) -> None:
     p = sub.add_parser("glyphlib", help="[v2] 共享刻例库：build 从一本书精选刻例出新版本（--push 推进中心库）")
     p.add_argument("action", choices=["build"])
     p.add_argument("--name", required=True, help="新版本的工作区名，如 glyphlib-qkp-v1（每版只能写一次）")
-    p.add_argument("-w", "--workspace", default=None, help="来源书的工作区（已迁到中心库、已 db pull）")
+    p.add_argument("-w", "--workspace", action="append", default=None,
+                   help="来源书的工作区（已迁到中心库、已 db pull）；可多次，多本书合一个库，实例 id 各带来源前缀")
     p.add_argument("--min-confirm", type=int, default=2, help="人裁至少在几个不同批次确认过（缺省 2）")
-    p.add_argument("--per-char", type=int, default=3, help="每字最多几张（缺省 3）")
+    p.add_argument("--per-char", type=int, default=3, help="每字最多几张（缺省 3；多来源合计）")
+    p.add_argument("--with-auto", action="store_true",
+                   help="另收放行格回库例（证据带 backfill 与 verify），出库前再过一遍字体模板核验；标签保留 auto")
+    p.add_argument("--auto-from", action="append", default=None, metavar="工作区 id",
+                   help="只从这几本来源书收回库例（可多次；给了就不必再写 --with-auto）")
+    p.add_argument("--diverse", action="store_true", help="每字按 5a 底座向量挑互相不像的（人裁先、回库后）")
+    p.add_argument("--suspect-since", action="append", default=None, metavar="工作区:YYYY-MM-DD",
+                   help="这本来源书在这天及以后入库的例标记疑点（可多次）")
+    p.add_argument("--suspect-ids", action="append", default=None, metavar="工作区:文件",
+                   help="这本来源书点名标记疑点的实例 id 清单（一行一个，tsv 取第一列；可多次）")
+    p.add_argument("--suspect-chars", action="append", default=None, metavar="工作区:字串",
+                   help="这本来源书这些字头的例标记疑点（如码位分歧待定的字；可多次）")
+    p.add_argument("--drop-suspect", action="store_true", help="标了疑点的不收（不给只标记；标了疑点的库拒推）")
     p.add_argument("--note", default="", help="写进升格记录的备注")
     p.add_argument("--push", action="store_true", help="出完推进中心库（升级脚本身份，要写库权限）")
     p.add_argument("--gate-waive", default=None, metavar="理由",

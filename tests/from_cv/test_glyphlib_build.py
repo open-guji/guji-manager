@@ -122,3 +122,108 @@ def test_edition_of():
     from guji_manager.ops.glyphlib import edition_of
     assert edition_of("glyphlib-qkp-v1") == "glyphlib-qkp" and edition_of("glyphlib-qkp-v12") == "glyphlib-qkp"
     assert edition_of("glyphlib-odd") == "glyphlib-odd"
+
+
+def _src2(tmp_path, ws_id: str, chars, *, auto=(), day="2026-11-20"):
+    """第二本来源书：chars 是人裁（各 2 批确认），auto 是放行格回库例（证据带 backfill、verify）。"""
+    from open_guji_cv.clustering.glyph_db import GlyphDB, export_store
+    from open_guji_cv.core.workspace import central_data_dir
+    ws = tmp_path / ws_id
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text(f"id: {ws_id}\n", encoding="utf-8")
+    (ws / ".central.json").write_text(json.dumps({"ws": ws_id, "branch": "main"}), encoding="utf-8")
+    data = central_data_dir(ws_id)
+    db = GlyphDB(tmp_path / f"{ws_id}.sqlite")
+    db.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('book_edition', ?)", (ws_id,))
+    lines = []
+    try:
+        for i, ch in enumerate(chars, 1):     # 同 vol01:1:i:1 号：与第一本书撞号也不怕，库里带来源前缀
+            assert db.admit_instance(f"vol01:1:{i}:1", ch, _png(50 + i), provenance="human", page="1", col=i, idx=1)
+            lines += [_confirm(f"vol01:1:{i}:1", ch, b, n) for n, b in enumerate(["a", "b"])]
+        for j, ch in enumerate(auto, 1):
+            assert db.admit_instance(f"v2:01:2:{j}:1", ch, _png(80 + j), provenance="auto", page="2", col=j, idx=1,
+                                     evidence={"backfill": True, "batch": "bf1", "verify": {"tpl_top1": ch}})
+        db.conn.execute("UPDATE admissions SET admitted_at=?", (day,))
+        db.conn.commit()
+        export_store(db, data / "output" / "glyph_store")
+    finally:
+        db.close()
+    ev = data / "feedback" / "events"
+    ev.mkdir(parents=True)
+    (ev / "h.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return ws, data
+
+
+class _FakeEmb:
+    """不跑模型：auto 例核验看字是否在 ok 里；向量按实例号造，号相邻的算很像。"""
+    def __init__(self, ok=None):
+        self.ok = ok
+
+    def verify(self, path, ch):
+        return {"ok": self.ok is None or ch in self.ok, "tpl_top1": ch, "tpl_margin": 0.1}
+
+    def emb(self, paths):
+        import numpy as np
+        out = []
+        for p in paths:
+            k = sum(map(ord, str(p))) % 7
+            v = np.zeros(8, dtype=np.float32)
+            v[k] = 1.0
+            out.append(v)
+        return out
+
+
+def test_build_multi_source_auto_and_suspect(src_ws, tmp_path):
+    from open_guji_cv.core.workspace import central_data_dir
+    from guji_manager.ops.glyphlib import build
+    ws1, _ = src_ws
+    ws2, _ = _src2(tmp_path, "book2", ["甲", "戊"], auto=["戊", "己", "庚"], day="2026-11-26")
+    res = build([ws1, ws2], "glyphlib-tst-v2", min_batches=2, per_char=3, with_auto=True,
+                embedder=_FakeEmb(ok={"戊", "己"}), suspect={"book2": {"since": "2026-11-26"}})
+    assert res["from"] == ["srcbook", "book2"]
+    assert res["select"]["book2"]["auto"]["reverify_failed"] == 1         # 庚 字体核验不过
+    assert res["picked_by_kind"] == {"human": 4, "auto": 2}              # 甲 3（书一占满）、戊 1 人裁；戊 己 回库
+    assert res["select"]["book2"]["suspect"]["marked"] == 4 and res["suspect_in_lib"] == 3
+    store = central_data_dir("glyphlib-tst-v2") / "output/glyph_store"
+    inst = {json.loads(x)["instance_id"]: json.loads(x) for f in (store / "instances").glob("*.jsonl")
+            for x in f.read_text("utf-8").splitlines()}
+    assert "book2:v2:01:2:1:1" in inst and inst["book2:v2:01:2:1:1"]["label_status"] == "auto"   # 不冒充人裁
+    assert "book2:vol01:1:1:1" not in inst                                # 甲 已由书一占满 3 张
+    adm = {json.loads(x)["instance_id"]: json.loads(json.loads(x)["evidence"])
+           for x in (store / "admissions.jsonl").read_text("utf-8").splitlines()}
+    assert adm["book2:v2:01:2:2:1"]["suspect"].startswith("入库于") and adm["srcbook:vol01:1:1:1"].get("suspect") is None
+
+
+def test_build_drop_suspect(src_ws, tmp_path):
+    from guji_manager.ops.glyphlib import build
+    ws1, _ = src_ws
+    ws2, _ = _src2(tmp_path, "book3", ["戊"], auto=["己"], day="2026-11-26")
+    res = build([ws1, ws2], "glyphlib-tst-v3", per_char=3, with_auto=True, embedder=_FakeEmb(),
+                suspect={"book3": {"since": "2026-11-26"}}, drop_suspect=True)
+    assert res["suspect_in_lib"] == 0 and res["picked_by_source"] == {"srcbook": 3}
+
+
+def test_pick_per_char_diverse_drops_near_duplicates():
+    import numpy as np
+    from guji_manager.ops.glyphlib import pick_per_char
+    vec = {"a": [1, 0], "b": [1, 0], "c": [0, 1]}
+    xs = [{"char": "甲", "instance_id": k, "src_ws": "w", "batches": 2 if k != "c" else 0, "auto": k == "c"}
+          for k in "abc"]
+    emb_of = lambda ps: [np.asarray(vec[p["instance_id"]], dtype=np.float32) for p in ps]  # noqa: E731
+    got, st = pick_per_char(xs, 3, emb_of=emb_of)
+    assert [p["instance_id"] for p in got] == ["a", "c"] and st["dup"] == 1
+    got, _ = pick_per_char(xs, 2)
+    assert [p["instance_id"] for p in got] == ["a", "b"]
+
+
+def test_build_source_without_source_row(src_ws, tmp_path):
+    """借库书第一次回库后，本书真源的 sources.jsonl 可能是空的（同名来源 v2 是借来那本的）：照样装得进组库（汉书 11-28）。"""
+    from open_guji_cv.core.workspace import central_data_dir
+    from guji_manager.ops.glyphlib import build
+    ws1, _ = src_ws
+    ws2, data2 = _src2(tmp_path, "book4", [], auto=["戊", "己"])
+    (data2 / "output/glyph_store/sources.jsonl").write_text("", encoding="utf-8")
+    res = build([ws1, ws2], "glyphlib-tst-v4", per_char=3, with_auto=True, embedder=_FakeEmb())
+    assert res["picked_by_source"] == {"srcbook": 3, "book4": 2}
+    store = central_data_dir("glyphlib-tst-v4") / "output/glyph_store"
+    assert len(list((store / "patches").glob("book4_*.png"))) == 2
