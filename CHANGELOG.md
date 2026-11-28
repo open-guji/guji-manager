@@ -12,6 +12,8 @@
 - PATCH（11-28，GM2，执行方总管报北行 #18319）：`guji job submit` 交单前核册名（新模块 `jobs/book_check.py`）：按 ws_glob 在中心库 `workspaces`／`books` 表找到这部书，册名是现名放过；是册 yaml `aliases` 里的旧名、或按数值相等（`1`／`01`／`001`）就换成现名并提示；都不是就拒，列出同数字的册名（殿本交 `01` 提示 `vol01`）。连不上库只提示不挡；`--no-book-check` 跳过。执行方：准备脚本拉完库还 `ls books/<册>.yaml` 找不到，判配置错、不再当环境问题连领三次，失败原因带「册名写错或已改名」提示。起因：北行 bxgb 11-28 按册号位数统一改名为 1，CV2 仍按 bxgb 交（#18319）；CV4 交殿本 `01` 而殿本仍是 vol01（#18292）。
 - PATCH（11-28，GM2，执行方报 #18346）：改册名漏了 R2 原图登记（`source/by-ws/<ws>/<册>.json` 只有旧名），取原图 404。`ops.rename_volume --apply` 末尾给新名补指针（指向旧名同一书同一册，旧的不删；`--no-r2` 不补）；新 `--r2-only --ws <工作区> --map 旧=新 … [--apply]` 给已改名的书补。`guji source pull` 找不到新名指针时按册 yaml `aliases` 用旧名指针取并提示。已给北行 1、幼學 1、脉经 1、朱楓林集 1–5 补登记。
 
+- PATCH（11-28，CV3，bench 统一接口 P1）：评测套 `@read-3b` 改名 `@read-rare`（量的是旧生僻字候选 rare_*；「3b」11-26 起指形近字组分析 glyph_near，套名 `@near`），`@read-3b` 留作别名到 P2 收口。原生 bench 在 cv `eval/benches/read.py`（read-3a-advset、read-3a-damaged、read-3b-near、read-rare、read-rare-firstseen）。L0。
+
 - DOC（11-28，GM4，bench 统一接口，CV0）：`doc/版本号规矩.md` 第三节 rc 测试一条的发版护栏命令写成 `guji bench guard`（取代 `guji eval guard`，旧命令留别名；`skipped`／`no_gold` 不算过）。L0。
 
 - PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
