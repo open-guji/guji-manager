@@ -75,7 +75,7 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
     if gold is not None and spec.plan and not plan:
         return ("no_gold", f"{spec.id} 在 {book} 的金标里没有册 {vols}")
     need = set(spec.needs)
-    if need & {"config", "code", "raw", "products", "glyph_lib", "corpus", "models"}:
+    if need & {"config", "code", "raw", "products", "glyph_lib", "corpus", "models"}:   # corpus 要册配置里的钉子
         ws = R.book_ws(book, cache, a.ws, update=not a.offline)
         dh = R.data_home_for(ws, cache, a.ws)
         res["ws"], res["data_home"] = str(ws), str(dh)
@@ -98,6 +98,10 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
                 env["pin_warnings"] = warn
                 for w in warn:
                     print(f"    ⚠ {w}", file=sys.stderr)
+        if "corpus" in need:
+            if not pv:
+                raise R.Missing("corpus", f"{spec.id} 没给册清单（plan 或 --vol），不知道取哪版语料")
+            res["corpus"], env["corpus"] = R.corpus(ws, dh, list(plan), pv)
         if "glyph_lib" in need:
             if not plan:
                 raise R.Missing("glyph_lib", f"{spec.id} 没给册清单（plan 或 --vol），不知道建哪版字形库")
@@ -315,14 +319,33 @@ def cmd_ab(a) -> None:
     sys.exit(1 if (rb.against or {}).get("worse") else 0)
 
 
+def _gold_books(spec, a) -> list[str] | None:
+    """有金标的书。显式表直接读；约定式分片（gold 是字符串 `<分片>/<书id>/`）看测试集仓里该分片下有哪些书目录
+    （以前返回 None，guard 不给 --book 就一本都不跑、给了 --book 跑成 skipped 也不算不过：GM2 11-28 补）。"""
+    g = spec.gold_books()
+    if g is not None or not isinstance(spec.gold, str):
+        return g
+    try:
+        ds = R.dataset_root(a.dataset, cache=R.cache_root(a.cache), rels=[spec.gold.rstrip("/")])
+    except R.Missing:
+        return None
+    d = ds / spec.gold.rstrip("/")
+    return sorted(p.name for p in d.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))) if d.is_dir() else []
+
+
 def cmd_guard(a) -> None:
-    """发版护栏：每个有护栏的 bench × 登记了金标的书；heavy 的要 --heavy。"""
+    """发版护栏：每个有护栏的 bench × 有金标的书；heavy 的要 --heavy。有金标却没跑成（skipped／no_gold）按不过算。"""
     B = _B()
     bad = 0
     for spec in B.all_specs():
         if not spec.guards or spec.deprecated or (spec.cost == "heavy" and not a.heavy):
             continue
-        books = a.books or spec.gold_books() or []
+        gb = _gold_books(spec, a)
+        if gb is None and not a.books:
+            print(f"✗ {spec.id}：读不到测试集仓，不知道哪些书有金标——发版护栏按不过算")
+            bad = True
+            continue
+        books = a.books or gb or []
         for book in books:
             r, out = run_one(spec, book, a, against=None)
             _print(r, out)
@@ -332,7 +355,7 @@ def cmd_guard(a) -> None:
             if unv and r.status not in ("skipped", "no_gold"):
                 print(f"    ✗ 护栏没验到（指标没出数）：{'、'.join(unv)}——发版护栏按不过算")
                 bad = True
-            if r.status in ("skipped", "no_gold") and spec.gold_books() and book in spec.gold_books():
+            if r.status in ("skipped", "no_gold") and gb and book in gb:
                 print("    ✗ 登记了金标却没跑成，发版护栏按不过算")
                 bad = True
     if a.legacy:

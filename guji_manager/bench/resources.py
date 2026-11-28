@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 #: needs 里由 cv 运行时自己按钉子取回（模型表、语料表）的，只核取回令牌在不在
-_SELF_FETCH = {"models": "GUJI_DATA_TOKEN_READ", "corpus": "GUJI_DATA_TOKEN_READ"}
+_SELF_FETCH = {"models": "GUJI_DATA_TOKEN_READ", "corpus": "GUJI_DATA_TOKEN_READ"}   # corpus 另由 `corpus()` 按钉子取齐
 
 
 class Missing(Exception):
@@ -344,6 +345,53 @@ def products(ws: Path, book: str, vol: str, cache: Path, label: str | None = Non
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
     return root, lab
+
+
+# ------------------------------------------------------------------ 语料
+def corpus(ws: Path, dh: Path, vols, pins_by_vol: dict) -> tuple[dict, dict]:
+    """按各册**生效的** `corpus:` 总号（`pins_of`，同交单预检：册 yaml／基础配置里写的那个，不看钉子账最后一行——
+    W1 回滚后最后一行不是现行值）展开三层清单（cv `core.corpus_pin.load_manifest`），本机缺的按清单 sha 从 R2 取回
+    （`guji corpus fetch` 同一实现 `ops.corpus_pack.fetch_blobs`）。没钉 corpus 的册不猜，报缺资源。
+
+    返回（res，env）：res＝{pin, by_vol: {册: {pin, book_corpus, general_corpus}}, book_corpus, general_corpus}，
+    book_corpus＝本书 reference 语料（工作区／中心库整理本），general_corpus＝引擎自带通用语料（`corpus/external/`）；
+    env＝{册: {pin, items, digest}}，digest 是清单（root, path, sha256）的哈希。"""
+    from .._cv import _base, _not_corpus
+    from .._cv import core_corpus_pin_load_manifest as load_manifest
+    from ..ops.corpus_pack import fetch_blobs
+    by_vol, envv = {}, {}
+    with env(GUJI_WORKSPACE=ws, GUJI_DATA_HOME=dh):
+        for v in vols:
+            n = (pins_by_vol.get(v) or {}).get("corpus", [None])[0]
+            if not isinstance(n, int):
+                raise Missing("corpus", f"册 {v} 没钉 corpus（生效值 {n!r}），不知道用哪版语料", "册配置写 corpus: N")
+            try:
+                got = fetch_blobs(ws, n, v)
+                man = load_manifest(ws, n, v)
+            except (FileNotFoundError, ValueError) as e:
+                raise Missing("corpus", f"册 {v} 的语料 corpus {n} 清单读不了：{e}", "先 guji db pull（缓存里应已拉过）") from e
+            if got["not_in_r2"] or got["differ_not_overwritten"]:
+                raise Missing("corpus", f"册 {v} corpus {n}：R2 缺 {len(got['not_in_r2'])} 个、本机内容与清单不符 "
+                              f"{len(got['differ_not_overwritten'])} 个（{(got['differ_not_overwritten'] or got['not_in_r2'])[:3]}）",
+                              "R2 缺的找该书负责线 guji corpus upload；不符的删缓存重取")
+            items = [i for i in man["items"] if not _not_corpus(i["root"], i["path"])]
+            miss = [i["path"] for i in items if not (_base(i["root"], i["path"], ws) / i["path"]).exists()]
+            if miss:
+                raise Missing("corpus", f"册 {v} corpus {n} 取完仍缺 {len(miss)} 个文件：{miss[:3]}")
+
+            def paths(root):
+                return [str(_base(i["root"], i["path"], ws) / i["path"]) for i in items
+                        if i["group"] == "reference" and i["root"] == root]
+            by_vol[v] = {"pin": n, "book_corpus": paths("ws"), "general_corpus": paths("repo")}
+            import hashlib
+            dig = hashlib.sha256(json.dumps(sorted((i["root"], i["path"], i["sha256"]) for i in items),
+                                            ensure_ascii=False).encode()).hexdigest()[:16]
+            envv[v] = {"pin": n, "items": len(items), "digest": dig}     # 清单内容哈希：同号不同内容一眼看出
+    uniq = lambda xs: list(dict.fromkeys(xs))                       # noqa: E731
+    res = {"pin": sorted({x["pin"] for x in by_vol.values()}), "by_vol": by_vol,
+           "book_corpus": uniq(p for x in by_vol.values() for p in x["book_corpus"]),
+           "general_corpus": uniq(p for x in by_vol.values() for p in x["general_corpus"])}
+    return res, envv
 
 
 # ------------------------------------------------------------------ 5b 评测集（原 eval/bench_bundle，GM4 交来）

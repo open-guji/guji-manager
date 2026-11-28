@@ -12,7 +12,7 @@
 | `guji bench fetch <bench> --book <书>` | 只备资源不跑，打印每样资源的路径与版本 |
 | `guji bench run <bench|@套> --book <书> [--vol …] [--arg k=v] [--params JSON] [--against <结果目录>]` | 备资源、跑、打分、对照、验护栏、写结果；regressed 时退出码 1 |
 | `guji bench ab <bench> --book <书> --params JSON` | A（现行）、B（加覆盖）各跑一次，出 B 对 A 的翻转清单；有变坏退出码 1 |
-| `guji bench guard [--heavy] [--legacy]` | 发版护栏：每个有护栏的 bench × 登记了金标的书；`--legacy` 连老框架 `guji eval guard` 一起验 |
+| `guji bench guard [--heavy] [--legacy]` | 发版护栏：每个有护栏的 bench × 有金标的书（显式表读表，约定式分片看测试集仓里的书目录）；有金标却 skipped／no_gold、或读不到测试集仓，都按不过算；`--legacy` 连老框架 `guji eval guard` 一起验 |
 | `guji bench show <bench> --book <书> [--history]` | 看最近一次 report.md；`--history` 列历次 |
 | `guji bench run <bench> --book <书> … --job [--cv <tag／分支／提交>]` | 不在本机跑，交任务库由执行机跑（见下「交执行机」） |
 
@@ -30,7 +30,8 @@
 | glyph_lib | 改成整拉 `guji db pull`（连借库）并重建 `glyph.db`（没钉 glyph_pin 的册用它）；钉了版的册按 `guji glyph-db pin-build` 建 `glyph-g<N>.db` |
 | raw | 只取金标涉及的页（bench 的 `plan` 给了页时），否则整册；按册钉的页表版本 |
 | products | 各册 main 指针的产物包（`--label` 改），按标签缓存；先取到临时目录、完整了再改名 |
-| models、corpus | cv 运行时按钉子自己取回，这里只核令牌 |
+| corpus | 按各册**生效的** `corpus:` 总号（同 `guji job precheck`；不看钉子账最后一行）展开三层清单，缺的按 sha 从 R2 取回（同 `guji corpus fetch`）。`ctx.res["corpus"]`＝`{pin, by_vol, book_corpus: [本书整理本…], general_corpus: [引擎通用语料…]}`，`env.corpus` 记每册总号与清单哈希。没钉 corpus 的册报缺资源 |
+| models | cv 运行时按钉子自己取回，这里只核令牌 |
 | bench5b | 5b 评测集 `cache/glyph_bench`、`oov_bench`：缺了按钉死的 sha 核对冻结包 `train_bundle.zip` 再解（`eval/bench_bundle.py`，GM4 交来），包不在或 sha 不符报缺资源 |
 | torch、gpu、ocr | 只核环境 |
 
