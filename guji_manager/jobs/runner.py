@@ -119,6 +119,19 @@ DECIDE_NAME_PROBE = ("try:\n from open_guji_cv.core.decide_names import ADMIT_ST
                      "except ImportError:\n a = 'seed_admit'\nprint(a)")
 
 
+#: 本执行方认得的单型（新单型要同时在这里和 run() 里接上）
+RUNNABLE_KINDS = ("rerun", "ab", "eval", "command", "roundcheck", "uidsync", "bench")
+
+
+def _check_kind(kind) -> None:
+    """不认的单型记 blocked、说清楚，不当失败重试：交单方的 manager 比本执行方新（11-28 #18365 kind=bench 落到旧执行方，
+    掉进 command 分支遍历 run=None 报 TypeError）。执行方空闲时会自更新，之后 `guji job retry` 即可。"""
+    if kind not in RUNNABLE_KINDS:
+        from .. import __version__ as mv
+        raise StageError("blocked", f"本执行方（manager {mv}）不认 kind={kind!r}：交单方的 manager 更新；"
+                                    "等执行方自更新后 guji job retry")
+
+
 class Job:
     """跑一条单。`db` 是主线程的库连接（`store.DB`，断线自动重连）；心跳另开一条连接在后台线程里。"""
 
@@ -508,7 +521,7 @@ class Job:
             raise StageError("failed", "pipeline 每一步都是「0 页」：本册一页都没跑（多半本机原图或页表缺），不存包；换会话重跑")
 
     def run_commands(self) -> None:
-        for i, argv in enumerate(self.spec["run"]):
+        for i, argv in enumerate(self.spec["run"] or []):
             a = [x.replace("{book}", self.spec.get("book") or "").replace("{ws}", self.ws or "") for x in argv]
             self.progress = " ".join(a)[:300]
             out = self.guji(*a)
@@ -679,6 +692,7 @@ class Job:
         sp = self.spec
         outcome, err, code = "succeeded", None, None
         try:
+            _check_kind(sp.get("kind"))
             self.step("prep", self.prep)
             self.step("cv", self.verify_cv)
             if sp["kind"] == "uidsync":
@@ -697,7 +711,7 @@ class Job:
                 self.step("run", self.run_roundcheck)
             elif sp["kind"] == "bench":
                 self.step("run", self.run_bench)
-            else:
+            elif sp["kind"] in ("command", "eval"):
                 if sp.get("checks"):
                     self.step("check", self.checks)
                 self.step("run", self.run_commands)

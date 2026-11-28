@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -181,6 +182,47 @@ def test_book_ws_pull_failure_is_missing(tmp_path, monkeypatch):
     assert R.book_ws("bk", tmp_path, None, update=False) == p   # --offline 明说用缓存
 
 
+
+
+def _git_repo(d):
+    import subprocess as sp
+    d.mkdir(parents=True)
+    (d / "workspace.yaml").write_text("id: x\n", encoding="utf-8")
+    for c in (["init", "-q", "-b", "main"], ["remote", "add", "origin", "https://github.com/x/y"], ["add", "."], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"]):
+        sp.run(["git", *c], cwd=d, check=True)
+    return d
+
+
+def test_book_ws_uses_home_clone_like_prep(tmp_path, monkeypatch):
+    """跑批准备用的 ~/<书仓名>（会话挂上的）在，就从它克隆，不去 GitHub 要凭据（#18365 第 2 次）。"""
+    import guji_manager.jobs.spec as SP
+    home = tmp_path / "home"
+    _git_repo(home / "zz-book")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setitem(SP.WS_REPOS, "zz", "guji-workspace/zz-book")
+    monkeypatch.setattr(R, "_find_repo", lambda b: (_ for _ in ()).throw(AssertionError("不该去 GitHub 找")))
+    p = R.book_ws("zz", tmp_path / "cache", None)
+    assert (p / "workspace.yaml").exists() and p == tmp_path / "cache" / "books" / "zz"
+
+
+def test_book_ws_falls_back_to_legacy_monorepo(tmp_path, monkeypatch):
+    """书仓克隆不了（没凭据）时同准备脚本退回旧总仓里的目录；旧总仓也没有就报缺资源。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(R, "_find_repo", lambda b: "nope-repo")
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")              # https 克隆直接失败，不碰网络
+    monkeypatch.setattr(R, "LEGACY_WS_REPO", str(tmp_path / "no-such"))
+    with pytest.raises(R.Missing) as e:
+        R.book_ws("zz", tmp_path / "cache", None)
+    assert "add_repo" in e.value.how
+    gw = _git_repo(home / "guji-workspace")
+    (gw / "zz-book").mkdir()
+    (gw / "zz-book" / "workspace.yaml").write_text("id: zz\n", encoding="utf-8")
+    assert R.book_ws("zz", tmp_path / "cache", None) == gw / "zz-book"
+    assert not (tmp_path / "cache" / "books" / "zz").exists()      # 失败的克隆不留半截目录
+
+
 def test_drift_blocks_code_warns_cv(monkeypatch, tmp_path):
     import guji_manager.jobs.precheck as PC
     monkeypatch.setattr(PC, "code_problems", lambda n, ws: [f"k{n} 有 drift"] if n == 3 else [])
@@ -356,3 +398,22 @@ def test_void_keeps_row_hides_from_history(fake, monkeypatch):
     assert h[0]["status"] == "void" and h[0]["baseline"] == 0
     with pytest.raises(ValueError):
         P.void([rid], "", conn=conn)
+
+
+def test_book_ws_update_goes_through_home_clone(tmp_path, monkeypatch):
+    """缓存书仓更新也走 ~/<书仓名>：fetch 它的 origin，再从它快进（不直接找 GitHub 要凭据）。"""
+    import subprocess as sp
+    import guji_manager.jobs.spec as SP
+    up = _git_repo(tmp_path / "upstream")
+    home = tmp_path / "home"
+    home.mkdir()
+    sp.run(["git", "clone", "-q", str(up), str(home / "zz-book")], check=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setitem(SP.WS_REPOS, "zz", "guji-workspace/zz-book")
+    p = R.book_ws("zz", tmp_path / "cache", None)
+    sp.run(["git", "remote", "set-url", "origin", "https://invalid.example/none"], cwd=p, check=True)
+    (up / "new.txt").write_text("1", encoding="utf-8")
+    sp.run(["git", "add", "."], cwd=up, check=True)
+    sp.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "n"], cwd=up, check=True)
+    assert R.book_ws("zz", tmp_path / "cache", None) == p
+    assert (p / "new.txt").exists()

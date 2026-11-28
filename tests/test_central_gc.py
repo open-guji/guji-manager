@@ -79,3 +79,31 @@ def test_db_refs_jobs_unreadable_is_none():
     refs = G.db_refs(_central(), jobs_conn=Bad())
     assert refs["jobs"] is None
     assert G.plan({}, {}, refs) == []
+
+
+def test_bench_snapshot_packs_kept(tmp_path):
+    """第 7 条：测试集仓 bench.yaml 点名的冻结包保留（11-28 rough-bench 冻结包被清，CV4）。三种写法都认。"""
+    (tmp_path / "rough-bench").mkdir()
+    (tmp_path / "rough-bench" / "bench.yaml").write_text(
+        "name: rough-bench\nsnapshot_packs:\n  vol01: snapA\n  vol02: {ws: w, pack: snapB}\n", encoding="utf-8")
+    (tmp_path / "decide-bench" / "small").mkdir(parents=True)
+    (tmp_path / "decide-bench" / "small" / "bench.yaml").write_text(
+        "books:\n  - {title: 殿本, ws: w, vol: vol03, pack: snapC, digest: x}\n  - {ws: other, vol: vol01, pack: e}\n",
+        encoding="utf-8")
+    refs = G.bench_snapshot_refs(root=tmp_path)
+    assert refs == {(None, "vol01", "snapA"), ("w", "vol02", "snapB"), ("w", "vol03", "snapC"), ("other", "vol01", "e")}
+    old = "2026-10-20T00:00:00Z"
+    ps = [_p("vol01", "snapA", old), _p("vol02", "snapB", old), _p("vol03", "snapC", old), _p("vol01", "e", old),
+          _p("vol03", "snapA", old)]
+    packs = {(p.ws, p.book, p.label): p for p in ps}
+    drop = G.plan(packs, {}, {"freeze": set(), "online": {}, "jobs": set(), "bench": refs},
+                  now=datetime(2026, 11, 28, tzinfo=timezone.utc))
+    assert sorted(p.label for p in drop) == ["e", "snapA"]          # 别的工作区点名的、别的册同名标签都不算
+    assert {p.book for p in drop if p.label == "snapA"} == {"vol03"}
+    assert packs[("w", "vol01", "snapA")].keep == ["bench 冻结包"]
+
+
+def test_bench_snapshot_unreadable_is_none(tmp_path):
+    (tmp_path / "x").mkdir()
+    (tmp_path / "x" / "bench.yaml").write_text("a: [", encoding="utf-8")
+    assert G.bench_snapshot_refs(root=tmp_path) is None
