@@ -89,7 +89,7 @@ def signals(rows: list[dict], lib_n=None) -> list[dict]:
         pairs = Counter(f"{r.get('ref') or '∅'}/{r.get('top') or '?'}" for r in pr)
         add("异体／形近字对多", len(pr), f"整理本/机器：{_top(pairs, 10)}",
             "按字对每对抽 10 格看图：整理本总对的同义对写 follow_ref_variants、不同义对写 follow_ref_seen；"
-            "整本可信的书考虑 reference_trust", "A", "书项目")
+            "整本可信的书把参校本 accuracy 标 high／very_high、script 标 faithful（cv 由此推出 reference_trust 与照录异体）", "A", "书项目")
 
     gap = [r for r in rows if r.get("pending_reason") == "ref_gap"]
     sym = Counter(r.get("top") for r in gap if is_symbol(r.get("top")))
