@@ -406,14 +406,23 @@ def cmd_show(a) -> None:
     print((runs[-1] / "report.md").read_text(encoding="utf-8"))
 
 
+def cmd_void(a) -> None:
+    """作废中心库 bench_runs 里的结果（不删行，status 改 void、去基线）。"""
+    from . import publish as P
+    n = P.void(a.bench, a.note or "")
+    print(f"作废 {n} 行（共点了 {len(a.bench)} 个 run_id）")
+    if n < len(a.bench):
+        sys.exit(1)
+
+
 def cmd_bench(a) -> None:
-    {"list": cmd_list, "fetch": cmd_fetch, "run": cmd_run, "ab": cmd_ab, "guard": cmd_guard, "show": cmd_show}[a.action](a)
+    {"void": cmd_void, "list": cmd_list, "fetch": cmd_fetch, "run": cmd_run, "ab": cmd_ab, "guard": cmd_guard, "show": cmd_show}[a.action](a)
 
 
 def add_parser(sub) -> None:
-    p = sub.add_parser("bench", help="benchmark 统一入口：list | fetch | run | ab | guard | show（按书自动备资源）")
-    p.add_argument("action", choices=["list", "fetch", "run", "ab", "guard", "show"])
-    p.add_argument("bench", nargs="*", help="bench id 或 @套名（list、guard 不用）")
+    p = sub.add_parser("bench", help="benchmark 统一入口：list | fetch | run | ab | guard | show | void（按书自动备资源）")
+    p.add_argument("action", choices=["list", "fetch", "run", "ab", "guard", "show", "void"])
+    p.add_argument("bench", nargs="*", help="bench id 或 @套名（list、guard 不用）；void：要作废的 run_id")
     p.add_argument("--book", dest="books", action="append", default=None, help="书 id（工作区 id），可多给")
     p.add_argument("--vol", action="append", default=None, help="只跑这几册（逗号分隔或多给）")
     p.add_argument("--params", default=None, help="运行覆盖 JSON（ab：B 组参数）")
@@ -434,7 +443,7 @@ def add_parser(sub) -> None:
     p.add_argument("--all-status", action="store_true", help="show --central：连 skipped／no_gold 一起列")
     p.add_argument("--publish", action="store_true", help="run／ab／guard：结果写进中心库 bench_runs（不带就只在本机）")
     p.add_argument("--baseline", action="store_true", help="配 --publish：标为基线")
-    p.add_argument("--note", default=None, help="配 --publish：一句说明")
+    p.add_argument("--note", default=None, help="配 --publish：一句说明；void：作废原因（必填）")
     p.add_argument("--timeout", type=int, default=900, help="老评测器超时秒数")
     p.add_argument("--job", action="store_true", help="run：不在本机跑，交任务库由执行机跑（kind=bench，结果写回任务库，"
                    "`guji job show <号>` 看）；heavy 级建议这样")
@@ -446,6 +455,10 @@ def add_parser(sub) -> None:
 
 
 def _fix(a):
+    if a.action == "void":
+        if not a.bench or not a.note:
+            sys.exit("guji bench void <run_id>… --note 原因")
+        return a
     if a.action in ("fetch", "show", "ab") and len(a.bench) != 1:
         sys.exit(f"guji bench {a.action} 要且只要一个 bench")
     if a.action in ("fetch", "show", "ab", "run") and not a.books and not (a.action == "run" and all(legacy.is_legacy(b) for b in a.bench)):

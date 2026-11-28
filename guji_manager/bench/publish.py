@@ -89,6 +89,28 @@ def publish(out: Path, conn=None, **kw) -> str:
     return r["run_id"]
 
 
+def void(run_ids: list[str], reason: str, conn=None) -> int:
+    """作废（CV0 11-28 定）：不删行，`status` 改 `void`、去掉基线标记、note 末尾记原因与谁作废；
+    `history`／`show --central` 缺省不列（`--all-status` 才列）。返回改了几行。"""
+    if not reason:
+        raise ValueError("作废要写原因（--note）")
+    if conn is None:
+        from ..datastore import d1conn
+        conn = d1conn.connect()
+    who = os.environ.get("GUJI_ACTOR") or "?"
+    n = 0
+    for rid in run_ids:
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM {TABLE} WHERE run_id = %s", (rid,))
+        if not cur.fetchall():
+            continue
+        conn.execute(f'UPDATE {TABLE} SET status = %s, baseline = 0, note = COALESCE(note, %s) || %s WHERE run_id = %s',
+                     ["void", "", f" [作废（{who}）：{reason}]", rid])
+        n += 1
+    conn.commit()
+    return n
+
+
 def history(bench: str, book: str, conn=None, limit: int = 20, all_status: bool = False) -> list[dict]:
     """历次结果，新的在前。缺省只看有结论的（ok／regressed）；`all_status` 连 skipped／no_gold 一起。"""
     if conn is None:

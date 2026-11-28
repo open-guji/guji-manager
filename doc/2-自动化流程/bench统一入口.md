@@ -58,4 +58,4 @@ compare_to、run，output.pack 恒 false）；带 `--publish` 才另写 `bench_r
 
 ## 写进中心库（`--publish`）
 
-Sheldon 11-28 定：建 `bench_runs` 表，只有带 `--publish` 才写（`run`、`ab` 的 B、`guard` 都认），`--baseline` 标基线、`--note` 写一句。一次 run 一行（主键 `<bench>/<书>/<时间>-<result.json 短 sha>`，重发不重写；`ran_at` 是 UTC），存 result.json 原样与常用列（状态、主指标、cv／manager 版本、测试集、中心库 rev、参数、谁跑的），不存逐样本。跑崩的不发。`guji bench show <bench> --book <书> --central` 看库里历次（缺省只列 ok／regressed，`--all-status` 全列）。要写令牌与 `GUJI_ACTOR`。
+Sheldon 11-28 定：建 `bench_runs` 表，只有带 `--publish` 才写（`run`、`ab` 的 B、`guard` 都认），`--baseline` 标基线、`--note` 写一句。一次 run 一行（主键 `<bench>/<书>/<时间>-<result.json 短 sha>`，重发不重写；`ran_at` 是 UTC），存 result.json 原样与常用列（状态、主指标、cv／manager 版本、测试集、中心库 rev、参数、谁跑的），不存逐样本。跑崩的不发。`guji bench show <bench> --book <书> --central` 看库里历次（缺省只列 ok／regressed，`--all-status` 全列）。**作废**（CV0 11-28 定）：不删行，`guji bench void <run_id>… --note 原因` 把 status 改 `void`、去掉基线标记、note 末尾记原因与 `GUJI_ACTOR`；`show --central` 缺省不列。结果作废了要重跑的，重跑后照常 `--publish --baseline`。要写令牌与 `GUJI_ACTOR`。
