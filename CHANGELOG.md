@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2）：`_cv._FALLBACK` 登记 cv #2008（收尾改名兼容读口）在 `manager_api` 新导出的 12 个名字（ADMIT_STEPS、read_final、final_dir、invalidate_final 等），修 `tests/test_cv_surface.py` 对 cv dev 变红。只登记，不改行为。L0。
+
 - PATCH（11-28，GM2，接 cv #2005，CV4 通报）：接 cv 第四步出口检查 `decide_gate`（挂 seed_admit 出口，只检测不判断）。新增 `ops/decide_gate_check`（按 fail 汇总 step_error／ref_shift／char_not_in_evidence／admit_blank_cell，flag 只计数）；`close-check` 加 **2e 第四步出口检查**：终校档有 fail 判未过，粗校档只报数（不挡 v0.1），gate 自己的页级指纹过期（上游重跑过）的页旧结果不计、单列页数，没有可用产物记 skip。只检测的步「没跑」（cv 升级后老册未补跑，status 多一行全 missing）不再算进 close-check 1a、看板过期数（`report/progress`）、部署检查过期表。补跑：先看 status 确认 seed_admit 新鲜，再 `guji pipeline <管线> <册> --from seed_admit`（只补跑 gate）；seed_admit 过期时这条会连它重算，出过 v0.1 的册别这样补。L0。
 
 - PATCH（11-28，CV3 W1 第二期，L0：N01 判法逐对不变）：`review/reasons._near_pairs`（N01 形近护栏的手工形近对）改读 cv 形近字组登记表 `src=hand` 的对（cv `manager_api.near_registry_pairs`，open-guji-cv#2001）；cv 没有这个读口（旧版）就退回 `NEVER_MATCH_FAMILIES`。两者逐对相等（cv `tests/test_near_registry_readers.py`；本仓 `tests/from_cv/test_review_reasons.py` 新测两条）。`_cv._FALLBACK` 登记 `near_registry_pairs`。
