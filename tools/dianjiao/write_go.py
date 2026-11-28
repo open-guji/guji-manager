@@ -22,6 +22,7 @@ vpairs.json（异体对表）怎么建的：来源两张表——guji-runner `co
 import csv,json,os,sys,time
 os.environ.update(GUJI_WORKSPACE='/home/user/ws/zm',GUJI_FEEDBACK_DIR='/home/user/gd/main/siku-zongmu/feedback')
 from guji_manager.final_review import pack
+from guji_manager.admit_names import RULING_STEP
 from guji_manager.final_review import _cvx as c
 from guji_manager.cell_ref import cell_ref, is_uid   # 11-25 起裁定带 u（ruling_by_u 按 u 查）；没启用 u 的册 cell_ref 返回格号，不写 u
 BATCH='llm-wenyi-ZM-go88-20261123'
@@ -37,6 +38,6 @@ for v in vols:
         l,r_,ref=win[k];ch=todo[k]['AI']
         payload={"source":c.SOURCE,"group":"O","char":ch,"other":False,"conf":"high","why":('文意:'+todo[k]['理由'] if '理由' in todo[k] else '文意判')[:60],"model":"claude-opus-5-5(文意判)","prompt_ver":"ctx-m1","cell":k,"tok":{},
           "ctx":{"left":l,"right":r_,"hash":c.ctx_hash(l,r_)},"subclass":"W","zgroup":todo[k]['原因'],"ref":ref,"machine":todo[k]['机器首选'],"admit_ok":True,"gate":"ok",**({"u":cell_ref(k)} if is_uid(cell_ref(k)) else {}),"ab":[ch,ch],"conf_ab":["high","high"],"why_b":"","pending_reason":todo[k]['原因']}
-        n+=1;ev.append(c.make_event(BATCH,n,c.KIND,c.EventTarget(step="seed_admit",unit="cell",key=k,book=v),payload,actor="model",ts=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())))
+        n+=1;ev.append(c.make_event(BATCH,n,c.KIND,c.EventTarget(step=RULING_STEP,unit="cell",key=k,book=v),payload,actor="model",ts=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())))
 print(len(ev),'missing window',miss)
 if '--apply' in sys.argv: print(log.append(ev)); print(log.batch_path(BATCH))

@@ -19,6 +19,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import core, pack
+from ..admit_names import RULING_STEP
 
 
 def _read_tsv(p: Path) -> list[dict]:
@@ -125,7 +126,7 @@ def cmd_finalize(a) -> dict:
     if getattr(a, "book_yaml", None):
         ya = core.override_groups_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"))
         if ya is None and not a.whitelist:
-            print("⚠ 册 yaml 没写 params.seed_admit.ruling_override_groups：按空名单（一律不许越过参校本）判；管线侧缺省也不核，建议写上", file=sys.stderr)
+            print("⚠ 册 yaml 没写 params.char_decide（或旧名 seed_admit）.ruling_override_groups：按空名单（一律不许越过参校本）判；管线侧缺省也不核，建议写上", file=sys.stderr)
         elif ya is not None and a.whitelist and ya != over:
             print(f"✗ --whitelist {sorted(over)} 与册 yaml 的 ruling_override_groups {sorted(ya)} 不一致；以册 yaml 为准或先改 yaml", file=sys.stderr)
             raise SystemExit(2)
@@ -220,7 +221,7 @@ def cmd_write(a) -> int:
         if r.get("via"):
             payload["via"] = r["via"]
             payload["ref_lead"] = {"layer": r.get("layer"), "lead": r.get("lead")}
-        evs.append(make_event(a.batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
+        evs.append(make_event(a.batch, n, KIND, EventTarget(step=RULING_STEP, unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
                               actor="model", ts=a.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
     from ..u_stamp import stamp_strict
     stamp_strict(evs)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）

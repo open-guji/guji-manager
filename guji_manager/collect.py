@@ -51,6 +51,7 @@ import urllib.request
 from pathlib import Path
 
 from .swap import DIANBEN_ID, SITE_PENDING, chapter_of, parse_books
+from .admit_names import final_dir, page_body
 
 PLACEHOLDERS = ("□", "〓", "▣")
 GUJI = [sys.executable, "-m", "open_guji_cv.cli_v2"]
@@ -185,12 +186,12 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
         parts = str(cid).split(":")
         return len(parts) != 4 or parts[0] == book
 
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(final_dir(root).glob("p*.json")):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        for col in (doc.get("seed_admit", doc).get("columns") or []):
+        for col in (page_body(doc).get("columns") or []):
             for c in col.get("chars") or []:
                 if c.get("id") and not c.get("admit") and mine(c["id"]):
                     pending.add(c["id"])
@@ -336,7 +337,7 @@ def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, 
         need = [k for k in ks if k not in win]
         if need:
             try:
-                doc = json.loads((root / "seed_admit" / fn).read_text(encoding="utf-8"))
+                doc = json.loads((final_dir(root) / fn).read_text(encoding="utf-8"))
                 w = _vis_window(doc, amap)
                 for k in need:
                     if k in w:

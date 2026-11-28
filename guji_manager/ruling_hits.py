@@ -17,6 +17,8 @@ import sys
 import time
 from pathlib import Path
 
+from .admit_names import RULING_STEP, final_dir, page_body
+
 
 def _rulings_by_cell(store) -> dict[str, dict]:
     """格号 → 这格最新一条文意裁定 payload（不含 src-2 私用码记录）。"""
@@ -55,12 +57,12 @@ def check(products: Path, book: str, store) -> list[dict]:
     from ._cv import llm_questions_of_page, ruling_ctx_hash
     by_cell = _rulings_by_cell(store)
     rows = []
-    for f in sorted((Path(products) / book / "seed_admit").glob("p*.json")):
+    for f in sorted(final_dir(Path(products) / book).glob("p*.json")):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        machine = {c.get("id"): c.get("char") for col in doc.get("seed_admit", doc).get("columns") or []
+        machine = {c.get("id"): c.get("char") for col in page_body(doc).get("columns") or []
                    for c in col.get("chars") or []}
         ref: dict[str, str] = {}
         try:
@@ -70,7 +72,7 @@ def check(products: Path, book: str, store) -> list[dict]:
         except (OSError, ValueError):
             pass
         cands: dict[str, set[str]] = {}
-        for col in doc.get("seed_admit", doc).get("columns") or []:
+        for col in page_body(doc).get("columns") or []:
             for c in col.get("chars") or []:
                 ks: set[str] = set()
                 for sv in (((c.get("evidence") or {}).get("group") or {}).get("solvers") or []):
@@ -106,7 +108,7 @@ def _vis_window(doc: dict, amap: dict[str, str]) -> dict[str, tuple]:
     （`final_review.pack.vis_windows`）；格带 `evidence.vis_ctx`（cv 当场记的窗口）时直接用它。"""
     from ._cv import CTX_WIDTH, PageAdmit, sort_by_reading
     from .final_review.pack import vis_windows
-    page = PageAdmit.model_validate(doc.get("seed_admit", doc))
+    page = PageAdmit.model_validate(page_body(doc))
     seq = [r for c in sorted(page.columns, key=lambda c: c.col) for r in sort_by_reading(c.chars)
            if not (r.doubts and "excluded" in r.doubts)]
     w = vis_windows(seq, amap, CTX_WIDTH)
@@ -217,12 +219,12 @@ def check_vis(products: Path, book: str, store, subs: frozenset = VIS_SUBS, over
         return []
     root = Path(products) / book
     rows = []
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(final_dir(root).glob("p*.json")):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        cols = doc.get("seed_admit", doc).get("columns") or []
+        cols = page_body(doc).get("columns") or []
         hit = [c for col in cols for c in col.get("chars") or [] if c.get("id") in by_cell and not c.get("admit")]
         if not hit:
             continue
@@ -274,7 +276,7 @@ def rekey_vis(rows: list[dict], batch: str, root=None) -> int:
         v["why"] = ("rekey:" + (v.get("why") or ""))[:60]
         seq += 1
         cell = v["cell"]
-        evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=cell,
+        evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step=RULING_STEP, unit="cell", key=cell,
                                                                     book=cell.split(":")[0] if cell.count(":") == 3 else None),
                               v, actor="model"))
     from .ctx_ruling import append_or_exit
@@ -373,7 +375,7 @@ def cmd(a) -> None:
         print(f"按产物窗口补写文意裁定 {n} 条、终审裁定 {nv} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
 
 
-FETCH_STEPS = ("seed_admit", "align_ref")
+FETCH_STEPS = ("char_decide", "seed_admit", "align_ref")
 ANCHOR_FETCH_STEPS = FETCH_STEPS + ("row_segment", "row_segment_runs", "cell_shrink")   # page_cells_sha 要读的两份产物
 
 
@@ -407,12 +409,12 @@ def _ctx_ruling(rec: dict):
 
 def _cells_of(root: Path, book: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    for f in sorted((Path(root) / book / "seed_admit").glob("p*.json")):
+    for f in sorted(final_dir(Path(root) / book).glob("p*.json")):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        for col in doc.get("seed_admit", doc).get("columns") or []:
+        for col in page_body(doc).get("columns") or []:
             for c in col.get("chars") or []:
                 if c.get("id"):
                     out[c["id"]] = c

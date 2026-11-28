@@ -25,7 +25,8 @@ def _pageno(f):
 
 
 def _load_steps(pkg, vol):
-    seed = {_pageno(f): json.load(open(f, encoding="utf-8"))["seed_admit"] for f in glob.glob(f"{pkg}/{vol}/seed_admit/p*.json")}
+    from ..admit_names import final_dir, page_body
+    seed = {_pageno(f): page_body(json.load(open(f, encoding="utf-8"))) for f in glob.glob(f"{final_dir(f'{pkg}/{vol}')}/p*.json")}
     align, anchored = {}, {}
     for f in glob.glob(f"{pkg}/{vol}/align_ref/p*.json"):
         ar = json.load(open(f, encoding="utf-8"))["align_ref"]

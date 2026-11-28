@@ -15,6 +15,20 @@ from typing import Any
 #: 名字 → (cv 内模块, 属性名；None 表示模块本身)；与 cv `manager_api._EXPORTS` 同步，只给旧 cv 兜底用。
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
+    # 收尾步 seed_admit→char_decide 兼容读口（cv #2008，P3a-1，2026-11-28）；GM3 读写点暂用本地 admit_names，之后可换这些
+    "ADMIT_STEPS": ("core.decide_names", "ADMIT_STEPS"),
+    "LEGACY_ADMIT_STEP": ("core.decide_names", "LEGACY_ADMIT_STEP"),
+    "NEW_ADMIT_STEP": ("core.decide_names", "NEW_ADMIT_STEP"),
+    "is_admit_step": ("core.decide_names", "is_admit_step"),
+    "same_admit_step": ("core.decide_names", "same_admit_step"),
+    "fold_admit_params": ("core.decide_names", "fold_admit_params"),
+    "read_final": ("steps.decide_final", "read_final"),
+    "read_final_store": ("products.final_read", "read_final_store"),
+    "final_page_dict": ("core.decide_names", "final_page_dict"),
+    "final_dir": ("core.decide_names", "final_dir"),
+    "decided_view": ("feedback.decide_events", "decided_view"),
+    "ruling_by_u": ("feedback.decide_events", "ruling_by_u"),
+    "invalidate_final": ("feedback.decide_events", "invalidate_final"),
     # 候选字线（CV3 2026-11-28）：`guji audit cands`
     "glyph_candidate_mod": ("steps.glyph_candidate", None),
     "context_rank_mod": ("steps.context_rank", None),
