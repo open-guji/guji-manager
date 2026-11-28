@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2）：`schema_d1.sql` 触发器 `attempt_manager_min` 改成 `guji job init` 切得开的写法（注释挪进语句、BEGIN…END 一行）；正式任务库已于 11-28 19:2xZ 经用户同意单独建好该触发器。
+
 ## [0.7.17] - 2026-11-28
 
 - PATCH（11-28，GM2，CV4 报 #18377/#18378）：执行方自更新改比「本进程载入的 manager 代码」与 origin/main，不再只比磁盘检出——准备脚本里的 ensure_manager 先把磁盘切到 main，旧判法看着一样就不 exec，worker-6 进程停在 0.7.14 近 3 小时，不认 manager_min 照领带下限的单、跑缺 -w 的旧收尾改名。run.log 开头加 `[runner] 执行方进程 guji-manager <版本>`（准备段那行是磁盘的）。收尾改名没工作区时直接判失败、不再传空 -w；补各单子形状（带 --pages、带书 id、无 pipeline）的 -w 测试。L0。
