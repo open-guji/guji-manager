@@ -166,6 +166,7 @@ def seg_causes(prod, vols):
     """{(v,p,c): [(slot, code, 是否○相关)]}"""
     sys.path.insert(0, str(HERE.parent.parent))
     from guji_manager.review.causes import book_causes
+    from guji_manager.products_io import decide_pages, layer_strict
 
     out = collections.defaultdict(list)
     for v in vols:
@@ -174,8 +175,8 @@ def seg_causes(prod, vols):
         if not hits:
             continue
         circ = set()   # 列里有○（evidence.symbol）的列：整理本不录○，整列对位会错开，A 码多由此来
-        for f in glob.glob(f"{prod}/{v}/seed_admit/p*.json"):
-            for col in json.load(open(f))["seed_admit"]["columns"]:
+        for f in decide_pages(Path(prod) / v):          # char_decide／seed_admit 并认（cv P3）
+            for col in layer_strict(json.load(open(f)))["columns"]:
                 for c in col["chars"]:
                     ev = c.get("evidence") or {}
                     if ev.get("symbol") == "○" or c.get("char") == "○":

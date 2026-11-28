@@ -350,7 +350,7 @@ def add_parser(sub) -> None:
     p = sub.add_parser("groups", help="[v2] 字组：table 重生成字组总表 | status 每组状态报告（只读）")
     p.add_argument("action", choices=["table", "status"])
     p.add_argument("--check", action="store_true", help="table：只比对总表与注册表，不写")
-    p.add_argument("--prod", default="", help="status：产物根，逗号分隔（下面是 <册>/seed_admit/p*.json）")
+    p.add_argument("--prod", default="", help="status：产物根，逗号分隔（下面是 <册>/char_decide（或旧名 seed_admit）/p*.json）")
     p.add_argument("--labels", default="", help="status：dataset char-groups/labels/unified.jsonl")
     p.add_argument("--codepoints", default="", help="status：工作区 config/codepoints.yaml（核对人裁时先归一码位）")
     p.add_argument("--out", default="", help="status：输出目录（dataset char-groups/status）")

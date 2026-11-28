@@ -222,7 +222,7 @@ def review_sheet(book: str, queue: dict, gaps: list[dict], mismatches: list[dict
 
 
 def _admitted_map(products_dir: Path, book: str) -> dict[str, dict]:
-    """`<产物根>/<册>/seed_admit/p*.json` 里放行了的格 → {char, channel, page}。"""
+    """`<产物根>/<册>/char_decide（或旧名 seed_admit）/p*.json` 里放行了的格 → {char, channel, page}。"""
     out: dict[str, dict] = {}
     for f in sorted(decide_pages(Path(products_dir) / book)):
         s = layer_strict(json.loads(f.read_text(encoding="utf-8")))

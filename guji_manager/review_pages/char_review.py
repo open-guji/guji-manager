@@ -10,7 +10,7 @@ char_review_sheet.py（只留 --grid 全对点错模式）、pull_char_review.py
           需要 GUJI_WORKSPACE；只写本机 feedback/events 和 glyph.db，不推中心库。
 """
 from __future__ import annotations
-from ..products_io import layer_strict
+from ..products_io import decide_pages, layer_strict
 from ..products_io import RULING_STEP
 
 import argparse
@@ -39,7 +39,7 @@ def load(prod: Path):
         for c in d.get("coord", []):
             if c.get("ref_char"):
                 ar.setdefault(c["id"], c["ref_char"])
-    for f in glob.glob(str(prod / "seed_admit/p*.json")):
+    for f in decide_pages(prod):                  # char_decide／seed_admit 新旧目录并认（cv P3）
         for c in layer_strict(json.load(open(f, encoding="utf-8")))["columns"]:
             for x in c["chars"]:
                 sa[x["id"]] = x
