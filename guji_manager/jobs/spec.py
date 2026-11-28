@@ -99,8 +99,8 @@ def _override_keys() -> set[str]:
     return {f.name for f in dataclasses.fields(BookSpec)} - FORBIDDEN_IN_OVERRIDE
 _KEYS = {"kind", "book", "cv", "cv_ref", "pipeline", "steps", "pages", "force", "no_reuse", "book_overrides",
          "pin_args", "base", "checks", "env", "params", "compare_to", "output", "run", "ws_glob", "ws_repo", "why",
-         "glyph_diff", "db_rev", "roundcheck", "bench"}
-_NOT_HASHED = ("why", "output", "cv_ref", "ws_repo")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
+         "glyph_diff", "db_rev", "roundcheck", "bench", "manager_min", "manager_min_n"}
+_NOT_HASHED = ("why", "output", "cv_ref", "ws_repo", "manager_min", "manager_min_n")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
 
 
 class SpecError(ValueError):
@@ -265,7 +265,23 @@ def normalize(raw: dict, *, resolve=None) -> dict:
     if not s["ws_repo"]:
         s["ws_repo"] = WS_REPOS.get(book_id(s) or "")
     s["why"] = s.get("why") or None
+    s.pop("manager_min_n", None)              # 由 manager_min 推，不收手填
+    if s.get("manager_min"):
+        s["manager_min_n"] = version_n(s["manager_min"])
+    else:
+        s.pop("manager_min", None)            # 没给就不写进单子：旧单的标准形不变
     return s
+
+
+def version_n(v: str) -> int:
+    """manager 版本 `X.Y.Z` → 整数 X*1e6+Y*1e3+Z，任务库领单时按它比大小（SQL 里不好比字符串版本）。"""
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)", str(v or "").strip())
+    if not m:
+        raise SpecError(f"manager_min 要写 X.Y.Z，不是 {v!r}")
+    a, b, c = (int(x) for x in m.groups())
+    if b >= 1000 or c >= 1000:
+        raise SpecError(f"manager_min 每段要小于 1000：{v!r}")
+    return a * 1_000_000 + b * 1000 + c
 
 
 _BENCH_KEYS = {"id", "book", "vols", "params", "args", "label", "dataset", "publish", "baseline", "note"}
@@ -418,4 +434,6 @@ def summary(spec: dict) -> str:
         if spec["compare_to"]:
             c = spec["compare_to"]
             body += f" 比 {'#' + str(c['job']) if isinstance(c, dict) else c}"
+    if spec.get("manager_min"):
+        body += f" 需 manager≥{spec['manager_min']}"
     return f"cv {spec['cv_ref']}({spec['cv'][:7]}) {body}"

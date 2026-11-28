@@ -265,7 +265,9 @@ def submit_jobs(a) -> None:
     if a.against or a.ws or a.dataset or a.cache or a.out or a.offline:
         sys.exit("--job 不收 --against、--ws、--dataset、--cache、--out、--offline（执行机自己备资源；对照用 guji bench ab 或事后比结果）")
     db = None
+    from .. import __version__ as mver
     for raw in job_specs(a):
+        raw["manager_min"] = getattr(a, "manager_min", None) or mver
         try:
             spec = SP.normalize(raw)
         except SP.SpecError as e:
@@ -449,6 +451,8 @@ def add_parser(sub) -> None:
                    "`guji job show <号>` 看）；heavy 级建议这样")
     p.add_argument("--cv", default=None, help="--job：执行机用哪版 cv（tag／分支／提交；缺省本机 cv 的提交）")
     p.add_argument("--why", default=None, help="--job：交单说明")
+    p.add_argument("--manager-min", default=None,
+                   help="--job：执行方 manager 版本下限，缺省＝本机 manager 版本（取资源层常改，旧执行方领了白跑，#18365）")
     p.add_argument("--priority", type=int, default=100, help="--job：优先级（小的先跑）")
     p.add_argument("--again", action="store_true", help="--job：同配置已跑过也再交一张")
     p.add_argument("--dry-run", action="store_true", help="--job：只打印要交的单，不交")
