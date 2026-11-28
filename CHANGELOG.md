@@ -6,8 +6,6 @@
 
 ## [未发版]
 
-- PATCH（11-27，GM2，执行方总管报）：runner 自更新也走 `safe_checkout`——执行方 cv 检出的 `merge --ff-only origin/dev` 和退一步的 `checkout --detach origin/dev` 遇未跟踪文件冲突（11-27 worker-24 被未跟踪 `config/groups/wu/rules.yaml` 挡住、每 10 分钟退出一次），同 `Job.checkout`：只备份、移走报出的那几个到工作区外再试，日志记 `[safe_checkout]` 行。`safe_checkout` 新增通用 `run()`，认 merge 的报错说法；`checkout()` 行为不变。卡住的机器拉 manager main 这一步不受影响，发版后重起即生效。L0。
-
 - PATCH（11-28，GM2，接 #1209，CV3 提）：`glyphdb_admit` 人裁落库字块缓存缺图、改用库里同 id 旧图时，排除 `borrowed` 表里的 id（那是借来的别书刻例、图是别书那格）。与 #1209 的「同号不进」分开挡：cv #1989（本书优先、先摘借来那份再写）发版后放开同号时，这一处仍不会取到别书的图。
 
 - PATCH（11-28，GM2，汉书文渊阁 01 首次回库查出）：借库的书与被借的书册号相同时（汉书 01 借史記 g30 人裁刻例，史記也有 01 册），实例 id `v2:<册>:页:列:格` 不带书、两书同号：回库照常进会把借来那例的字改成汉书的字、图仍是史記那格（贴错图），汉书这例又因 id 在 `borrowed` 表里导不出去（3,415 格撞 68 格）。现在 `glyph-db backfill` 选格时跳过同号格（摘要「与借来的刻例同号 N」）、`admit` 再挡一道；`glyphdb_admit` 的人裁与回库重放遇同号不取图、不进库（`ConsumeResult.borrowed_clash`）。另：新书第一次回库本书字形库没有 `meta.book_edition` 时，原先 `admit_instance` 在事件写完后才拒写、留下半截；现在写事件前按 `workspace.yaml` 的 `id` 只补 meta 一行（不用 `set-edition`，它会把借来的别书字形行一并改归本书）。`db sync` 末尾「人裁事件还没被消费者处理」不再把回库批次的 gold_add／crop_exclude／product_invalidate 报成漏（入库时已直接进库，这几处故意不走，route 了反倒会把整册 seed_admit 判过期）。
@@ -18,6 +16,13 @@
 - MINOR（11-28，网站会员身份提交 · 落票规则）：`feedback/landing_policy` 加 `rules` 策略（缺省仍是 auto，行为不变）：身份（`Standing`＝等级＋负责的书，名册 `GUJI_MEMBER_ROSTER` JSON，匿名＝anon、没列的会员＝member）、规则（`Rules`：solo_tiers、book_owner_solo、quorum、quorum_min_tier，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 整份盖）、策略三步分开，`decide(cell, votes, book)` 加 `book` 参数（旧策略兼容）。`cellvotes draft` 把 `--site-book` 传给策略。editor 以上与本书负责人一票即落，匿名永远不直接落地。
 
 - PATCH（11-28，网站会员身份提交）：网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（网站 11-27 起 voter 就是 8 位会员号；`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`（原来是不带前缀的短标识）；事件另带 `payload.voters={member,anon}` 记各几票。level 仍是 human、channel 仍是 web_vote（口径不动，会员／匿名的权重差异不在本改动里）。新增 `voter.voter_by`。
+
+## [0.7.3] - 2026-11-28
+
+基于 v0.7.2，只带 #1177（执行机热修；dev 上另有 MINOR 待发，不在本版）。
+
+- PATCH（11-27，GM2，执行方总管报）：runner 自更新也走 `safe_checkout`——执行方 cv 检出的 `merge --ff-only origin/dev` 和退一步的 `checkout --detach origin/dev` 遇未跟踪文件冲突（worker-24、worker-7 被未跟踪 `config/groups/wu/rules.yaml` 挡住、反复退出），同 `Job.checkout`：只备份、移走报出的那几个到工作区外再试，日志记 `[safe_checkout]` 行。`safe_checkout` 新增通用 `run()`，认 merge 的报错说法；`checkout()` 行为不变。manager 自更新到 main 在先、不受影响，发版后卡住的机器重起即生效。L0。
+
 ## [0.7.2] - 2026-11-28
 
 基于 v0.7.1，只带 #1211（dev 上另有 MINOR 待发，不在本版）。
