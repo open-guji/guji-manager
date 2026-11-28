@@ -77,7 +77,7 @@ def test_parse_books_numeric_and_chapter():
     assert S.parse_books("001-003,010") == ["001", "002", "003", "010"]
     assert S.parse_books("01-02") == ["01", "02"]
     assert S.parse_books("vol9-vol10") == ["vol09", "vol10"]
-    assert S.chapter_of("vol07") == "007" and S.chapter_of("07") == "007" and S.chapter_of("045") == "045"
+    assert S.chapter_of("vol07") == "007" and S.chapter_of("07") == "07" and S.chapter_of("045") == "045"   # 11-28：纯数字册名按名字位数（册号位数统一）
 
 
 def test_precheck_nondianben_data_problem_not_fatal(tmp_path, monkeypatch, capsys):
@@ -178,3 +178,15 @@ def test_land_chunk_publish_failure_and_blocked(tmp_path, monkeypatch):
     monkeypatch.setattr(S.subprocess, "run", fake)
     res = S.land_chunk(tmp_path, ["vol01", "vol02"], "t", {"vol01": "a", "vol02": "b"}, "bt", tmp_path / "l.log", text_apply=False)
     assert res["vol01"]["verdict"] == "publish-mismatch" and res["vol02"]["verdict"] == "blocked"
+
+
+def test_chapter_of_follows_book_yaml_width(tmp_path, monkeypatch):
+    """册号位数统一后章号按册 yaml 的 volume_width 取：史記 vol17 → 17，不再补成三位 017（11-28）。"""
+    (tmp_path / "books").mkdir()
+    (tmp_path / "books" / "17.yaml").write_text("volume: 17\nvolume_width: 2\n", encoding="utf-8")
+    monkeypatch.setenv("GUJI_WORKSPACE", str(tmp_path))
+    assert swap.chapter_of("vol17") == "17"
+    assert swap.chapter_of("17") == "17"
+    assert swap.chapter_of("vol01") == "001"      # 没有册 yaml：老规矩三位
+    assert swap.chapter_of("1") == "1"            # 纯数字册名按名字位数
+    assert swap.chapter_variants("17") == ["17", "017"] or "17" in swap.chapter_variants("17")
