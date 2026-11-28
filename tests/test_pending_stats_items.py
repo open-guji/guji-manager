@@ -3,6 +3,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from guji_manager import pending_stats
 
 
@@ -35,12 +37,13 @@ def test_load_items_subtracts_settled(monkeypatch):
     _event(con, "ev1", 12, "vol01:1:1:2")
     monkeypatch.setattr("guji_manager.dbconfig.apply_env", lambda: None)
     monkeypatch.setattr("guji_manager.datastore.connect.connect", lambda *a, **k: con)
+    allopen = pending_stats.load_items("w", "bk", None, settled=False)
+    assert sum(len(d["cells"]) for d in allopen.values()) == 3
+    assert list(pending_stats.load_items("w", "bk", {2}, settled=False)) == ["002"]
+    pytest.importorskip("open_guji_cv")      # 扣落定走 settle_sync，包 manager.feedback，要装 cv
     lists = pending_stats.load_items("w", "bk", None)
     assert {v: [c["u"] for c in d["cells"]] for v, d in lists.items()} == {"001": [11], "002": [21]}
     assert lists["001"]["cells"][0]["pending_reason"] == "hard_pair"
-    allopen = pending_stats.load_items("w", "bk", None, settled=False)
-    assert sum(len(d["cells"]) for d in allopen.values()) == 3
-    assert list(pending_stats.load_items("w", "bk", {2})) == ["002"]
 
 
 def test_from_dir_web_sheet(tmp_path, monkeypatch):
