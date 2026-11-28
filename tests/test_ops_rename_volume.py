@@ -76,3 +76,63 @@ def test_conflict_when_new_exists(tmp_path):
     prod, cache, data, _ = _setup(tmp_path)
     (prod / "1").mkdir()
     assert build_plan({"01": "1"}, data, prod, cache).conflicts
+
+
+def _extra(data, old_sha):
+    (data / "feedback" / "rulings").mkdir(parents=True)
+    (data / "feedback" / "rulings" / "llm-1.jsonl").write_text(
+        json.dumps({"payload": {"cell": "01:10:1:2", "cells_sha": f"{old_sha}+x"}}) + "\n", encoding="utf-8")
+    (data / "feedback" / "anchors" / "01.jsonl").write_text(
+        json.dumps({"key": "01:10:1:2", "anchor": {"cells_sha": f"{old_sha}+x"}}) + "\n", encoding="utf-8")
+    (data / "feedback" / "anchor_patches" / "01" / "ab").mkdir(parents=True)
+    (data / "feedback" / "anchor_patches" / "01" / "ab" / "abc.png").write_bytes(b"png")
+    (data / "corpus").mkdir()
+    (data / "corpus" / "alt.jsonl").write_text('{"vol": "01", "cell": "01:10:1:2"}\n', encoding="utf-8")
+
+
+def test_rulings_anchor_patches_and_shas(tmp_path):
+    """11-28 殿本演练：rulings、groups 等原先只报不改；anchors 的 cells_sha、anchor_patches 目录也要跟着换。"""
+    prod, cache, data, old_sha = _setup(tmp_path)
+    _extra(data, old_sha)
+    plan = build_plan({"01": "1"}, data, prod, cache)
+    assert any(x.startswith("corpus/alt.jsonl") for x in plan.leftovers)            # 钉 sha 的语料只报
+    assert any("pending/mai/01.items.jsonl" in x for x in plan.leftovers)
+    assert not any("rulings" in x for x in plan.leftovers)
+    snap = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    bk = tmp_path / "bk"
+    apply(plan, bk)
+    new_sha = _sha(prod / "1" / "cell_shrink" / "p0010.json")
+    r = json.loads((data / "feedback" / "rulings" / "llm-1.jsonl").read_text(encoding="utf-8"))
+    assert r["payload"] == {"cell": "1:10:1:2", "cells_sha": f"{new_sha}+x"}
+    a = json.loads((data / "feedback" / "anchors" / "1.jsonl").read_text(encoding="utf-8"))
+    assert a["key"] == "1:10:1:2" and a["anchor"]["cells_sha"] == f"{new_sha}+x"
+    assert (data / "feedback" / "anchor_patches" / "1" / "ab" / "abc.png").exists()
+    assert '"01:10:1:2"' in (data / "corpus" / "alt.jsonl").read_text(encoding="utf-8")
+    rollback(bk)
+    after = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file() and bk not in p.parents}
+    assert after == snap
+
+
+def test_repair_after_old_tool(tmp_path):
+    """旧版工具改过名的书：--repair 按备份补改 rulings、anchors 的 sha、anchor_patches 目录。"""
+    from guji_manager.ops.rename_volume import main
+    prod, cache, data, old_sha = _setup(tmp_path)
+    _extra(data, old_sha)
+    bk = tmp_path / "bk"
+    # 模拟旧版：只做产物与按册文件，然后把新加的几类恢复成旧样子
+    plan = build_plan({"01": "1"}, data, prod, cache)
+    apply(plan, bk)
+    (data / "feedback" / "rulings" / "llm-1.jsonl").write_text(
+        json.dumps({"payload": {"cell": "01:10:1:2", "cells_sha": f"{old_sha}+x"}}) + "\n", encoding="utf-8")
+    (data / "feedback" / "anchors" / "1.jsonl").write_text(
+        json.dumps({"key": "1:10:1:2", "anchor": {"cells_sha": f"{old_sha}+x"}}) + "\n", encoding="utf-8")
+    (data / "feedback" / "anchor_patches" / "1").rename(data / "feedback" / "anchor_patches" / "01")
+    assert main(["--repair", str(bk), "--data-dir", str(data)]) == 0               # 只出清单
+    assert main(["--repair", str(bk), "--data-dir", str(data), "--apply"]) == 0
+    new_sha = _sha(prod / "1" / "cell_shrink" / "p0010.json")
+    r = json.loads((data / "feedback" / "rulings" / "llm-1.jsonl").read_text(encoding="utf-8"))
+    assert r["payload"] == {"cell": "1:10:1:2", "cells_sha": f"{new_sha}+x"}
+    a = json.loads((data / "feedback" / "anchors" / "1.jsonl").read_text(encoding="utf-8"))
+    assert a["anchor"]["cells_sha"] == f"{new_sha}+x"
+    assert (data / "feedback" / "anchor_patches" / "1" / "ab" / "abc.png").exists()
+    assert len(list(bk.glob("repair-*"))) == 1

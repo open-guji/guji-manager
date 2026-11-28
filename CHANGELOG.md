@@ -6,6 +6,12 @@
 
 ## [未发版]
 
+## [0.7.2] - 2026-11-28
+
+基于 v0.7.1，只带 #1211（dev 上另有 MINOR 待发，不在本版）。
+
+- PATCH（11-28，CV0，册号位数统一，L0：只改迁移工具）：`ops/rename_volume` 补全数据目录：按册目录 `feedback/anchor_patches/<册>/` 跟着改名；`feedback/rulings/`、`config/groups/`、`review/batches/` 等其余 json／jsonl 里的格号换新名、内容里的产物 sha（`cells_sha`）按改写前后对照表换；`corpus/`（钉 sha）与 `feedback/lists/pending/`（归 renumber）仍只报不改。新增 `--repair <备份目录> --data-dir … [--apply]`：已用 ≤0.7.1 改过名的书按当时的 rename-log 与 shamap 补做（脉经第 1 册演练数据：只需搬 anchor_patches/01）。新测 2 条。
+
 ## [0.7.1] - 2026-11-27
 
 - PATCH（11-27，GM2，跟 cv #1974 退役整张换单脚本）：`tools/开书/出v01.py` 不再子进程跑 cv `scripts/zhengli/republish.py from-pack`（含 cv #1974 的 cv 版本上这个文件已删，出 v0.1 会在导出那步失败）。导出改用 `land_text.export_meta`＋`export_cmd`（与 `guji land` 收尾同参数：char-cord、`--keys cv`、四庫拆页表），出到 `reports/<册>/_land/export/`；首发时 book-text dev 上还没有这一章，文本版本仍取本机检出、不带 `--prev-char`。末尾打印的推单命令由 `republish.py push` 改成 `guji land <册> … --export-char … --text-vdir …`（先计划、再 `--apply`）。只出 v0.1 的工具与 wiki/doc 第二步那几处文案改，不动 land／online_lists／swap 逻辑。
