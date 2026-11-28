@@ -65,3 +65,22 @@ def test_rules_quorum_excludes_anon(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         LP.get_policy(f"rules:{rf}")
+
+
+def test_scope_work_and_collection(tmp_path, monkeypatch):
+    import json
+    a, b, c = _code("EEEEEEE"), _code("FFFFFFF"), _code("GGGGGGG")
+    (tmp_path / "r.json").write_text(json.dumps({
+        a: {"tier": "member", "books": ["work:W1"]},          # 作品：管名下所有版本
+        b: {"tier": "member", "books": ["collection:C9"]},    # 丛书
+        c: {"tier": "member", "books": ["ed3"]}}), encoding="utf-8")   # 单个版本
+    (tmp_path / "l.json").write_text(json.dumps({
+        "ed1": {"work": "W1", "collections": ["C9"]}, "ed2": {"work": "W1"}, "ed3": {"work": "W2"}}), encoding="utf-8")
+    monkeypatch.setenv("GUJI_MEMBER_ROSTER", str(tmp_path / "r.json"))
+    monkeypatch.setenv("GUJI_BOOK_LINEAGE", str(tmp_path / "l.json"))
+    pol = LP.get_policy("rules")
+    land = lambda who, book: pol.decide("1", [_v("1", who)], book).land
+    assert land(a, "ed1") and land(a, "ed2") and not land(a, "ed3")     # 作品 W1 管 ed1、ed2
+    assert land(b, "ed1") and not land(b, "ed2")                        # 丛书 C9 只管 ed1
+    assert land(c, "ed3") and not land(c, "ed1")                        # 版本只管自己
+    assert not land(a, "unknown")                                       # 查不到归属：只认版本项

@@ -11,11 +11,15 @@
 三步，各自独立可换：
 1. **身份**：``Standing(tier, books)``。``roster(voter)`` 回答「这位投票人是谁」——匿名（16 位 hex）＝``anon``；会员号查名册，
    没列的会员＝``member``；名册里有等级和负责的书。名册现在读 JSON（``GUJI_MEMBER_ROSTER``，旧名 ``GUJI_REVIEWER_TIERS``
-   也认）：``{"<会员号>": {"tier": "editor", "books": ["<网站书id>", …]}}``，值写成字符串＝只有等级。将来换成读网站会员接口，
+   也认）：``{"<会员号>": {"tier": "editor", "books": [<范围>, …]}}``，值写成字符串＝只有等级。将来换成读网站会员接口，
    只换 ``load_roster``。等级阶梯 ``TIERS``：anon < member < reviewer < editor < admin < owner（网站角色 reader／reviewer／
    editor／admin 对应 member／reviewer／editor／admin；owner 是站方本人）。
+   **负责的范围** ``books`` 是个列表，每项可以是：版本（Book id，即网站书 id，直接写）、``work:<作品id>``、``collection:<丛书id>``
+   （11-28 用户定）。写了作品或丛书，就管它名下**所有版本**。版本怎么归到作品／丛书，由 ``Lineage`` 回答（``load_lineage``，
+   现读 JSON ``GUJI_BOOK_LINEAGE``：``{"<书id>": {"work": "<作品id>", "collections": ["<丛书id>", …]}}``；将来换成读 book-index，
+   只换这一个函数）；查不到的书只认版本这一项。
 2. **规则**：``Rules`` 一个数据类，可由 JSON（``GUJI_LANDING_RULES`` 或 ``rules:<路径>``）整份盖掉：
-   ``solo_tiers``（缺省 editor、admin、owner：一票即落）、``book_owner_solo``（缺省真：名册里 ``books`` 含这本书的人，一票即落）、
+   ``solo_tiers``（缺省 editor、admin、owner：一票即落）、``book_owner_solo``（缺省真：名册里 ``books`` 覆盖这本书（版本／作品／丛书）的人，一票即落）、
    ``quorum``（缺省 0＝不开：其余人无论几票都不直接落；设 N＝至少 N 个 ``quorum_min_tier`` 以上的人同一结论才落）、
    ``quorum_min_tier``（缺省 member：匿名永远不计入）。
 3. **策略**：``auto``（有票就落）、``quorum:N``（旧，保留）、``rules``（按上面两步判）。选策略 ``--policy`` 或 ``GUJI_LANDING_POLICY``。
@@ -72,6 +76,32 @@ def load_roster(path: str | os.PathLike | None = None) -> dict[str, Standing]:
         if isinstance(v, dict):
             out[str(voter)] = Standing(str(v.get("tier") or DEFAULT_TIER), frozenset(map(str, v.get("books") or ())))
     return out
+
+
+# ───────────── 1b. 负责范围：版本／作品／丛书 ─────────────
+
+def load_lineage(path: str | os.PathLike | None = None) -> dict[str, dict]:
+    """版本归属：``{书id: {"work": 作品id, "collections": [丛书id…]}}``。读不到＝空（每本书只属于它自己）。
+    将来换成读 book-index 的 Book（work_id、丛书 Collection），返回同形的 dict 即可。"""
+    p = path or os.environ.get("GUJI_BOOK_LINEAGE")
+    if not p or not Path(p).is_file():
+        return {}
+    try:
+        return json.loads(Path(p).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def scope_keys(book: str | None, lineage: dict[str, dict] | None = None) -> set[str]:
+    """一本书（版本）算在哪些范围里：自己、所属作品、所属各丛书。范围项的写法：``<书id>``｜``work:<id>``｜``collection:<id>``。"""
+    if not book:
+        return set()
+    ln = (load_lineage() if lineage is None else lineage).get(book) or {}
+    keys = {book}
+    if ln.get("work"):
+        keys.add(f"work:{ln['work']}")
+    keys.update(f"collection:{c}" for c in ln.get("collections") or ())
+    return keys
 
 
 def standing_of(voter: str, roster: dict[str, Standing] | None = None) -> Standing:
@@ -149,18 +179,21 @@ class RulesPolicy:
     「一票即落」只认这个人**自己**那一票：一格上别人的票不一致由 ``triage`` 的闸挂起，不在这里管。"""
     name = "rules"
 
-    def __init__(self, rules: Rules | None = None, roster: dict[str, Standing] | None = None):
+    def __init__(self, rules: Rules | None = None, roster: dict[str, Standing] | None = None,
+                 lineage: dict[str, dict] | None = None):
         self.rules = rules or Rules.load()
         self.roster = load_roster() if roster is None else roster
+        self.lineage = load_lineage() if lineage is None else lineage
 
     def decide(self, cell: str, votes: list[dict], book: str | None = None) -> Decision:
         r = self.rules
         sts = [(v, standing_of(v.get("voter") or "", self.roster)) for v in votes]
+        scope = scope_keys(book, self.lineage)
         for v, st in sts:
             if st.tier in r.solo_tiers:
                 return Decision(True, f"{st.tier} 一票即落")
-            if r.book_owner_solo and book and book in st.books:
-                return Decision(True, "负责本书")
+            if r.book_owner_solo and scope & st.books:
+                return Decision(True, "负责本书（%s）" % "、".join(sorted(scope & st.books)))
         if r.quorum:
             tally: dict[tuple, int] = {}
             for v, st in sts:
