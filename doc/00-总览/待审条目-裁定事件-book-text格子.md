@@ -45,7 +45,7 @@
   - `guess_c`：阙文的推测字（括注用）
   - `fig`：图片格
   - `unk`：无法识别字（图上有字、认不出、Unicode 没有；`c` 写 □，值是部件描述；网页显示「？」），见 [无法识别字](../参考/无法识别字.md)
-  - `u`：字格永久编号（char v0.6），册内唯一，见 [字格永久编号u](../参考/字格永久编号u.md)
+  - `u`：字格永久编号（char v0.6），册内唯一，见 [字格永久编号u](../参考/字格身份账.md)
 - **不录**：待审原因、候选、置信度、裁定记录、`decision.json`、点校的 `assumed`（11-09 起全部不进 book-text，校验 F-OV-16、F-OV-05 会拦）。
 - **谁写、多快**：只在**换包／重导出／修订／点校入标点**时改，每次升文本线版本、写进 git 提交（`版本记录:` 行）。
   **原则是少改**：一次改字就是一次 book-text 提交、一次升版、可能一次标点重投影。条目开着还是关着，不影响 book-text。
@@ -60,7 +60,7 @@
   3. 已裁、留着显示结果的格（`resolved`）。
 
   字没问题、只因标点／专名要重挂的格（`anchor_miss`／`add_del`／`anchor_drift`）**不开条目**，放旁表 `anchor_cells`，不进网站、不让 book-text 钉住现字。
-- **关键信息**（详见 [设计-待审条目化](../4-反馈迭代/设计-待审条目化.md) 第三节字段表；该文有已被取代的部分，见其文首说明）：
+- **关键信息**（详见 [待审条目与裁定事件](../数据库/待审条目与裁定事件.md) 第三节字段表；原设计在 [archive](../archive/设计-待审条目化.md)）：
   - 身份：`item_id`（开时定的不透明编号，之后不变）、`book`、`vol`、`u`；格号 `cell` 只是当前位置，会随重切改；图块指纹 `fp`
   - `state`：`open`／`withdrawn`／`resolved`／`closed`
   - `reason`：待审原因码（真源 `review/pending_reasons.yaml`），**单独一列**，不与变更说明混用
@@ -223,6 +223,6 @@
 ## 九、真源
 
 - book-text 格子：book-text `docs/design/2026-11-book-text只录首选字.md`（#427）、guji-format char 规范、本仓 `formats/guji_char_cord.py`
-- 待审条目：[设计-待审条目化](../4-反馈迭代/设计-待审条目化.md)（身份、字段、对账规则仍有效；整张单导出、rev 相关部分已被取代）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../参考/待审原因/README.md)）
+- 待审条目：[待审条目与裁定事件](../数据库/待审条目与裁定事件.md)（现行字段与流程；原设计存档在 [archive](../archive/设计-待审条目化.md)）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../参考/待审原因/README.md)）
 - 裁定事件：cv `doc/formats/裁定事件规范.md`、`doc/design/15-人裁锚定与重切后重绑定.md`
 - 改不改 book-text：[4e 1.0 之后的反馈 / 全流程与覆盖优先级](../../wiki/反馈迭代/全流程与覆盖优先级.md)、本仓 `swap/resolve.py`
