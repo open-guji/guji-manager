@@ -294,7 +294,8 @@ def collect_stale_summary(workspace: Path, *, pages: str = "all") -> dict[str, l
             pl = load_pipeline(default_pipeline_id(book))
             eng = Engine(book, pl, log=lambda s: None)
             st = eng.status(pages=book.resolve_pages(pages))
-            skip = display_only_steps(products_root(), bid)
+            from .decide_gate_check import DETECT_ONLY_STEPS
+            skip = display_only_steps(products_root(), bid) | DETECT_ONLY_STEPS
             stale = [sid for sid, d in st["steps"].items()
                     if sid not in skip and (d["counts"].get(STALE, 0) or d["counts"].get(MISSING, 0))]
             if stale:
