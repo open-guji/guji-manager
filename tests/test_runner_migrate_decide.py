@@ -61,3 +61,36 @@ def test_probe_reads_active_name_not_empty_registry(tmp_path):
                            capture_output=True, text=True, check=False)
         assert r.returncode == 0, r.stderr
         assert r.stdout.strip() == want
+
+
+import pytest
+
+
+@pytest.mark.parametrize("extra", [
+    {},                                                             # 整册
+    {"pages": "1,5,8"},                                             # 带 --pages 的回放单
+    {"book_id": "995ejelvk0"},                                      # 册号带书 id（全唐文 004，#18377）
+    {"book_id": "995ejelvk0", "pages": "1-9", "pipeline": "solo_5b"},
+    {"pipeline": None},                                             # 单上没写 pipeline：退回缺省
+])
+def test_migrate_always_passes_workspace(tmp_path, monkeypatch, extra):
+    """各种单子形状下 migrate-name 都带 -w <工作区> 与 --pipeline（CV4 11-28：第三次在执行机上才暴露）。"""
+    (tmp_path / "products" / "03" / "seed_admit").mkdir(parents=True)
+    j, run = _job(tmp_path, True)
+    j.spec.update(extra)
+    monkeypatch.setattr(subprocess, "run", run)
+    j._migrate_decide_name()
+    argv = j.calls[0]
+    assert argv[argv.index("-w") + 1] == "/ws/x"
+    assert argv[argv.index("--pipeline") + 1] == (extra.get("pipeline", "keben_body_v2") or "keben_body_v2")
+
+
+def test_migrate_refuses_without_workspace(tmp_path, monkeypatch):
+    """没工作区不传 `-w ""`（cv 一样报缺 -w），直接判失败、说清原因。"""
+    (tmp_path / "products" / "03" / "seed_admit").mkdir(parents=True)
+    j, run = _job(tmp_path, True)
+    j.ws = None
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(R.StageError, match="工作区"):
+        j._migrate_decide_name()
+    assert not j.calls
