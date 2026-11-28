@@ -484,7 +484,7 @@ def cmd_draft(args) -> None:
     votes, dropped = latest_votes(raw, args.site_book, args.rev, u_any_rev=True)   # 带 u 的旧 rev 票也收（T2）
     from .feedback import landing_policy as LP
     policy = LP.get_policy(getattr(args, "policy", None))
-    votes, waiting = LP.apply_policy(policy, votes)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
+    votes, waiting = LP.apply_policy(policy, votes, args.site_book)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
     if waiting:
         _print(f"落票策略 {policy.name}：{len(waiting)} 格没到门槛，不落（票留在收件箱，条目仍开着；见 waiting.tsv）")
     human = human_all

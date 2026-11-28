@@ -1396,7 +1396,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--pack", default=None, help="出单版产物包标签（缺省 rev-<rev>，没有就 ★main）")
     p.add_argument("--policy", default=None,
                    help="落票策略：auto（缺省，有票就落；用户 11-23 定，现只有本人在审）｜quorum:N（高等级审阅人一票即定，其余要 N 人同一结论；"
-                        "没到门槛的格不落、不结案，等多人）；也读 GUJI_LANDING_POLICY。详见 feedback/landing_policy.py")
+                        "rules[:规则文件]（按会员等级与负责的书判：editor 以上、本书负责人一票即落，匿名票不直接落地）；没到门槛的格不落、不结案；也读 GUJI_LANDING_POLICY。详见 feedback/landing_policy.py")
     p.add_argument("--no-pull", action="store_true", help="不先拉库（刚拉过）")
     p.add_argument("--no-push", action="store_true", help="book-text 只提交在 worktree，不推")
     p.add_argument("--no-publish", action="store_true", help="推库后不触发网站发布、不核线上")
