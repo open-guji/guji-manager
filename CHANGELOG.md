@@ -7,6 +7,8 @@
 ## [未发版]
 
 - PATCH（11-28，CV0，册号位数统一，L0：只改迁移工具）：`ops/rename_volume` 补全数据目录：按册目录 `feedback/anchor_patches/<册>/` 跟着改名；`feedback/rulings/`、`config/groups/`、`review/batches/` 等其余 json／jsonl 里的格号换新名、内容里的产物 sha（`cells_sha`）按改写前后对照表换；`corpus/`（钉 sha）与 `feedback/lists/pending/`（归 renumber）仍只报不改。新增 `--repair <备份目录> --data-dir … [--apply]`：已用 ≤0.7.1 改过名的书按当时的 rename-log 与 shamap 补做（脉经第 1 册演练数据：只需搬 anchor_patches/01）。新测 2 条。
+- PATCH（11-28，GM2，接 #1209，CV3 提）：`glyphdb_admit` 人裁落库字块缓存缺图、改用库里同 id 旧图时，排除 `borrowed` 表里的 id（那是借来的别书刻例、图是别书那格）。与 #1209 的「同号不进」分开挡：cv #1989（本书优先、先摘借来那份再写）发版后放开同号时，这一处仍不会取到别书的图。
+
 - PATCH（11-28，GM2，汉书文渊阁 01 首次回库查出）：借库的书与被借的书册号相同时（汉书 01 借史記 g30 人裁刻例，史記也有 01 册），实例 id `v2:<册>:页:列:格` 不带书、两书同号：回库照常进会把借来那例的字改成汉书的字、图仍是史記那格（贴错图），汉书这例又因 id 在 `borrowed` 表里导不出去（3,415 格撞 68 格）。现在 `glyph-db backfill` 选格时跳过同号格（摘要「与借来的刻例同号 N」）、`admit` 再挡一道；`glyphdb_admit` 的人裁与回库重放遇同号不取图、不进库（`ConsumeResult.borrowed_clash`）。另：新书第一次回库本书字形库没有 `meta.book_edition` 时，原先 `admit_instance` 在事件写完后才拒写、留下半截；现在写事件前按 `workspace.yaml` 的 `id` 只补 meta 一行（不用 `set-edition`，它会把借来的别书字形行一并改归本书）。`db sync` 末尾「人裁事件还没被消费者处理」不再把回库批次的 gold_add／crop_exclude／product_invalidate 报成漏（入库时已直接进库，这几处故意不走，route 了反倒会把整册 seed_admit 判过期）。
 
 - PATCH（11-28，落票规则·负责范围）：名册 `books` 是 ID 列表，版本（Book）、作品（Work）、丛编（Collection）的 ID 直接写、不加前缀，写了作品／丛编就管它名下所有版本。归属以 book-index 为准：`landing_policy.BookIndexLineage` 读 `GUJI_BOOK_INDEX` 检出里的 Book.work_id、contained_in（丛编嵌套向上走、防环，作品的 contained_in 也算）；没配或查不到的书只认它自己的 ID。只在 `--policy rules` 下生效，缺省 auto 行为不变。
