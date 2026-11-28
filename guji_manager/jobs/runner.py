@@ -39,7 +39,9 @@ IDLE_BOARD_S = 300           # 空闲执行方刷新看板的节流（秒）
 #: rerun_prep.sh 里失败多半是网络／库的段（失败了换个会话重试）；其余段（钉子账、建字形库、语料校验…）是配置问题
 _PREP_ENV_PARTS = {"cv", "克隆工作区", "db-pull", "取原图", "模板索引", "基线包"}
 #: 准备脚本输出里这些错是配置问题（不是网络／库），换会话重试也一样
-_CONFIG_ERR = re.compile(r"\bBookConfigError\b")
+_CONFIG_ERR = re.compile(r"\bBookConfigError\b|/books/[^/'\s]+\.yaml'?: No such file")
+#: 拉完库还找不到册 yaml＝册名不对（改过名、交错书），不是网络（11-28 北行 #18319 bxgb→1、殿本 #18292 01≠vol01 各白领三次）
+_NO_BOOK_YAML = re.compile(r"/books/([^/'\s]+)\.yaml'?: No such file")
 _TOKEN_RE = re.compile(r"(TOKEN|SECRET|KEY|PASS|DSN)[A-Z_]*=\S+|postgres(ql)?://\S+|Bearer \S+", re.I)
 
 
@@ -302,7 +304,12 @@ class Job:
             part = heads[-1] if heads else "?"
             # 网络／库段里报的配置错（册 yaml 写了这版 cv 不认的东西）换会话重试也必败，不算环境类（11-25 全唐文 052／054）
             env = part in _PREP_ENV_PARTS and not _CONFIG_ERR.search(str(e))
-            raise StageError("failed", f"准备「{part}」段失败：{e}", e.code, env=env) from None
+            hint = ""
+            m = _NO_BOOK_YAML.search(str(e))
+            if m:
+                hint = (f"；中心库这部书没有册 {m.group(1)}：多半是册名写错或已改名（看 books/*.yaml 的 aliases），"
+                        f"改 --book 重交（新版 guji job submit 交单时会核册名）")
+            raise StageError("failed", f"准备「{part}」段失败：{e}{hint}", e.code, env=env) from None
         m = re.search(r"^WS=(\S+)", out, re.M)
         self.ws = m.group(1) if m else self.ws
         m = re.search(r"^OVERRIDE=(.*)$", out, re.M)
