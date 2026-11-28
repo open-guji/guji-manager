@@ -186,13 +186,30 @@ CREATE TABLE IF NOT EXISTS events (
   "actor" TEXT,
   "reviewer" TEXT,
   "ts" TEXT,
-  "payload" TEXT,
-  "target" TEXT,
   "src_line" INTEGER NOT NULL,
   "raw" TEXT NOT NULL,
   "rev" INTEGER NOT NULL,
   "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   "row_sha" TEXT,
+  -- 11-24 起 payload、target 由 raw 现算（虚拟列，不占行空间、不能 INSERT）；线上库的迁移见 d1/migrations/
+  "payload" TEXT GENERATED ALWAYS AS (raw -> '$.payload') VIRTUAL,
+  "target" TEXT GENERATED ALWAYS AS (raw -> '$.target') VIRTUAL,
+  -- 11-26 起 u（字格永久编号）、level（来源级别）也由 raw 现算；线上库迁移 d1/migrations/2026-11-26-events-u-level.sql，level 11-27 收窄（2026-11-27-events-level-narrow.sql，与 manager feedback/levels.py 同口径）
+  "u" INTEGER GENERATED ALWAYS AS (COALESCE(
+       CASE WHEN json_type(raw, '$.target.anchor.u') = 'integer' THEN json_extract(raw, '$.target.anchor.u') END,
+       CASE WHEN json_type(raw, '$.payload.u') = 'integer' THEN json_extract(raw, '$.payload.u') END)) VIRTUAL,
+  "level" TEXT GENERATED ALWAYS AS (CASE
+       WHEN stream = 'uid' THEN 'ledger'
+       WHEN stream IN ('rulings', 'vision') THEN 'ai'
+       WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
+       WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'model'
+       WHEN json_extract(raw, '$.payload.level') IN ('human', 'ai', 'machine') THEN json_extract(raw, '$.payload.level')
+       WHEN kind IN ('needs_review', 'cell_review', 'admit_candidate') THEN 'note'
+       WHEN COALESCE(actor, 'user') <> 'model' THEN 'human'
+       WHEN (CASE WHEN instr(batch, '~') > 0 THEN substr(batch, 1, instr(batch, '~') - 1) ELSE batch END) IN (
+            'H-mojibake-fix-20260927', 'r74-v01', 'r77-重绑', 'r79-v01', 'SJ-ry-rebind-1120', 'SJ-sheldon-1123',
+            'SJ-L1取消归一-human24', 'SJ-v02-rebind-1124', 'SJ-歲暫歸一-1125') THEN 'human'
+       ELSE 'ai' END) VIRTUAL,
   PRIMARY KEY ("ws", "src_path", "id"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
@@ -415,6 +432,8 @@ CREATE TABLE IF NOT EXISTS pending_items (
   "row_sha" TEXT,
   -- 待审条目（feedback/lists/pending/<书>/<章>.items.jsonl）一行一个版本，GM4 11-26 从 files 拆出；u 由 raw 现算
   "u" INTEGER GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.u') = 'integer' THEN json_extract(raw, '$.u') END) VIRTUAL,
+  -- 11-27：reason＝待审原因码（raw.doc.pending_reason）；注意 why 列是「这一版为什么改」，不是待审原因。线上库迁移 d1/migrations/2026-11-27-pending-items-reason.sql
+  "reason" TEXT GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.doc.pending_reason') = 'text' THEN json_extract(raw, '$.doc.pending_reason') END) VIRTUAL,
   PRIMARY KEY ("ws", "src_path", "src_line"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
@@ -488,17 +507,49 @@ CREATE INDEX IF NOT EXISTS consumed_event ON consumed (ws, consumer, event);
 CREATE INDEX IF NOT EXISTS events_ws_batch ON events (ws, batch);
 CREATE INDEX IF NOT EXISTS events_ws_book ON events (ws, book);
 CREATE INDEX IF NOT EXISTS events_ws_id ON events (ws, id);
+CREATE INDEX IF NOT EXISTS events_ws_book_u ON events (ws, book, u) WHERE u IS NOT NULL;
+-- 11-27：待审单读时现算（worker/src/pendinglive.ts）按 (ws, u) 查「这一格有没有定字事件」，事件里很多行没有册（book 为空），(ws, book, u) 用不上
+CREATE INDEX IF NOT EXISTS events_ws_u ON events (ws, u) WHERE u IS NOT NULL;
 CREATE INDEX IF NOT EXISTS list_rows_ds ON list_rows (ws, dataset, book, name, src_line);
-CREATE INDEX IF NOT EXISTS ai_notes_u ON ai_notes (ws, book, u) WHERE u IS NOT NULL;
 CREATE INDEX IF NOT EXISTS pending_items_item ON pending_items (ws, src_path, item_id, src_line);
 CREATE INDEX IF NOT EXISTS pending_items_u ON pending_items (ws, book, u) WHERE u IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ai_notes_u ON ai_notes (ws, book, u) WHERE u IS NOT NULL;
 CREATE INDEX IF NOT EXISTS glyph_instances_label ON glyph_instances (ws, label) WHERE (label IS NOT NULL);
 CREATE INDEX IF NOT EXISTS glyph_instances_sha ON glyph_instances (patch_sha);
+-- 11-23 读量排查：按文件读（src_path=? AND ws=?，按主键翻页）原来每页扫该 ws 全部行。Neon 已删，这几条直接手加（gen_schema.py 不再重跑）。
+CREATE INDEX IF NOT EXISTS consumed_src ON consumed (ws, src_path, consumer, src_line);
+CREATE INDEX IF NOT EXISTS glyph_exemplars_src ON glyph_exemplars (ws, src_path, edition_tag, char, instance_id);
+CREATE INDEX IF NOT EXISTS glyph_instances_src ON glyph_instances (ws, src_path, instance_id);
+CREATE INDEX IF NOT EXISTS glyph_admissions_src ON glyph_admissions (ws, src_path, instance_id);
+CREATE INDEX IF NOT EXISTS changes_ws_rev ON changes (ws, rev);
 
 -- 每个待审条目的当前版本＝该条目在文件里的最后一行（两边各自追加的版本都留，GM4 11-26）
 CREATE VIEW IF NOT EXISTS pending_current AS SELECT p.* FROM pending_items p
   WHERE p.src_line = (SELECT max(q.src_line) FROM pending_items q
                       WHERE q.ws = p.ws AND q.src_path = p.src_path AND q.item_id = p.item_id);
+-- 现在有效的作废（GM4 11-26）：u_void 记档后到覆盖＋pin_state removed
+CREATE VIEW IF NOT EXISTS voids AS
+WITH ul AS (
+  SELECT ws, src_path, src_line, COALESCE(book, json_extract(raw, '$.book')) AS book,
+         json_extract(raw, '$.kind') AS kind, json_extract(raw, '$.id') AS ref,
+         json_extract(raw, '$.stream') AS stream, json_extract(raw, '$.key') AS cell,
+         json_extract(raw, '$.reason') AS reason, json_extract(raw, '$.by') AS by, json_extract(raw, '$.at') AS at
+  FROM list_rows WHERE dataset = 'u_void'
+), ulr AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY ws, src_path, COALESCE(ref, stream || '/' || cell) ORDER BY src_line DESC) AS rn
+  FROM ul
+), ps AS (
+  SELECT ws, src_path, src_line, book, id AS event_id,
+         json_extract(raw, '$.payload.pin_id') AS pin_id, json_extract(raw, '$.payload.v') AS v,
+         json_extract(raw, '$.payload.reason') AS reason, json_extract(raw, '$.payload.by') AS by, ts,
+         ROW_NUMBER() OVER (PARTITION BY ws, json_extract(raw, '$.payload.pin_id') ORDER BY ts DESC, src_line DESC) AS rn
+  FROM events WHERE stream = 'pin_state'
+)
+SELECT ws, book, 'u_void' AS src, COALESCE(ref, stream || '/' || cell) AS ref, cell, reason, by, at, src_path, src_line
+FROM ulr WHERE rn = 1 AND kind = 'u_void'
+UNION ALL
+SELECT ws, book, 'pin_state' AS src, pin_id AS ref, NULL AS cell, reason, by, ts AS at, src_path, src_line
+FROM ps WHERE rn = 1 AND v = 'removed';
 CREATE VIEW IF NOT EXISTS lists AS SELECT * FROM files WHERE kind = 'list';
 CREATE VIEW IF NOT EXISTS batches AS SELECT * FROM files WHERE kind = 'batch';
 

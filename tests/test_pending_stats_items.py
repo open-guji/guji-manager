@@ -12,13 +12,6 @@ def _db():
     con = sqlite3.connect(":memory:")
     con.executescript((Path(pending_stats.__file__).parent / "datastore" / "schema_d1.sql").read_text(encoding="utf-8"))
     con.execute("PRAGMA foreign_keys = OFF")
-    # 中心库（D1）的 events 有 u／level 虚拟列，本地 schema 没有：补上，读法同库（u＝target.anchor.u 或 payload.u；level＝payload.level）
-    cols = {r[1] for r in con.execute("PRAGMA table_info(events)")}
-    if "u" not in cols:
-        con.execute("ALTER TABLE events ADD COLUMN u INTEGER GENERATED ALWAYS AS "
-                    "(coalesce(json_extract(target, '$.anchor.u'), json_extract(payload, '$.u'))) VIRTUAL")
-    if "level" not in cols:
-        con.execute("ALTER TABLE events ADD COLUMN level TEXT GENERATED ALWAYS AS (json_extract(payload, '$.level')) VIRTUAL")
     return con
 
 
@@ -30,9 +23,10 @@ def _item(con, iid, vol, cell, u, state="open", line=1, doc=None):
 
 
 def _event(con, eid, u, key, level="human"):
-    con.execute("INSERT INTO events (ws, src_path, id, stream, book, kind, actor, ts, payload, target, src_line, raw, rev) "
-                "VALUES ('w', 'e.jsonl', ?, 'events', 'bk', 'confirm', 'user', '2026-11-27T00:00:00Z', ?, ?, 1, '{}', 1)",
-                (eid, json.dumps({"v": "confirm", "level": level}), json.dumps({"unit": "cell", "key": key, "anchor": {"u": u}})))
+    con.execute("INSERT INTO events (ws, src_path, id, stream, book, kind, actor, ts, src_line, raw, rev) "
+                "VALUES ('w', 'e.jsonl', ?, 'events', 'bk', 'confirm', 'user', '2026-11-27T00:00:00Z', 1, ?, 1)",
+                (eid, json.dumps({"payload": {"v": "confirm", "level": level},
+                                  "target": {"unit": "cell", "key": key, "anchor": {"u": u}}}, ensure_ascii=False)))
 
 
 def test_load_items_subtracts_settled(monkeypatch):
