@@ -134,3 +134,14 @@ def test_cli_job_dry_run(capsys, monkeypatch):
     with pytest.raises(SystemExit, match="--job 不收"):
         cli.cmd_run(cli._fix(p.parse_args(["bench", "run", "cut-2d", "--book", "988g3f0wsu", "--job", "--cv", "dev",
                                            "--ws", "/x"])))
+
+
+def test_runner_knows_all_spec_kinds_and_blocks_unknown():
+    """执行方认得 spec 里的每种单型；不认的（交单方 manager 更新）记 blocked，不掉进 command 分支（#18365）。"""
+    from guji_manager.jobs import runner as R
+    assert set(SP.KINDS) <= set(R.RUNNABLE_KINDS)
+    for k in SP.KINDS:
+        R._check_kind(k)
+    with pytest.raises(R.StageError) as e:
+        R._check_kind("future")
+    assert e.value.outcome == "blocked" and "不认 kind='future'" in str(e.value)
