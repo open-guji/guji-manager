@@ -7,7 +7,7 @@ P1 只实现 `gold_add`（事件 → 金标条目），另外两个（glyphdb_ad
 """
 
 from __future__ import annotations
-from ..products_io import DECIDE_NEW, DECIDE_OLD, DECIDE_STEPS, is_decide_step
+from ..products_io import DECIDE_NEW, DECIDE_OLD, invalidate_decide, is_decide_step
 
 import json
 import os
@@ -1010,10 +1010,11 @@ def product_invalidate(events, product_store=None, dry_run: bool = False, **kw) 
         if dry_run:
             res.added += 1
             continue
-        hit = False
-        for stp in (DECIDE_STEPS if is_decide_step(step) else (step,)):
-            if st.manifest(book, stp).invalidate(key[2], f"人裁 {e.kind} {e.id}"):
-                hit = True
+        reason = f"人裁 {e.kind} {e.id}"
+        if is_decide_step(step):
+            hit = invalidate_decide(st, book, key[2], reason)
+        else:
+            hit = bool(st.manifest(book, step).invalidate(key[2], reason))
         if hit:
             res.added += 1
         else:

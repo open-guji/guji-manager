@@ -11,6 +11,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+def _cv_attr(name: str):
+    """cv 的兼容读口（`manager_api`：read_final_store／final_page_dict／final_dir／invalidate_final／is_admit_step）。
+    有就转给 cv，规则只在 cv 一处；旧 cv 没有时返回 None，退回下面的本地实现（行为相同）。"""
+    try:
+        from . import _cv
+        return getattr(_cv, name)
+    except Exception:  # noqa: BLE001 —— 旧 cv／没装 cv／没登记
+        return None
+
+
 DECIDE_NEW = "char_decide"
 DECIDE_OLD = "seed_admit"
 DECIDE_STEPS = (DECIDE_NEW, DECIDE_OLD)
@@ -19,12 +29,17 @@ RULING_STEP = DECIDE_OLD
 
 
 def is_decide_step(step: Any) -> bool:
-    return step in DECIDE_STEPS
+    f = _cv_attr("is_admit_step")
+    return bool(f(step)) if f else step in DECIDE_STEPS
 
 
 def decide_dir(root: Path | str, book: str | None = None) -> Path:
     """`<root>[/<book>]/char_decide`；没有新目录时退回旧名目录（都没有也返回新名路径，调用方自行判存在）。"""
     base = Path(root) / book if book else Path(root)
+    f = _cv_attr("final_dir")
+    if f and book:
+        d = f(root, book)
+        return d if d is not None else base / DECIDE_NEW
     new = base / DECIDE_NEW
     if new.is_dir() or not (base / DECIDE_OLD).is_dir():
         return new
@@ -39,6 +54,9 @@ def layer(doc: dict) -> dict:
     """页 json 的定字层：顶层键 char_decide／seed_admit 都认；都没有当整页就是层（同旧 `doc.get("seed_admit", doc)`）。"""
     if not isinstance(doc, dict):
         return doc
+    f = _cv_attr("final_page_dict")
+    if f:
+        return f(doc, strict=False)
     for k in DECIDE_STEPS:
         if k in doc:
             return doc[k]
@@ -47,6 +65,9 @@ def layer(doc: dict) -> dict:
 
 def layer_strict(doc: dict) -> dict:
     """同 `layer`，但缺键时 KeyError（旧 `doc["seed_admit"]` 的语义）。"""
+    f = _cv_attr("final_page_dict")
+    if f:
+        return f(doc)
     for k in DECIDE_STEPS:
         if k in doc:
             return doc[k]
@@ -60,6 +81,9 @@ def resolve_step_dir(root: Path | str, book: str, step: str) -> Path:
 
 def read_decide(store: Any, book: str, pk: str) -> dict | None:
     """`ProductStore.read` 的两名版；返回定字层（没有该页返回 None）。"""
+    f = _cv_attr("read_final_store")
+    if f:
+        return f(store, book, pk)
     for s in DECIDE_STEPS:
         try:
             a = store.read(book, s, pk, s)
@@ -78,3 +102,15 @@ def exists_decide(store: Any, book: str, pk: str) -> bool:
         except (KeyError, ValueError, LookupError):
             continue
     return False
+
+
+def invalidate_decide(store: Any, book: str, pk: str, reason: str, cells: list[str] | None = None) -> bool:
+    """这一页的定字产物显式失效（两名目录都标，只标有条目的）；有任一名被标返回 True。"""
+    f = _cv_attr("invalidate_final")
+    if f:
+        return bool(f(store, book, pk, reason, cells))
+    hit = False
+    for s in DECIDE_STEPS:
+        if store.manifest(book, s).invalidate(pk, reason, cells):
+            hit = True
+    return hit
