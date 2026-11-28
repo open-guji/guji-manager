@@ -38,3 +38,6 @@ AI 分析摘要（浅层、深搜、放行与不确定都写）TSV → `feedback
 
 ## carve_pairs.py（按刻形记字对表，11-27）
 各书口径定了「按刻形记」的字对，AI 两次高置信一致也不放行。`load(book="全唐文")` 读 `carve_pairs/<书>.tsv`（列 a、b），`blocked(AI字, 候选, 表, 现字)` 与 `confuse_guard.blocked` 并列用。放行脚本（如 `write_go.py` 之类各书自己的）在写 ctx 裁定前调一次。
+
+## context_pairs.py（纯文意字组表，11-28）
+己已巳、日曰 这类刻本混用、完全按文意判的字组，不受异体闸、易混字守卫、carve_pairs 约束。`load(book="全唐文")` 读 `context_pairs/<书>.tsv`（列 a、b），`gate_blocked(AI字, 候选, [各闸], 表)` 先剔除与 AI 字构成纯文意对的候选再过各闸；`confuse_guard` 的书级关闭名单已改读这张表。新字组加一行即可，并在 pair_attribution.yaml 写 `attr: context`。
