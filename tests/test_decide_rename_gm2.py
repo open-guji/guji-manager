@@ -30,14 +30,21 @@ def test_replay_from_both_names():
 
 
 def test_perf_hooks_mirror_new_module(monkeypatch):
+    """改名版把本体搬到 steps.char_decide 后，钩子在新模块上只挂真有的函数；兼容版的转发入口一个也不挂。"""
+    import importlib
     import importlib.util
+    import sys
+    import types
 
     from guji_manager import cli_perf
-    real = importlib.util.find_spec
+    fake = types.ModuleType("open_guji_cv.steps.char_decide")
+    fake._opt = lambda: None
+    real_spec, real_imp = importlib.util.find_spec, importlib.import_module
+    monkeypatch.setitem(sys.modules, "open_guji_cv.steps.char_decide", fake)
     monkeypatch.setattr(importlib.util, "find_spec",
-                        lambda n, *a: object() if n.startswith("open_guji_cv.steps.char_decide") else real(n, *a))
+                        lambda n, *a: object() if n == "open_guji_cv.steps.char_decide" else real_spec(n, *a))
     h = cli_perf.all_hooks()
-    assert h["open_guji_cv.steps.char_decide"]["funcs"] == h["open_guji_cv.steps.seed_admit"]["funcs"]
+    assert h["open_guji_cv.steps.char_decide"]["funcs"] == ("_opt",)
     assert cli_perf.RETIRED_STAGE["seed_admit"] == "decide"
 
 
