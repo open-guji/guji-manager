@@ -6,7 +6,7 @@
 
 ## [未发版]
 
-- PATCH（11-28，CV3，仅测试与计时钩子名，L0）：跟 cv #1998（seed_admit 按位置拆模块）：`cli_perf.PERF_HOOKS` 里 `_symbol_ref_blank_pass` 改挂 `seed_admit_cell_state`；`tests/from_cv/test_code_deps_coverage.py` 删掉 seed_admit 已不缺的 9 条存量缺口和已不 import 的 `keben_counts` 登记。cv dev 拆模块后 manager CI 因此 3 条测试报红。
+- PATCH（11-28，CV3，仅测试与计时钩子名，L0）：跟 cv #1998（seed_admit 按位置拆模块）：`cli_perf.PERF_HOOKS` 里 `_symbol_ref_blank_pass` 改挂 `seed_admit_cell_state`；`tests/from_cv/test_code_deps_coverage.py` 删掉 seed_admit 已不缺的 9 条存量缺口和已不 import 的 `keben_counts` 登记；`_cv._FALLBACK` 补 cv #2001 新进门面的 `near_registry_pairs`。cv dev 拆模块、加门面名后 manager CI 因此 4 条测试报红。
 
 - PATCH（11-28，GM2，接 #1209，CV3 提）：`glyphdb_admit` 人裁落库字块缓存缺图、改用库里同 id 旧图时，排除 `borrowed` 表里的 id（那是借来的别书刻例、图是别书那格）。与 #1209 的「同号不进」分开挡：cv #1989（本书优先、先摘借来那份再写）发版后放开同号时，这一处仍不会取到别书的图。
 
