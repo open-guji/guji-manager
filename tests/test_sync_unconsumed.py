@@ -37,3 +37,28 @@ def test_unconsumed_report_never_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "feedback_root", boom, raising=False)
     assert cli_db.unconsumed_report(tmp_path) == {}
     assert cli_db.unconsumed_warning(tmp_path) is None
+
+
+def test_unconsumed_report_skips_backfill_batches(tmp_path, monkeypatch):
+    """放行格回库的机器 confirm 只进 glyphdb_admit，别的去处故意不走，不报漏（汉书 01，GM2 11-28）。"""
+    now = datetime.now(timezone.utc).isoformat()
+    bf = {"v": "confirm", "source": "auto", "backfill": True}
+    evs = [NS(id="a", ts=now, batch="x-auto-backfill", kind="confirm", payload=bf),
+           NS(id="b", ts=now, batch="H-1", kind="confirm", payload={"v": "confirm"})]
+
+    class Log:
+        root = tmp_path
+        def __init__(self, *_): pass
+        def iter_all(self): return iter(evs)
+        def consumed_ids(self, c): return frozenset({"a"}) if c == "glyphdb_admit" else frozenset()
+
+    class Table:
+        @staticmethod
+        def load(_): return Table()
+        def destinations(self, e): return [NS(consumer="glyphdb_admit"), NS(consumer="product_invalidate")]
+
+    monkeypatch.setattr(C, "EventLog", Log, raising=False)
+    monkeypatch.setattr(C, "RouteTable", Table, raising=False)
+    monkeypatch.setattr(C, "CONSUMERS", {"glyphdb_admit": None, "product_invalidate": None}, raising=False)
+    monkeypatch.setattr(C, "feedback_root", lambda: tmp_path, raising=False)
+    assert cli_db.unconsumed_report(tmp_path) == {("H-1", "glyphdb_admit"): 1, ("H-1", "product_invalidate"): 1}

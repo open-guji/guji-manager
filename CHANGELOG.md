@@ -6,6 +6,45 @@
 
 ## [未发版]
 
+## [0.7.6] - 2026-11-28
+- PATCH（11-28，GM2，cv P3 改名版读空复查收尾）：全仓复查拿 cv `ADMIT_STEP` 或字面 `seed_admit/` 拼定字产物路径的地方（改名版 cv 下老册会静默读空）：快审页 `review_pages/char_review.load` 写死 `seed_admit/` 改走 `decide_pages`；看板 `report/progress` 不再从 cv 取 ADMIT_STEP（缺页提示用 `products_io.active_step()`）；删 `render/reading_layout` 未用的 ADMIT_STEP／ADMIT_KIND 死常量；`tools/seg_check` 两个脚本两名并认；几处帮助文字改写两名。加护栏测试 `tests/test_decide_name_guard.py`：包里再出现这两种拼法就红。GM3 点的 vision／verdict_view／approx／reading_layout 读口 #1224、#1246 已修。L0。
+
+- PATCH（11-28，GM2）：跟上 cv dev 两处改动，dev CI 复绿（只动测试；报告读 accuracy 见 #1242）——cv #2030 `Witness.quality` 改名 `accuracy`：三个搬来的测试改传 accuracy；cv #2032 借组库缺省跳过本书自己的例：glyphlib 借法测试显式传空 `self_ids`，另加一条缺省跳过的断言。
+
+- PATCH（11-28，GM2，文渊阁组库 glyphlib-wyg，WYG 提）：`guji glyphlib build` 扩成多来源——`-w` 可多次，实例 id 各带来源前缀；`--with-auto`／`--auto-from <工作区>` 另收放行格回库例（证据带 backfill 与 verify），出库前再过一遍字体模板核验，`label_status` 保留 auto；`--per-char` 为多来源合计、人裁在前；`--diverse` 按 5a 底座向量挑互相不像的；`--suspect-ids 工作区:清单`（认 CV3 带 ws、instance 列的 tsv）、`--suspect-chars`、`--suspect-since` 标记疑点，`--drop-suspect` 剔除，库里留着疑点的拒推。来源书真源缺来源行（借库书首次回库后的汉书）时补一条最小来源行，并核对「选了多少、装进多少」，不一致拒出。单来源用法与输出不变。
+
+- PATCH（11-28，GM2，cv P3 seed_admit→char_decide 两名并认，GM2 名下；读口用 `products_io`）：冻结比对 `ops/freeze.compare_products` 把快照里的 `seed_admit/` 路径映射到 `char_decide/`（`guji-cv decide migrate-name` 后不误报缺文件）；包导入降级检查 `snap/importer.downgraded_steps` 跨两名取新鲜数；`jobs/auto_pages.REPLAY_FROM`、`ruling_hits.FETCH_STEPS`、取包 `datastore/packs.fetch_products` 的 steps 过滤两名都认；`lib_text_check` 失效两名都打、整册钩子认两名；`cli_perf` 历史 perf 行 seed_admit 归「4 定字」，本机 cv 有 `steps.char_decide*` 时同样挂分段钩子；close-check 1a 在 char_decide 缺页而 seed_admit/ 还在时提示先跑 migrate-name。写端（事件 target.step、suggest 补丁键）仍写旧名，等 CV4 切换通知。L0。
+
+- PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。
+
+- PATCH（11-28，GM4，接 CV3 第三步 `glyph_vis`，L0）：新事件种类 `vis_glyph`（`<feedback>/vis_glyph/*.jsonl`，单开目录，按图指纹缓存的看图结果；`target.unit=glyph_img`、`key=img_sha`）manager 侧不当人裁：`levels.event_level` 给 None（不算钉）、`u_stamp`（盖 u／`require_u`／推库闸 `lacks_u`）跳过、`source_rebase.GATE_EXEMPT_KINDS` 加入（换图源闸不管）。`datastore/scope.classify` 把 `feedback/vis_glyph/*.jsonl` 归进 events 表（随中心库同步）。
+
+- PATCH（11-28，GM3，CV3 vis_glyph 缓存）：`datastore/scope.classify` 认 `feedback/vis_glyph/*.jsonl`（进 events 表，随中心库同步）；`feedback/lint` 体检加扫该目录。kind／levels／u／rev 闸豁免见 GM4 #1239。
+
+- PATCH（11-28，GM4）：修 #1238 让 dev CI 红的两条：`launch/v01.py` 的 `chapter_of` 改走 `_cv` 门面；`launch` 归进步骤表第四步（feedback）。L0。
+
+- MINOR（11-28，GM4）：新增 `guji launch prepare <册> --label <main 包> -w <工作区> …`＝原 `tools/开书/出v01.py` 搬进包（`guji_manager/launch/v01.py`，tools 里留薄壳）：判停→交接单→第五步产物→导出→book-text 本地加章→local_check，不推任何东西；册已有 `_land/landed.json` 拒绝（非首发）。能进任务库 command 单并行。后续加 ship 段。L0。
+
+- PATCH（CV0 11-28，GM2 问）：`datastore/schema_d1.sql` 对齐线上 guji-data-main——events 的 payload／target 改为由 raw 现算的虚拟列，加 u／level 虚拟列（与线上同式），pending_items 加 reason 虚拟列，补线上早已手加的 7 条索引与 voids 视图。线上不变（导入按 pragma_table_info 取列，本来就不写虚拟列）；只影响本机 SQLite（测试、备份还原），`settle_sync` 按 `e.u` 查在本机也能跑了。
+- PATCH（11-28，待审清理）：去掉 `progress_volume.pending_rev`：`progress-sync` 不再读写它，`datastore/progress.py` 的 `VOLUME_FIELDS` 与 `schema_d1.sql` 删列；D1 上的 `DROP COLUMN` 在本版发布后执行。`cellvotes draft` 不再读整张单（`--sheet`）。
+
+- PATCH（11-28，CV0）：待审原因：cv align_ref 产物的 `none_cols`（reference_profile 列级无参照，CV0 11-28，脉经第 2 册缺文小注）里的格算「参照缺是设计」（`ref_by_design`），不再判 seg_page_unaligned／seg_col_unaligned／ref_gap。
+- PATCH（11-28，GM4，MJ 脉经 2 册提）：`online_lists.on_promote` 标 main 时，册从没上过站（无 `_land/landed.json`）就不自动起 `guji land --apply`，只打一行提示；首发由 `guji launch` 或人显式 land。要老行为设 `GUJI_AUTO_LAND_FIRST=1`。已上过站的册不变。L0。
+
+- PATCH（11-28，GM2）：`_cv._FALLBACK` 登记 cv #2008（收尾改名兼容读口）在 `manager_api` 新导出的 12 个名字（ADMIT_STEPS、read_final、final_dir、invalidate_final 等），修 `tests/test_cv_surface.py` 对 cv dev 变红。只登记，不改行为。L0。
+
+- PATCH（11-28，GM2，接 cv #2005，CV4 通报）：接 cv 第四步出口检查 `decide_gate`（挂 seed_admit 出口，只检测不判断）。新增 `ops/decide_gate_check`（按 fail 汇总 step_error／ref_shift／char_not_in_evidence／admit_blank_cell，flag 只计数）；`close-check` 加 **2e 第四步出口检查**：终校档有 fail 判未过，粗校档只报数（不挡 v0.1），gate 自己的页级指纹过期（上游重跑过）的页旧结果不计、单列页数，没有可用产物记 skip。只检测的步「没跑」（cv 升级后老册未补跑，status 多一行全 missing）不再算进 close-check 1a、看板过期数（`report/progress`）、部署检查过期表。补跑：先看 status 确认 seed_admit 新鲜，再 `guji pipeline <管线> <册> --from seed_admit`（只补跑 gate）；seed_admit 过期时这条会连它重算，出过 v0.1 的册别这样补。L0。
+
+- PATCH（11-28，CV3 W1 第二期，L0：N01 判法逐对不变）：`review/reasons._near_pairs`（N01 形近护栏的手工形近对）改读 cv 形近字组登记表 `src=hand` 的对（cv `manager_api.near_registry_pairs`，open-guji-cv#2001）；cv 没有这个读口（旧版）就退回 `NEVER_MATCH_FAMILIES`。两者逐对相等（cv `tests/test_near_registry_readers.py`；本仓 `tests/from_cv/test_review_reasons.py` 新测两条）。`_cv._FALLBACK` 登记 `near_registry_pairs`。
+
+- PATCH（11-28，GM2，接 #1209，CV3 提）：`glyphdb_admit` 人裁落库字块缓存缺图、改用库里同 id 旧图时，排除 `borrowed` 表里的 id（那是借来的别书刻例、图是别书那格）。与 #1209 的「同号不进」分开挡：cv #1989（本书优先、先摘借来那份再写）发版后放开同号时，这一处仍不会取到别书的图。
+
+- PATCH（11-28，GM2，汉书文渊阁 01 首次回库查出）：借库的书与被借的书册号相同时（汉书 01 借史記 g30 人裁刻例，史記也有 01 册），实例 id `v2:<册>:页:列:格` 不带书、两书同号：回库照常进会把借来那例的字改成汉书的字、图仍是史記那格（贴错图），汉书这例又因 id 在 `borrowed` 表里导不出去（3,415 格撞 68 格）。现在 `glyph-db backfill` 选格时跳过同号格（摘要「与借来的刻例同号 N」）、`admit` 再挡一道；`glyphdb_admit` 的人裁与回库重放遇同号不取图、不进库（`ConsumeResult.borrowed_clash`）。另：新书第一次回库本书字形库没有 `meta.book_edition` 时，原先 `admit_instance` 在事件写完后才拒写、留下半截；现在写事件前按 `workspace.yaml` 的 `id` 只补 meta 一行（不用 `set-edition`，它会把借来的别书字形行一并改归本书）。`db sync` 末尾「人裁事件还没被消费者处理」不再把回库批次的 gold_add／crop_exclude／product_invalidate 报成漏（入库时已直接进库，这几处故意不走，route 了反倒会把整册 seed_admit 判过期）。
+
+
+- PATCH（11-28，GM4，仅文档，L0）：清理 manager 文档里整张换单、rev、人裁事件、批号的旧说法。「人裁事件」统一改称「裁定事件」（总纲文件改名为 `doc/00-总览/待审条目-裁定事件-book-text格子.md`）；第四步 wiki／doc（待审条目上线〔原出单上线〕、收单、收单落票、反馈迭代-步骤、常见坑、1.0 发布／验收标准、命令速查等）按 `guji land`＋`guji collect`＋`guji pending-settle` 重写；整张换单时代的页移入 `doc/archive/`（换线上人审单、精校流程自动化方案、设计-待审单进KV、设计-待审条目化）并建索引；`doc/数据库/中心库.md`、`网站收件箱.md`、`wiki/数据库表一览.md` 按 11-28 线上 D1（32 张表＋4 视图）对齐；`doc/数据库/待审条目与裁定事件.md` 为现行基准页。
+
+
 ## [0.7.5] - 2026-11-28
 
 - PATCH（11-28，网站会员身份提交，挑拣自 dev #1198／#1201／#1204，只带这三个 PR）：①网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`；事件另带 `payload.voters={member,anon}`；level 仍 human、channel 仍 web_vote。②`feedback/landing_policy` 加 `rules` 策略（缺省仍 auto，行为不变）：身份（`Standing`＝等级＋负责的 ID，名册 `GUJI_MEMBER_ROSTER` JSON）、规则（`Rules`，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 盖）、策略三步分开，`decide(cell, votes, book)`；editor 以上与负责人一票即落，匿名永远不直接落地。③负责范围写 ID（版本／作品／丛编，不加前缀），归属读 book-index（`BookIndexLineage`，`GUJI_BOOK_INDEX`）。
@@ -34,6 +73,7 @@
 
 - PATCH（11-27，GM2，跟 cv #1974 退役整张换单脚本）：`tools/开书/出v01.py` 不再子进程跑 cv `scripts/zhengli/republish.py from-pack`（含 cv #1974 的 cv 版本上这个文件已删，出 v0.1 会在导出那步失败）。导出改用 `land_text.export_meta`＋`export_cmd`（与 `guji land` 收尾同参数：char-cord、`--keys cv`、四庫拆页表），出到 `reports/<册>/_land/export/`；首发时 book-text dev 上还没有这一章，文本版本仍取本机检出、不带 `--prev-char`。末尾打印的推单命令由 `republish.py push` 改成 `guji land <册> … --export-char … --text-vdir …`（先计划、再 `--apply`）。只出 v0.1 的工具与 wiki/doc 第二步那几处文案改，不动 land／online_lists／swap 逻辑。
 - PATCH（11-27，GM4，仅文档，L0）：第四步文档里的 cv `republish.py`／`proof_cycle.py`／`auto_cycle.py` 命令全部改为 `guji land`／`guji swap run`（cv #1974 已删这些脚本）。涉及 wiki/反馈迭代（步骤、换线上人审单、收单、换包落 book-text、1.x 册精校票处理、标 main 后收尾、全流程与覆盖优先级、精校流程自动化方案加历史标注）、wiki/新书启动、wiki/自动化流程、doc/4-反馈迭代、doc/参考/待审原因、doc/案例、doc/00-总览（环境与令牌、总纲）。notes 摘要接入已核：`land.py` 经 `land_enrich.load_dian`／`merge_cards` 按（册，u）挂（GM3 #1115），republish 路径作废。
+- PATCH（11-28，CV3，候选字线，L0：新增命令与模块，不改已有路径）：①新命令 `guji audit cands <册>`：给已发册的待审卡现算候选列表 `cands/1`（不重跑整册）——卡上 3a 候选＋r5 向量对全字表的 3c 候选（异体族展开）当池，前后文取本页 `glyph_match`／`context_decision` 产物，填空模型重排（与 cv 产线新步骤 `glyph_candidate`／`context_rank` 同一份算法），挂成卡上 `cands`，`--cards` 可接 `audit alt` 的输出。新增 `review/cands_attach.py`，`_cv` 登记 `glyph_candidate_mod`／`context_rank_mod`／`ctx_fill_mod`（要 cv 含这三个名字的版本）。②`cands_field`：带校准 `p`（第三步收尾 `p_src` 非空，现在只有殿本宫官）的字排在整理本字之后、按 p，`p` 原样抄；收尾 `p_map` 有就原样抄进 `cands.p_map`（不当 `p_other`，`p_other` 仍 null）。口径与第三步重构线对过（见 ai-team domain/CV/经验.md）。新增 `tests/test_cands_attach.py`。
 - PATCH（11-27，CV3，候选字线，L0：只新增模块、卡上没有 `cands` 时行为不变）：新增 `review/cands_field`——待审格候选列表 `cands/1`：每格一份，字带各来源原始分（`a` 库相似度、`c` 图像余弦、`b` 形近组方法分、`ctx` 填空 logp、`ref` 参校字）、异体族键，卡片按钮就是前几个；`build_cands(final, rank, ref)` 由 cv 收尾 `glyph_analyzer` 与 `context_rank` 的格记录出表，`pick_fields()` 出人点选时要记的 `pick_src`／`pick_rank`／`pick_shown`。`proof_fields.pending_fields` 卡上有 `cands` 就原样带进待审单（旧字段 ref／lib_top／alt 照出，网站先读 `cands`）。规格 Claude Doc「候选字线：待审格格式、3c／4b 接口与 benchmark」。新增 `tests/test_cands_field.py`。
 - PATCH（11-27，CV0，册号位数统一）：`review/pending_items.items_path`／`sheet_path` 按数值认册号——字面路径不在时找同目录数值相同的那份（改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）；字面在的照旧，行为不变。
 

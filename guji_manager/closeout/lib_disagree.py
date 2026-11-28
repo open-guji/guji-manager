@@ -15,6 +15,8 @@
 永不并组表里的字对即使字典说是异体也**不算**已声明（那是人审定的不同字）。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD, DECIDE_STEPS
+from ..products_io import decide_pages
 
 import json
 from pathlib import Path
@@ -24,7 +26,10 @@ MIN_COV = 0.97
 
 
 def _page(path: Path, key: str) -> dict:
-    return json.loads(path.read_text(encoding="utf-8")).get(key, {})
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if key in DECIDE_STEPS:
+        return doc.get(DECIDE_NEW) or doc.get(DECIDE_OLD) or {}
+    return doc.get(key, {})
 
 
 def _chars(doc: dict) -> dict[str, dict]:
@@ -64,7 +69,7 @@ def scan_pack(root: str | Path, *, declared: Callable[[str, str], bool], min_cov
               human: Iterable[str] = ()) -> list[dict]:
     root = Path(root)
     rows: list[dict] = []
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(root)):
         g, a = root / "glyph_match" / f.name, root / "align_ref" / f.name
         if not g.is_file() or not a.is_file():
             continue

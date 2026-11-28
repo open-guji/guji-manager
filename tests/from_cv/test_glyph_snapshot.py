@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from guji_manager.products_io import active_step  # 收尾步名随本机 cv（cv #2033 改名 char_decide）
+
 import json
 import random
 import sqlite3
@@ -142,11 +144,11 @@ def test_snapshot_pin_reads_pinned_db_and_hash_ignores_live_library(ws):
     assert r.roster_glyph_db == db and r.roster_glyph_fingerprint == dg
     plain_rs = RowSegmentParams()
     assert with_glyph_pin(plain_rs, _book(1)) is plain_rs     # 开关没开的 row_segment 不碰
-    h0 = params_hash(s, STEPS["seed_admit"].spec.soft_params)
+    h0 = params_hash(s, STEPS[active_step()].spec.soft_params)
     live = ws / "output" / "glyph.db"
     _admit(live, [("丁", "human", 4)])                        # 当前库多了人裁：钉 g1 的册参数不变
     s2 = with_glyph_pin(SeedAdmitParams(), _book(1))
-    assert params_hash(s2, STEPS["seed_admit"].spec.soft_params) == h0
+    assert params_hash(s2, STEPS[active_step()].spec.soft_params) == h0
     assert SeedAdmitParams().human_fingerprint != SeedAdmitParams(db_path=db).human_fingerprint
     explicit = SeedAdmitParams(db_path=str(ws / "other.db"))  # 显式指了别的库：只钉指纹，不换库
     e = with_glyph_pin(explicit, _book(1))

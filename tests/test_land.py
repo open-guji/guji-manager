@@ -132,25 +132,6 @@ def test_attach_sprites_and_sheet_rev_unchanged(tmp_path):
     assert sheet["rev"] == "001-r3" and sheet["sprites"][0]["name"] == "c1.webp" and len(sheet["cells"]) == 1
 
 
-def test_move_guard_blocks_when_rev_votes_exist(tmp_path):
-    import pytest
-    pytest.importorskip("cv2")
-    st = _store(tmp_path, [_cell("1:1:1")])
-    plan = land.plan_book(st, [_cell("1:1:2")], src="land", fps={})
-    plan["挪格"] = ["1:1:1→1:1:2"]
-    assert land.move_guard({**plan, "挪格": []}, "t", "001-r3", fetch=lambda: []) is None
-    assert land.move_guard(plan, "t", None) is not None
-    rows = [{"key": "cr:001-r3:t:1:1:1", "value": {"v": 1}, "deleted": False}]
-    import guji_manager.feedback.web_inbox as WI
-    WI_live = WI.live_rows
-    try:
-        WI.live_rows = lambda r: r
-        g = land.move_guard(plan, "t", "001-r3", fetch=lambda: rows)
-    finally:
-        WI.live_rows = WI_live
-    assert g and g["rev_votes"] == 1
-
-
 def test_hand_added_cells_not_closed_and_detail(tmp_path):
     s = P.ItemStore(tmp_path / "pending" / "t" / "001.items.jsonl", "t", "001")
     P.reconcile(s, [_cell("1:1:1")], src="pack:x")
@@ -199,33 +180,33 @@ def test_resolved_reopen_on_image_change_marks_recheck(tmp_path):
     assert d["recheck"] is True
 
 
-def test_sheet_conflict_rederives_from_merged_items(tmp_path, monkeypatch):
-    """现行单两边都改（SyncConflict）：以库为准重派生——拉库里的单、推条目（追加合并）、用合并后的条目重导单再推。"""
+def test_apply_changes_only_syncs_items_and_writes_no_sheet(tmp_path, monkeypatch):
+    """落地只存条目、只推条目文件：不再导整张单、不碰 pending.json。"""
     data = tmp_path / "data"
     items_p = P.items_path(data, "t", "001")
-    sheet_p = P.sheet_path(data, "t", "001")
-    sheet_p.parent.mkdir(parents=True)
-    sheet_p.write_text(json.dumps({"rev": "001-r1", "cells": []}), encoding="utf-8")
+    items_p.parent.mkdir(parents=True)
+    st = P.ItemStore(items_p, "t", "001")
+    P.reconcile(st, [_cell("1:1:1"), _cell("2:2:2")], src="seed")
+    calls = []
+    monkeypatch.setattr(land, "db_only", lambda ws, verb, paths, force=False: calls.append((verb, tuple(p.rsplit("/", 1)[-1] for p in paths))) or 0)
+    out = land.apply_changes(tmp_path, "vol01", data=data, text_id="t", chapter="001", work=st, sprites=[], files_dir=None)
+    assert out["synced"] and out["cells"] == 2
+    assert calls == [("sync", (items_p.name,))]
+    assert not P.sheet_path(data, "t", "001").exists()
+    assert not (tmp_path / "reports" / "vol01" / "_land" / "needs_sync.json").exists()      # 推成就删标记
+
+
+def test_apply_changes_sync_failure_keeps_marker(tmp_path, monkeypatch):
+    import pytest
+    data = tmp_path / "data"
+    items_p = P.items_path(data, "t", "001")
     items_p.parent.mkdir(parents=True)
     st = P.ItemStore(items_p, "t", "001")
     P.reconcile(st, [_cell("1:1:1")], src="seed")
-    calls = []
-
-    def fake(ws, verb, paths, force=False):
-        calls.append((verb, tuple(p.rsplit("/", 1)[-1] for p in paths), force))
-        if verb == "sync" and len(paths) == 2 and calls.count(calls[-1]) == 1:
-            return 1                                    # 第一次整体推：现行单冲突
-        if verb == "sync" and len(paths) == 1:          # 条目文件合并推上去：库里同时多了一条新条目
-            extra = P.ItemStore(items_p, "t", "001")
-            P.reconcile(extra, [_cell("1:1:1"), _cell("7:7:7")], src="inbox", close_missing=False)
-            extra.save()
-        return 0
-    monkeypatch.setattr(land, "db_only", fake)
-    out = land.apply_changes(tmp_path, "vol01", data=data, text_id="t", chapter="001", work=st, sprites=[], files_dir=None)
-    assert out["synced"] and out["rederived"]
-    assert [c[0] for c in calls] == ["sync", "pull", "sync", "sync"] and calls[1][2] is True
-    cells = {c["cell"] for c in json.loads(sheet_p.read_text(encoding="utf-8"))["cells"]}
-    assert cells == {"1:1:1", "7:7:7"}
+    monkeypatch.setattr(land, "db_only", lambda *a, **k: 1)
+    with pytest.raises(SystemExit):
+        land.apply_changes(tmp_path, "vol01", data=data, text_id="t", chapter="001", work=st, sprites=[], files_dir=None)
+    assert (tmp_path / "reports" / "vol01" / "_land" / "needs_sync.json").exists()
 
 
 def test_alt_added_counts_as_change_and_digest_not_skipped(tmp_path, monkeypatch):
@@ -387,16 +368,6 @@ def test_hand_resolved_recheck_not_reopened_and_restored(tmp_path):
     assert land.repair_reopened(s) == ["1:2:4"] and s.find("1:2:4")[0]["state"] == "resolved"
 
 
-def test_sheet_stale_detects_missing_alt(tmp_path):
-    s = _store(tmp_path, [_cell("1:2:3")])
-    it = s.find("1:2:3")[0]
-    s.put(it, op="machine:doc", doc={**it["doc"], "alt": [{"c": "柳"}]})
-    sh = P.sheet_path(tmp_path, "t", "001")
-    sh.parent.mkdir(parents=True)
-    sh.write_text(json.dumps({"cells": [{"id": it["id"], "cell": "1:2:3"}]}), encoding="utf-8")
-    assert land.sheet_stale(tmp_path, "t", "001", s) == ["1:2:3"]
-
-
 def test_zero_byte_state_files_are_ignored(tmp_path):
     f = tmp_path / "x" / "alt-tried.json"
     f.parent.mkdir()
@@ -510,17 +481,6 @@ def test_attach_dian_finds_note_from_card_id(monkeypatch):
     monkeypatch.setattr(U, "u_map", lambda book, ids: {i: 7 for i in ids})
     cards, n = DA.attach_dian([{"id": "b:1:2:3"}], {("u", "b", 7): _NOTE})
     assert n == 1 and cards[0]["dian"]["char"] == "甲"
-
-
-def test_with_released_adds_header_from_notes(tmp_path, monkeypatch):
-    import guji_manager.land_enrich as E
-    row = {"book": "b", "u": 9, "cell": "b:5:5:5", "cands": ["甲"],
-           "trace": [{"level": "L2", "char": "甲", "conf": "high", "why": "文意", "status": "released"}]}
-    monkeypatch.setattr(E, "load_dian", lambda ws, book: {("u", "b", 9): row})
-    sheet = land.with_released(tmp_path, "b", {"cells": [{"cell": "1:2:3"}]})
-    assert [r["u"] for r in sheet["released"]] == [9]
-    sheet2 = land.with_released(tmp_path, "b", {"cells": [{"cell": "5:5:5"}]})        # 已在待审格里的不重复
-    assert "released" not in sheet2
 
 
 def test_ai_summary_change_counts_as_changed_and_applies(tmp_path, monkeypatch):

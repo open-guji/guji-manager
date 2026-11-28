@@ -11,6 +11,8 @@
 - 其余归 **O**（乱码闸、影子闸、对位替换、库没把握＋上下文不足）。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 from .. import _cv  # cv_repo()：本文件原在 cv 包里，按 __file__ 找 cv 仓
 import glob
@@ -87,9 +89,9 @@ def collect(prods: list[Path], edges: dict | None = None) -> dict:
     kb: dict = {c: defaultdict(Counter) for c in CATS}
     for root in prods:
         root = Path(root)
-        for f in sorted(glob.glob(str(root / "*" / "seed_admit" / "p*.json"))):
+        for f in sorted([str(x) for d in sorted(root.glob("*")) for x in decide_pages(d)]):
             book, page = Path(f).parts[-3], Path(f).stem
-            cols = json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]
+            cols = layer_strict(json.loads(Path(f).read_text(encoding="utf-8")))["columns"]
             gm, ar = {}, {}
             if (g := _side(root, book, "glyph_match", page)):
                 gm = {c["id"]: c for col in g.get("columns", []) for c in col.get("chars", [])}

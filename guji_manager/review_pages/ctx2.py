@@ -5,7 +5,7 @@
 
 流程（两端都在会话里做，管线不调 Anthropic API）：
   1. `review-pages ctx2-export --packs <目录> --groups 日曰,己已巳 --out o/`
-       <目录>/<册>/seed_admit/pNNNN.json（`guji products pack fetch` 取下后保留 seed_admit）；
+       <目录>/<册>/char_decide（或旧名 seed_admit）/pNNNN.json（`guji products pack fetch` 取下后保留 seed_admit）；
        只取整格（a/b 半格归切分）、待审（admit=false）；--include-admitted 连放行格一起复核。
        写 o/cells.json（每格 n,id,g,l,r：前后各 5 字，不含整理本、放行字、图）与 o/prompt_A.txt、o/prompt_B.txt
        （候选顺序正反）。
@@ -16,6 +16,8 @@
 注意：读者看不到图，邻字也可能是讹字；把握低就写 low。人裁事件写入前先给总览看清单。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 import csv
 import glob
@@ -84,12 +86,12 @@ def _ext_chars(seed_file: str) -> dict:
 
 
 def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False, half: bool = False) -> list[dict]:
-    """从 <packs>/<册>/seed_admit/p*.json 取形近组格，附前后文。half=True 时只取半格（小注 a/b），
+    """从 <packs>/<册>/char_decide（或旧名 seed_admit）/p*.json 取形近组格，附前后文。half=True 时只取半格（小注 a/b），
     上下文按小注阅读顺序串联；默认只取整格。"""
     out = []
-    for f in sorted(glob.glob(f"{packs}/*/seed_admit/p*.json")):
+    for f in sorted([str(x) for d in sorted(glob.glob(f"{packs}/*")) for x in decide_pages(d)]):
         ext = _ext_chars(f)
-        for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+        for col in layer_strict(json.loads(Path(f).read_text(encoding="utf-8")))["columns"]:
             L = col["chars"]
             hc = _half_ctx(L) if half else {}
             for k, ch in enumerate(L):

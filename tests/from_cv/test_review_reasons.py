@@ -1,5 +1,6 @@
 """待审原因判定（review/reasons.py）：造格子，核每条规则与先后、判不出给 unknown、写回待审单。"""
 import json
+import pytest
 
 from guji_manager.review.pending_reason import PendingReason as R
 from guji_manager.review.reasons import Cell, build_context, classify, reasons_for_pending, stamp, detail_of
@@ -715,3 +716,46 @@ def test_variant_pair_not_variant_pairs():
     ctx = build_context(cells, lib_n=lambda ch: 50, are_variants=var)
     got = [classify(c, ctx) for c in cells]
     assert got[0] is not R.VARIANT_PAIR and got[1] is R.VARIANT_PAIR
+
+
+def test_near_pairs_from_registry_equals_never_match():
+    """N01 的表改读 cv 形近字组登记表 src=hand 的对（W1 第二期 2026-11-28）：与 cv NEVER_MATCH_FAMILIES 逐对相等。"""
+    from guji_manager import _cv
+    from guji_manager.review import reasons as rs
+    try:
+        reg = _cv.near_registry_pairs("hand")
+    except AttributeError:
+        pytest.skip("装的 cv 早于登记表第二期，只走 NEVER_MATCH_FAMILIES 兜底")
+    old = frozenset(tuple(sorted(p)) for p in _cv.NEVER_MATCH_FAMILIES)
+    assert rs._hand_pairs_from_cv() == frozenset(map(tuple, reg)) == old
+    assert len(old) == 20
+
+
+def test_near_pairs_falls_back_on_old_cv(monkeypatch):
+    """cv 没有 near_registry_pairs（旧版）时退回 NEVER_MATCH_FAMILIES，方向不论。"""
+    from guji_manager import _cv
+    from guji_manager.review import reasons as rs
+
+    def gone(name):
+        if name == "near_registry_pairs":
+            raise AttributeError(name)
+        return {"NEVER_MATCH_FAMILIES": [("論", "諭"), ("日", "曰")]}[name]
+    monkeypatch.setattr(_cv, "__getattr__", gone)
+    monkeypatch.delattr(_cv, "near_registry_pairs", raising=False)
+    assert rs._hand_pairs_from_cv() == {("論", "諭"), ("日", "曰")}
+
+
+def test_none_cols_cells_by_design(tmp_path):
+    """reference_profile 列级无参照（cv align_ref 产物 none_cols，CV0 11-28 脉经第 2 册缺文小注）：声明列的格算本就没参照，
+    同页别的列照旧。"""
+    import json
+    from guji_manager.review.reasons import book_cells
+    root = tmp_path / "02"
+    for step, layer in (("seed_admit", {"page": 18, "columns": [
+                            {"col": 7, "chars": [{"id": "02:18:7:1", "char": "甲"}]},
+                            {"col": 8, "chars": [{"id": "02:18:8:1", "char": "乙"}]}]}),
+                        ("align_ref", {"page": 18, "anchored": True, "ref_kind": "text", "none_cols": [8]})):
+        (root / step).mkdir(parents=True)
+        (root / step / "p0018.json").write_text(json.dumps({step: layer}), encoding="utf-8")
+    cells = book_cells(tmp_path, "02")
+    assert cells["18:8:1"].ref_by_design and not cells["18:7:1"].ref_by_design

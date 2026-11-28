@@ -43,6 +43,7 @@ S8 / S10 里模型放大字块看图下的结论，以前只写进 md，攒不�
 想改结论就在文件末尾追加一行新的，别改旧行（改了旧行会按新内容另记一条，旧的留在账上）。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP, read_decide
 
 import json
 from dataclasses import dataclass, field
@@ -58,7 +59,7 @@ VISION_SHARD = "char-recognition/vision-checks"
 #: 待审卡上的 doubt 码。
 VISION_DOUBT = "vision_flag"
 _KEYS = {"cell", "v", "char", "shown", "judge", "note", "group", "ref", "ts"}
-_STEP = "seed_admit"
+_STEP = RULING_STEP
 
 
 class VisionLog(EventLog):
@@ -227,7 +228,6 @@ def vision_pending(book: str, pages: list[int], store=None, log: VisionLog | Non
     清掉它的办法是在控制台裁（`doubt=vision_flag` 一键筛出来）。→ `[{id, page, char, vision, judge}]`。"""
     from .._cv import page_key
     from .._cv import ProductStore
-    from .._cv import ADMIT_KIND, ADMIT_STEP
     flags = vision_flags(book, log)
     if not flags:
         return []
@@ -244,7 +244,7 @@ def vision_pending(book: str, pages: list[int], store=None, log: VisionLog | Non
         ids = want.get(pg)
         if not ids:
             continue
-        a = st.read(book, ADMIT_STEP, page_key(pg), ADMIT_KIND)
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:

@@ -38,7 +38,7 @@ from typing import Callable, Iterable
 SUFFIX = "~r"
 SPACE = "raw_page_px@top-right"
 #: 不按页号锚、不受页表 rev 闸管的事件种类；与 cv `core/event_files.GATE_EXEMPT_KINDS` 保持一致。
-GATE_EXEMPT_KINDS = frozenset({"glyph_audit", "ctx_ruling"})
+GATE_EXEMPT_KINDS = frozenset({"glyph_audit", "ctx_ruling", "vis_glyph"})
 
 _KEY = re.compile(r"^(?:v2:)?(?P<book>[^:]+):(?P<page>\d+)")
 

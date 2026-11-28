@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-_P = Path(__file__).resolve().parents[2] / "tools" / "开书" / "出v01.py"
+_P = Path(__file__).resolve().parents[2] / "guji_manager" / "launch" / "v01.py"
 
 
 def _mod():

@@ -7,6 +7,7 @@ P1 只实现 `gold_add`（事件 → 金标条目），另外两个（glyphdb_ad
 """
 
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD, invalidate_decide, is_decide_step
 
 import json
 import os
@@ -39,6 +40,7 @@ class ConsumeResult:
     no_products: int = 0       # glyphdb_admit：本机没有这页现行切分产物、绑定算不出，不取图（换到有产物的机器再消费）
     superseded: int = 0        # glyphdb_admit：库里这一格已是更晚的人裁，旧票不再覆盖（非错误）
     withdrawn: int = 0         # glyphdb_admit：更晚的人裁判切坏／非字／破损，撤掉库里旧的人裁刻例
+    borrowed_clash: int = 0    # glyphdb_admit／回库重放：格号与借来的别书刻例同号（如两书都有 01 册），不取图、不进库（GM2 11-28）
     frame_heavy: int = 0       # glyphdb_admit：字块带框重（同字对照，`seg_defect.lib_frame_heavy`），不进库（也计入 no_lib）
     errors: list[str] = None   # type: ignore[assignment]
     frame_heavy_keys: list[str] = None   # type: ignore[assignment]  —— 上面那些格的键与特征，反馈切分查为什么框线没切掉
@@ -53,7 +55,7 @@ class ConsumeResult:
         return {"consumer": self.consumer, "events": self.n_events, "added": self.added,
                 "updated": self.updated, "skipped": self.skipped, "no_lib": self.no_lib,
                 "occluded": self.occluded, "unbound": self.unbound, "no_products": self.no_products,
-                "superseded": self.superseded, "withdrawn": self.withdrawn,
+                "superseded": self.superseded, "withdrawn": self.withdrawn, "borrowed_clash": self.borrowed_clash,
                 "frame_heavy": self.frame_heavy, "frame_heavy_keys": self.frame_heavy_keys,
                 "errors": self.errors}
 
@@ -322,7 +324,7 @@ def _occluded_lookup(book: str, page: int):
             from .._cv import ImageCache
             from .._cv import ProductStore
             ctx = RunContext(load_book(book), ProductStore(), ImageCache(), log=lambda *_: None)
-            got = (ctx, ctx.params_for(STEPS["seed_admit"]))
+            got = (ctx, ctx.params_for(STEPS.get(DECIDE_NEW) or STEPS[DECIDE_OLD]))
             if books is not None:
                 books[book] = got
         ctx, p = got
@@ -434,6 +436,17 @@ def glyphdb_admit(events, db_path: str | None = None,
         _OCC_BOOKS.reset(occ_tok)
 
 
+def borrowed_clash(db, db_id: str) -> bool:
+    """``db_id`` 已是库里借来的别书刻例（``borrowed`` 表）。实例 id 是 ``v2:<册>:页:列:格``、不带书，
+    借库的书与被借的书册号相同（汉书 01 借史記，史記也有 01）时同一个 id 指两本书的两格：照常进库会把
+    借来那例的字改成本书的字、图仍是别书那格（贴错图），本机库里本书刻例又因 id 在 ``borrowed`` 表里导不出去
+    （汉书 01 回库 3,415 格撞 68 格，GM2 11-28）。撞号的一律不进，等实例 id 带书再说。"""
+    try:
+        return db.conn.execute("SELECT 1 FROM borrowed WHERE instance_id=?", (db_id,)).fetchone() is not None
+    except Exception:      # noqa: BLE001 —— 没有 borrowed 表＝没借库
+        return False
+
+
 def _is_backfill(e: Event) -> bool:
     p = e.payload or {}
     return e.kind == "confirm" and p.get("source") == "auto" and bool(p.get("backfill")) \
@@ -459,6 +472,10 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
         key = e.target.key[3:] if e.target.key.startswith("v2:") else e.target.key
         db_id, p = f"v2:{key}", e.payload
         ch = p.get("shape") or ""
+        if borrowed_clash(db, db_id):
+            res.borrowed_clash += 1
+            res.skipped += 1
+            continue
         if (db.conn.execute("SELECT 1 FROM admissions WHERE instance_id=?", (db_id,)).fetchone()
                 or db.conn.execute("SELECT 1 FROM evictions WHERE instance_id=?", (db_id,)).fetchone()):
             res.skipped += 1
@@ -616,12 +633,18 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
         from .._cv import resolve_patch_key
         path = cache.get(book, "char_patch", resolve_patch_key(book, ckey))   # alt_cut 换列
         db_id0 = e.target.key if e.target.key.startswith("v2:") else f"v2:{e.target.key}"
+        if borrowed_clash(db, db_id0):
+            # 与借来的别书刻例同号：库里那张图是别书的，不能拿来当本格，也不能撤／改它（见 borrowed_clash）
+            res.borrowed_clash += 1
+            res.no_lib += 1
+            continue
         lib_png = None
         if path is None:
             # 字块缓存会被清（LRU）。这一格**已在库里**（改判）时，图块就用库里那张——
             # 字形库 08（2026-09-26）实测：缓存没了改判就一直消费失败，库里留着旧字。
-            row = db.conn.execute("SELECT patch_png FROM instances WHERE instance_id=?",
-                                   (db_id0,)).fetchone()
+            # 同号的借来刻例（别书那格，见 borrowed_clash）不能当本格旧图用：只认本书自己的实例（CV3 11-28）
+            row = None if borrowed_clash(db, db_id0) else db.conn.execute(
+                "SELECT patch_png FROM instances WHERE instance_id=?", (db_id0,)).fetchone()
             if row is None:
                 res.errors.append(f"{e.target.key}: 缓存里没有字块 {ckey}")
                 res.skipped += 1
@@ -979,14 +1002,20 @@ def product_invalidate(events, product_store=None, dry_run: bool = False, **kw) 
             res.skipped += 1
             res.errors.append(f"{e.id}: 路由没给 extra.step，或事件没 book/page 且 key {t.key!r} 反解不出")
             continue
-        key = (book, step, page_key(page))
+        # 定字步 seed_admit／char_decide 两名并认：同时失效两名（没跑过的名不算错），一页只计一次
+        key = (book, DECIDE_NEW if is_decide_step(step) else step, page_key(page))
         if key in done:
             continue
         done.add(key)
         if dry_run:
             res.added += 1
             continue
-        if st.manifest(book, step).invalidate(key[2], f"人裁 {e.kind} {e.id}"):
+        reason = f"人裁 {e.kind} {e.id}"
+        if is_decide_step(step):
+            hit = invalidate_decide(st, book, key[2], reason)
+        else:
+            hit = bool(st.manifest(book, step).invalidate(key[2], reason))
+        if hit:
             res.added += 1
         else:
             res.skipped += 1

@@ -7,6 +7,8 @@
 只读两步产物（seed_admit 的 doubts、align_ref 的对位与坐标对位），纯函数，不碰事件、不写任何东西。
 """
 from __future__ import annotations
+from ..products_io import layer_strict
+from ..products_io import decide_pages
 
 import re
 
@@ -156,8 +158,8 @@ def book_causes(products_dir, book: str) -> dict[str, dict]:
     from pathlib import Path
     root = Path(products_dir) / book
     out: dict[str, dict] = {}
-    for f in sorted((root / "seed_admit").glob("p*.json")):
-        seed = json.loads(f.read_text(encoding="utf-8"))["seed_admit"]
+    for f in sorted(decide_pages(root)):
+        seed = layer_strict(json.loads(f.read_text(encoding="utf-8")))
         af = root / "align_ref" / f.name
         align = json.loads(af.read_text(encoding="utf-8"))["align_ref"] if af.exists() else None
         from .reasons import align_for_seed

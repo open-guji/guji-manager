@@ -3,7 +3,7 @@
     guji groups status --prod <产物根>[,<产物根>…] --labels <dataset>/char-groups/labels/unified.jsonl \\
         [--codepoints <工作区>/config/codepoints.yaml] --out <dataset>/char-groups/status [--tag main-v0.5.10]
 
-产物根下是 `<册>/seed_admit/p*.json`（`guji products pack fetch` 的布局，或工作区的 `products/`）。只读，不跑管线。
+产物根下是 `<册>/char_decide（或旧名 seed_admit）/p*.json`（`guji products pack fetch` 的布局，或工作区的 `products/`）。只读，不跑管线。
 写 `<日期>-<tag>.json`（每组 × 每册全量）与同名 `.md`（总表）。口径（规范见 `cv doc/4-定字/字组/README.md` 第四节）：
 
 - **出现格**：放行字在组里的格，加上进过组流程（`evidence.group.id`＝本组）的格。一个字可属多组（日：ry、rm），各组各算。
@@ -18,6 +18,8 @@
   （`corrected_from`，来源之间结论不同）的条数。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 import datetime as _dt
 import glob
@@ -81,10 +83,10 @@ def collect(prods: list[Path], labels: Path | None = None, codepoints: Path | No
     mismatch: dict = defaultdict(list)
     books = set()
     for root in prods:
-        for f in sorted(glob.glob(str(Path(root) / "*" / "seed_admit" / "p*.json"))):
+        for f in sorted([str(x) for d in sorted(Path(root).glob("*")) for x in decide_pages(d)]):
             book = Path(f).parts[-3]
             books.add(book)
-            for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+            for col in layer_strict(json.loads(Path(f).read_text(encoding="utf-8")))["columns"]:
                 for r in col["chars"]:
                     gr = (r.get("evidence") or {}).get("group") or {}
                     gs = set(of.get(r.get("char") or "", []))

@@ -52,13 +52,15 @@ def cell_state(r: dict) -> str:
     return "review"
 
 
-def load_cells(vroot: Path, book: str, step: str = "seed_admit") -> dict[str, dict]:
-    """变体根下一册的全部格：{格 id: {page, state, char, channel, doubts}}。"""
+def load_cells(vroot: Path, book: str, step: str | None = None) -> dict[str, dict]:
+    """变体根下一册的全部格：{格 id: {page, state, char, channel, doubts}}。缺省读收尾产物（新旧名并认，并存以 char_decide 为准）。"""
+    from ..products_io import decide_dir, is_decide_step, layer
     out: dict[str, dict] = {}
-    d = Path(vroot) / book / step
+    d = decide_dir(vroot, book) if step is None or is_decide_step(step) else Path(vroot) / book / step
     for f in sorted(d.glob("p*.json")) if d.is_dir() else []:
         page = int(f.stem[1:])
-        sa = json.loads(f.read_text(encoding="utf-8")).get(step) or {}
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        sa = (layer(doc) if step is None or is_decide_step(step) else doc.get(step)) or {}
         for col in sa.get("columns") or []:
             for r in col.get("chars") or []:
                 out[r["id"]] = {"page": page, "book": book, "state": cell_state(r), "char": r.get("char") or "",

@@ -10,6 +10,7 @@
 - 迁移是数据改动：改完那册要显式 force 重放 seed_admit；`u` 落地后这一整块退役。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 from pathlib import Path
 from typing import Callable
@@ -70,7 +71,7 @@ def migrate(rows: list[dict], book: str, store, batch: str, products: Path, *, w
         evs = []
         for x in todo:
             seq += 1
-            evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=x["payload"]["cell"], book=book),
+            evs.append(make_event(batch, seq, RULING_KIND, EventTarget(step=RULING_STEP, unit="cell", key=x["payload"]["cell"], book=book),
                                   x["payload"], actor="model"))
         ok, bad = screen(evs)
         bad_ids = {id(e): m for e, m in bad}

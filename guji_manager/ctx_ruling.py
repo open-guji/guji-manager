@@ -10,6 +10,7 @@
 本命令只写、不替管线判；字≠整理本字的行会提示「越过整理本」。
 """
 from __future__ import annotations
+from .products_io import RULING_STEP
 
 import argparse
 import sys
@@ -84,7 +85,7 @@ def build_events(rows: list[dict], win: dict, *, batch: str, subclass: str, mode
                    "gate": "by_cell"}
         payload.update((anchors or {}).get(r["id"]) or {})      # 格锚点：cells_sha（写裁定这一刻的产物戳）＋ref（裁定键长期方案③）
         seq0 += 1
-        evs.append(make_event(batch, seq0, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]),
+        evs.append(make_event(batch, seq0, RULING_KIND, EventTarget(step=RULING_STEP, unit="cell", key=r["id"], book=r["id"].split(":")[0]),
                               payload, actor="model", ts=ts))
     return evs, notes
 

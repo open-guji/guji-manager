@@ -42,7 +42,7 @@ def test_pack_of():
 
 
 def test_find_stale_marks_from_packs():
-    v = {"book": "b", "vol": "001", "ws": None, "pending_rev": "001-r1",
+    v = {"book": "b", "vol": "001", "ws": None,
          "extra": {"a31.main": {"label": "r7"}, "cv.pack": {"label": "r5"}, "cv.packs": {"r7": {"cells": 100, "review": 2}}}}
     st = SY.find_stale([v], {}, {})
     assert st["packs"][0]["from_packs"] is True

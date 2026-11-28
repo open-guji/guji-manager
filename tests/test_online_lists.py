@@ -18,12 +18,13 @@ def test_on_promote_skips_non_volume(capsys, monkeypatch):
     assert not called and capsys.readouterr().out == ""
 
 
-def test_on_promote_reports_missing_env(capsys, monkeypatch):
+def test_on_promote_reports_missing_env(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("GUJI_DATA_TOKEN_PROD", raising=False)
     monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r")
+    _landed(tmp_path)
     called = []
     monkeypatch.setattr(OL.subprocess, "Popen", lambda *a, **k: called.append(a))
-    OL.on_promote("vol13", "lbl", ws="/tmp")
+    OL.on_promote("vol13", "lbl", ws=str(tmp_path))
     out = capsys.readouterr().out
     assert "GUJI_DATA_TOKEN_PROD" in out and not called
 
@@ -34,7 +35,29 @@ def test_on_promote_can_be_disabled(capsys, monkeypatch):
     assert capsys.readouterr().out == ""
 
 
+def _landed(tmp_path, book="vol13"):
+    d = tmp_path / "reports" / book / "_land"
+    d.mkdir(parents=True)
+    (d / "landed.json").write_text('{"pack": "old"}', encoding="utf-8")
+
+
+def test_on_promote_skips_never_landed_book(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "p")
+    monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r")
+    monkeypatch.delenv("GUJI_AUTO_LAND_FIRST", raising=False)
+    called = []
+    monkeypatch.setattr(OL.subprocess, "Popen", lambda *a, **k: called.append(a))
+    OL.on_promote("vol13", "lbl", ws=str(tmp_path))
+    assert not called and "不自动 land" in capsys.readouterr().out
+    monkeypatch.setenv("GUJI_AUTO_LAND_FIRST", "1")
+    monkeypatch.setenv("GUJI_BOOK_TEXT", str(tmp_path))
+    monkeypatch.setenv("GUJI_CV_REPO", str(tmp_path))
+    OL.on_promote("vol13", "lbl", ws=str(tmp_path))
+    assert called
+
+
 def test_on_promote_starts_detached_job(tmp_path, monkeypatch, capsys):
+    _landed(tmp_path)
     monkeypatch.setenv("GUJI_DATA_TOKEN_PROD", "p")
     monkeypatch.setenv("GUJI_DATA_TOKEN_READ", "r")
     monkeypatch.setenv("GUJI_BOOK_TEXT", str(tmp_path))

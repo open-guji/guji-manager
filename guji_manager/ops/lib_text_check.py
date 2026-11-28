@@ -160,8 +160,10 @@ def _single_han(ch: str | None) -> bool:
 def _seed(root: Path, book: str) -> tuple[dict[str, dict], dict[int, str]]:
     cells: dict[str, dict] = {}
     page_at: dict[int, str] = {}
-    made = _manifest_ts(root / book / "seed_admit" / "_manifest.jsonl")
-    for f in sorted((root / book / "seed_admit").glob("p*.json")):
+    from ..products_io import decide_dir
+    d = decide_dir(root, book)                         # 收尾新旧名并认（cv #2033 改名 char_decide）
+    made = _manifest_ts(d / "_manifest.jsonl")
+    for f in sorted(d.glob("p*.json")):
         d = json.loads(f.read_text(encoding="utf-8"))
         pm = d[next(iter(d))]
         try:
@@ -314,7 +316,9 @@ def _apply(todo: list[dict], batch: str, dbp) -> dict:
     st = ProductStore()
     pages = {(r["key"].split(":")[0], int(r["key"].split(":")[1])) for r in todo if r["action"] == "invalidate"}
     for bk, pg in sorted(pages):
-        done["invalidated_pages"] += bool(st.manifest(bk, "seed_admit").invalidate(page_key(pg), "库文一致：库例晚于产物"))
+        from ..products_io import DECIDE_STEPS
+        hit = [st.manifest(bk, s).invalidate(page_key(pg), "库文一致：库例晚于产物") for s in DECIDE_STEPS]   # 两名都失效
+        done["invalidated_pages"] += bool(any(hit))
     done["review_added"] = _to_review([r for r in todo if r["action"] == "review"])
     return dict(done)
 
@@ -349,9 +353,6 @@ def _to_review(rows: list[dict]) -> int:
             except (KeyError, ValueError):
                 continue
         store.save()
-        if P.sheet_path(data, text_id, chapter).exists():      # 整张单跟着重导（还没出过单的章不凭空造一张）
-            from ..cli_pending import export
-            export(store, data)
     return n
 
 
@@ -371,7 +372,8 @@ def auto_check(args, eng, steps: list[str]) -> None:
     import os
     if os.environ.get("GUJI_LIB_TEXT_CHECK", "1") == "0":
         return
-    if str(getattr(args, "pages", "")) != "all" or "seed_admit" not in steps:
+    from ..products_io import is_decide_step
+    if str(getattr(args, "pages", "")) != "all" or not any(is_decide_step(s) for s in steps):
         return
     book = eng.book.id
     try:

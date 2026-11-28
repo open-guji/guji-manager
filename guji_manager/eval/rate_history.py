@@ -23,6 +23,8 @@
 未审段 3.46% → 2.68%，后者才是干净的因果。
 """
 from __future__ import annotations
+from ..products_io import decide_dir
+from ..products_io import exists_decide, read_decide
 
 from .. import _cv  # cv_repo()：本文件原在 cv 包里，按 __file__ 找 cv 仓
 import json
@@ -82,8 +84,8 @@ def body_pages(book: str, st: ProductStore) -> list[int]:
             if str(anc.get("book")) == book and (r.get("expected") or {}).get("page_type") == "body":
                 body.add(int(anc["page"]))
     if body:
-        return sorted(p for p in body if st.exists(book, "seed_admit", page_key(p)))
-    d = st.root / book / "seed_admit"
+        return sorted(p for p in body if exists_decide(st, book, page_key(p)))
+    d = decide_dir(st.root, book)
     return sorted(int(p.stem[1:]) for p in d.glob("p*.json")) if d.exists() else []
 
 
@@ -96,7 +98,7 @@ def measure(book: str, st: ProductStore) -> dict | None:
     seen_pages, un_tot, un_auto = set(), 0, 0
     per_page: dict[int, tuple[int, int]] = {}
     for pg in pages:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         t0 = r0 = 0

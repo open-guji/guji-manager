@@ -31,7 +31,8 @@ import urllib.request
 from pathlib import Path
 
 WEB_REPO = "open-guji/kaiyuanguji-web"
-LIVE = "https://data.openguji.com/proof/{text_id}/{n:03d}.pending.json"
+LIVE = "https://data.openguji.com/proof/{text_id}/{n:03d}.pending.json"      # 仅 collect 的旧核线上还在用（整张单 11-27 起已不再发 COS，待 collect 改按条目后删）
+SITE_PENDING = "https://www.openguji.com/api/pending?book={text_id}&vol={n:03d}"      # 读者侧：网站由条目现拼待审格
 DIANBEN_ID = "96mid1ogzk"
 LEDGER_FILES = ("glyphs.jsonl", "exemplars.jsonl", "admissions.jsonl")
 MIN_FREE_GB = 3.0
@@ -225,14 +226,6 @@ def save_state(path: Path, state: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, path)
-
-
-def live_rev(text_id: str, n: int) -> str | None:
-    try:
-        with urllib.request.urlopen(LIVE.format(text_id=text_id, n=n) + f"?x={int(time.time())}", timeout=30) as r:
-            return json.load(r).get("rev")
-    except Exception:
-        return None
 
 
 def last_publish_age_hours() -> float | None:

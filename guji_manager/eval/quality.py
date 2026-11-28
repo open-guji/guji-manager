@@ -15,6 +15,7 @@ preferred 放行，三条判准连同实测数字与用户裁决日期都写在�
 判准本身现在与 `eval/rulers.py`、`eval/round_check.py` 同级——三份判准的家一致了。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 
 from .._cv import page_key
 from .._cv import ProductStore
@@ -51,7 +52,7 @@ def quality(book: str = "vol01", pages: str = "dev_set",
     errors: list[dict] = []
     n_total = 0
     for pg in pgs:
-        a = store.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(store, book, page_key(pg))
         d = store.read(book, "context_decide", page_key(pg), "context_decision")
         if a is None:
             continue

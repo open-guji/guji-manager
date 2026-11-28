@@ -387,10 +387,17 @@ def downgraded_steps(before: dict, after: dict, steps: list[str]) -> dict[str, s
     量法坏了挡住导入，也不因为量法坏了放过降级（记录里两边都会写出来）。"""
     if "error" in before or "error" in after:
         return {}
+    from ..products_io import DECIDE_STEPS, is_decide_step
+
+    def fresh(st: dict, s: str) -> int:
+        # 定字收尾两名并认（cv P3）：旧包写 seed_admit、新 cv 的 status 键是 char_decide，取两名里有数的那个
+        names = DECIDE_STEPS if is_decide_step(s) else (s,)
+        return max((st.get(n) or {}).get("fresh", 0) for n in names)
+
     out = {}
     for s in steps:
-        b = (before.get(s) or {}).get("fresh", 0)
-        a = (after.get(s) or {}).get("fresh", 0)
+        b = fresh(before, s)
+        a = fresh(after, s)
         if a < b:
             out[s] = f"新鲜 {b} → {a}"
     return out

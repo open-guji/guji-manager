@@ -10,6 +10,8 @@
 缺事实时不猜：比如没给字形库样本数（`lib_n`），「刻例太少」这两条就判不了，落到后面的规则或 `unknown`。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD, DECIDE_STEPS
+from ..products_io import decide_pages
 
 import json
 from collections import Counter
@@ -291,15 +293,25 @@ def _hard_pair(c: Cell, x: Context) -> bool:
 
 
 def _near_pairs() -> frozenset[tuple[str, str]]:
-    """cv 手工形近表 NEVER_MATCH_FAMILIES（无序对）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
+    """cv 手工形近表（无序对，两端按码位排好）。读 cv 的形近字组登记表 `config/near_groups/v2.json` 里 `src` 含 hand 的对
+    （cv `manager_api.near_registry_pairs`，W1 第二期 2026-11-28）；cv 还没有这个读口（旧版）就退回 `NEVER_MATCH_FAMILIES`，
+    两者逐对相等（cv `tests/test_near_registry_readers.py`）。取不到 cv 就当空表（N01 只剩护栏一条）。"""
     global _NEAR_PAIRS
     if _NEAR_PAIRS is None:
         try:
-            from .._cv import NEVER_MATCH_FAMILIES
-            _NEAR_PAIRS = frozenset(tuple(sorted(p)) for p in NEVER_MATCH_FAMILIES if len(p) == 2)
+            _NEAR_PAIRS = _hand_pairs_from_cv()
         except Exception:  # noqa: BLE001 —— 没装 cv 时不挡分类
             _NEAR_PAIRS = frozenset()
     return _NEAR_PAIRS
+
+
+def _hand_pairs_from_cv() -> frozenset[tuple[str, str]]:
+    from .. import _cv
+    try:
+        pairs = _cv.near_registry_pairs("hand")
+    except AttributeError:                 # cv 早于登记表第二期：没有 near_registry_pairs／registry_pairs
+        pairs = _cv.NEVER_MATCH_FAMILIES
+    return frozenset(tuple(sorted(p)) for p in pairs if len(p) == 2)
 
 
 _NEAR_PAIRS: frozenset[tuple[str, str]] | None = None
@@ -538,9 +550,12 @@ def classify(c: Cell, ctx: Context) -> R:
 
 def _load_layer(path: Path, key: str) -> dict | None:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))[key]
-    except (OSError, KeyError, ValueError):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
+    if key in DECIDE_STEPS:            # 定字层：char_decide／seed_admit 两名并认
+        return doc.get(DECIDE_NEW) or doc.get(DECIDE_OLD)
+    return doc.get(key)
 
 
 def align_for_seed(seed: dict, align: dict | None) -> dict | None:
@@ -587,6 +602,12 @@ def _ref_by_design(root: Path, name: str) -> bool:
     return any(n in note for n in NOREF_NOTES)
 
 
+def _none_cols(root: Path, name: str) -> frozenset[int]:
+    """册配置 `reference_profile` 列级 none 段在本页声明的无参照列（cv align_ref 产物 `none_cols`，CV0 11-28）。"""
+    ar = _load_layer(root / "align_ref" / name, "align_ref") or {}
+    return frozenset(int(c) for c in ar.get("none_cols") or [])
+
+
 def _layer_note(root: Path, name: str) -> str:
     return str((_load_layer(root / "align_ref" / name, "align_ref") or {}).get("note") or "")
 
@@ -628,7 +649,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
     给了 `bigrams` 就顺手把全册整理本字（按页、按列序连起来）的相邻二字计数加进去，给 `ref_suspect` 用。"""
     root = Path(products_dir) / book
     out: dict[str, Cell] = {}
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(root)):
         seed = _load_layer(f, "seed_admit")
         if not seed:
             continue
@@ -641,6 +662,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
         by_design = _ref_by_design(root, f.name)
+        none_cols = _none_cols(root, f.name)
         frags = _frag_ids(root, f.name)
         bleeds = _bleed_ids(root, f.name)
         rs = _load_layer(root / "row_segment" / f.name, "cells") or {}
@@ -665,7 +687,8 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []) + ([PIN_REMAPPED_DOUBT] if remap else []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind, ref_by_design=by_design, frag=cid in frags, bleed=cid in bleeds)
+                                                 col_agree=agree, page_kind=kind,
+                                                 ref_by_design=by_design or int(col.get("col", -1)) in none_cols, frag=cid in frags, bleed=cid in bleeds)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])

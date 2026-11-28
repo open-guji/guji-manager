@@ -22,6 +22,7 @@ ai-team `domain/CV/新书登记/全唐文/收轮脚本/`：tot.py、cls36.py、g
 `--collect <任务号段>`：把任务库里一批 roundcheck 单的结果收成一份汇总 tsv。
 """
 from __future__ import annotations
+from .products_io import decide_pages, is_decide_step, layer_strict
 
 import csv
 import hashlib
@@ -164,9 +165,11 @@ def classify(f: dict, cfg: LayerConfig, group_chars: frozenset, near_form: froze
 
 
 def _layer(root: Path, step: str):
-    for f in sorted((root / step).glob("p*.json")):
+    files = decide_pages(root) if is_decide_step(step) else sorted((root / step).glob("p*.json"))
+    for f in files:
         try:
-            yield json.loads(f.read_text(encoding="utf-8"))[step]
+            doc = json.loads(f.read_text(encoding="utf-8"))
+            yield layer_strict(doc) if is_decide_step(step) else doc[step]
         except (OSError, ValueError, KeyError):
             continue
 
@@ -441,7 +444,7 @@ def run(book: str, *, ws: str, out: Path, pack: str, main: str = "main", ledger:
     s["gate"] = {k: g.get(k) for k in ("blocked", "n_regress", "n_geo_same", "n_bad_pages", "n_known", "n_fixed",
                                        "n_unregistered", "geometry")}
 
-    n_pages = len(list((pc_dir / book / "seed_admit").glob("p*.json")))
+    n_pages = len(list(decide_pages(pc_dir / book)))
     diff = [*_guji(), "products", "diff", book, "--a", str(pm_dir), "--b", str(pc_dir), "-w", ws,
             "--pages", pages or (f"1-{n_pages}" if n_pages else "all"), "--out", str(out / "diff")]
     _sh(diff)

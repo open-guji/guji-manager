@@ -52,9 +52,9 @@ def suggest(rows: list[dict], lib_n=None) -> list[dict]:
         elif s == "异体／形近字对多":
             pr = [r for r in rows if r.get("pending_reason") in diagnose.PAIR]
             pairs = [p for p, _ in Counter(f"{r.get('ref') or '∅'}/{r.get('top') or '?'}" for r in pr).most_common(10)]
-            out.append({**base, "kind": "sample", "step": "seed_admit", "key": "follow_ref_variants|follow_ref_seen", "value": None,
+            out.append({**base, "kind": "sample", "step": "seed_admit", "key": "references.script|follow_ref_seen", "value": None,
                         "from_step": "seed_admit", "candidates": pairs,
-                        "check": "每对抽 10 格看图 0 错：同义对→follow_ref_variants，不同义对→follow_ref_seen（白名单）；可信的整本书考虑 reference_trust"})
+                        "check": "每对抽 10 格看图 0 错：同义对→参校本标 script: faithful 且 accuracy ≥ high（cv 推出照录异体），不同义对→follow_ref_seen（白名单）；可信的整本书把 accuracy 标 high／very_high"})
         elif s == "字组弃权／打架多":
             out.append({**base, "kind": "action", "todo": sg["todo"],
                         "cmd": "guji-manager final-review run --pkg <产物包> --cells cells.tsv --out <目录>（按类分批判读，不调 API）"})

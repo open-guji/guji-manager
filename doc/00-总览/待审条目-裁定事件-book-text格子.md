@@ -1,11 +1,11 @@
 # 待审条目、裁定事件、book-text 格子：三样东西和它们的关系
 
-> 2026-11-10 A31 整理；**2026-11-27 按 Sheldon 反馈重写**：①「人裁事件」改叫**裁定事件**（裁定者可以是人、AI 或规则，要能区分来源）；②**没有批次、没有 rev**：每格一个待审条目，各自增删改；③格的身份是 `(书, 册, u)`，不是只有 u。
+> 2026-11-10 A31 整理；**2026-11-27 按 Sheldon 反馈重写**：①「裁定事件」改叫**裁定事件**（裁定者可以是人、AI 或规则，要能区分来源）；②**没有批次、没有 rev**：每格一个待审条目，各自增删改；③格的身份是 `(书, 册, u)`，不是只有 u。
 > 本篇是这三样东西的**总纲**：含义、范围、关键信息、谁写、多快变，以及它们之间怎么转。
-> 细节规范各有真源（文末「真源」一节），细节以真源为准；**三者的分工与规矩以本篇为准**，别的文档与本篇冲突时改别的文档。
+> **表结构、列、主流程的现行基准页是 [数据库/待审条目与裁定事件](../数据库/待审条目与裁定事件.md)**，字段与流程与它冲突时以它为准、改本篇；本篇多讲「为什么这样分」和 book-text 怎么改。
 > 计划与现状数据：`待审条目与裁定事件-现状目标与清理计划-v2`（2026-11-27，项目文件 `guji-pending-ruling/`）。
 >
-> **阅读说明**：本篇写的是**清理完成后的目标形态**。代码和线上还有没清完的残留（网站仍读整章单、仍带 rev，见第七节），以第七节为准判断「现在到底是什么样」；第八节是废弃说法，新文档不许再用。
+> **阅读说明**：本篇写的是现行形态。还没清完的过渡项只剩第七节那几条；第八节是废弃说法，新文档不许再用，旧整张换单的做法见 [archive](../archive/README.md)。
 
 ## 零、术语表
 
@@ -45,7 +45,7 @@
   - `guess_c`：阙文的推测字（括注用）
   - `fig`：图片格
   - `unk`：无法识别字（图上有字、认不出、Unicode 没有；`c` 写 □，值是部件描述；网页显示「？」），见 [无法识别字](../参考/无法识别字.md)
-  - `u`：字格永久编号（char v0.6），册内唯一，见 [字格永久编号u](../参考/字格永久编号u.md)
+  - `u`：字格永久编号（char v0.6），册内唯一，见 [字格永久编号u](../参考/字格身份账.md)
 - **不录**：待审原因、候选、置信度、裁定记录、`decision.json`、点校的 `assumed`（11-09 起全部不进 book-text，校验 F-OV-16、F-OV-05 会拦）。
 - **谁写、多快**：只在**换包／重导出／修订／点校入标点**时改，每次升文本线版本、写进 git 提交（`版本记录:` 行）。
   **原则是少改**：一次改字就是一次 book-text 提交、一次升版、可能一次标点重投影。条目开着还是关着，不影响 book-text。
@@ -60,7 +60,7 @@
   3. 已裁、留着显示结果的格（`resolved`）。
 
   字没问题、只因标点／专名要重挂的格（`anchor_miss`／`add_del`／`anchor_drift`）**不开条目**，放旁表 `anchor_cells`，不进网站、不让 book-text 钉住现字。
-- **关键信息**（详见 [设计-待审条目化](../4-反馈迭代/设计-待审条目化.md) 第三节字段表；该文有已被取代的部分，见其文首说明）：
+- **关键信息**（详见 [待审条目与裁定事件](../数据库/待审条目与裁定事件.md) 第三节字段表；原设计在 [archive](../archive/设计-待审条目化.md)）：
   - 身份：`item_id`（开时定的不透明编号，之后不变）、`book`、`vol`、`u`；格号 `cell` 只是当前位置，会随重切改；图块指纹 `fp`
   - `state`：`open`／`withdrawn`／`resolved`／`closed`
   - `reason`：待审原因码（真源 `review/pending_reasons.yaml`），**单独一列**，不与变更说明混用
@@ -86,24 +86,24 @@
   | `payload.by` | 人的账号、模型名、脚本名 | 具体是谁 |
   | `payload.channel` | `console`／`web_vote`／`opinion`／`script`／`llm`／`vision` | 从哪条路进来 |
 
-  存量事件不改，`level` 虚拟列按旧规则推；新写的一律显式写。**哪些级别算钉、算「已落定」只在一处定义**（manager `levels.py`），Worker 与 cv 引用同一张表。
+  存量事件不改，`level` 虚拟列按规则推；新写的一律显式写（`write_events` 兜底补）。**哪些级别算钉、算「已落定」只在一处定义**（manager `feedback/levels.py`），中心库 `events.level` 虚拟列与 Worker 是它的镜像，`tests/test_event_levels.py` 逐条比对。**AI 判、人点按钮确认的算 `human`**（Sheldon 11-27 定）；大模型判断未经人点的（`model`）与 `machine` 不算落定。
   `batch` 只是文件名／导入标识，**不带语义**，不能靠它判级别。
 - **住哪**：中心库 `events` 表；本机镜像 `feedback/events/<batch>.jsonl`。
   另有不算「已落定」的：看图结论（stream=`vision`）、大模型裁定（stream=`rulings`，键是前后文窗口，不是格号）、点校旁路笔记（`feedback/notes`）。
-- **关键信息**：`id`、`ts`、`kind`、`target.key`（`册:页:列:格`，带册号）、`target.anchor`（当时那块图的位置与指纹）、`payload.v`／`shape`（定的字）、来源三字段、`payload.pending_reason`（当时为什么待审，只作统计）。目标：顶层加 `book`、`vol`、`u` 列，配对不再从 `target.key` 前缀猜。
+- **关键信息**：`id`、`ts`、`kind`、`target.key`（`册:页:列:格`，带册号）、`target.anchor`（当时那块图的位置与指纹）、`payload.v`／`shape`（定的字）、来源三字段、`payload.pending_reason`（当时为什么待审，只作统计）。`events.book` 写入口必填（存量已按 `target.key` 第一段回填），`u` 取 `target.anchor.u`／`payload.u`；配对一律 `(书, 册, u)`。
 - **谁写、多快**：脚本只通过 `EventLog.append` 写。规范见 cv `doc/formats/裁定事件规范.md`（旧名 `人裁事件规范.md` 留跳转）。
 
 ## 三、它们怎么连在一起
 
 ### 1. 同一个格的键
 
-**格的身份是 `(书, 册, u)`。** 所有表、接口、文档按这个三元组配，**不许只按 u 配**——u 只在册内唯一，别的册有同号 u（2026-11-27 就因此误配了 923 格，见第七节）。
+**格的身份是 `(书, 册, u)`。** 所有表、接口、文档按这个三元组配，**不许只按 u 配**——u 只在册内唯一，别的册有同号 u（2026-11-27 就因此误配过 923 格）。
 
 | 位置 | 键 | 例 |
 |---|---|---|
 | book-text | `u`（册内）＋ `a` = `页:列:格`（当前位置） | `u=1234`、`100:4:17b` |
 | 待审条目 | `(book, vol, u)`、`item_id`；`cell` 是当前位置 | `pi_3fa9c2…` |
-| 裁定事件 | 目标：顶层 `(book, vol, u)`；现状：`target.key` = `册:页:列:格` ＋ `target.anchor` | `vol02:100:4:17b` |
+| 裁定事件 | `book` 列＋`target.key`（`册:页:列:格`）＋`target.anchor.u` | `vol02:100:4:17b` |
 
 格号是**切分的输出编号**，不是字的身份。重切以后同一个编号可能指向别的字，所以裁定靠 **锚**（原图上的框＋图块指纹）
 重新绑定到现在的格（绑定表 `feedback/bindings/`，cv `doc/design/15-人裁锚定与重切后重绑定.md`）。
@@ -147,7 +147,7 @@
 | 裁定为阙文 | □＋`lacuna: true` | 不开 |
 | 裁定为无法识别字 | □＋`unk: "描述"` | 不开 |
 
-代码：manager `formats/guji_char_cord.apply_pending(current=)`、`swap/resolve.resolve`；（原 cv `republish.py` 的 `hold_pending_current`，已随 republish 删除，逻辑在 `guji land --text`，见第八节）。
+代码：manager `formats/guji_char_cord.apply_pending(current=)`、`swap/resolve.resolve`；整册落文本在 `guji land --text`／`--text-apply`。
 
 ### 4. 四条铁律
 
@@ -163,8 +163,8 @@
 | 问题 | 唯一出口 | 说明 |
 |---|---|---|
 | 这一格现在有没有**被采信**的定字裁定？ | cv `feedback.lookup.human_chars`（过绑定表，`valid`／`rebound` 才认） | 另有的几套读法只作它用：`pending_route.deciding`、`swap/booktext.human_ledger`、`web_votes.latest_human`。**新代码不要再加** |
-| 哪些来源级别算「已落定」？ | manager `levels.py` 一张表 | Worker、cv 引用同一张表（三处一致的测试待加，计划 1.8） |
-| 换包／重跑后，book-text 这一格改不改？ | 第三节的表 = manager `swap/resolve.resolve` | `proof_cycle.split_changes` 是同表的「按格号」实现，格号有变时不用它（见 [换包落book-text-增删格](../../wiki/反馈迭代/换包落book-text-增删格.md)） |
+| 哪些来源级别算「已落定」？ | manager `levels.py` 一张表 | Worker、cv 引用同一张表（四处一致测试：`tests/test_event_levels.py`） |
+| 换包／重跑后，book-text 这一格改不改？ | 第三节的表 = manager `swap/resolve.resolve` | 格号有变时走格级对照表（见 [换包落book-text-增删格](../../wiki/反馈迭代/换包落book-text-增删格.md)） |
 | 哪些格开待审条目？ | 产物未放行（排除名单上已定的除外）＋复审清单＋同字对照自检旗，扣掉已落定的格 | 锚点格进旁表 `anchor_cells`，不开条目 |
 | 复审格什么时候成立？ | 只有「**被采信的**裁定**被机器推翻**」：旧字是最新裁定，机器认出了**另一个非空字**（码位归一后不同） | 机器无字（遮挡）→ 留裁定字不复审；裁定已失效 → 不是复审，是普通待审或直接放行 |
 | 上线前最后一道关 | `guji feedback pending audit`（manager `review/sheet_audit.py`） | 拦：`overturn_untrusted`、`overturn_same`、`anchor_only_in_cells`、`dup_cell`；提示：`overturn_empty`、`no_reason`、`recheck_no_note` |
@@ -175,39 +175,33 @@
 
 - **待审格在 book-text 里看不出来，读者会不会被误导？** 会显示首选字，可能是错的。这正是要人看的格；网站上「待审」的标记读的是待审条目，不是 book-text。
 - **网站票算不算裁定？** 票是读者意见；落成事件（`cellvotes` → `events`，`channel=web_vote`）之后才算。
-- **大模型裁定、点校放行算不算已落定？** 看来源：`level=ai`／`machine` 不算人级落定，除非单独规定。`rulings`／`notes` 另存。AI 判、人点按钮的批次，要写 `level=ai`（计划 2.4，待 Sheldon 定口径）。
+- **大模型裁定、点校放行算不算已落定？** 看来源：`level=ai` 与 `human` 都算落定，`model`／`machine` 不算。AI 判、人点按钮确认的批次算 `human`，不改判。`rulings`／`notes` 另存。
 - **重切后格号变了怎么办？** 只走一条路：[换包落book-text-增删格](../../wiki/反馈迭代/换包落book-text-增删格.md)。裁定按锚重绑，绑不上的回待审当复审；条目先按图块指纹认（同一块图挪了格号只改 `cell`），认不出再按格号认。
 - **`decision.json`、char v0.4、`pending_reason` 写在 char 里？** 都已废弃（11-09）。
 
 ## 六、条目与裁定的对账
 
 - 网站显示＝open 条目减去已落定的格（读时现算，**必须带册**）。
-- 后台另有定时对账，把「读时现算已落定」的条目真写成 `resolved`（记 `event` id），让库里 open 数＝网站显示数（计划 2.2，**未做**）。
+- 后台 `guji pending-settle` 定时对账，把「读时现算已落定」的条目真写成 `resolved`（记 `event` id），让库里 open 数＝网站显示数（执行方 `GUJI_PENDING_SETTLE_S`）。
 - 复审格有裁定也照样显示，直到有比复审开出更晚的裁定。
 
-## 七、尚未清理的残留（现状，以此为准）
+## 七、过渡中的残留
 
-下面这些**还是旧做法**，目标形态里已无，清理分阶段进行（Jira GUJI；计划第二阶段）：
+清理（2026-11-27 第一、二阶段）之后，下面几条还没收尾：
 
-| 残留 | 现状 | 计划 |
+| 残留 | 现状 | 收尾条件 |
 |---|---|---|
-| 网站按整章单读、带 `rev` | 精校页无 `rev` 不让提交；`/api/pending` 的 `put`／`expect_rev`；本机已回应状态按 `kyg-cr-done:<rev>` 存；目录 `proof/index.json` 是 `{rev, n}` | 2.5：提交只带 `item_id/ver/u`，状态按条目存 |
-| 旧票 | 约 970 张按 `cr:<rev>:…` 存；新票值里仍带 `rev` | 2.5：一次性迁成按条目 |
-| 落票成事件 | 批次名 `H-web-<章>-<日期>-<rev>`，`payload.source` 写「网站精校意见（<rev>）」 | 2.5／2.6 |
-| 条目 `src`／`why` 带批号 | `src` 写 `rev:046-r0`；`why` 列实为变更说明 | 1.5、2.6：`why` 纠偏，`origin` 去批号 |
-| 整张单头 | `web_inbox pending` 的单头 `rev`／`based_on_db_rev`／`routed_as_of` | 2.6 |
-| 看板 | `progress_volume` 的 `pending_rev`／`pending_at` | 2.7：改 open 数＋最后变更时间 |
-| 整张换单脚本 | cv `republish.py`、`proof_cycle.py`、`auto_cycle.py` 已删（cv #1974，11-27）；`votes_gate` 随之去掉，由 `guji land`＋读时现算取代 | 已完成 |
-| 事件来源不可靠 | 仅约 1.2% 事件显式写 `payload.level`，其余按 actor＋批次名猜；人级 confirm 里约 64% `reviewer` 为空 | 1.6 先告警，2.4 改必填 |
-| **跨册 u 误配（线上 bug）** | Worker 读时现算 `pendingLive`／`pendingLiveCounts` 与 `ai_notes` 按 `(工作区, u)` 配，没带册；约 923 格被误当已落定藏掉 | 2.0 热修（另有人在修） |
-| 事件缺顶层册、u | `events.book` 多为空；册只在 `target.key` 前缀里（`vol46`／`004`／`01` 三种写法） | 2.3 |
-| 条目开着但裁定已在 | 本册真有裁定而条目仍 open 的 191 格：复审格 128、没人 resolve 的 49 等；控制台和各书线脚本写裁定时都不碰条目 | 2.2 对账 |
+| 库里存量整张 `<章>.pending.json`（`list_rows` 的 `proofing`） | **land 已停导**（2026-11-28）；`proofing-sync` 改取 Worker `/v1/web/pending-chapters`（各章开着条目数＋单格图登记）发图，网站读单走 `pending-doc`，都不读这张单。`collect`／`cellvotes` 的 `--rev`、`_collect/<rev>/`、`swap.LIVE` 还在读它 | collect 改按条目后，存量行下线 |
+| 条目 `src` 历史行带 `rev:046-r0`、`land:…` | 读时一律当机器出的；新开的只写 `pipeline`／`script:<名>`／`human:<谁>` | 不改历史行 |
+| 旧票键 `cr:<rev>:…` | 已一次性迁到 `cr:i:<书>:<条目>:<投票人>`，旧键只读保留 | — |
+| 存量事件 `payload.level`／`by`／`channel` 缺 | 由 `level` 虚拟列按规则推；新写入必填 | 不改历史行 |
+| 候选字段 `alt`／`lib_top`／`ref` | 过渡字段，卡片候选以 `cands/1` 为准 | 全部册挂上 `cands` 后停用 |
 
 ## 八、废弃说法对照
 
 | 旧说法 | 现在 |
 |---|---|
-| 人裁事件、人裁、人裁通道 | **裁定事件**（要说「人看图定的」就说 `level=human` 的裁定） |
+| 人裁事件、人裁通道 | **裁定事件**（要说「人看图定的」就说 `level=human` 的裁定） |
 | 待审单是「一册一张、带版本号 `rev`」 | 待审单只是视图：某章 open 条目的现算列表，**没有版本、没有 rev** |
 | 出单、换单、`republish prep/push`、「第几版单」 | 条目各自增删改；机器一轮只动有变化的条目；`guji land` 落地 |
 | 换单前必须先把旧票落成裁定（`votes_gate`） | 票按条目记，不依赖单子版本，**没有这道闸** |
@@ -229,6 +223,6 @@
 ## 九、真源
 
 - book-text 格子：book-text `docs/design/2026-11-book-text只录首选字.md`（#427）、guji-format char 规范、本仓 `formats/guji_char_cord.py`
-- 待审条目：[设计-待审条目化](../4-反馈迭代/设计-待审条目化.md)（身份、字段、对账规则仍有效；整张单导出、rev 相关部分已被取代）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../参考/待审原因/README.md)）
+- 待审条目：[待审条目与裁定事件](../数据库/待审条目与裁定事件.md)（现行字段与流程；原设计存档在 [archive](../archive/设计-待审条目化.md)）、本仓 `review/proof_fields.py`（候选字段）、`review/pending_reasons.yaml`（原因码，[待审原因](../参考/待审原因/README.md)）
 - 裁定事件：cv `doc/formats/裁定事件规范.md`、`doc/design/15-人裁锚定与重切后重绑定.md`
 - 改不改 book-text：[4e 1.0 之后的反馈 / 全流程与覆盖优先级](../../wiki/反馈迭代/全流程与覆盖优先级.md)、本仓 `swap/resolve.py`

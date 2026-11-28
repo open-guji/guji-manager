@@ -47,6 +47,8 @@ seed_admit／cell_shrink 产物指纹），cv `scripts/zhengli/pending_list.py -
 `SELFCHECK_BOOKS`（按 book-text 条目 id），不写册配置。不在任何 Step 的 code_deps 里，不动产物指纹。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD
+from ..products_io import read_decide
 
 import argparse
 import csv
@@ -321,7 +323,7 @@ def same_char_refs(book: str, pages, store, cache) -> dict:
     for page in pages:
         pk = page_key(page)
         chars = read_view(store, book, "cell_shrink", pk, "char_index")
-        adm = store.read(book, "seed_admit", pk, "seed_admit")
+        adm = read_decide(store, book, pk)
         if chars is None or adm is None:
             continue
         arec = {r.id: r for c in adm.columns for r in c.chars}
@@ -420,7 +422,7 @@ def scan_page(book: str, page: int, store, cache, frame_line_max_off: float = 0.
     pk = page_key(page)
     cells = read_view(store, book, "row_segment", pk, "cells")
     chars = read_view(store, book, "cell_shrink", pk, "char_index")
-    adm = store.read(book, "seed_admit", pk, "seed_admit")
+    adm = read_decide(store, book, pk)
     ref = store.read(book, "align_ref", pk, "align_ref")
     try:
         seals = store.read(book, "seal_detect", pk, "seals")
@@ -584,7 +586,7 @@ def book_flags(book: str, store, cache, opts: dict | None = None, *, pages=None,
                            "SAME_FRAME_H", "END_BAND", "FRAME_GAP", "FRAME_OVER", "FRAME_MIN_H", "FRAME_DEBRIS",
                            "FRAME_DEBRIS_H", "FRAME_HEAVY_W", "INK_THR")}},
             "products": {step: {page_key(p): store.sha(book, step, page_key(p)) for p in all_pages}
-                         for step in ("seed_admit", "cell_shrink")},
+                         for step in (DECIDE_OLD, DECIDE_NEW, "cell_shrink")},
             "n": len(rows), "by_kind": {k: sum(1 for r in rows if r["seg_kind"] == k) for k in SEG_KINDS},
             "frame_heavy": sum(1 for r in rows if r.get("程度") == "重")}
     return rows, meta
@@ -594,7 +596,7 @@ def meta_fresh(meta: dict, store, book: str) -> bool:
     """旗表的 meta 和现行产物指纹对得上吗（对不上＝过期，要重算）。"""
     from .._cv import page_key
     want = meta.get("products") or {}
-    for step in ("seed_admit", "cell_shrink"):
+    for step in (DECIDE_OLD, DECIDE_NEW, "cell_shrink"):
         have = {page_key(p): store.sha(book, step, page_key(p)) for p in _pages_of(store, book)}
         if have != want.get(step):
             return False

@@ -9,7 +9,7 @@
 
   1. 待审数：中心库 `pending_current`（每条目最新版本）里该册 open 条目数 ≠ progress.volume.pending_review，
      或最后一次条目变更时间 ≠ pending_at → 直接写这两个数（11-27 起，待审清理计划 2.7：没有 rev／批次，
-     看板不再比线上单 rev，也不再调 cv `progress_report.py`；`pending_rev` 写空）。
+     看板不再比线上单 rev，也不再调 cv `progress_report.py`）。
   2. `a31.main` 的标签 ≠ `cv.pack` 的标签（标 main 后包口径没跟上）
      → 取 ★main 包重算并写看板（ai-team `按包统计人审率/run.py --pick main --push-progress`；没有 ai-team 检出就浅克隆一份）。
   3. 某一轮的所有标 main 的册包口径都到了，但「迭代轮次」里这一轮还是占位（没有人审率）
@@ -52,7 +52,7 @@ def vol_key(vol: str) -> str:
 
 
 def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
-    """vols：progress.volume 行 {book, vol, ws, pending_review, pending_at, pending_rev, extra}；
+    """vols：progress.volume 行 {book, vol, ws, pending_review, pending_at, extra}；
     lists：{(book, vol_key): {"open": open 条目数, "at": 最后变更时间}}（`pending_current` 现算）；
     rounds：{(book, key): {"rate": 人审率或 None, "verdict": 结论或 None}}。
     返回 {"lists": [...], "packs": [...], "rounds": [...]}，每项是能直接交给补的函数的一条记录。"""
@@ -61,7 +61,7 @@ def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
     for v in vols:
         book, vol, ex = v["book"], v["vol"], v.get("extra") or {}
         live = lists.get((book, vol_key(vol)))
-        if live and (live["open"] != v.get("pending_review") or live["at"] != v.get("pending_at") or v.get("pending_rev")):
+        if live and (live["open"] != v.get("pending_review") or live["at"] != v.get("pending_at")):
             out["lists"].append({"book": book, "vol": vol, "open": live["open"], "at": live["at"],
                                  "board": v.get("pending_review"), "board_at": v.get("pending_at")})
         main = (ex.get("a31.main") or {}).get("label")
@@ -87,8 +87,8 @@ def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
 
 def load(conn, books: list[str] | None = None) -> tuple[list[dict], dict, dict]:
     """从中心库取三份事实。"""
-    vols = [dict(zip(("book", "vol", "ws", "pending_review", "pending_at", "pending_rev", "extra"), r)) for r in conn.execute(
-        "SELECT book_id, vol, ws, pending_review, pending_at, pending_rev, extra FROM progress.volume").fetchall()]
+    vols = [dict(zip(("book", "vol", "ws", "pending_review", "pending_at", "extra"), r)) for r in conn.execute(
+        "SELECT book_id, vol, ws, pending_review, pending_at, extra FROM progress.volume").fetchall()]
     lists: dict = {}
     for book, vol, n_open, at in conn.execute(
             "SELECT book, vol, sum(CASE WHEN state = 'open' THEN 1 ELSE 0 END), max(at) FROM pending_current "
@@ -129,14 +129,14 @@ def ensure_ai_team() -> Path | None:
 
 
 def fix_lists(stale: list[dict]) -> dict[str, str]:
-    """待审数落后的册：直接写 open 条目数与最后变更时间，`pending_rev` 写空（不再有 rev）。返回 {book/vol: 结果}。"""
+    """待审数落后的册：直接写 open 条目数与最后变更时间。返回 {book/vol: 结果}。"""
     from ._cv import connect
     res: dict[str, str] = {}
     with connect() as conn:
         for s in stale:
             k = f"{s['book']}/{s['vol']}"
             try:
-                payload = json.dumps({"pending_review": s["open"], "pending_at": s["at"], "pending_rev": None}, ensure_ascii=False)
+                payload = json.dumps({"pending_review": s["open"], "pending_at": s["at"]}, ensure_ascii=False)
                 conn.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (s["book"], s["vol"], payload, "progress-sync"))
                 res[k] = "ok"
             except Exception as e:  # noqa: BLE001

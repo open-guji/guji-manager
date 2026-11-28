@@ -110,11 +110,13 @@ def _mirror(src: Path, dst: Path) -> int:
 
 def run_steps(cfg: ExpConfig, pipeline) -> list[str]:
     """管线里 `from…to` 这一段（含两端）。"""
+    from ..products_io import pipeline_step
     steps = list(pipeline.steps)
-    for s in (cfg.from_step, cfg.to_step):
+    a, b = pipeline_step(cfg.from_step, steps), pipeline_step(cfg.to_step, steps)   # 收尾新旧名互认（cv #2033）
+    for s in (a, b):
         if s not in steps:
             raise BadRequest(f"管线 {pipeline.id} 里没有 {s}")
-    i, j = steps.index(cfg.from_step), steps.index(cfg.to_step)
+    i, j = steps.index(a), steps.index(b)
     if i > j:
         raise BadRequest(f"from={cfg.from_step} 在 to={cfg.to_step} 之后")
     return steps[i:j + 1]

@@ -212,6 +212,10 @@ def unconsumed_report(ws_dir: Path, days: float | None = None) -> dict[tuple[str
         evs = [e for e in log.iter_all() if (e.ts or "") >= cut]
     except Exception:  # noqa: BLE001
         return {}
+    # 放行格回库的机器 confirm（`lib_backfill`）入库时已直接进库并给 glyphdb_admit 记账，别的去处故意不走：
+    # gold_add／crop_exclude 不认 confirm，product_invalidate 会把整册 seed_admit 判过期。不算漏（汉书 01，GM2 11-28）
+    from .feedback.consumers import _is_backfill
+    evs = [e for e in evs if not (getattr(e, "kind", None) and _is_backfill(e))]
     out: dict[tuple[str, str], int] = {}
     dests = {e.id: table.destinations(e) for e in evs}
     for consumer in CONSUMERS:

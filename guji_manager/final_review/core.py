@@ -33,6 +33,13 @@ PROMPT_TAIL = """候选都不对就填「其他」并在 why 写你认为的字�
 """
 
 
+def _admit_params(text: str) -> dict:
+    """册 yaml 里收尾步参数：`params.char_decide`／`params.seed_admit` 两个键都认（cv P3；同时写 cv 会报错，这里先新后旧）。"""
+    import yaml
+    p = (yaml.safe_load(text) or {}).get("params") or {}
+    return p.get("char_decide") or p.get("seed_admit") or {}
+
+
 def prompt_for(cls: str, book: str = "一部古籍刻本") -> str:
     return PROMPT_HEAD.format(book=book) + "\n" + PROMPT_BY_CLASS[cls] + "\n" + PROMPT_TAIL
 
@@ -183,7 +190,7 @@ def override_groups_from_yaml(text: str) -> set[str] | None:
     """册/书 yaml 的 `params.seed_admit.ruling_override_groups`（cv #1064）→ 组名集合；没写返回 None（缺省不核）。
     写法可以是列表或空格/逗号分隔的字符串；空列表＝一律不许越过参校本（返回空集）。"""
     import yaml
-    v = ((((yaml.safe_load(text) or {}).get("params") or {}).get("seed_admit") or {}).get("ruling_override_groups"))
+    v = (_admit_params(text).get("ruling_override_groups"))
     if v is None:
         return None
     if isinstance(v, str):
@@ -194,5 +201,5 @@ def override_groups_from_yaml(text: str) -> set[str] | None:
 def seed_admit_params_from_yaml(text: str) -> dict:
     """册/书 yaml 的 `params.seed_admit`（只取终审用到的键）：ruling_glyph_min_score/margin、ruling_ref_lead_min_unseen/oov。"""
     import yaml
-    sa = (((yaml.safe_load(text) or {}).get("params") or {}).get("seed_admit") or {})
+    sa = _admit_params(text)
     return {k: sa.get(k) for k in ("ruling_glyph_min_score", "ruling_glyph_min_margin", "ruling_ref_lead_min_unseen", "ruling_ref_lead_min_oov")}
