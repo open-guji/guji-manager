@@ -162,11 +162,11 @@ CREATE INDEX IF NOT EXISTS perf_step_step ON perf_step (step);
 INSERT INTO meta (key, value) VALUES ('schema_version', 'd1-1')
   ON CONFLICT (key) DO UPDATE SET value = excluded.value;
 
--- 领单版本下限（2026-11-28 GM2，#18365：停在旧版不自更新的执行方领了要新代码的单，一次次白跑）。
--- 单子 spec.manager_min_n（由 manager_min「X.Y.Z」推）大于领单执行方上报的 manager 版本（worker.runner 里的「 m0.7.14」）
--- 时整批领单回滚、单子留在排队。新版执行方在领单 SQL 里先按自己的版本过滤（store_d1._PICK），不会撞上；
--- 这条是挡还没自更新的旧执行方（它们的领单 SQL 不认 manager_min）。没登记或读不出版本的执行方按 0 算。
 CREATE TRIGGER IF NOT EXISTS attempt_manager_min BEFORE INSERT ON attempt
+  -- 领单版本下限（2026-11-28 GM2，#18365：停在旧版不自更新的执行方领了要新代码的单，一次次白跑）。
+  -- 单子 spec.manager_min_n（由 manager_min「X.Y.Z」推）大于领单执行方上报的 manager 版本（worker.runner 里的「 m0.7.14」）
+  -- 时整批领单回滚、单子留在排队。新版执行方在领单 SQL 里先按自己的版本过滤（store_d1._PICK），不会撞上；
+  -- 这条是挡还没自更新的旧执行方（它们的领单 SQL 不认 manager_min）。没登记或读不出版本的执行方按 0 算。
 WHEN coalesce((SELECT json_extract(spec, '$.manager_min_n') FROM job WHERE id = NEW.job_id), 0) > coalesce((
   SELECT CAST(substr(v, 1, instr(v, '.') - 1) AS INTEGER) * 1000000
        + CAST(substr(r, 1, instr(r, '.') - 1) AS INTEGER) * 1000
@@ -174,6 +174,5 @@ WHEN coalesce((SELECT json_extract(spec, '$.manager_min_n') FROM job WHERE id = 
   FROM (SELECT v, substr(v, instr(v, '.') + 1) AS r
         FROM (SELECT substr(runner, instr(runner, ' m') + 2) AS v FROM worker
               WHERE name = NEW.worker AND instr(runner, ' m') > 0))), 0)
-BEGIN
-  SELECT RAISE(ABORT, 'manager_min：领单执行方的 manager 版本低于单子要求，单子留在排队');
-END;
+  -- BEGIN…END 写在一行；注释放在语句里面（init 丢掉以 -- 开头的整段）：store_d1.init 按「;换行」切语句，体内的分号不能紧跟换行
+BEGIN SELECT RAISE(ABORT, 'manager_min：领单执行方的 manager 版本低于单子要求，单子留在排队'); END;

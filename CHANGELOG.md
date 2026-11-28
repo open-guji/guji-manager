@@ -6,6 +6,11 @@
 
 ## [未发版]
 
+## [0.7.18] - 2026-11-28
+
+- PATCH（11-28，CV0，册号位数统一）：`ops/rename_volume` 连语料钉子账 `config/corpus-pack/pins/<册>.json` 一起挪（只挪不改内容）；漏挪时 cv 找不到账、语料指纹退回 `corpus-vN`，殿本 vol01 演练 align_ref 起整串误判过期（glyph_match 202 页「上游产物变了」、seed_admit 八个 *_fingerprint）。挪过后改名前后 status 逐步逐页一致，不用 rename-seal。册层语料目录（`config/corpus-pack/vol/<册>`、`config/corpus-vol/<册>`，清单路径带册名）有就列为冲突、拒改。新测 1 条。
+- PATCH（11-28，GM2）：`schema_d1.sql` 触发器 `attempt_manager_min` 改成 `guji job init` 切得开的写法（注释挪进语句、BEGIN…END 一行）；正式任务库已于 11-28 19:2xZ 经用户同意单独建好该触发器。
+
 ## [0.7.17] - 2026-11-28
 
 - PATCH（11-28，GM2，CV4 报 #18377/#18378）：执行方自更新改比「本进程载入的 manager 代码」与 origin/main，不再只比磁盘检出——准备脚本里的 ensure_manager 先把磁盘切到 main，旧判法看着一样就不 exec，worker-6 进程停在 0.7.14 近 3 小时，不认 manager_min 照领带下限的单、跑缺 -w 的旧收尾改名。run.log 开头加 `[runner] 执行方进程 guji-manager <版本>`（准备段那行是磁盘的）。收尾改名没工作区时直接判失败、不再传空 -w；补各单子形状（带 --pages、带书 id、无 pipeline）的 -w 测试。L0。
