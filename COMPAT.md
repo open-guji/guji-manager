@@ -2,6 +2,7 @@
 
 | guji-manager | 支持的 pipeline 契约 | 对应 open-guji-cv |
 |---|---|---|
+| 未发版（dev，#1224） | v1 | **两名并认读口要 cv ≥ 0.9.14**（含 #2008：`manager_api.read_final_store／final_page_dict／final_dir／invalidate_final`；v0.9.13 不含）。旧 cv 上 `products_io` 退回本地实现，读 `seed_admit`／`char_decide` 两名仍可用，但 cv 改名版（产物写 `char_decide`）必须 ≥ 0.9.14 且 manager 含 #1224。 |
 | 0.6.22–0.6.23 | v1 | 同 0.6.9（建议 ≥ 0.9.0，**下限不因 W1 提高**）。W1（11-25）起只有新册钉 cv 0.9.x（全唐文 031 往后 0.9.4＋底库 b35）；已出 v0.1 的书（殿本、史記、脉经、全唐文 001–030）留在各自 0.7.x／0.9.2 patch 线照常用。manager 读 0.9.2 起切字五小步的产物布局，新旧步都认（#1001）。 |
 | 0.6.12 | v1 | 同 0.6.9。 |
 | 0.6.11 | v1 | 同 0.6.9。 |
