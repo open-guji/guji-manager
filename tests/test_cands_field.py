@@ -62,3 +62,14 @@ def test_cands_pass_through_pending_fields():
     assert pending_fields({"cands": c})["cands"] == c
     assert "cands" not in pending_fields({"cands": {"list": []}})
     assert "cands" not in pending_fields({})
+
+
+def test_calibrated_p_goes_first_and_is_copied_and_p_map_passes_through():
+    fin = {"cands": [
+        {"char": "官", "p": 0.6, "evidence": {"a": {"sim": 0.9}}},
+        {"char": "宮", "p": 0.3, "evidence": {"a": {"sim": 0.95}}},
+        {"char": "宫", "p": None, "evidence": {"a": {"sim": 0.99}}}], "p_src": "near:cnn_small", "p_map": {"cut": 0.1}}
+    c = cf.build_cands(fin, None)
+    assert [x["c"] for x in c["list"]] == ["官", "宮", "宫"] and [x["p"] for x in c["list"]] == [0.6, 0.3, None]
+    assert c["p_map"] == {"cut": 0.1} and c["p_other"] is None
+    assert "p_map" not in cf.build_cands(FINAL, RANK)
