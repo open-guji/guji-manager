@@ -235,3 +235,38 @@ def test_versions_use_cv_own_describe(monkeypatch):
     monkeypatch.setattr(_cv.core_cv_version, "describe", lambda repo=None: ("9.9.9", "c" * 40))
     v = cli._versions()
     assert v["cv"] == "9.9.9" and v["manager"] != "0.0.0-stale"
+
+
+def test_dataset_auto_sparse_clone(tmp_path, monkeypatch):
+    """没有测试集仓又给了缓存：自动稀疏克隆，只检出要的分片与 guards/；钉了提交就检出那一版。"""
+    import subprocess as sp
+    src = tmp_path / "src"
+    for rel in ("a/bk/x.json", "b/y.json", "guards/g.yaml"):
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text("1")
+    g = ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-C", str(src)]
+    sp.run(["git", "init", "-q", str(src)], check=True)
+    sp.run([*g, "add", "-A"], check=True)
+    sp.run([*g, "commit", "-qm", "1"], check=True)
+    c1 = sp.run([*g, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    (src / "a" / "bk" / "x.json").write_text("2")
+    sp.run([*g, "commit", "-qam", "2"], check=True)
+    sp.run([*g, "config", "uploadpack.allowFilter", "true"], check=True)
+    sp.run([*g, "config", "uploadpack.allowAnySHA1InWant", "true"], check=True)
+    monkeypatch.setattr(R, "DATASET_REPO", f"file://{src}")
+    monkeypatch.setenv("GUJI_DATASET_DIR", str(tmp_path / "nope"))
+    d = R.dataset_root(None, cache=tmp_path / "cache", rels=["a/bk"])
+    assert (d / "a" / "bk" / "x.json").read_text() == "2" and (d / "guards" / "g.yaml").exists()
+    assert not (d / "b").exists()
+    d = R.dataset_root(None, cache=tmp_path / "cache", rels=["b"], ref=c1)
+    assert (d / "a" / "bk" / "x.json").read_text() == "1" and (d / "b" / "y.json").exists()
+    with pytest.raises(R.Missing):
+        R.dataset_root(None, rels=["a/bk"])                    # 不给缓存：照旧报缺
+
+
+def test_bench5b_missing(monkeypatch, tmp_path):
+    from guji_manager.eval import bench_bundle as BB
+    monkeypatch.setattr(BB, "ensure_bench", lambda *a, **k: (False, "冻结包不在 /x"))
+    with pytest.raises(R.Missing) as e:
+        R.bench5b()
+    assert e.value.kind == "bench5b" and "冻结包不在" in str(e.value)

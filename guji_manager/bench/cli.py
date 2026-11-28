@@ -59,7 +59,10 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
     miss = R.check_env(spec.needs)
     if miss:
         raise miss[0]
-    ds = R.dataset_root(a.dataset)
+    rels = [r for r in ([spec.gold_rel(book, v) for v in vols] if vols else [spec.gold_rel(book)]) if r]
+    if isinstance(spec.gold, dict) and isinstance(spec.gold.get(book), dict) and not vols:
+        rels = list(spec.gold[book].values())             # 册一级显式表、没点名册：整本书的分片都取
+    ds = R.dataset_root(a.dataset, cache=cache, rels=rels, ref=getattr(a, "dataset_ref", None))
     res["dataset"] = str(ds)
     env["dataset"] = R.git_head(ds)
     gold = R.gold_dir(spec, book, vols, ds)
@@ -117,6 +120,9 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
                 labels[v] = lab
             res["products"] = str(link)
             env["products"] = labels
+    if "bench5b" in need:
+        res["bench5b"] = str(R.bench5b())
+        env["bench5b"] = "train_bundle " + __import__("guji_manager.eval.bench_bundle", fromlist=["x"]).BUNDLE_SHA256[:12]
     args = dict(x.split("=", 1) for x in (a.arg or []))
     if params:
         env["params"] = params
@@ -227,10 +233,59 @@ def cmd_fetch(a) -> None:
         print(f"    env.{k:6s} {v}")
 
 
+def job_specs(a) -> list[dict]:
+    """`--job`：每个 bench × 书一张 kind=bench 的单（字段见 jobs/spec.py 模块头）。cv 缺省＝本机 cv 的提交（有没提交的改动就拒，
+    执行机拿不到）。"""
+    cv = a.cv
+    if not cv:
+        g = _versions().get("cv_git") or ""
+        if not g or g.endswith("+dirty"):
+            sys.exit("--job 要 --cv（tag／分支／提交）：本机 cv " + ("有没提交的改动，执行机拿不到" if g else "读不出提交"))
+        cv = g
+    out = []
+    for name in a.bench:
+        for book in a.books:
+            b = {"id": name, "book": book, "vols": _vols_arg(a),
+                 "params": json.loads(a.params) if a.params else None,
+                 "args": dict(x.split("=", 1) for x in (a.arg or [])), "label": a.label,
+                 "dataset": getattr(a, "dataset_ref", None), "publish": bool(a.publish), "baseline": bool(a.baseline),
+                 "note": a.note}
+            out.append({"kind": "bench", "cv": cv, "bench": b, "why": a.why})
+    return out
+
+
+def submit_jobs(a) -> None:
+    from .._cv import jobs_spec as SP
+    from .._cv import jobs_store as S
+    from ..jobs.cli import _actor
+    if a.against or a.ws or a.dataset or a.cache or a.out or a.offline:
+        sys.exit("--job 不收 --against、--ws、--dataset、--cache、--out、--offline（执行机自己备资源；对照用 guji bench ab 或事后比结果）")
+    db = None
+    for raw in job_specs(a):
+        try:
+            spec = SP.normalize(raw)
+        except SP.SpecError as e:
+            sys.exit(f"✗ {e}")
+        h = SP.spec_hash(spec)
+        if a.dry_run:
+            print(json.dumps(spec, ensure_ascii=False, indent=1))
+            print("指纹", h)
+            continue
+        db = db or S.DB()
+        row = db(S.submit, spec, h, by=_actor(), why=spec.get("why"), priority=a.priority, again=a.again)
+        if row["status"] == "duplicate":
+            print(f"= #{row['id']} 与 #{row['duplicate_of']}（{row['dup_status']}）同一配置，不另跑；"
+                  f"看结果：guji job show {row['duplicate_of']}（确要再跑加 --again）")
+        else:
+            print(f"已排队 #{row['id']}：{SP.summary(spec)}；看结果：guji job show {row['id']}")
+
+
 def cmd_run(a) -> None:
     B = _B()
     if any(x.split("=", 1)[0] == "update" for x in (a.arg or [])):
         sys.exit("guji bench 不写正式数据：不收 --arg update（要改金标走各 bench 原来的建数据集工具）")
+    if getattr(a, "job", False):
+        return submit_jobs(a)
     bad = 0
     for name in a.bench:
         if legacy.is_legacy(name):
@@ -321,6 +376,7 @@ def add_parser(sub) -> None:
     p.add_argument("--label", default=None, help="产物包标签（缺省各册 main 指针）")
     p.add_argument("--ws", default=None, help="用本机现成的书仓／工作区，不克隆（不改它）")
     p.add_argument("--dataset", default=None, help="测试集仓（缺省 GUJI_DATASET_DIR 或 cv 旁边的 open-guji-dataset）")
+    p.add_argument("--dataset-ref", default=None, help="钉测试集仓版本（提交／分支）；自动取的缓存检出到那一版")
     p.add_argument("--cache", default=None, help="资源缓存根（缺省 $GUJI_DATA_HOME/bench-cache）")
     p.add_argument("--out", default=None, help="结果根（缺省 ./bench-results）")
     p.add_argument("--offline", action="store_true", help="不拉中心库、不更新书仓，只用缓存")
@@ -334,6 +390,13 @@ def add_parser(sub) -> None:
     p.add_argument("--baseline", action="store_true", help="配 --publish：标为基线")
     p.add_argument("--note", default=None, help="配 --publish：一句说明")
     p.add_argument("--timeout", type=int, default=900, help="老评测器超时秒数")
+    p.add_argument("--job", action="store_true", help="run：不在本机跑，交任务库由执行机跑（kind=bench，结果写回任务库，"
+                   "`guji job show <号>` 看）；heavy 级建议这样")
+    p.add_argument("--cv", default=None, help="--job：执行机用哪版 cv（tag／分支／提交；缺省本机 cv 的提交）")
+    p.add_argument("--why", default=None, help="--job：交单说明")
+    p.add_argument("--priority", type=int, default=100, help="--job：优先级（小的先跑）")
+    p.add_argument("--again", action="store_true", help="--job：同配置已跑过也再交一张")
+    p.add_argument("--dry-run", action="store_true", help="--job：只打印要交的单，不交")
 
 
 def _fix(a):

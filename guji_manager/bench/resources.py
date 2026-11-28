@@ -92,13 +92,52 @@ def lock(cache: Path, book: str, timeout: float = 3600):
 
 
 # ------------------------------------------------------------------ 金标
-def dataset_root(opt: str | None = None) -> Path:
+DATASET_REPO = "https://github.com/open-guji/open-guji-dataset"
+
+
+def dataset_root(opt: str | None = None, *, cache: Path | None = None, rels: list[str] | None = None,
+                 ref: str | None = None) -> Path:
+    """测试集仓：`--dataset`、`GUJI_DATASET_DIR`、cv 旁边的 open-guji-dataset 依次找。
+
+    都没有、又给了 `cache` 时（干净的云端会话、执行机），自动稀疏克隆到 `<cache>/dataset/`，只检出 `rels`（这次要的金标分片）
+    与 `guards/`；以后同一缓存按需追加分片、`git pull` 到最新。`ref`（提交／分支／tag）钉了就检出那一版，
+    且只在自动克隆的缓存里认（本机自己的测试集仓不替人切版本，钉了版却用本机仓报缺资源）。不给 `cache` 就照旧报缺资源。"""
     from .._cv import default_dataset_root
     p = Path(opt).expanduser() if opt else default_dataset_root()
-    if not p.exists():
+    if p.exists():
+        import re
+        if ref and re.fullmatch(r"[0-9a-f]{7,40}", ref):   # 钉的是提交才核；分支名、tag 在本机仓上不核
+            head = git_head(p) or ""
+            if not head.startswith(ref):
+                raise Missing("gold", f"钉了测试集仓 {ref}，本机 {p} 在 {head[:12] or '?'}",
+                              f"git -C {p} checkout {ref}，或不设 GUJI_DATASET_DIR 让它自动取")
+        return p.resolve()
+    if opt or cache is None:
         raise Missing("gold", f"找不到测试集仓 {p}",
                       "克隆 open-guji/open-guji-dataset 到 open-guji-cv 旁边，或设 GUJI_DATASET_DIR，或 --dataset")
-    return p.resolve()
+    return _sparse_dataset(cache, rels or [], ref)
+
+
+def _sparse_dataset(cache: Path, rels: list[str], ref: str | None = None) -> Path:
+    d = cache / "dataset"
+    want = sorted({r.strip("/") for r in rels if r} | {"guards"})
+    with lock(cache, "_dataset"):
+        try:
+            if not (d / ".git").exists():
+                d.parent.mkdir(parents=True, exist_ok=True)
+                _git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", DATASET_REPO, str(d))
+                _git("sparse-checkout", "set", *want, cwd=d)
+            else:
+                have = set(_git("sparse-checkout", "list", cwd=d).split())
+                if set(want) - have:
+                    _git("sparse-checkout", "add", *sorted(set(want) - have), cwd=d)
+            # 钉了版本就取那一版（detached），否则跟到默认分支最新
+            _git("fetch", "-q", "--depth", "1", "origin", ref or "HEAD", cwd=d)
+            _git("checkout", "-q", "--detach", "FETCH_HEAD", cwd=d)
+        except subprocess.CalledProcessError as e:
+            raise Missing("gold", f"自动取测试集仓失败：{(e.stderr or '').strip()[-200:]}",
+                          "要能读 open-guji/open-guji-dataset；或 --dataset 指本机副本") from e
+    return d.resolve()
 
 
 def gold_dir(spec, book: str, vols: list[str], ds: Path) -> Path | None:
@@ -120,6 +159,9 @@ def _local_repo(book: str) -> Path | None:
 
 
 def _find_repo(book: str) -> str:
+    from ..jobs.spec import WS_REPOS                       # 任务库登记的书仓先用（执行机上不一定有 gh 搜索权限）
+    if WS_REPOS.get(book, "").startswith("guji-workspace/"):
+        return WS_REPOS[book].split("/", 1)[1]
     names: list[str] = []
     for cmd in (["gh", "api", f"search/repositories?q=org:guji-workspace+{book}+in:name", "-q", ".items[].name"],
                 ["gh", "api", "--paginate", "orgs/guji-workspace/repos", "-q", ".[].name"]):
@@ -302,6 +344,18 @@ def products(ws: Path, book: str, vol: str, cache: Path, label: str | None = Non
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
     return root, lab
+
+
+# ------------------------------------------------------------------ 5b 评测集（原 eval/bench_bundle，GM4 交来）
+def bench5b() -> Path:
+    """5b 评测集 `cache/glyph_bench`、`cache/oov_bench`（不进数据集仓）：已有就用，否则按钉死的 sha 核对冻结包
+    `train_bundle.zip` 再解（`eval/bench_bundle.py`，P2 删老框架时搬进本模块）。包不在或 sha 不符报缺资源，不拿别的凑。
+    返回 cv 仓的 `cache/` 目录（集落在那里，老评测器也读它）。"""
+    from ..eval import bench_bundle as BB
+    ok, why = BB.ensure_bench()
+    if not ok:
+        raise Missing("bench5b", why, f"把 guji-workspace/_shared/train_bundle.zip 放到 {BB.bundle_path()}，或设 GUJI_TRAIN_BUNDLE")
+    return BB._repo() / "cache"
 
 
 # ------------------------------------------------------------------ 环境类

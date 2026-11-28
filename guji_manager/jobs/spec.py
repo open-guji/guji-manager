@@ -5,6 +5,7 @@
 
     kind            rerun（重跑一册，可接对比）| ab（同 rerun，必须给 compare_to）| eval | command（一串 guji 命令）
                     | roundcheck（收轮检查，只读：见下 roundcheck 与 guji_manager/round_check.py）
+                    | bench（跑一个 benchmark：见下 bench 与 doc/2-自动化流程/bench统一入口.md）
     book            册，如 vol10（eval 可空）
     cv              tag／分支／提交；提交时解析成 40 位提交（cv_ref 留原文）
     pipeline        缺省 keben_body_v2
@@ -33,6 +34,14 @@
                     执行方：取 main 包 seg check → 取候选包 seg check → seg gate → seg premain → 待审按 pending_reason 计数归四层，
                     结果写回任务结果（check: seg_gate／seg_premain；output: pending_by_reason／roundcheck）。不存包、不推库
 
+    bench           kind=bench 用：{"id": bench id（必给）, "book": 书 id（10 位工作区 id，必给）, "vols": [册…], "params": 运行覆盖,
+                    "args": {k: v}（bench 自己的参数）, "label": 产物包标签, "dataset": 测试集仓提交／分支,
+                    "publish": 写中心库 bench_runs, "baseline": 配 publish 标基线, "note": 配 publish 一句话}。
+                    执行方跑 `guji bench run`（资源自动备齐，见 guji_manager/bench/resources.py），把 result.json、report.md、
+                    items.jsonl（截断）写回任务结果。**不存包、不推库、永不标 main**：task 的 book 留空、不收 base／compare_to／run，
+                    output.pack 强制 false。状态 ok／regressed／no_gold 算成功（结论照实写在结果里），skipped（执行机缺资源）
+                    记 blocked，跑崩记 failed
+
     db_rev          提交时中心库的 rev（整数）；`guji job submit` 自动填（连不上库就不填）。进指纹：册 yaml 等改了、spec 没变的单
                     不再被判成重复（11-05 史記 #831/#833）。不给就不出这个键：老任务的指纹不变
 
@@ -46,7 +55,7 @@ import json
 import re
 import subprocess
 
-KINDS = ("rerun", "ab", "eval", "command", "roundcheck", "uidsync")   # uidsync：只把 base 包入字格身份账（自检交的单）
+KINDS = ("rerun", "ab", "eval", "command", "roundcheck", "uidsync", "bench")   # bench：跑一个 benchmark（只读，结果写回任务库）   # uidsync：只把 base 包入字格身份账（自检交的单）
 STATUSES = ("queued", "running", "succeeded", "failed", "blocked", "cancelled", "duplicate")
 ACTIVE = ("queued", "running")
 CV_REPO = "https://github.com/open-guji/open-guji-cv"
@@ -90,7 +99,7 @@ def _override_keys() -> set[str]:
     return {f.name for f in dataclasses.fields(BookSpec)} - FORBIDDEN_IN_OVERRIDE
 _KEYS = {"kind", "book", "cv", "cv_ref", "pipeline", "steps", "pages", "force", "no_reuse", "book_overrides",
          "pin_args", "base", "checks", "env", "params", "compare_to", "output", "run", "ws_glob", "ws_repo", "why",
-         "glyph_diff", "db_rev", "roundcheck"}
+         "glyph_diff", "db_rev", "roundcheck", "bench"}
 _NOT_HASHED = ("why", "output", "cv_ref", "ws_repo")      # ws_repo 只是去哪个仓取工作区，不改计算（册 ID 由 ws_glob 定）
 
 
@@ -237,6 +246,11 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         s.pop("roundcheck")             # 不给就不出这个键：老任务的指纹不变
     elif s["base"] or s["compare_to"] or s["output"]["pack"]:
         raise SpecError("roundcheck 自己取包、只读：不收 base、compare_to，不存包")
+    s["bench"] = _check_bench(s.get("bench"), kind)
+    if s["bench"] is None:
+        s.pop("bench")                  # 不给就不出这个键：老任务的指纹不变
+    elif s["book"] or s["base"] or s["compare_to"] or s["run"] or s["output"]["pack"]:
+        raise SpecError("bench 单只读：册写在 bench.vols、书写在 bench.book；不收 book、base、compare_to、run，不存包")
     if kind == "uidsync":
         if not s["base"] or s["base"] == "main":
             raise SpecError("uidsync 要给 base＝要入账的 main 包标签（同册同标签只跑一次）")
@@ -252,6 +266,48 @@ def normalize(raw: dict, *, resolve=None) -> dict:
         s["ws_repo"] = WS_REPOS.get(book_id(s) or "")
     s["why"] = s.get("why") or None
     return s
+
+
+_BENCH_KEYS = {"id", "book", "vols", "params", "args", "label", "dataset", "publish", "baseline", "note"}
+_BENCH_ID = re.compile(r"^@?[a-z0-9][a-z0-9_-]*$")
+
+
+def _check_bench(b, kind: str) -> dict | None:
+    if kind != "bench":
+        if b is not None:
+            raise SpecError("bench 只给 kind=bench 用")
+        return None
+    if not isinstance(b, dict) or set(b) - _BENCH_KEYS:
+        raise SpecError(f"bench 要是对象，只收 {', '.join(sorted(_BENCH_KEYS))}")
+    if not (isinstance(b.get("id"), str) and _BENCH_ID.match(b["id"])):
+        raise SpecError(f"bench.id 是 bench id 或 @套名：{b.get('id')!r}")
+    if not (isinstance(b.get("book"), str) and _BOOK.match(b["book"])):
+        raise SpecError(f"bench.book 是书 id（工作区 id，如 988g3f0wsu）：{b.get('book')!r}")
+    vols = b.get("vols") or []
+    if isinstance(vols, str):
+        vols = [v for v in vols.split(",") if v]
+    if not isinstance(vols, list) or not all(isinstance(v, str) and _BOOK.match(v) for v in vols):
+        raise SpecError(f"bench.vols 是册号列表：{vols!r}")
+    params = b.get("params")
+    if params is not None and not isinstance(params, dict):
+        raise SpecError("bench.params 要是 JSON 对象（运行覆盖）")
+    args = b.get("args") or {}
+    if not isinstance(args, dict) or not all(isinstance(k, str) and re.match(r"^[a-z][a-z0-9_]*$", k) for k in args):
+        raise SpecError("bench.args 是 {参数名: 值}")
+    if "update" in args:
+        raise SpecError("bench 不写正式数据：args 不收 update")
+    for k in ("label", "dataset"):
+        if b.get(k) is not None and not (isinstance(b[k], str) and _LABEL.match(b[k])):
+            raise SpecError(f"bench.{k} 不合规：{b[k]!r}")
+    if b.get("note") is not None and not isinstance(b["note"], str):
+        raise SpecError("bench.note 要是字符串")
+    out = {"id": b["id"], "book": b["book"], "vols": vols, "params": params or None,
+           "args": {k: str(v) for k, v in sorted(args.items())}, "label": b.get("label") or None,
+           "dataset": b.get("dataset") or None, "publish": bool(b.get("publish")),
+           "baseline": bool(b.get("baseline")), "note": b.get("note") or None}
+    if out["baseline"] and not out["publish"]:
+        raise SpecError("bench.baseline 要配 publish")
+    return out
 
 
 _RC_KEYS = {"pack", "main", "ledger_book", "ledger", "ledger_src", "allow", "config"}
@@ -343,6 +399,11 @@ def summary(spec: dict) -> str:
     """一行概要，给 ls 用。"""
     if spec["kind"] in ("command", "eval"):
         body = " ; ".join(" ".join(a) for a in spec["run"] or [])
+    elif spec["kind"] == "bench":
+        b = spec["bench"]
+        body = f"bench {b['id']} · {b['book']}" + (f"（{','.join(b['vols'])}）" if b["vols"] else "") \
+            + "".join(f" {k}={v}" for k, v in b["args"].items()) + (" +params" if b["params"] else "") \
+            + (" 发布" if b["publish"] else "")
     elif spec["kind"] == "roundcheck":
         rc = spec["roundcheck"]
         body = f"收轮检查 {rc['pack']} 对 {rc['main']}" + (f" 台账 {rc['ledger_book']}" if rc.get("ledger") else " 无台账") \
