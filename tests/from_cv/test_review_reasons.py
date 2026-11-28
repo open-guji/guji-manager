@@ -743,3 +743,19 @@ def test_near_pairs_falls_back_on_old_cv(monkeypatch):
     monkeypatch.setattr(_cv, "__getattr__", gone)
     monkeypatch.delattr(_cv, "near_registry_pairs", raising=False)
     assert rs._hand_pairs_from_cv() == {("論", "諭"), ("日", "曰")}
+
+
+def test_none_cols_cells_by_design(tmp_path):
+    """reference_profile 列级无参照（cv align_ref 产物 none_cols，CV0 11-28 脉经第 2 册缺文小注）：声明列的格算本就没参照，
+    同页别的列照旧。"""
+    import json
+    from guji_manager.review.reasons import book_cells
+    root = tmp_path / "02"
+    for step, layer in (("seed_admit", {"page": 18, "columns": [
+                            {"col": 7, "chars": [{"id": "02:18:7:1", "char": "甲"}]},
+                            {"col": 8, "chars": [{"id": "02:18:8:1", "char": "乙"}]}]}),
+                        ("align_ref", {"page": 18, "anchored": True, "ref_kind": "text", "none_cols": [8]})):
+        (root / step).mkdir(parents=True)
+        (root / step / "p0018.json").write_text(json.dumps({step: layer}), encoding="utf-8")
+    cells = book_cells(tmp_path, "02")
+    assert cells["18:8:1"].ref_by_design and not cells["18:7:1"].ref_by_design
