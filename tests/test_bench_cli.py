@@ -338,3 +338,21 @@ def _ran(ran, sp, book, a):
     ran.append(book)
     r = B.BenchResult(sp.id, book, [], {"bad": 0}, "bad")
     return r, None
+
+
+def test_void_keeps_row_hides_from_history(fake, monkeypatch):
+    spec, ds, tmp = fake
+    monkeypatch.setenv("GUJI_DATA_SQLITE", str(tmp / "cv.db"))
+    monkeypatch.setenv("GUJI_ACTOR", "CV0")
+    from guji_manager.bench import publish as P
+    from guji_manager.datastore import d1conn
+    a = cli._fix(_args(ds, tmp, extra=["--book", "bk"]))
+    _, out = cli.run_one(spec, "bk", a)
+    conn = d1conn.connect()
+    rid = P.publish(out, conn=conn, baseline=True)
+    assert P.void([rid, "nope"], "带人裁跑了", conn=conn) == 1
+    assert P.history("t-fake", "bk", conn=conn) == []
+    h = P.history("t-fake", "bk", conn=conn, all_status=True)
+    assert h[0]["status"] == "void" and h[0]["baseline"] == 0
+    with pytest.raises(ValueError):
+        P.void([rid], "", conn=conn)
