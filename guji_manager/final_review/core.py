@@ -35,6 +35,7 @@ PROMPT_TAIL = """候选都不对就填「其他」并在 why 写你认为的字�
 
 def _admit_params(text: str) -> dict:
     """册 yaml 里收尾步参数：`params.char_decide`／`params.seed_admit` 两个键都认（cv P3；同时写 cv 会报错，这里先新后旧）。"""
+    import yaml
     p = (yaml.safe_load(text) or {}).get("params") or {}
     return p.get("char_decide") or p.get("seed_admit") or {}
 
