@@ -103,13 +103,13 @@ book-text 改字工具自己发过的号，入账时会被认领，不会撞号�
 | 东西 | 字段 | 谁读 |
 |---|---|---|
 | 文意裁定（`ctx_ruling`） | `payload.u` | cv `RulingStore` 按 (组, 册, u) 建索引（书级开关 `ruling_by_u`，三条 patch 线和 dev 都已开） |
-| 人裁事件（格级 confirm 等） | `target.anchor.u` | seed_admit、`rulings-hits`、网站票去重 |
+| 裁定事件（格级 confirm 等） | `target.anchor.u` | seed_admit、`rulings-hits`、网站票去重 |
 | 待审条目 | `u`；线上单 `cells[]` 每格也带 | 出单、落票按 u 先认（再按指纹、再按格号） |
 | 网站票 | D1 票表的 `u` 列 | `cellvotes` 按 u 分组；u 已作废的票挂起（`moved`） |
 | book-text | char v0.6 每格 `u`，顶层 `u_max`、`u_retired`；norm v0.3 条目带 `u` | 网站 `?u=`、标点专名按 u 挂 |
 | 字形库刻例 | **不带 u**（键仍是 `v2:册:页:列:格`） | 重切后**不 rekey**，读时按裁决事件顺移到现格；`rekey-cells` 只用于换图源 |
 
-**写入一律以 u 为准**：manager 里所有写人裁事件、裁定的地方，追加前都会自动盖 u。册有身份账而盖不上的，**整批报错不写**。格号照写，方便人读。读的时候，册有账而没带 u 的旧记录不再按格号作数。
+**写入一律以 u 为准**：manager 里所有写裁定事件、裁定的地方，追加前都会自动盖 u。册有身份账而盖不上的，**整批报错不写**。格号照写，方便人读。读的时候，册有账而没带 u 的旧记录不再按格号作数。
 
 ## 导出与换单：book-text 的 u 怎么来
 

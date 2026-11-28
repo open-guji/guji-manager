@@ -12,7 +12,7 @@
   `cell_of(ref, book)`：int → 当前格号。`is_uid(ref)`。批量用 `uid.ledger.Ledger.load(book)`。
 - **格号照写、身份以 u 为准**（原「只加不改」双写期 11-24～11-25 已结束）：格号（`cell`、`target.key`、`a`）照写方便人读；册有账的写入一律带 u，写不出整批报错（`u_stamp`，#932 起）；读的时候册有账而没带 u 的旧记录不再按格号作数（`current_cell` 返回 None，11-25 收口）。没账的册行为与以前逐字节相同。
 - **裁定**：`payload.u`（int）。cv `RulingStore` 按 (group, 册, payload.u) 建索引（T3），册取 `payload.cell` 冒号前缀。
-- **人裁事件**：`target.anchor.u`（int）。`EventTarget` 是 cv 的 pydantic 模型，多余字段会被丢，故放进自由字典 `anchor`，不改 cv。
+- **裁定事件**：`target.anchor.u`（int）。`EventTarget` 是 cv 的 pydantic 模型，多余字段会被丢，故放进自由字典 `anchor`，不改 cv。
 - **待审条目**：条目加 `u`；单上每格（`pending.json` 的 `cells[]`）多带 `u`。
 - **book-text**：char 每格 `u`，顶层 `u_max`、`u_retired`；norm 条目加 `u`。
 
@@ -23,7 +23,7 @@
 | 函数 | 做什么 |
 |---|---|
 | `stamp_rulings(evs)` | `kind=ctx_ruling` 且 `payload.cell` 是完整格号的事件，册有账就写 `payload.u`；同一批按册缓存 Ledger |
-| `stamp_human(evs)` | `unit=cell` 的人裁事件，册有账就写 `target.anchor["u"]` |
+| `stamp_human(evs)` | `unit=cell` 的裁定事件，册有账就写 `target.anchor["u"]` |
 | `u_map(book)` | `{格号(去册前缀): u}`，没账返回 `None`；给待审单、导出、票批量用 |
 
 有账但查不到格 → 报错并提示「先 `guji uid advance <册>`」，不写半截（设计「入账漏了」一条）。
@@ -60,7 +60,7 @@
 - 票带 `u`（T5 网站写进 D1 的可空列）：`latest_votes`／`triage` 分组键改为 **u 优先**，没 u 用 `a`。
 - 有 u 的票：用 `cell_of(u)` 得当前格号，**不再**做 cord 框比对（u 本身就是身份）；u 在 `u_retired` 里 → 挂起，`kind=moved`，理由「格已并掉／删掉」。
 - 没 u 的旧票（含旧 rev 票）：照旧 cord 框比对（`check_cell`），过了再 `cell_ref` 得 u 写进事件。
-- `latest_human` 增加按 u 的索引（人裁事件 `anchor.u`），旧事件没 u 的按格号。
+- `latest_human` 增加按 u 的索引（裁定事件 `anchor.u`），旧事件没 u 的按格号。
 
 ### 5. swap 与换图源工具读账
 
@@ -86,7 +86,7 @@
 | 输出 | 内容 |
 |---|---|
 | `rulings.jsonl` | 要追加的裁定事件草稿（原 payload ＋ `u` ＋ `migrated_to_u`）。裁定已回填 cells_sha 且＝账上该页 cells_sha 的直接迁；其余走宽松证明（前后 2 字一侧同＋字在候选），证明不了的进清单 |
-| `human.jsonl` | 人裁事件补 `anchor.u` 的草稿（不改原行，新事件 `~u` 后缀，后到覆盖） |
+| `human.jsonl` | 裁定事件补 `anchor.u` 的草稿（不改原行，新事件 `~u` 后缀，后到覆盖） |
 | `pending.jsonl` | 待审条目补 `u` 的新版本行 |
 | `votes.tsv` | 票 → u 对照（给 T5 回填 D1 可空列用） |
 | `清单.tsv` | 没迁的：每行 类别、键、理由 |
@@ -129,5 +129,5 @@
 ## 四、影响与分级
 
 - 不改 cv 产物、不改 code_hash、不改指纹；没账的册行为不变 → L0。
-- 有账的册（试点 vol31、vol28 起）：裁定、人裁事件、待审条目多一个字段；cv 侧要开 `ruling_by_u`（T3）才用到。
+- 有账的册（试点 vol31、vol28 起）：裁定、裁定事件、待审条目多一个字段；cv 侧要开 `ruling_by_u`（T3）才用到。
 - book-text：有账的册导出升 char v0.6（u、u_max、u_retired），体积约 +20%（殿本实测）。

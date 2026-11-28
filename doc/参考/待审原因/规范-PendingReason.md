@@ -70,13 +70,13 @@
 |---|---|---|
 | 待审单 `feedback/lists/proofing/<文本号>/<章>.pending.json` | 每格 `pending_reason`（必有）＋`pending_reason_detail`；另有成因码细分 `pending_reason_cause`（A1…I，`review/causes.py`）＋`pending_reason_cause_detail`，派单按它细分 | `guji land` 出单（原 cv `republish.py`）（公众单、团队单都写） |
 | 控制台待审卡 | 每张卡 `pending_reason`／`pending_reason_detail`，控制台显示「原因：显示名（补充）」 | manager `review/cards.py` → `stamp_cards` |
-| 人裁事件 `feedback/events/*.jsonl`（`confirm` 等） | `payload.pending_reason`：裁的时候这格在单上的原因 | manager `cellvotes`（网站票落事件）；手写事件照写，不知道写 `unknown` |
+| 裁定事件 `feedback/events/*.jsonl`（`confirm` 等） | `payload.pending_reason`：裁的时候这格在单上的原因 | manager `cellvotes`（网站票落事件）；手写事件照写，不知道写 `unknown` |
 | 文意裁定 `feedback/rulings/*.jsonl`（`ctx_ruling`） | `payload.pending_reason`：问的时候这格的原因 | 出裁定的脚本；字组裁定写 `group_abstain` 等 |
 | 看图结论 `feedback/vision/*.jsonl`（`vision_check`） | `payload.pending_reason`，抽样核的写 `unknown` | 看图脚本 |
 | 网站校对页、下载本 | 读单上的 `pending_reason` 分 tab、显示说明 | kaiyuanguji-web `src/lib/pendingReasons.ts` |
 | 后台看板 | 按 `web.pending_reason` 计数，缺的算 `unknown` | open-guji-site `worker/collector.js`、`ops/text-progress/sync.py` |
 | manager 统计 | `guji pending-stats` 有「按待审原因」一节，cells.tsv 有 `pending_reason` 列 | guji-manager `pending_stats.py` |
-| book-text 文本 `NNN.char.json` | **11-09 起只录首选字**（用户定，见 [待审单-人裁事件-book-text格子](../../00-总览/待审单-人裁事件-book-text格子.md)）：待审格写首选字，**不写** `pending_reason`、不带 `lacuna`；`lacuna`／□ 只给真阙文。原因只在线上待审单与事件里。下面「book-text 待审格的字」一段和第七节 book-text 一行是 11-04～11-09 的旧做法，留作记录 | manager 导出（≥ v0.4.31） |
+| book-text 文本 `NNN.char.json` | **11-09 起只录首选字**（用户定，见 [待审条目-裁定事件-book-text格子](../../00-总览/待审条目-裁定事件-book-text格子.md)）：待审格写首选字，**不写** `pending_reason`、不带 `lacuna`；`lacuna`／□ 只给真阙文。原因只在线上待审单与事件里。下面「book-text 待审格的字」一段和第七节 book-text 一行是 11-04～11-09 的旧做法，留作记录 | manager 导出（≥ v0.4.31） |
 
 （旧做法，11-09 前）book-text 待审格的字：机器没给字的 `c` 为 □，分行稿照阙文写 `[[]]`；机器给了字的 `c` 照写机器字（标点按它记锚）。book-text 生成脚本、网站下载本都已认这条，校验器规则 F-OV-16 把关。
 

@@ -1,7 +1,7 @@
 # 换包落 book-text：格号变了（增删格、改号）怎么走
 
 > 状态：**已定，在用**（2026-11-10，sheldon 同意 ZM 的整理：格号变动只走这一条路；殿本 vol15、17、19、20 实跑）。
-> 口径以 [待审单-人裁事件-book-text格子](https://github.com/open-guji/guji-manager/blob/dev/doc/00-总览/待审单-人裁事件-book-text格子.md) 总纲为准，本文只写**做法**。
+> 口径以 [待审条目-裁定事件-book-text格子](https://github.com/open-guji/guji-manager/blob/dev/doc/00-总览/待审条目-裁定事件-book-text格子.md) 总纲为准，本文只写**做法**。
 > 代码：`guji_manager/swap/booktext.py`；`guji land --text-apply` 遇增删格自动调它（cv `republish.py` 已删）。
 
 ## 有字格永久编号 u 以后（现行，2026-11-25 起）
