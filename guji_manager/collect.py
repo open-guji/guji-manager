@@ -7,7 +7,7 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
 1. ``db pull`` 一次（增量）。
 2. 读线上单：rev、出单版产物包（``rev-<rev>``，没有就退到 ★main 包）。
 3. ``cellvotes draft --from-kv --items --pack``（读票、出草稿；挂起照旧）→ ``cellvotes write``（写人裁事件、落了票的条目标已裁、
-   重导整张单）。批次名 ``H-web-<册>-<日期>-<rev>``，与 ``proof_cycle`` 同。
+   条目标已裁）。批次名 ``H-web-<册>-<日期>-<时分>``。
 4. **定字直接写 book-text**：本次写下的定字票（``v=confirm`` 带字），加上 ``--batch`` 点名的早先人裁批次（过绑定表），
    逐格对 book-text 现文（dev）：
    - 字一样（含码位归一 别／別）：不动；
@@ -50,7 +50,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from .swap import DIANBEN_ID, LIVE, chapter_of, parse_books
+from .swap import DIANBEN_ID, SITE_PENDING, chapter_of, parse_books
 
 PLACEHOLDERS = ("□", "〓", "▣")
 GUJI = [sys.executable, "-m", "open_guji_cv.cli_v2"]
@@ -390,6 +390,8 @@ def live_open_cells(doc: dict) -> set[str]:
 
 # ───────────────────────── 状态 ─────────────────────────
 
+RUN_KEY = "items"      # 状态目录键（原为整张单的 rev；整张单已撤，11-28）
+
 def _load_state(p: Path) -> dict:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -460,17 +462,11 @@ def _why(msg: str) -> str:
 
 # ───────────────────────── 各步 ─────────────────────────
 
-def _pack_for(book: str, rev: str) -> str | None:
-    """出单版包 ``rev-<rev>``；没有就 ★main。都取不到返回 None。"""
+def _pack_for(book: str) -> str | None:
+    """出单版包：★main（没有整张单了，不再有 ``rev-<rev>`` 包）。取不到返回 None。"""
     try:
         from .datastore import packs as PK
-        src = PK._client()
-        pre = PK._prefix(PK._ws_name(), book)
-        try:
-            PK._call(src, "GET", f"{pre}/rev-{rev}/manifest.json", raw=True)
-            return f"rev-{rev}"
-        except Exception:  # noqa: BLE001
-            return PK.main_label(book, src)
+        return PK.main_label(book, PK._client())
     except Exception as e:  # noqa: BLE001
         print(f"  ⓘ 取不到产物包信息：{e}")
         return None
@@ -561,10 +557,9 @@ def batch_u_cells(book: str, batches: list[str], char: dict) -> tuple[dict[str, 
 
 
 def resolve_items(ws: Path, text_id: str, chapter: str, cells: dict[str, str], by: str, why: str) -> int:
-    """线上单上这些格还开着的条目标已裁，重导整张单。返回标了几条。"""
+    """这些格还开着的条目标已裁（只改条目，不再导整张单）。返回标了几条。"""
     from .datastore.workcopy import data_dir
     from .review import pending_items as P
-    from .cli_pending import export
     data = data_dir(ws)
     store = P.ItemStore.open(data, text_id, chapter)
     n = 0
@@ -575,13 +570,13 @@ def resolve_items(ws: Path, text_id: str, chapter: str, cells: dict[str, str], b
             n += 1
     if n:
         store.save()
-        export(store, data)
     return n
 
 
-def live_sheet(text_id: str, chapter: str) -> dict | None:
+def live_pending(text_id: str, chapter: str) -> dict | None:
+    """读者侧网站 ``/api/pending``：由条目现拼，只含开着、没落定的格。"""
     try:
-        with urllib.request.urlopen(LIVE.format(text_id=text_id, n=int(chapter)) + f"?x={int(time.time())}", timeout=30) as r:
+        with urllib.request.urlopen(SITE_PENDING.format(text_id=text_id, n=int(chapter)) + f"&x={int(time.time())}", timeout=30) as r:
             return json.load(r)
     except Exception:  # noqa: BLE001
         return None
@@ -633,40 +628,34 @@ def _collect_book(a, ws: Path, book: str) -> dict:
     env.setdefault("GUJI_ACTOR", "collect")
     print(f"\n== {book}（{text_id}/{ch}）")
 
-    # 1. 拉库（只一次）：线上单、事件以库为准
+    # 1. 拉库（只一次）：条目、事件以库为准。没有整张单了：状态目录用固定键 RUN_KEY（一趟收完 verify 后旧进度留底、下趟从头）
     t = time.time()
-    sheet_p = data_dir(ws) / "feedback" / "lists" / "proofing" / text_id / f"{ch}.pending.json"
-    pre_state = None
-    if sheet_p.exists():
-        rev0 = json.loads(sheet_p.read_text(encoding="utf-8")).get("rev")
-        pre_state = ws / "reports" / book / "_collect" / str(rev0) / "state.json"
-    if not a.no_pull and not (pre_state and not a.fresh and "pull" in _load_state(pre_state).get("done", {})
+    rev = RUN_KEY
+    out = ws / "reports" / book / "_collect" / rev
+    pre_state = out / "state.json"
+    if not a.no_pull and not (not a.fresh and "pull" in _load_state(pre_state).get("done", {})
                                and "sync" not in _load_state(pre_state)["done"]):
         if _run([*GUJI, "db", "pull", "-w", ws], env, tries=3):
             return {"status": "blocked", "why": _why("guji db pull 失败")}
-    if not sheet_p.exists():
-        return {"status": "blocked", "why": f"数据目录没有线上单 {sheet_p}"}
-    rev = json.loads(sheet_p.read_text(encoding="utf-8")).get("rev")
-    out = ws / "reports" / book / "_collect" / rev
     R = Run(out / "state.json", a.fresh or a.dry_run, a.dry_run)
     if R.done("verify") or (R.done("sync") and R.st.get("no_publish")):
-        # 收单不换 rev：上一趟收完之后用户在同一张单上又投了票，这是新的一趟。旧进度留底，从头做
+        # 上一趟收完之后用户又投了票，这是新的一趟。旧进度留底，从头做
         if not a.dry_run:
             os.replace(out / "state.json", out / f"state-{time.strftime('%Y%m%dT%H%M%S')}.json")
         R = Run(out / "state.json", True, a.dry_run)
     R.st["no_publish"] = bool(a.no_publish)
-    R.mark("pull", {"rev": rev}, t)
+    R.mark("pull", {}, t)
 
     # 2–3. 读票、落人裁
     draft = out / "draft"
-    # 同一张单可能收好几趟（不换 rev）：批次名带到分钟，免得撞名（ZM 以前手工加 b 后缀）
-    batch = f"H-web-{book}-{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d-%H%M')}-{rev}"
+    # 一册可能收好几趟：批次名带到分钟，免得撞名（ZM 以前手工加 b 后缀）
+    batch = f"H-web-{book}-{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d-%H%M')}"
     if R.done("draft"):
         R.skip("draft")
         pack, batch = R.st["done"]["draft"]["info"]["pack"], R.st["done"]["draft"]["info"]["batch"]
     else:
         t = time.time()
-        pack = a.pack or _pack_for(book, rev)
+        pack = a.pack or _pack_for(book)
         # 旧单条目票并入前要核「页面显示字＝book-text 现格字」：先取最新 dev 的 char（ZM 11-23 vol01 职名页改号后落邻格）
         from .swap.booktext import _bt_dir, _worktree
         from .online_lists import book_text_dir as _btd
@@ -676,7 +665,7 @@ def _collect_book(a, ws: Path, book: str) -> dict:
         _worktree(_src, _wt, branch="collect-booktext" + (f"-{book}" if _child else ""),
                   sparse=(Path(_btd(".", text_id)).as_posix().lstrip("./"),), fetch=not _child)
         _cj = _bt_dir(_wt, text_id) / "default" / f"{ch}.char.json"
-        cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--rev", rev, "--out", draft, "-w", ws,
+        cmd = [*GUJI, "cellvotes", "draft", book, "--site-book", text_id, "--chapter", ch, "--out", draft, "-w", ws,
                votes_from_flag(), "--items"]
         cmd += ["--pack", pack] if pack else ["--no-box-check"]
         if getattr(a, "policy", None):
@@ -1117,34 +1106,29 @@ def print_needs_review(ws: Path, res: dict, unc: dict | None = None) -> None:
             print(f"    {r}")
 
 
-def _state_of(ws: Path, text_id: str, book: str) -> tuple[Path, "Run", Path] | None:
-    from .datastore.workcopy import data_dir
-    sheet_p = data_dir(ws) / "feedback" / "lists" / "proofing" / text_id / f"{chapter_of(book)}.pending.json"
-    if not sheet_p.exists():
-        return None
-    rev = json.loads(sheet_p.read_text(encoding="utf-8")).get("rev")
-    return sheet_p, Run(ws / "reports" / book / "_collect" / rev / "state.json", False), ws / "reports" / book / "_collect" / rev
+def _state_of(ws: Path, text_id: str, book: str) -> tuple[None, "Run", Path]:
+    """这册收单的断点状态（目录固定键 RUN_KEY，不再依赖整张单的 rev）。第一项恒为 None（旧版是整张单路径，保留三元组形状）。"""
+    d = ws / "reports" / book / "_collect" / RUN_KEY
+    return None, Run(d / "state.json", False), d
 
 
-def verify_book(a, ws: Path, book: str, R: "Run", sheet_p: Path) -> dict:
-    """线上单与本地单同 rev，且本地已结的格线上不再待审。"""
+def verify_book(a, ws: Path, book: str, R: "Run", sheet_p=None) -> dict:
+    """网站 ``/api/pending``（只含开着的格）里，本趟 book-text 已落定的格不该还在。"""
     text_id, ch = a.text_id, chapter_of(book)
     t = time.time()
-    local = json.loads(sheet_p.read_text(encoding="utf-8"))
-    rev = local.get("rev")
+    rev = RUN_KEY
     landed = ((R.st["done"].get("book-text") or {}).get("info") or {}).get("landed") or {}
-    want_open = live_open_cells(local)
-    live = live_sheet(text_id, ch)
+    live = live_pending(text_id, ch)
     if live is None:
-        return {"status": "verify-fail", "why": "读不到线上单", "rev": rev}
+        return {"status": "verify-fail", "why": "读不到网站待审", "rev": rev}
     got_open = live_open_cells(live)
-    bad = sorted(got_open - want_open, key=_key)
-    if live.get("rev") != rev or bad:
+    bad = sorted((got_open & {bare(c) for c in landed}), key=_key)
+    if bad:
         return {"status": "verify-fail", "rev": rev,
-                "why": f"线上 {live.get('rev')}／本地 {rev}；线上仍待审而本地已结 {len(bad)} 格 {bad[:8]}（发站慢就过几分钟原命令再跑一次）"}
+                "why": f"网站仍待审而本地已落定 {len(bad)} 格 {bad[:8]}（发站慢就过几分钟原命令再跑一次）"}
     R.mark("verify", {"open": len(got_open)}, t)
     total = round(sum(v.get("s", 0) for v in R.st["done"].values()), 1)
-    print(f"  ✓ {book} {rev}：book-text 落 {len(landed)} 格，线上单还剩待审 {len(got_open)} 格；计时 {total} s")
+    print(f"  ✓ {book}：book-text 落 {len(landed)} 格，网站待审还剩 {len(got_open)} 格；计时 {total} s")
     return {"status": "done", "rev": rev, "landed": len(landed), "open": len(got_open), "seconds": total}
 
 
@@ -1172,11 +1156,8 @@ def publish_and_verify(a, ws: Path, books: list[str]) -> dict:
             st[b][1].mark("publish", {"conclusion": concl}, t)
     out = {}
     for b in books:
-        if not st[b]:
-            out[b] = {"status": "verify-fail", "why": "数据目录没有线上单"}
-            continue
-        sheet_p, R, _ = st[b]
-        out[b] = verify_book(a, ws, b, R, sheet_p)
+        _, R, _ = st[b]
+        out[b] = verify_book(a, ws, b, R)
     return out
 
 
