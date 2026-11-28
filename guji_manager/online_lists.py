@@ -187,6 +187,11 @@ def on_promote(book: str, label: str, ws: str | None = None) -> None:
         bid, ch = ident(book, ws)
         if not (bid and ch):      # 认不出的册（试验册等）静默跳过，同 record_main
             return
+        # 首发册（从没 land 过：无 landed.json）不自动上站：首发要等站点侧就绪（D1、页面登记），由 `guji launch` 或人显式 land；
+        # 要恢复旧行为设 GUJI_AUTO_LAND_FIRST=1（MJ 脉经 11-28：标 main 自动起 land 被杀）
+        if ws and landed_pack(book, ws) is None and os.environ.get("GUJI_AUTO_LAND_FIRST") != "1":
+            print(f"（{book} 还没上过站，标 main 不自动 land；首发走 `guji launch {book}`，或设 GUJI_AUTO_LAND_FIRST=1 开自动）")
+            return
         c = _cfg()
         missing = [n for n, ok in (("GUJI_DATA_TOKEN_PROD", bool(os.environ.get("GUJI_DATA_TOKEN_PROD"))),
                                    ("GUJI_DATA_TOKEN_READ", bool(os.environ.get("GUJI_DATA_TOKEN_READ"))),
