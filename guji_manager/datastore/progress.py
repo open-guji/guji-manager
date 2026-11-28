@@ -14,7 +14,7 @@ VOLUME_FIELDS = (
     "book_title", "vol_title", "vol_order", "ws", "cv_book", "stage",
     "text_version", "punct_version", "entity_version", "proofing", "frozen_version",
     "cv_version", "corpus", "glyph_pin", "cells_total", "pending_review", "human_judged",
-    "pending_rev", "pending_at", "punct_status", "note", "extra")
+    "pending_at", "punct_status", "note", "extra")
 STAGES = ("todo", "pipeline", "rough", "fine", "released")
 _INT = ("vol_order", "cells_total", "pending_review", "human_judged")
 

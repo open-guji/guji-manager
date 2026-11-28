@@ -8,6 +8,16 @@
 
 - PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。
 
+- MINOR（11-28，GM4）：新增 `guji launch prepare <册> --label <main 包> -w <工作区> …`＝原 `tools/开书/出v01.py` 搬进包（`guji_manager/launch/v01.py`，tools 里留薄壳）：判停→交接单→第五步产物→导出→book-text 本地加章→local_check，不推任何东西；册已有 `_land/landed.json` 拒绝（非首发）。能进任务库 command 单并行。后续加 ship 段。L0。
+
+- PATCH（CV0 11-28，GM2 问）：`datastore/schema_d1.sql` 对齐线上 guji-data-main——events 的 payload／target 改为由 raw 现算的虚拟列，加 u／level 虚拟列（与线上同式），pending_items 加 reason 虚拟列，补线上早已手加的 7 条索引与 voids 视图。线上不变（导入按 pragma_table_info 取列，本来就不写虚拟列）；只影响本机 SQLite（测试、备份还原），`settle_sync` 按 `e.u` 查在本机也能跑了。
+- PATCH（11-28，待审清理）：去掉 `progress_volume.pending_rev`：`progress-sync` 不再读写它，`datastore/progress.py` 的 `VOLUME_FIELDS` 与 `schema_d1.sql` 删列；D1 上的 `DROP COLUMN` 在本版发布后执行。`cellvotes draft` 不再读整张单（`--sheet`）。
+
+- PATCH（11-28，CV0）：待审原因：cv align_ref 产物的 `none_cols`（reference_profile 列级无参照，CV0 11-28，脉经第 2 册缺文小注）里的格算「参照缺是设计」（`ref_by_design`），不再判 seg_page_unaligned／seg_col_unaligned／ref_gap。
+- PATCH（11-28，GM4，MJ 脉经 2 册提）：`online_lists.on_promote` 标 main 时，册从没上过站（无 `_land/landed.json`）就不自动起 `guji land --apply`，只打一行提示；首发由 `guji launch` 或人显式 land。要老行为设 `GUJI_AUTO_LAND_FIRST=1`。已上过站的册不变。L0。
+
+- PATCH（11-28，GM2）：`_cv._FALLBACK` 登记 cv #2008（收尾改名兼容读口）在 `manager_api` 新导出的 12 个名字（ADMIT_STEPS、read_final、final_dir、invalidate_final 等），修 `tests/test_cv_surface.py` 对 cv dev 变红。只登记，不改行为。L0。
+
 - PATCH（11-28，GM2，接 cv #2005，CV4 通报）：接 cv 第四步出口检查 `decide_gate`（挂 seed_admit 出口，只检测不判断）。新增 `ops/decide_gate_check`（按 fail 汇总 step_error／ref_shift／char_not_in_evidence／admit_blank_cell，flag 只计数）；`close-check` 加 **2e 第四步出口检查**：终校档有 fail 判未过，粗校档只报数（不挡 v0.1），gate 自己的页级指纹过期（上游重跑过）的页旧结果不计、单列页数，没有可用产物记 skip。只检测的步「没跑」（cv 升级后老册未补跑，status 多一行全 missing）不再算进 close-check 1a、看板过期数（`report/progress`）、部署检查过期表。补跑：先看 status 确认 seed_admit 新鲜，再 `guji pipeline <管线> <册> --from seed_admit`（只补跑 gate）；seed_admit 过期时这条会连它重算，出过 v0.1 的册别这样补。L0。
 
 - PATCH（11-28，CV3 W1 第二期，L0：N01 判法逐对不变）：`review/reasons._near_pairs`（N01 形近护栏的手工形近对）改读 cv 形近字组登记表 `src=hand` 的对（cv `manager_api.near_registry_pairs`，open-guji-cv#2001）；cv 没有这个读口（旧版）就退回 `NEVER_MATCH_FAMILIES`。两者逐对相等（cv `tests/test_near_registry_readers.py`；本仓 `tests/from_cv/test_review_reasons.py` 新测两条）。`_cv._FALLBACK` 登记 `near_registry_pairs`。
@@ -22,6 +32,14 @@
 - MINOR（11-28，网站会员身份提交 · 落票规则）：`feedback/landing_policy` 加 `rules` 策略（缺省仍是 auto，行为不变）：身份（`Standing`＝等级＋负责的书，名册 `GUJI_MEMBER_ROSTER` JSON，匿名＝anon、没列的会员＝member）、规则（`Rules`：solo_tiers、book_owner_solo、quorum、quorum_min_tier，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 整份盖）、策略三步分开，`decide(cell, votes, book)` 加 `book` 参数（旧策略兼容）。`cellvotes draft` 把 `--site-book` 传给策略。editor 以上与本书负责人一票即落，匿名永远不直接落地。
 
 - PATCH（11-28，网站会员身份提交）：网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（网站 11-27 起 voter 就是 8 位会员号；`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`（原来是不带前缀的短标识）；事件另带 `payload.voters={member,anon}` 记各几票。level 仍是 human、channel 仍是 web_vote（口径不动，会员／匿名的权重差异不在本改动里）。新增 `voter.voter_by`。
+
+## [0.7.4] - 2026-11-28
+
+基于 v0.7.3，只带 #1206、#1219（候选字线，CV3；dev 上另有 MINOR 待发，不在本版），外加跟 cv dev 的守卫修复（manager CI 检出 cv dev，cv #1998、#2001 让 4 条测试报红）。
+
+- PATCH（11-28，CV3，候选字线，L0：缺省不变）：`guji land` 把 `guji audit cands` 的输出并进条目 doc——`land_enrich.load_cards` 读 `reports/<册>/<册>.cards.cands.json`，按裸格号把 `cands`（cands/1）并进 alt 卡里已有的格，`pending_fields` 原样带出，网站（kaiyuanguji-web #965）先读它；`keep_old_alt` 这次没现算 cands 就保留条目里原有的；新参数 `land --audit-cands`（缺省关）先跑 `guji audit cands`，失败只告警。没有 `cards.cands.json`、不带参数时行为不变（此前 audit cands 的输出没人读，cands 到不了 Worker／网站）。
+- PATCH（11-28，CV3，候选字线，L0）：`review/cands_field.pick_fields` 返回键 `pick_src` 改名 `pick_from`，避开网站票里同名但意思不同的 `pick_src`（候选／相似字／机器字…）；没有别处调用。
+- PATCH（11-28，CV3，仅测试与计时钩子名，L0）：`cli_perf.PERF_HOOKS` 里 `_symbol_ref_blank_pass` 改挂 `seed_admit_cell_state`；`tests/from_cv/test_code_deps_coverage.py` 删掉 seed_admit 已不缺的 9 条存量缺口和已不 import 的 `keben_counts` 登记；`_cv._FALLBACK` 补 `near_registry_pairs`（与 dev 上 #1220 的同名改动逐行一致）。
 
 ## [0.7.3] - 2026-11-28
 

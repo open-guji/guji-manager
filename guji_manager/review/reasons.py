@@ -602,6 +602,12 @@ def _ref_by_design(root: Path, name: str) -> bool:
     return any(n in note for n in NOREF_NOTES)
 
 
+def _none_cols(root: Path, name: str) -> frozenset[int]:
+    """册配置 `reference_profile` 列级 none 段在本页声明的无参照列（cv align_ref 产物 `none_cols`，CV0 11-28）。"""
+    ar = _load_layer(root / "align_ref" / name, "align_ref") or {}
+    return frozenset(int(c) for c in ar.get("none_cols") or [])
+
+
 def _layer_note(root: Path, name: str) -> str:
     return str((_load_layer(root / "align_ref" / name, "align_ref") or {}).get("note") or "")
 
@@ -656,6 +662,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
         cands = {c["id"]: c.get("candidates") or [] for col in gm.get("columns", []) for c in col.get("chars", [])}
         kind = _page_kind(root, f.name)
         by_design = _ref_by_design(root, f.name)
+        none_cols = _none_cols(root, f.name)
         frags = _frag_ids(root, f.name)
         bleeds = _bleed_ids(root, f.name)
         rs = _load_layer(root / "row_segment" / f.name, "cells") or {}
@@ -680,7 +687,8 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
                 out[cid.split(":", 1)[1]] = Cell(id=cid, char=ch.get("char"), ref=r, ref_op=op, cands=cands.get(cid, []),
                                                  doubts=list(ch.get("doubts") or []) + ([PIN_REMAPPED_DOUBT] if remap else []), evidence=dict(ch.get("evidence") or {}),
                                                  pua_code=(ch.get("evidence") or {}).get("pua_code") or ch.get("pua_code"),
-                                                 col_agree=agree, page_kind=kind, ref_by_design=by_design, frag=cid in frags, bleed=cid in bleeds)
+                                                 col_agree=agree, page_kind=kind,
+                                                 ref_by_design=by_design or int(col.get("col", -1)) in none_cols, frag=cid in frags, bleed=cid in bleeds)
                 if cid in at:          # 整理本前后文：缺字格回查私用码；其余格给 ref_suspect 比上下文
                     i = at[cid]
                     out[cid.split(":", 1)[1]].ref_left = "".join(c for _, c in seq[max(0, i - 20):i])

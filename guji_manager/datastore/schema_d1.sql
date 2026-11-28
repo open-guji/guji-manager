@@ -75,7 +75,6 @@ CREATE TABLE IF NOT EXISTS progress_volume (
   "cells_total" INTEGER,
   "pending_review" INTEGER,
   "human_judged" INTEGER,
-  "pending_rev" TEXT,
   "pending_at" TEXT,
   "punct_status" TEXT,
   "note" TEXT,
@@ -186,13 +185,29 @@ CREATE TABLE IF NOT EXISTS events (
   "actor" TEXT,
   "reviewer" TEXT,
   "ts" TEXT,
-  "payload" TEXT,
-  "target" TEXT,
   "src_line" INTEGER NOT NULL,
   "raw" TEXT NOT NULL,
   "rev" INTEGER NOT NULL,
   "ingested_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   "row_sha" TEXT,
+  -- 与线上一致（11-24 起 payload／target、11-26 起 u／level 由 raw 现算，虚拟列，不能 INSERT；线上另有改名留下的 payload_old／target_old，全 NULL，不建）
+  payload TEXT GENERATED ALWAYS AS (raw -> '$.payload') VIRTUAL,
+  target TEXT GENERATED ALWAYS AS (raw -> '$.target') VIRTUAL,
+  u INTEGER GENERATED ALWAYS AS (COALESCE(
+       CASE WHEN json_type(raw, '$.target.anchor.u') = 'integer' THEN json_extract(raw, '$.target.anchor.u') END,
+       CASE WHEN json_type(raw, '$.payload.u') = 'integer' THEN json_extract(raw, '$.payload.u') END)) VIRTUAL,
+  level TEXT GENERATED ALWAYS AS (CASE
+       WHEN stream = 'uid' THEN 'ledger'
+       WHEN stream IN ('rulings', 'vision') THEN 'ai'
+       WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
+       WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'model'
+       WHEN json_extract(raw, '$.payload.level') IN ('human', 'ai', 'machine') THEN json_extract(raw, '$.payload.level')
+       WHEN kind IN ('needs_review', 'cell_review', 'admit_candidate') THEN 'note'
+       WHEN COALESCE(actor, 'user') <> 'model' THEN 'human'
+       WHEN (CASE WHEN instr(batch, '~') > 0 THEN substr(batch, 1, instr(batch, '~') - 1) ELSE batch END) IN (
+            'H-mojibake-fix-20260927', 'r74-v01', 'r77-重绑', 'r79-v01', 'SJ-ry-rebind-1120', 'SJ-sheldon-1123',
+            'SJ-L1取消归一-human24', 'SJ-v02-rebind-1124', 'SJ-歲暫歸一-1125') THEN 'human'
+       ELSE 'ai' END) VIRTUAL,
   PRIMARY KEY ("ws", "src_path", "id"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
@@ -415,6 +430,7 @@ CREATE TABLE IF NOT EXISTS pending_items (
   "row_sha" TEXT,
   -- 待审条目（feedback/lists/pending/<书>/<章>.items.jsonl）一行一个版本，GM4 11-26 从 files 拆出；u 由 raw 现算
   "u" INTEGER GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.u') = 'integer' THEN json_extract(raw, '$.u') END) VIRTUAL,
+  "reason" TEXT GENERATED ALWAYS AS (CASE WHEN json_type(raw, '$.doc.pending_reason') = 'text' THEN json_extract(raw, '$.doc.pending_reason') END) VIRTUAL,
   PRIMARY KEY ("ws", "src_path", "src_line"),
   FOREIGN KEY (ws) REFERENCES workspaces(ws)
 );
@@ -504,3 +520,34 @@ CREATE VIEW IF NOT EXISTS batches AS SELECT * FROM files WHERE kind = 'batch';
 
 -- 提交守卫（见 worker/src/db.ts guardStmt）：批里写 0 就 CHECK 失败、整批回滚
 CREATE TABLE IF NOT EXISTS _guard (ok INTEGER NOT NULL CHECK (ok = 1));
+
+-- 11-28 CV0 对齐线上 guji-data-main（这些索引、视图线上早已手加）
+CREATE INDEX IF NOT EXISTS events_ws_book_u ON events (ws, book, u) WHERE u IS NOT NULL;
+CREATE INDEX IF NOT EXISTS events_ws_u ON events (ws, u) WHERE u IS NOT NULL;
+CREATE INDEX IF NOT EXISTS changes_ws_rev ON changes (ws, rev);
+CREATE INDEX IF NOT EXISTS consumed_src ON consumed (ws, src_path, consumer, src_line);
+CREATE INDEX IF NOT EXISTS glyph_admissions_src ON glyph_admissions (ws, src_path, instance_id);
+CREATE INDEX IF NOT EXISTS glyph_exemplars_src ON glyph_exemplars (ws, src_path, edition_tag, char, instance_id);
+CREATE INDEX IF NOT EXISTS glyph_instances_src ON glyph_instances (ws, src_path, instance_id);
+CREATE VIEW IF NOT EXISTS voids AS
+WITH ul AS (
+  SELECT ws, src_path, src_line, COALESCE(book, json_extract(raw, '$.book')) AS book,
+         json_extract(raw, '$.kind') AS kind, json_extract(raw, '$.id') AS ref,
+         json_extract(raw, '$.stream') AS stream, json_extract(raw, '$.key') AS cell,
+         json_extract(raw, '$.reason') AS reason, json_extract(raw, '$.by') AS by, json_extract(raw, '$.at') AS at
+  FROM list_rows WHERE dataset = 'u_void'
+), ulr AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY ws, src_path, COALESCE(ref, stream || '/' || cell) ORDER BY src_line DESC) AS rn
+  FROM ul
+), ps AS (
+  SELECT ws, src_path, src_line, book, id AS event_id,
+         json_extract(raw, '$.payload.pin_id') AS pin_id, json_extract(raw, '$.payload.v') AS v,
+         json_extract(raw, '$.payload.reason') AS reason, json_extract(raw, '$.payload.by') AS by, ts,
+         ROW_NUMBER() OVER (PARTITION BY ws, json_extract(raw, '$.payload.pin_id') ORDER BY ts DESC, src_line DESC) AS rn
+  FROM events WHERE stream = 'pin_state'
+)
+SELECT ws, book, 'u_void' AS src, COALESCE(ref, stream || '/' || cell) AS ref, cell, reason, by, at, src_path, src_line
+FROM ulr WHERE rn = 1 AND kind = 'u_void'
+UNION ALL
+SELECT ws, book, 'pin_state' AS src, pin_id AS ref, NULL AS cell, reason, by, ts AS at, src_path, src_line
+FROM ps WHERE rn = 1 AND v = 'removed';
