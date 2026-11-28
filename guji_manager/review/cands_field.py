@@ -35,8 +35,8 @@
 
 ## 人点了什么
 
-票里记 `pick_src`（人点的字是哪些来源给的，如 `["a","c"]`）、`pick_rank`（在表里第几位，从 1 起，不在表里为 null）、
-`pick_shown`（点的时候这个字是否已经显示在外面，即名次 ≤ `top` 或在卡上原有按钮里）。`pick_fields()` 出这三个键，网站投票时带上。
+分析时由 `pick_fields()` 从卡的 `cands` 加票里的 `pick_rank` 算出 `pick_from`（人点的字是哪些来源给的，如 `["a","c"]`；不叫 `pick_src`，那是网站票里「点自候选／相似字／机器字…」的既有键）、`pick_rank`（在表里第几位，从 1 起，不在表里为 null）、
+`pick_shown`（点的时候这个字是否已经显示在外面，即名次 ≤ `top` 或在卡上原有按钮里）。网站票本身只带 `pick_src`／`pick_rank`／`cands_by`（kaiyuanguji-web #965，`cands_by` 即这张卡的 `cands.by`），这三个键不进票、事后现算。
 """
 from __future__ import annotations
 
@@ -108,12 +108,12 @@ def build_cands(final: dict | None, rank: dict | None, ref: str | None = None, *
 
 
 def pick_fields(cands: dict | None, picked: str, shown: list[str] | tuple[str, ...] = ()) -> dict:
-    """人点了 `picked`：→ `{pick_src, pick_rank, pick_shown}`（没有 `cands` 或点的是表外字时 pick_rank 为 None）。
+    """人点了 `picked`：→ `{pick_from, pick_rank, pick_shown}`（没有 `cands` 或点的是表外字时 pick_rank 为 None）。
 
     `shown`：点的时候卡上已经显示出来的字（含卡上原有按钮）；名次 ≤ `top` 的也算显示了。"""
     lst = (cands or {}).get("list") or []
     for i, it in enumerate(lst):
         if it.get("c") == picked:
-            return {"pick_src": sorted((it.get("src") or {}).keys()), "pick_rank": i + 1,
+            return {"pick_from": sorted((it.get("src") or {}).keys()), "pick_rank": i + 1,
                     "pick_shown": i + 1 <= int(cands.get("top") or TOP) or picked in shown}
-    return {"pick_src": [], "pick_rank": None, "pick_shown": picked in shown}
+    return {"pick_from": [], "pick_rank": None, "pick_shown": picked in shown}

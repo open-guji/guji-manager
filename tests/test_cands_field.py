@@ -50,11 +50,11 @@ def test_empty_returns_none_and_max_list_caps():
 
 def test_pick_fields():
     c = cf.build_cands(FINAL, RANK)
-    assert cf.pick_fields(c, "鶴") == {"pick_src": ["a", "c", "ctx"], "pick_rank": 2, "pick_shown": True}
-    assert cf.pick_fields(c, "鷂") == {"pick_src": ["b"], "pick_rank": 4, "pick_shown": False}
+    assert cf.pick_fields(c, "鶴") == {"pick_from": ["a", "c", "ctx"], "pick_rank": 2, "pick_shown": True}
+    assert cf.pick_fields(c, "鷂") == {"pick_from": ["b"], "pick_rank": 4, "pick_shown": False}
     assert cf.pick_fields(c, "鷂", shown=["鷂"])["pick_shown"] is True          # 卡上原有按钮里就有
-    assert cf.pick_fields(c, "鴻") == {"pick_src": [], "pick_rank": None, "pick_shown": False}
-    assert cf.pick_fields(None, "鴻", shown=["鴻"]) == {"pick_src": [], "pick_rank": None, "pick_shown": True}
+    assert cf.pick_fields(c, "鴻") == {"pick_from": [], "pick_rank": None, "pick_shown": False}
+    assert cf.pick_fields(None, "鴻", shown=["鴻"]) == {"pick_from": [], "pick_rank": None, "pick_shown": True}
 
 
 def test_cands_pass_through_pending_fields():
