@@ -10,7 +10,7 @@ def v(vol, rev, main=None, pack=None, book="bk", ws=None, n=None, at=None):
     if pack:
         ex["cv.pack"] = {"label": pack}
     return {"book": book, "vol": vol, "ws": ws, "pending_review": 0 if n is None else n, "pending_at": at or T0,
-            "pending_rev": None, "extra": ex}
+            "extra": ex}
 
 
 T0 = "2026-11-27T08:00:00Z"
@@ -51,14 +51,13 @@ def test_cv_name():
 
 
 def test_pending_from_items_not_rev():
-    """2.7：看板待审数＝条目现算 open 数＋最后变更时间；册号 01／001 同一册；残留 pending_rev 也要清。"""
+    """2.7：看板待审数＝条目现算 open 数＋最后变更时间；册号 01／001 同一册。"""
     assert PS.vol_key("001") == PS.vol_key("01") == "1" and PS.vol_key("vol3") == "vol3"
     vols = [v("01", None, n=5), v("02", None, n=2), v("03", None, n=0, at="2026-11-26T00:00:00Z"), v("04", None)]
-    vols[3]["pending_rev"] = "004-r3"
     lists = {("bk", "1"): live(5), ("bk", "2"): live(0), ("bk", "3"): live(0)}       # 04 没有条目：不动
     lists[("bk", "4")] = live(0)
     st = PS.find_stale(vols, lists, {})["lists"]
-    assert [(x["vol"], x["open"]) for x in st] == [("02", 0), ("03", 0), ("04", 0)]
+    assert [(x["vol"], x["open"]) for x in st] == [("02", 0), ("03", 0)]
     assert PS.find_stale([v("09", None)], {}, {})["lists"] == []
 
 
@@ -76,7 +75,7 @@ def test_fix_lists_writes_open_count(monkeypatch):
     assert res == {"bk/02": "ok"}
     import json
     sql, args = calls[0]
-    assert "progress.put_volume" in sql and json.loads(args[2]) == {"pending_review": 0, "pending_at": T0, "pending_rev": None}
+    assert "progress.put_volume" in sql and json.loads(args[2]) == {"pending_review": 0, "pending_at": T0}
 
 
 def test_fix_rounds_waits_for_packs(monkeypatch):

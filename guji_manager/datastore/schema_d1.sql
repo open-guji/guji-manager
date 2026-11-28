@@ -75,7 +75,6 @@ CREATE TABLE IF NOT EXISTS progress_volume (
   "cells_total" INTEGER,
   "pending_review" INTEGER,
   "human_judged" INTEGER,
-  "pending_rev" TEXT,
   "pending_at" TEXT,
   "punct_status" TEXT,
   "note" TEXT,

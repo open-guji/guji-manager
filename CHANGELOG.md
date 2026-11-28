@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，待审清理）：去掉 `progress_volume.pending_rev`：`progress-sync` 不再读写它，`datastore/progress.py` 的 `VOLUME_FIELDS` 与 `schema_d1.sql` 删列；D1 上的 `DROP COLUMN` 在本版发布后执行。`cellvotes draft` 不再读整张单（`--sheet`）。
+
 - PATCH（11-28，CV0）：待审原因：cv align_ref 产物的 `none_cols`（reference_profile 列级无参照，CV0 11-28，脉经第 2 册缺文小注）里的格算「参照缺是设计」（`ref_by_design`），不再判 seg_page_unaligned／seg_col_unaligned／ref_gap。
 
 - PATCH（11-28，GM2）：`_cv._FALLBACK` 登记 cv #2008（收尾改名兼容读口）在 `manager_api` 新导出的 12 个名字（ADMIT_STEPS、read_final、final_dir、invalidate_final 等），修 `tests/test_cv_surface.py` 对 cv dev 变红。只登记，不改行为。L0。
