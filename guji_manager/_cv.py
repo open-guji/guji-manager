@@ -89,6 +89,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "release_pin": ("core.corpus_pin", "release_pin"),
     "core_corpus_files": ("core.corpus_files", None),
     "GlyphDB": ("clustering.glyph_db", "GlyphDB"),
+    "clustering_glyph_db": ("clustering.glyph_db", None),
     "assert_workspace_declared": ("core.workspace", "assert_workspace_declared"),
     "glyph_store_path": ("core.workspace", "glyph_store_path"),
     "clustering_font_pack": ("clustering.font_pack", None),
@@ -112,6 +113,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
     "book_config_layers": ("core.book_config", "layers"),   # guji job precheck：钉子来自哪一层（2026-11-17）
     "book_config_effective": ("core.book_config", "effective_book_dict"),   # corpus 缺省号认运行覆盖（2026-11-26）
+    # 配置组层（CV0 2026-11-28，cv #2064）：书级生效配置、解析 groups:、组配置禁写检查
+    "effective_defaults": ("core.book_config", "effective_defaults"),
+    "book_groups": ("core.book_config", "book_groups"),
+    "check_group_layer": ("core.book_config", "check_group_layer"),
     "lib_pins_expand": ("core.lib_pins", "expand_layer"),
     "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
@@ -465,6 +470,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
 #: 已搬进本包的名字 → (guji_manager 内模块, 属性名)。先查这张表：模块已不在 cv，不再问 cv 门面。
 #: 老代码 `from ._cv import X` 照样能用；新代码直接 import 本包模块。
 _LOCAL: dict[str, tuple[str, str | None]] = {
+    # cv 三链合一（#2055，11-28）：按册展开管线，老 cv 退回 load_pipeline(pid)
+    "pipeline_for": ("pipeline_ref", "pipeline_for"),
     # 写入以字格永久编号 u 为准（11-25）：append 前盖 u，册有账写不出 u 整批报错
     "EventLog": ("u_stamp", "EventLog"),
     "RulingLog": ("u_stamp", "RulingLog"),

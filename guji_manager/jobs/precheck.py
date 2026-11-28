@@ -57,7 +57,8 @@ def _norm(key: str, v):
 
 
 def pins_of(book: str) -> dict:
-    """一册的生效钉子与来源层：{键: (值, 层名)}。层名：基础配置／册 yaml／运行覆盖；没钉 → (None, "")."""
+    """一册的生效钉子与来源层：{键: (值, 层名)}。层名：基础配置／册 yaml／运行覆盖；没钉 → (None, "")。
+    书引了配置组（cv #2064，`groups: {config: wyg@1}`）时另有 `"_group": ("wyg@1", "组 wyg@1")`；组里禁写钉子，钉子不会来自组。"""
     from .._cv import book_yaml_path
     from .._cv import book_config_layers as layers
     try:
@@ -70,6 +71,9 @@ def pins_of(book: str) -> dict:
         raise FileNotFoundError(f"没有册配置 {path}")
     out = {k: (None, "") for k in PIN_KEYS}
     for name, ly in layers(path):
+        if name.startswith("组 "):            # 配置组层（cv #2064，「组 wyg@1」）：组里禁写钉子，只记下是哪组
+            out["_group"] = (name[2:], name)
+            continue
         ly = expand_layer(ly or {}, f"{name}：")
         for k in PIN_KEYS:
             if isinstance(ly, dict) and k in ly:
@@ -101,7 +105,8 @@ def check(books: list[str], expect: dict, ws: Path | None = None) -> dict:
             continue
         rows.append({"book": b, "pins": p})
         for k, (v, _) in p.items():
-            values[k].setdefault(v, []).append(b)
+            if k in values:
+                values[k].setdefault(v, []).append(b)
         for k, want in expect.items():
             if want is None:
                 continue
@@ -122,10 +127,11 @@ def _span(bs: list[str]) -> str:
 
 
 def render(res: dict) -> str:
-    L = ["册\t" + "\t".join(PIN_KEYS)]
+    L = ["册\t" + "\t".join(PIN_KEYS) + "\t配置组"]
     for r in res["rows"]:
         L.append(r["book"] + "\t" + "\t".join(
-            ("—" if v is None else f"{v}" + ("*" if src == "册 yaml" else "")) for v, src in (r["pins"][k] for k in PIN_KEYS)))
+            ("—" if v is None else f"{v}" + ("*" if src == "册 yaml" else "")) for v, src in (r["pins"][k] for k in PIN_KEYS))
+            + "\t" + (r["pins"].get("_group") or ("—", ""))[0])
     L.append("（* ＝ 册 yaml 自己钉的，会压过基础配置）")
     if res["problems"]:
         L.append(f"\n✗ {len(res['problems'])} 处问题，先修再交单：")

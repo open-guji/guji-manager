@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+from .pipeline_ref import norm_pipeline
+
 
 def _root(args) -> Path:
     if getattr(args, "workspace", None):
@@ -209,7 +211,7 @@ def cmd_show(args) -> None:
         return
     run, m = r["run"], r["run"].get("machine") or {}
     wall = (r["end"] or {}).get("wall_s")
-    print(f"{run['run_id']}  {run['book']}  {run.get('pipeline')}  cv {run.get('cv_version')}  "
+    print(f"{run['run_id']}  {run['book']}  {norm_pipeline(run.get('pipeline'), run.get('layout'))}  cv {run.get('cv_version')}  "
           f"墙钟 {_fmt_s(wall)}{'（中断）' if r['end'] is None or r['end'].get('stopped') else ''}")
     print(f"机器 {m.get('host')}（{m.get('kind')}，{m.get('cpus')} 核，{m.get('mem_gb')} GB）  --jobs {run.get('jobs')}"
           + (f"  任务库 #{run['job_id']}" if run.get("job_id") else ""))

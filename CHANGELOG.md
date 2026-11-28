@@ -6,6 +6,22 @@
 
 ## [未发版]
 
+## [0.7.7] - 2026-11-28
+
+PATCH：配置组层（配 cv #2064，cv 下一版带出）。**书在 book_defaults 写 `groups:` 之前，它的执行方要先升到本版**：老 manager 拉不到组配置，新 cv 会拒跑。本版对老 cv（0.7.x）照常可用，读不到组层时退回读书层。
+- PATCH（11-28，GM2，配 cv 组层 #2064，CV0 提）：`guji job precheck` 表里加一列「配置组」（取 cv 合层里的「组 wyg@1」层，没引组显示 —）；组里禁写钉子，钉子来源照旧只来自基础配置／册 yaml／运行覆盖。L0。
+
+
+- PATCH（11-28，GM4，接配置组层 cv #2064／manager #1260，L0）：`final_review` 读册 yaml 的 `params.char_decide|seed_admit.ruling_override_groups／ruling_*` 时先垫 cv `effective_defaults`（组∪书）再让册 yaml 盖过——键挪进组配置后不会读成空名单（一律不许越过参校本）；cv 没有这个读口或读不到时退回只看册 yaml。GM4 名下其余直读 yaml 处不用改：codepoints／pua_table_pin／src_w／cos_iou_min 组里禁写，仍只在书层；exp/config 读的是实验 yaml 不是书配置。
+
+- PATCH（CV0 2026-11-28，配 cv #2064 组层）：配置组共享层 `group-<组>`。`is_shared_ws` 认 `group-` 前缀（普通 push／sync 拒写），新 `versioned_prefix`：`config/group/v<N>.yaml` 已发布不可改不可删；新命令 `guji config-group publish <组> --from <yaml> [--note]`（`ops/group_config.py`，升级脚本身份出新版 v<N>，禁写检查用 cv `check_group_layer`，cv 没有组层就拒绝出版）；`guji db pull／sync` 在书的 `book_defaults.yaml` 写了 `groups.config: <组>@<版>` 时把组拉成只读副本（`refresh_group_configs`），库里没有该组或没有那一版报错、不当成没组。`config/group/` 走 `scope.classify` 现有的 `config/ → files`。新测 `tests/test_group_config_shared.py`。
+- PATCH（CV0 2026-11-28，GM2 审 #1258 的两条建议）：`pipeline_for` 改按 `inspect.signature` 判老 cv，不再吞 TypeError；`exp` 跑裸 `guji_default` 时各册版式不一致报错（要分开跑或写死 `guji_default@版式`）。
+
+- PATCH（CV0 2026-11-28，配 cv #2055 三链合一）：新模块 `pipeline_ref`——`pipeline_for(book, pid)` 按册展开管线（裸 `guji_default` 要带册才知道版式；老 cv 不收 `book=` 时退回 `load_pipeline(pid)`），`norm_pipeline` 把旧链 id 归一成 `guji_default@<版式>`。`cache warm`／`cache push-patches`／`ops.cache_warm`／`exp` 改用 `pipeline_for`（GM2 审 #2055 时点出）；耗时统计入库与 `guji perf` 显示的 pipeline 归一。任务库缺省仍是 `keben_body_v2`（GM2：旧 cv 不认新 id，各书升新 cv 后再换）。
+- PATCH（11-28，GM2，cv P3 跑批护栏，CV4 提）：执行方 `run_pipeline` 跑前查本机产物：cv 已是改名版（STEPS 有 char_decide）而本册只有 `seed_admit/`，先 `guji-cv decide migrate-name <册>` 原地改名换指纹再跑，免得收尾判缺失整册重算（出过 v0.1 的册等于违规重跑）；旧 cv 或已迁移不动。L0。
+
+- PATCH（11-28，GM2）：借库同号放开——装的 cv 已含 #1989（`admit_instance` 遇借来同号先摘借来那份、本书例照本格图进；v0.9.13 起）时，回库选格／admit、consumers 回库重放与 glyphdb_admit 不再「同号一律不进」（#1209），按 cv 有没有 `_drop_borrowed_instance` 判；旧 cv 照旧跳过。#1212（取库旧图不认借来的同号）保留。
+
 ## [0.7.6] - 2026-11-28
 - PATCH（11-28，GM2，cv P3 改名版读空复查收尾）：全仓复查拿 cv `ADMIT_STEP` 或字面 `seed_admit/` 拼定字产物路径的地方（改名版 cv 下老册会静默读空）：快审页 `review_pages/char_review.load` 写死 `seed_admit/` 改走 `decide_pages`；看板 `report/progress` 不再从 cv 取 ADMIT_STEP（缺页提示用 `products_io.active_step()`）；删 `render/reading_layout` 未用的 ADMIT_STEP／ADMIT_KIND 死常量；`tools/seg_check` 两个脚本两名并认；几处帮助文字改写两名。加护栏测试 `tests/test_decide_name_guard.py`：包里再出现这两种拼法就红。GM3 点的 vision／verdict_view／approx／reading_layout 读口 #1224、#1246 已修。L0。
 

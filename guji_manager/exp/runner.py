@@ -29,6 +29,7 @@ from typing import Callable
 import yaml
 
 from .._cv import BadRequest
+from ..pipeline_ref import LEGACY_PIPELINES
 from .config import EXP_REL, ExpConfig, effective_params, validate_params
 
 UPSTREAM = "_upstream"
@@ -37,6 +38,13 @@ _SKIP_NAMES = {"_prev"}
 
 
 # ── 根与护栏 ─────────────────────────────────────────────────────────────
+
+def _layout(book) -> str | None:
+    """册的版式（cv #2055 起 `BookSpec.layout_of()`；老 cv 没有 → None，不参与一致性检查）。"""
+    f = getattr(book, "layout_of", None)
+    return f() if callable(f) else None
+
+
 def default_root() -> Path:
     from .._cv import workspace_root
     ws = workspace_root()
@@ -236,7 +244,7 @@ def run(cfg: ExpConfig, *, snapshot: str | Path | None = None, root: str | Path 
 
     `book_loader` / `pipeline` / `cache` 供测试注入；缺省读工作区册配置与 `cfg.pipeline`。"""
     from .._cv import Engine, git_rev
-    from .._cv import load_pipeline
+    from .._cv import pipeline_for
     from .._cv import ProductStore
 
     log = log or (lambda s: print(s, flush=True))
@@ -247,10 +255,17 @@ def run(cfg: ExpConfig, *, snapshot: str | Path | None = None, root: str | Path 
     edir = exp_dir(cfg, root)
     guard_root(edir, snap)
     validate_params(cfg)
-    pl = pipeline or load_pipeline(cfg.pipeline)
-    steps = run_steps(cfg, pl)
     if book_loader is None:
         from .._cv import load_book as book_loader  # noqa: N813
+    # 裸 guji_default 按册的版式展开（cv #2055）：一次实验里的册按第一册展开，各册版式要相同
+    if pipeline is None and len(cfg.books) > 1 and "@" not in str(cfg.pipeline) \
+            and cfg.pipeline not in LEGACY_PIPELINES:
+        lays = {b: _layout(book_loader(b)) for b in cfg.books}
+        if len(set(lays.values()) - {None}) > 1:
+            raise BadRequest(f"实验 {cfg.name} 的册版式不一致 {lays}：一次实验只能跑一种版式，"
+                             f"分开跑，或在 pipeline: 写死版式（如 guji_default@grid）")
+    pl = pipeline or pipeline_for(book_loader(cfg.books[0]) if cfg.books else None, cfg.pipeline)
+    steps = run_steps(cfg, pl)
 
     edir.mkdir(parents=True, exist_ok=True)
     stamps = prepare_upstream(cfg, edir, snap, steps)

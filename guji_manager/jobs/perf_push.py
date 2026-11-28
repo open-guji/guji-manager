@@ -13,6 +13,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..pipeline_ref import norm_pipeline
+
 DDL = """
 CREATE TABLE IF NOT EXISTS jobs.perf_run (
   run_id      text PRIMARY KEY,
@@ -92,7 +94,7 @@ def rows(path: Path) -> tuple[dict, list[dict]]:
         host = f"{host}:{m['container'][:8]}"
     job = run.get("job_id")
     head = {"run_id": run["run_id"], "grp": run.get("group"), "book": run["book"], "book_id": _book_id(run),
-            "pipeline": run.get("pipeline"), "steps": run.get("steps"), "n_pages": run.get("n_pages"),
+            "pipeline": norm_pipeline(run.get("pipeline"), run.get("layout")), "steps": run.get("steps"), "n_pages": run.get("n_pages"),
             "jobs": run.get("jobs"), "force": run.get("force"),
             "job_id": int(job) if job and str(job).isdigit() else None,
             "cv_version": run.get("cv_version"), "cv_commit": run.get("cv_commit"), "host": host,
