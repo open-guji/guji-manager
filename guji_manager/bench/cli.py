@@ -14,8 +14,8 @@ STATUS_MARK = {"ok": "✓", "regressed": "⚠", "skipped": "–", "no_gold": "�
 
 
 def _B():
-    from open_guji_cv.eval import bench
-    return bench
+    from .._cv import bench_mod
+    return bench_mod
 
 
 def _versions() -> dict:
@@ -27,8 +27,8 @@ def _versions() -> dict:
         except Exception:                                  # noqa: BLE001
             out[key] = None
     try:
-        import open_guji_cv
-        out["cv_git"] = R.git_head(Path(open_guji_cv.__file__).resolve().parents[1])
+        import importlib.util
+        out["cv_git"] = R.git_head(Path(importlib.util.find_spec("open_guji_cv").origin).resolve().parents[1])
     except Exception:                                      # noqa: BLE001
         pass
     return out

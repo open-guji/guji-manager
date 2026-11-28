@@ -28,7 +28,7 @@ def _evals() -> dict:
 
 
 def is_legacy(name: str) -> bool:
-    from open_guji_cv.eval import bench as B
+    from .._cv import bench_mod as B
     try:
         B.get(name)
         return False
@@ -37,7 +37,7 @@ def is_legacy(name: str) -> bool:
 
 
 def print_list(a) -> None:
-    from open_guji_cv.eval import bench as B
+    from .._cv import bench_mod as B
     new = {s.id for s in B.all_specs()}
     old = [s for k, s in sorted(_evals().items()) if k not in new]
     if old:
@@ -51,7 +51,7 @@ def print_list(a) -> None:
 
 def run(name: str, a) -> bool:
     """跑一个老评测器；返回是否 regressed。"""
-    from open_guji_cv.eval import bench as B
+    from .._cv import bench_mod as B
     from .._cv import run_eval
     from .cli import _results_root, _versions
     rep = run_eval(name, timeout=a.timeout)
