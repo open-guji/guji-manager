@@ -29,6 +29,7 @@ sha 对得上才用，再取 R2 页图 `blob.open-guji.com`；`--no-fetch` 不�
 定，照出，说明写「图形符号」）。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
 
 import argparse
 import json
@@ -48,7 +49,7 @@ def _pages(spec: str | None, products: Path | None, book: str) -> list[int]:
     if not spec:
         if products is None:
             raise SystemExit("不给 --products 时要给 --pages")
-        return sorted(int(p.stem[1:]) for p in (products / book / "seed_admit").glob("p*.json"))
+        return sorted(int(p.stem[1:]) for p in decide_pages(products / book))
     out: list[int] = []
     for part in spec.split(","):
         if "-" in part:

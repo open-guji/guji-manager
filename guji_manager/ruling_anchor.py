@@ -7,6 +7,7 @@ cv 的 `RulingStore.get_anchor` 在窗口键（含版本等价）都没命中时
   整理本对位字都与现产物重算的一致；证明不了的不回填，留给网站人审。回填是追加一条同键同字的新事件（后到覆盖），不改字、不改把握。
 """
 from __future__ import annotations
+from .products_io import RULING_STEP, decide_pages, layer
 
 from .ruling_write import append_rulings
 
@@ -44,13 +45,13 @@ def backfill(products: Path, book: str, store, batch: str, *, write: bool = Fals
     from ._cv import RULING_KIND, EventTarget, RulingLog, llm_questions_of_page, make_event, ruling_ctx_hash
     by_cell = RH._rulings_by_cell_all(store)
     rows, evs = [], []
-    for f in sorted((Path(products) / book / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(Path(products) / book)):
         page = _page_no(f)
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        cells = {c["id"] for col in doc.get("seed_admit", doc).get("columns") or [] for c in col.get("chars") or []}
+        cells = {c["id"] for col in layer(doc).get("columns") or [] for c in col.get("chars") or []}
         todo = [c for c in cells if c in by_cell and not by_cell[c].get("cells_sha")]
         if not todo or page is None:
             continue
@@ -98,7 +99,7 @@ def backfill(products: Path, book: str, store, batch: str, *, write: bool = Fals
         built = []
         for c, pl, row in evs:
             seq += 1
-            built.append((make_event(batch, seq, RULING_KIND, EventTarget(step="seed_admit", unit="cell", key=c, book=book),
+            built.append((make_event(batch, seq, RULING_KIND, EventTarget(step=RULING_STEP, unit="cell", key=c, book=book),
                                      pl, actor="model"), row))
         ok, bad = screen([e for e, _ in built])
         why = {id(e): m for e, m in bad}

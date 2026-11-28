@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。
+
 - PATCH（11-28，GM4，接 CV3 第三步 `glyph_vis`，L0）：新事件种类 `vis_glyph`（`<feedback>/vis_glyph/*.jsonl`，单开目录，按图指纹缓存的看图结果；`target.unit=glyph_img`、`key=img_sha`）manager 侧不当人裁：`levels.event_level` 给 None（不算钉）、`u_stamp`（盖 u／`require_u`／推库闸 `lacks_u`）跳过、`source_rebase.GATE_EXEMPT_KINDS` 加入（换图源闸不管）。`datastore/scope.classify` 把 `feedback/vis_glyph/*.jsonl` 归进 events 表（随中心库同步）。
 
 - PATCH（11-28，GM3，CV3 vis_glyph 缓存）：`datastore/scope.classify` 认 `feedback/vis_glyph/*.jsonl`（进 events 表，随中心库同步）；`feedback/lint` 体检加扫该目录。kind／levels／u／rev 闸豁免见 GM4 #1239。

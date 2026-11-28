@@ -8,6 +8,8 @@
   （`{id, left, right}`，**不含整理本与证人字**），量大时可交 muse 预判（并发 2–4）。
 """
 from __future__ import annotations
+from ..products_io import layer_strict
+from ..products_io import decide_pages
 
 import json
 import re
@@ -222,8 +224,8 @@ def review_sheet(book: str, queue: dict, gaps: list[dict], mismatches: list[dict
 def _admitted_map(products_dir: Path, book: str) -> dict[str, dict]:
     """`<产物根>/<册>/seed_admit/p*.json` 里放行了的格 → {char, channel, page}。"""
     out: dict[str, dict] = {}
-    for f in sorted((Path(products_dir) / book / "seed_admit").glob("p*.json")):
-        s = json.loads(f.read_text(encoding="utf-8"))["seed_admit"]
+    for f in sorted(decide_pages(Path(products_dir) / book)):
+        s = layer_strict(json.loads(f.read_text(encoding="utf-8")))
         for col in s.get("columns", []):
             for ch in col.get("chars", []):
                 if ch.get("admit"):

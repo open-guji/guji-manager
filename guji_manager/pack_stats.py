@@ -21,6 +21,8 @@
 """
 
 from __future__ import annotations
+from .products_io import layer_strict
+from .products_io import decide_pages
 
 import json
 import os
@@ -66,13 +68,13 @@ def human_ruled_keys(book: str) -> set[str] | None:
 
 def count(root: Path | str, book: str, ruled: set[str] | None = None) -> dict | None:
     """本机产物目录里这册 seed_admit 的 {cells, review}；没有 seed_admit 返回 None。`ruled`：人裁过的格键，不算待审。"""
-    files = sorted((Path(root) / book / "seed_admit").glob("p*.json"))
+    files = sorted(decide_pages(Path(root) / book))
     if not files:
         return None
     cells = review = 0
     for f in files:
         try:
-            sa = json.loads(f.read_text(encoding="utf-8"))["seed_admit"]
+            sa = layer_strict(json.loads(f.read_text(encoding="utf-8")))
         except (OSError, ValueError, KeyError):
             return None            # 有一页读不了，数就不准，宁可不写
         for col in sa.get("columns") or []:

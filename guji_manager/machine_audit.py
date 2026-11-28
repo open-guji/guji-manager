@@ -15,6 +15,7 @@
 """
 
 from __future__ import annotations
+from .products_io import decide_pages
 
 import json
 import subprocess
@@ -77,7 +78,7 @@ def pack_signals(products_dir: Path, book: str) -> dict[str, dict]:
     """产物包里每格的整理本字、本次放行字、通道、来源：``{cell: {ref, char, channel, prov}}``（cell 不带册前缀）。"""
     root = Path(products_dir) / book
     out: dict[str, dict] = {}
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(root)):
         seed = _load_layer(f, "seed_admit")
         if not seed:
             continue

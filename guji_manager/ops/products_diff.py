@@ -24,6 +24,7 @@ IoU ≥ 0.5 算同一格；配不上的是「新切出」或「切没了」。�
 人审率 = review 格 / 全部格（同 close-check R3 的分子分母口径：只数 char 格）。
 """
 from __future__ import annotations
+from ..products_io import resolve_step_dir, layer
 
 import html
 import json
@@ -69,7 +70,7 @@ def _show(c: Cell) -> str:
 
 
 def _load(root: Path, book: str, step: str, page: int) -> dict | None:
-    f = Path(root) / book / step / f"p{page:04d}.json"
+    f = resolve_step_dir(root, book, step) / f"p{page:04d}.json"
     if not f.is_file():
         return None
     return json.loads(f.read_text(encoding="utf-8"))
@@ -80,7 +81,7 @@ def page_cells(root: Path, book: str, page: int) -> dict[int, list[Cell]] | None
     ci = _load(root, book, "cell_shrink", page)
     if ci is None:
         return None
-    sa = (_load(root, book, "seed_admit", page) or {}).get("seed_admit") or {}
+    sa = layer(_load(root, book, "seed_admit", page) or {}) if _load(root, book, "seed_admit", page) else {}
     rec = {r["id"]: r for col in sa.get("columns") or [] for r in col.get("chars") or []}
     out: dict[int, list[Cell]] = {}
     for col in (ci.get("char_index") or {}).get("columns") or []:

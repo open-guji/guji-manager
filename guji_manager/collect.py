@@ -39,6 +39,8 @@ ZM 第一册线（11-17、11-19）实测：收一张单净计算不到 5 分钟�
 ``guji collect --books vol20 -w <工作区> --book-text <book-text 检出> [--reviewer sheldon] [--batch <早先人裁批次> …]``
 """
 from __future__ import annotations
+from .products_io import decide_dir
+from .products_io import decide_pages, layer
 
 import argparse
 import datetime as dt
@@ -185,12 +187,12 @@ def ai_ruling_chars(products_root, book: str, store=None, members=None,
         parts = str(cid).split(":")
         return len(parts) != 4 or parts[0] == book
 
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(root)):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        for col in (doc.get("seed_admit", doc).get("columns") or []):
+        for col in (layer(doc).get("columns") or []):
             for c in col.get("chars") or []:
                 if c.get("id") and not c.get("admit") and mine(c["id"]):
                     pending.add(c["id"])
@@ -336,7 +338,7 @@ def _cell_rulings(root: Path, rest: dict, asks: list, members: dict, out: dict, 
         need = [k for k in ks if k not in win]
         if need:
             try:
-                doc = json.loads((root / "seed_admit" / fn).read_text(encoding="utf-8"))
+                doc = json.loads((decide_dir(root) / fn).read_text(encoding="utf-8"))
                 w = _vis_window(doc, amap)
                 for k in need:
                     if k in w:

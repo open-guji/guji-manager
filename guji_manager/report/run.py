@@ -24,6 +24,7 @@
 里也带 `grade_counts`/`n_settled`/`n_todo`。`report/html.py` 从 `grade` 分区渲染。
 """
 from __future__ import annotations
+from ..products_io import exists_decide
 
 import json
 import time
@@ -211,4 +212,4 @@ def body_pages(book: str, store: ProductStore | None = None) -> list[int]:
     会自己落进 `unanchored`，不必先筛。"""
     store = store or ProductStore()
     bk = load_book(book)
-    return [p for p in bk.resolve_pages("all") if store.exists(book, "seed_admit", f"p{p:04d}")]
+    return [p for p in bk.resolve_pages("all") if exists_decide(store, book, f"p{p:04d}")]

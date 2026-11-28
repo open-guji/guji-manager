@@ -35,6 +35,7 @@ draft 给 `--pack rev-004-r6`，就取回这个包当产物根（缓存在 `<产
 `--rev` 给现行单的 rev，`--pack` 给现行单的产物包。write 时这些条目标 `resolved`（记事件 id），整张单随之重导。
 """
 from __future__ import annotations
+from .products_io import RULING_STEP
 
 import datetime as dt
 import hashlib
@@ -576,7 +577,7 @@ def cmd_write(args) -> None:
     # 幂等键：同一份草稿重跑 write 不重复写（控制台写入路径按 payload.request_id 判重）
     rid = "cellvotes-" + hashlib.sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
     res = write_events(EventLog(feedback_root()), BatchStore(batches_root()), GoldStore(verdicts_root()),
-                       ProductStore(None), batch=args.batch, step="seed_admit", unit="cell", kind="confirm",
+                       ProductStore(None), batch=args.batch, step=RULING_STEP, unit="cell", kind="confirm",
                        events=rows, request_id=rid, consume=not args.no_consume, reviewer=args.reviewer)
     _print(json.dumps(res, ensure_ascii=False, indent=1))
     if args.no_consume and not res.get("duplicate"):

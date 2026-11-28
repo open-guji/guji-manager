@@ -12,6 +12,7 @@
 推中心库、出新 g 仍要用户点头。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 import json
 from pathlib import Path
@@ -85,7 +86,7 @@ def to_specs(decisions: list[dict], book: str, source: str) -> list[dict]:
                 specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,
                               "payload": {"v": "relabel", "char": r["char"], "instance_id": r["id"], "source": source}})
             else:
-                specs.append({"kind": "confirm", "step": "seed_admit", "key": r["id"], "book": book,
+                specs.append({"kind": "confirm", "step": RULING_STEP, "key": r["id"], "book": book,
                               "payload": {"v": "confirm", "shape": r["char"], "source": source}})
         elif st == "relabel":
             specs.append({"kind": "glyph_audit", "step": "glyph_audit", "key": r["id"], "book": book,

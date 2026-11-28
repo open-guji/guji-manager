@@ -14,6 +14,8 @@
 """
 
 from __future__ import annotations
+from ..products_io import decide_dir
+from ..products_io import read_decide
 
 import statistics as _stats
 from collections import Counter
@@ -35,7 +37,7 @@ def per_page(book: str, pages: list[int] | None, st: ProductStore) -> dict:
     pg_list = load_book(book).resolve_pages(pages) if pages else _all_pages(book, st)
     rows = []
     for pg in pg_list:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         n_total = n_auto = n_review = n_excluded = 0
@@ -70,7 +72,7 @@ def channel_breakdown(book: str, pages: list[int] | None, st: ProductStore) -> d
     counts: Counter[str] = Counter()
     total_auto = 0
     for pg in pg_list:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:
@@ -91,7 +93,7 @@ def channel_breakdown(book: str, pages: list[int] | None, st: ProductStore) -> d
 #: `step_timing` 覆盖的步骤。顺序即管线顺序，跟 `流程与模块.md` 的 Step0-8 对齐。
 _STEPS = [
     "preclean", "border_detect", "column_warp", "row_segment", "cell_shrink",
-    "glyph_match", "align_ref", "context_decide", "seed_admit",
+    "glyph_match", "align_ref", "context_decide", "seed_admit", "char_decide",
 ]
 
 
@@ -121,7 +123,7 @@ def step_timing(book: str, st: ProductStore) -> dict:
 
 
 def _all_pages(book: str, st: ProductStore) -> list[int]:
-    d = st.root / book / "seed_admit"
+    d = decide_dir(st.root, book)
     return sorted(int(p.stem[1:]) for p in d.glob("p*.json")) if d.exists() else []
 
 

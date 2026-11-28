@@ -10,6 +10,8 @@ char_review_sheet.py（只留 --grid 全对点错模式）、pull_char_review.py
           需要 GUJI_WORKSPACE；只写本机 feedback/events 和 glyph.db，不推中心库。
 """
 from __future__ import annotations
+from ..products_io import layer_strict
+from ..products_io import RULING_STEP
 
 import argparse
 import base64
@@ -38,7 +40,7 @@ def load(prod: Path):
             if c.get("ref_char"):
                 ar.setdefault(c["id"], c["ref_char"])
     for f in glob.glob(str(prod / "seed_admit/p*.json")):
-        for c in json.load(open(f, encoding="utf-8"))["seed_admit"]["columns"]:
+        for c in layer_strict(json.load(open(f, encoding="utf-8")))["columns"]:
             for x in c["chars"]:
                 sa[x["id"]] = x
     return gm, ar, sa
@@ -133,7 +135,7 @@ def cmd_ingest(a) -> None:
         _b, page, col, slot = cid.split(":")
         m = re.fullmatch(r"(-?\d+)([ab]?)", slot)
         evs.append(make_event(a.batch, base + k, "confirm",
-                              EventTarget(step="seed_admit", unit="cell", key=cid, book=book,
+                              EventTarget(step=RULING_STEP, unit="cell", key=cid, book=book,
                                           page=int(page), col=int(col), slot=int(m.group(1))),
                               {"v": "confirm", "shape": ch, "source": "char_review",
                                **provenance("human", a.reviewer, "console")}),

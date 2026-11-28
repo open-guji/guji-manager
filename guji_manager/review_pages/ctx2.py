@@ -16,6 +16,8 @@
 注意：读者看不到图，邻字也可能是讹字；把握低就写 low。人裁事件写入前先给总览看清单。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 import csv
 import glob
@@ -87,9 +89,9 @@ def collect(packs: str, groups=DEFAULT_GROUPS, include_admitted: bool = False, h
     """从 <packs>/<册>/seed_admit/p*.json 取形近组格，附前后文。half=True 时只取半格（小注 a/b），
     上下文按小注阅读顺序串联；默认只取整格。"""
     out = []
-    for f in sorted(glob.glob(f"{packs}/*/seed_admit/p*.json")):
+    for f in sorted([str(x) for d in sorted(glob.glob(f"{packs}/*")) for x in decide_pages(d)]):
         ext = _ext_chars(f)
-        for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+        for col in layer_strict(json.loads(Path(f).read_text(encoding="utf-8")))["columns"]:
             L = col["chars"]
             hc = _half_ctx(L) if half else {}
             for k, ch in enumerate(L):

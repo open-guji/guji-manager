@@ -78,7 +78,7 @@ class Step8Spec:
 
     id: str = "step8_feedback"
     title: str = "落库反馈"
-    upstream: str = "seed_admit"   # Step7：放行判定
+    upstream: str = "seed_admit"   # Step7：放行判定（cv P3 起名 char_decide；描述用，读写走 products_io）
     outlets: tuple[Outlet, ...] = OUTLETS
     config: str = "feedback/routes.py（RouteTable，可被 feedback/routes.yaml 覆盖）"
 

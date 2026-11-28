@@ -18,6 +18,8 @@
   （`corrected_from`，来源之间结论不同）的条数。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 import datetime as _dt
 import glob
@@ -81,10 +83,10 @@ def collect(prods: list[Path], labels: Path | None = None, codepoints: Path | No
     mismatch: dict = defaultdict(list)
     books = set()
     for root in prods:
-        for f in sorted(glob.glob(str(Path(root) / "*" / "seed_admit" / "p*.json"))):
+        for f in sorted([str(x) for d in sorted(Path(root).glob("*")) for x in decide_pages(d)]):
             book = Path(f).parts[-3]
             books.add(book)
-            for col in json.loads(Path(f).read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+            for col in layer_strict(json.loads(Path(f).read_text(encoding="utf-8")))["columns"]:
                 for r in col["chars"]:
                     gr = (r.get("evidence") or {}).get("group") or {}
                     gs = set(of.get(r.get("char") or "", []))

@@ -10,6 +10,8 @@
 缺事实时不猜：比如没给字形库样本数（`lib_n`），「刻例太少」这两条就判不了，落到后面的规则或 `unknown`。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD, DECIDE_STEPS
+from ..products_io import decide_pages
 
 import json
 from collections import Counter
@@ -548,9 +550,12 @@ def classify(c: Cell, ctx: Context) -> R:
 
 def _load_layer(path: Path, key: str) -> dict | None:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))[key]
-    except (OSError, KeyError, ValueError):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
+    if key in DECIDE_STEPS:            # 定字层：char_decide／seed_admit 两名并认
+        return doc.get(DECIDE_NEW) or doc.get(DECIDE_OLD)
+    return doc.get(key)
 
 
 def align_for_seed(seed: dict, align: dict | None) -> dict | None:
@@ -644,7 +649,7 @@ def book_cells(products_dir, book: str, bigrams: Counter | None = None) -> dict[
     给了 `bigrams` 就顺手把全册整理本字（按页、按列序连起来）的相邻二字计数加进去，给 `ref_suspect` 用。"""
     root = Path(products_dir) / book
     out: dict[str, Cell] = {}
-    for f in sorted((root / "seed_admit").glob("p*.json")):
+    for f in sorted(decide_pages(root)):
         seed = _load_layer(f, "seed_admit")
         if not seed:
             continue

@@ -10,6 +10,7 @@
 所以它属于领域层，不属于 HTTP 层。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 
 from .._cv import load_book
 from .._cv import cell_key, page_key
@@ -37,7 +38,7 @@ def group_view(book: str, pages: str = "dev_set", edition: str = "",
     truth = load_verdicts(book)
     tiles: dict[str, list[dict]] = {}
     for pg in bk.resolve_pages(pages):
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:
