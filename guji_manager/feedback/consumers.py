@@ -641,8 +641,9 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
         if path is None:
             # 字块缓存会被清（LRU）。这一格**已在库里**（改判）时，图块就用库里那张——
             # 字形库 08（2026-09-26）实测：缓存没了改判就一直消费失败，库里留着旧字。
-            row = db.conn.execute("SELECT patch_png FROM instances WHERE instance_id=?",
-                                   (db_id0,)).fetchone()
+            # 同号的借来刻例（别书那格，见 borrowed_clash）不能当本格旧图用：只认本书自己的实例（CV3 11-28）
+            row = None if borrowed_clash(db, db_id0) else db.conn.execute(
+                "SELECT patch_png FROM instances WHERE instance_id=?", (db_id0,)).fetchone()
             if row is None:
                 res.errors.append(f"{e.target.key}: 缓存里没有字块 {ckey}")
                 res.skipped += 1
