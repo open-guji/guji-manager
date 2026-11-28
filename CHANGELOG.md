@@ -1,6 +1,8 @@
 # Changelog
 
 版本号规矩见 `doc/版本号规矩.md`（2026-11-03 起，同 open-guji-cv）。本文件记录**全部**版本（含 PATCH）；动代码的 PR 投 `dev`，在 `## [未发版]`
+- PATCH（11-28，CV0，册号位数统一）：`ops/rename_volume` 连语料钉子账 `config/corpus-pack/pins/<册>.json` 一起挪（只挪不改内容）；漏挪时 cv 找不到账、语料指纹退回 `corpus-vN`，殿本 vol01 演练 align_ref 起整串误判过期（glyph_match 202 页「上游产物变了」、seed_admit 八个 *_fingerprint）。挪过后改名前后 status 逐步逐页一致，不用 rename-seal。册层语料目录（`config/corpus-pack/vol/<册>`、`config/corpus-vol/<册>`，清单路径带册名）有就列为冲突、拒改。新测 1 条。
+
 - PATCH（11-25，CV0，W1 冻结期修复）：`seg_pin.column_basis` 改读 `colview.merged_windows`——cv 切字五小步后 band／trim 在 2b／2c，原先只读 column_warp 的 `column_windows`，换到新 cv 后全部人工指定格钉子的 col_sha 都变、`basis_status` 误报 stale（全唐文切分 11-25 问）。拼回后 sha 与拆步前整份记录相同；column_warp 指纹变仍报 maybe。
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 

@@ -136,3 +136,20 @@ def test_repair_after_old_tool(tmp_path):
     assert a["anchor"]["cells_sha"] == f"{new_sha}+x"
     assert (data / "feedback" / "anchor_patches" / "1" / "ab" / "abc.png").exists()
     assert len(list(bk.glob("repair-*"))) == 1
+
+
+def test_corpus_pins_moved_and_vol_layer_refused(tmp_path):
+    """11-28 殿本 vol01 演练：语料钉子账 pins/<册>.json 没跟着挪，cv 语料指纹退回 corpus-vN，align_ref 起整串误判过期。"""
+    prod, cache, data, _ = _setup(tmp_path)
+    pins = data / "config" / "corpus-pack" / "pins"
+    pins.mkdir(parents=True)
+    body = json.dumps({"rows": [{"n": 9, "global": None, "book": 9, "vol": None}]})
+    (pins / "01.json").write_text(body, encoding="utf-8")
+    plan = build_plan({"01": "1"}, data, prod, cache)
+    assert not plan.conflicts
+    apply(plan, tmp_path / "bk")
+    assert not (pins / "01.json").exists()
+    assert (pins / "1.json").read_text(encoding="utf-8") == body          # 只挪不改
+    (data / "config" / "corpus-vol" / "1").mkdir(parents=True)
+    plan2 = build_plan({"1": "01"}, data, prod / "none", None)
+    assert any("corpus-vol/1/" in c for c in plan2.conflicts)
