@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+## [0.7.11] - 2026-11-28
+
 - PATCH（11-28，GM4，册号位数统一后收单被挡）：`swap.chapter_of(book)` 不再写死三位，按册 yaml 的生效配置取章号（`volume_width`，迁移期间没改号的书仍写着 `chapter_width` 的照旧）；找不到册 yaml 时 `volNN` 老规矩三位、纯数字册名按名字位数。史記改号后（`17.char.json`）collect 找不到字表、20 册落 0 格的根因。另加 `swap.chapter_variants`。新测 `tests/test_swap.py::test_chapter_of_follows_book_yaml_width`。
 
 - PATCH（CV0 11-28，CV2／CV4 审 bench 后）：`guji bench guard` 护栏没验到（指标没出数）或登记了金标却 skipped／no_gold 时按不过算、退出码 1；翻转类护栏不带对照时记 n/a，不再打印。`--publish --baseline` 同一 bench＋书只留最新一条基线（旧的自动取消）。
