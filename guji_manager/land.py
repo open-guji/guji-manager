@@ -136,24 +136,6 @@ def repair_reopened(store: P.ItemStore, by: str = "") -> list[str]:
     return out
 
 
-def sheet_stale(data: Path, text_id: str, chapter: str, store: P.ItemStore) -> list[str]:
-    """条目（派生源）与线上单（pending.json）不一致的格：条目有 alt、单上没有或不同（QTW 11-25 002:204:6:3）。"""
-    f = P.sheet_path(data, text_id, chapter)
-    if not f.exists():
-        return []
-    try:
-        sheet = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    on = {c.get("id"): c for c in sheet.get("cells") or []}
-    out = []
-    for r in store.by_state(*P.SHOWN):
-        want = (r.get("doc") or {}).get("alt") or []
-        if want and r["id"] in on and (on[r["id"]].get("alt") or []) != want:
-            out.append(r["cell"])
-    return sorted(out)
-
-
 def cache_is_cold(ws: Path, book: str, enough: int = 20) -> bool:
     """这册的字块缓存（``<ws>/cache/<册>``）空或几乎空：human_cells 要进程内逐页渲 cell_shrink／column_warp，
     全唐文 004（204 页）单进程 30 多分钟，先并行 warm 只要 4 分钟（QTW 11-27）。"""
@@ -267,57 +249,24 @@ def upload_sprites(sprites: list[dict], files_dir: Path) -> dict:
     return stats
 
 
-def with_released(ws: Path, book: str, sheet: dict) -> dict:
-    """单头 ``released``＝放行格的 AI 摘要 ``[{u, ai}]``（GM3 11-27）：从本机中心库副本的 notes 现算，单上已有的格不重复；
-    没有 notes 就保持单头原有的 released。"""
-    from .review.dian_trace import released_list
-    idx = _E.load_dian(ws, book)
-    if not idx:
-        return sheet
-    ids = set()
-    for c in sheet.get("cells") or []:
-        ids |= {c.get("cell"), f"{book}:{c.get('cell')}"}
-    rel = released_list(idx, ids)
-    if rel:
-        sheet["released"] = rel
-    return sheet
-
-
 def apply_changes(ws: Path, book: str, *, data: Path, text_id: str, chapter: str, work: P.ItemStore, sprites: list[dict],
                   files_dir: Path | None, sync: bool = True) -> dict:
-    """有变的册落地：条目带上单图 → 传 R2 → 存条目 → 导出整张单写回（**rev 不变**）→ 只推这两个文件（``db sync --only``）。"""
-    sheet_p = P.sheet_path(data, text_id, chapter)
-    if not sheet_p.exists():
-        raise SystemExit(f"✗ {book} 没有线上单 {sheet_p}（先 db pull --only 或整体 pull 一次）：land 只在原 rev 上就地改条目，不出新单")
-    head = json.loads(sheet_p.read_text(encoding="utf-8"))
+    """有变的册落地：条目带上单图 → 传 R2 → 存条目 → 只推条目文件（``db sync --only``）。
+
+    不再导出整张单：网站由 Worker 直接读库里的条目现拼（``/v1/web/pending-doc``），单格图由 proofing-sync 按条目登记发 COS。"""
     out: dict = {"sprites_attached": attach_sprites(work, sprites, os.environ.get("GUJI_ACTOR", ""))}
     if files_dir and sprites:
         out["uploaded"] = upload_sprites(sprites, files_dir)
     out["written"] = work.save()
-    sheet = with_released(ws, book, P.export_sheet(work, head))
-    atomic_write(sheet_p, json.dumps(sheet, ensure_ascii=False))
-    out["cells"] = len(sheet["cells"])
+    out["cells"] = len(work.by_state(*P.SHOWN))
     if sync:
-        rels = [str(P.items_path(data, text_id, chapter).relative_to(data)), str(sheet_p.relative_to(data))]
+        rels = [str(P.items_path(data, text_id, chapter).relative_to(data))]
         marker = ws / "reports" / book / "_land" / "needs_sync.json"
         atomic_write(marker, json.dumps({"rels": rels}))      # 推成才删；没推成下次先补推（对账本身已落本机，重算会是「没变」）
         out["synced"] = db_only(ws, "sync", rels) == 0
         if not out["synced"]:
-            # 现行单（pending.json）是条目派生的文件：收单线等刚推过它，两边都改会 SyncConflict。以库为准重派生——
-            # 先拿库里的单（--force），条目文件按追加合并推上去，再用合并后的条目重新导出单、推回。
-            print(f"⚠ {book} 现行单与库里冲突，以库为准重派生（条目按追加合并）", file=sys.stderr)
-            if db_only(ws, "pull", [rels[1]], force=True) == 0 and db_only(ws, "sync", [rels[0]]) == 0:
-                merged = P.ItemStore.open(data, text_id, chapter)
-                head2 = json.loads(sheet_p.read_text(encoding="utf-8"))
-                sheet = with_released(ws, book, P.export_sheet(merged, head2))
-                sheet_p.write_text(json.dumps(sheet, ensure_ascii=False), encoding="utf-8")
-                out["cells"] = len(sheet["cells"])
-                out["synced"] = db_only(ws, "sync", rels) == 0
-                out["rederived"] = True
-        if out["synced"]:
-            marker.unlink(missing_ok=True)
-        else:
-            raise SystemExit(f"✗ {book} db sync --only 没成：条目与单已写本机，修好后重跑同一条命令（对账是幂等的）")
+            raise SystemExit(f"✗ {book} db sync --only 没成：条目已写本机，修好后重跑同一条命令（对账是幂等的）")
+        marker.unlink(missing_ok=True)
     return out
 
 
@@ -338,35 +287,6 @@ from . import land_enrich as _E
 APPLY_READY = not _E.PENDING_STEPS   # 卡片字段还有没并进 doc 的步（见 land_enrich.PENDING_STEPS）前，doc 级的「改」不可信，不开 --apply
 
 
-def rev_votes_on(text_id: str, rev: str, fetch=None) -> int:
-    """中心库网站收件箱里，仍按「单版 rev＋格号」记的、投在这个 rev 上的票数（不含按条目记的）。
-    挪格而 rev 不升时，这些票的格号会落到新格号上的别的字（CV4 11-24）。读失败就抛，不当作 0。"""
-    from .feedback import web_inbox as WI
-    rows = (fetch or (lambda: WI.fetch("cellreview", text_id)[0]))()
-    files = WI.rev_files(rows, text_id)
-    return len(files.get(f"{rev}.jsonl", []))
-
-
-def move_guard(plan: dict, text_id: str, rev: str | None, fetch=None) -> dict | None:
-    """一册有格号挪动且该章仍有按当前 rev 记的票 → 拒绝 apply（要先把票落成人裁再对账，或升 rev）。返回拒绝说明，没事返回 None。"""
-    if not plan["挪格"]:
-        return None
-    if not rev:
-        return {"why": "有格号挪动，但线上单没有 rev，核不了按 rev 记的票", "moved": plan["挪格"][:10]}
-    n = rev_votes_on(text_id, rev, fetch)
-    if n:
-        return {"why": f"有格号挪动 {len(plan['挪格'])} 格，且线上单 {rev} 上还有 {n} 条按「单版＋格号」记的票：不升 rev 就地改会让这些票落到别的字上。"
-                       f"先 guji collect 把票落成人裁，或这册改走升 rev 的老换单路径", "moved": plan["挪格"][:10], "rev_votes": n}
-    return None
-
-
-def _sheet_stale_now(data: Path, text_id: str, chapter: str) -> bool:
-    try:
-        return bool(sheet_stale(data, text_id, chapter, P.ItemStore.open(data, text_id, chapter)))
-    except (OSError, SystemExit):
-        return False
-
-
 def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, apply: bool, by: str,
          digest: str | None = None, pull: bool = False, files_dir: Path | None = None, sync: bool = True,
          human: set[str] | None = None) -> dict:
@@ -375,18 +295,16 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     from .datastore.workcopy import data_dir
     data = data_dir(ws)
     items_rel = str(P.items_path(data, text_id, chapter).relative_to(data))
-    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res) and not _sheet_stale_now(data, text_id, chapter):
+    if digest and digest == last_digest(ws, book) and not alt_pending(ws, book, text_id, chapter, res):
         return {"book": book, "changed": False, "skipped": "digest", "summary": "digest 同上次，整册跳过", "items_path": items_rel}
     marker = ws / "reports" / book / "_land" / "needs_sync.json"
-    sheet_rel0 = str(P.sheet_path(data, text_id, chapter).relative_to(data))
     if apply and sync and marker.exists():                       # 上次本机写好了但没推成：先补推
-        rels = (read_json(marker, {}) or {}).get("rels") or [items_rel, sheet_rel0]      # 标记坏了：重推本章两个文件
+        rels = (read_json(marker, {}) or {}).get("rels") or [items_rel]      # 标记坏了：重推本章条目文件
         if db_only(ws, "sync", rels):
             raise SystemExit(f"✗ {book} 上次没推成的条目文件这次还是推不上（--only {rels}）")
         marker.unlink(missing_ok=True)
-    sheet_rel = str(P.sheet_path(data, text_id, chapter).relative_to(data))
-    if pull and db_only(ws, "pull", [items_rel, sheet_rel, "feedback/events/"] if human is not None else [items_rel, sheet_rel]):
-        print(f"⚠ {book} 条目文件／线上单没拉成（--only {items_rel} {sheet_rel}）：按本机现有的对账", file=sys.stderr)
+    if pull and db_only(ws, "pull", [items_rel, "feedback/events/"] if human is not None else [items_rel]):
+        print(f"⚠ {book} 条目文件没拉成（--only {items_rel}）：按本机现有的对账", file=sys.stderr)
     store = P.ItemStore.open(data, text_id, chapter)
     deducted: list[str] = []
     if human is not None and res and res.get("cells"):
@@ -402,32 +320,15 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     alt_chg = alt_changed(store, plan["_store"], plan["改"])      # 相似字（alt）空→有、或变了：要写，别当「只是 doc 噪声」
     if alt_chg:
         structural.append("alt")
-    stale = sheet_stale(data, text_id, chapter, plan["_store"])          # 条目有 alt、线上单没有：单要重派生
-    if stale:
-        structural.append("sheet")
     if restored:
         structural.append("restore")
     detail = write_detail(ws, book, detail_rows(store, plan["_store"]))
-    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "sheet_stale": stale, "restored": restored,
+    out = {"book": book, "changed": bool(structural), "alt_changed": alt_chg, "restored": restored,
            "summary": summarize(plan) + (f"，alt 更新 {len(alt_chg)} 格" if alt_chg else ""), "items_path": items_rel, "detail": str(detail), "deducted": deducted,
-           "doc_only": [] if structural else plan["改"],
-           # 挪格：条目没升 rev 时，按「rev＋格号」记的旧票会落到新格号上的别的字（CV4 答复）——要升 rev，或确认该章按单版票为 0
-           "needs_rev_bump_check": bool(plan["挪格"])}
-    if out["changed"] and plan["挪格"]:                 # 计划模式也先报：挪格＋按旧 rev 记的票，apply 会拒绝这册
-        head = P.sheet_path(data, text_id, chapter)
-        rev = json.loads(head.read_text(encoding="utf-8")).get("rev") if head.exists() else None
-        try:
-            blocked = move_guard(plan, text_id, rev)
-        except Exception as e:  # noqa: BLE001 —— 读不到收件箱就按有风险处理，不当 0
-            blocked = {"why": f"有格号挪动，但读不了网站收件箱核按 rev 记的票（{type(e).__name__}）", "moved": plan["挪格"][:10]}
-        if blocked:
-            out["blocked"] = blocked
+           "doc_only": [] if structural else plan["改"]}
     if apply:
         if not APPLY_READY:
             raise SystemExit("✗ --apply 暂不开放：卡片字段还有没并进条目 doc 的步（见 land_enrich.PENDING_STEPS）")
-        if out.get("blocked"):
-            out["written"] = 0
-            return out                           # 拒绝：不写条目、不落定；cmd_land 汇总列出
         if out["changed"]:
             out.update(apply_changes(ws, book, data=data, text_id=text_id, chapter=chapter, work=plan["_store"],
                                      sprites=list((res or {}).get("sprites") or []), files_dir=files_dir, sync=sync))
@@ -436,16 +337,16 @@ def land(ws: Path, book: str, *, text_id: str, chapter: str, res: dict | None, a
     return out
 
 
-def verify_live(text_id: str, n: int, want_cells: int | None, minutes: float = 6.0) -> bool:
-    """线上单的格数＝本地导出的格数（rev 没升，只能这样核）；CDN 缓存最多等几分钟。"""
+def verify_live(text_id: str, n: int, want_cells: int | None = None, minutes: float = 6.0) -> bool:
+    """发站后从读者侧看：网站 ``/api/pending`` 取得到这一章（由条目现拼，只含开着、没落定的格，数目不必等于本地条目数，所以不比格数）。"""
     import time
     import urllib.request
-    from .swap import LIVE
+    from .swap import SITE_PENDING
     end = time.time() + minutes * 60
     while True:
         try:
-            with urllib.request.urlopen(LIVE.format(text_id=text_id, n=n) + f"?x={int(time.time())}", timeout=30) as r:
-                if want_cells is None or len(json.load(r).get("cells") or []) == want_cells:
+            with urllib.request.urlopen(SITE_PENDING.format(text_id=text_id, n=n) + f"&x={int(time.time())}", timeout=30) as r:
+                if isinstance(json.load(r).get("cells"), list):
                     return True
         except Exception:  # noqa: BLE001
             pass
@@ -752,7 +653,7 @@ def cmd_land(a) -> int:
                  pull=not a.no_pull and not a.pending_json, files_dir=files_dir if not a.pending_json else None,
                  human=None if (a.pending_json or a.no_human_deduct) else human_cells(ws, b))
         results.append(r)
-        if not a.keep_files and (a.apply or not r["changed"]) and not r.get("blocked") and not (a.text or a.text_apply):
+        if not a.keep_files and (a.apply or not r["changed"]) and not (a.text or a.text_apply):
             freed = clean_book(ws, b, a.clean_products)         # 写文本那步还要用导出，开了 --text 的整趟结束后再清
             if freed > 0.01:
                 print(f"  {b} 清理释放 {freed:.2f} GB", file=sys.stderr)
@@ -762,11 +663,8 @@ def cmd_land(a) -> int:
         if not a.keep_files and a.apply:
             for b in books:
                 clean_book(ws, b, a.clean_products)
-    blocked = {r["book"]: r["blocked"] for r in results if r.get("blocked")}
-    for b, v in blocked.items():
-        print(f"✗ {b} 拒绝 apply：{v['why']}（挪格 {v['moved']}）", file=sys.stderr)
-    changed = [r["book"] for r in results if r["changed"] and r["book"] not in blocked]
-    print(json.dumps({"changed": changed, "unchanged": [r["book"] for r in results if not r["changed"]], "blocked": blocked}, ensure_ascii=False))
+    changed = [r["book"] for r in results if r["changed"]]
+    print(json.dumps({"changed": changed, "unchanged": [r["book"] for r in results if not r["changed"]]}, ensure_ascii=False))
     if a.apply and changed and not a.no_publish:
         from .swap import publish_batch, vol_no
         concl = publish_batch(changed, a.text_id)              # 串行、等空闲、被取消重发；只发有变的册，一次一批
@@ -788,7 +686,7 @@ def cmd_land(a) -> int:
             if bad:
                 print(f"⚠ 线上格数与本地不符：{' '.join(bad)}（CDN 缓存？几分钟后再核）", file=sys.stderr)
                 return 3
-    return 4 if blocked else 0
+    return 0
 
 
 COMMANDS = {"land": (add_parser, cmd_land)}
