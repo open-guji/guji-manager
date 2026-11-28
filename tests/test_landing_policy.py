@@ -65,3 +65,45 @@ def test_rules_quorum_excludes_anon(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         LP.get_policy(f"rules:{rf}")
+
+
+def _write(root, kind, id_, **rec):
+    d = root / kind / id_[-3] / id_[-2] / id_[-1]
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{id_}-题名.json").write_text(json.dumps({"id": id_, **rec}), encoding="utf-8")
+
+
+import json
+
+
+def test_scope_from_book_index(tmp_path, monkeypatch):
+    bi = tmp_path / "bi"
+    _write(bi, "Book", "ed1000001", work_id="wk1000001", contained_in=[{"id": "co2000001"}])
+    _write(bi, "Book", "ed2000002", work_id="wk1000001")
+    _write(bi, "Book", "ed3000003", work_id="wk2000002")
+    _write(bi, "Collection", "co2000001", contained_in=[{"id": "co9000009"}])   # 子丛编 → 大丛编
+    _write(bi, "Collection", "co9000009")
+    a, b, c, d = _code("EEEEEEE"), _code("FFFFFFF"), _code("GGGGGGG"), _code("HHHHHHH")
+    (tmp_path / "r.json").write_text(json.dumps({
+        a: {"tier": "member", "books": ["wk1000001"]},        # 作品：管名下所有版本
+        b: {"tier": "member", "books": ["co9000009"]},        # 上层丛编：管嵌套下的版本
+        c: {"tier": "member", "books": ["ed3000003"]},        # 单个版本
+        d: {"tier": "member", "books": ["wk1000001", "ed3000003"]}}), encoding="utf-8")
+    monkeypatch.setenv("GUJI_MEMBER_ROSTER", str(tmp_path / "r.json"))
+    monkeypatch.setenv("GUJI_BOOK_INDEX", str(bi))
+    pol = LP.get_policy("rules")
+    land = lambda who, book: pol.decide("1", [_v("1", who)], book).land
+    assert land(a, "ed1000001") and land(a, "ed2000002") and not land(a, "ed3000003")
+    assert land(b, "ed1000001") and not land(b, "ed2000002")
+    assert land(c, "ed3000003") and not land(c, "ed1000001")
+    assert land(d, "ed2000002") and land(d, "ed3000003")
+    assert not land(a, "unknown")                                       # 查不到归属：只认它自己的 ID
+
+
+def test_scope_keys_with_dict_lineage_and_cycle(tmp_path):
+    assert LP.scope_keys("ed", {"ed": ["w", "c"]}) == {"ed", "w", "c"}
+    bi = tmp_path / "bi"
+    _write(bi, "Book", "ed1000001", contained_in=[{"id": "co1000001"}])
+    _write(bi, "Collection", "co1000001", contained_in=[{"id": "co2000002"}])
+    _write(bi, "Collection", "co2000002", contained_in=[{"id": "co1000001"}])   # 环
+    assert LP.scope_keys("ed1000001", LP.BookIndexLineage(bi)) == {"ed1000001", "co1000001", "co2000002"}

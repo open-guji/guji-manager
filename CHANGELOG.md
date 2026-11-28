@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，落票规则·负责范围）：名册 `books` 是 ID 列表，版本（Book）、作品（Work）、丛编（Collection）的 ID 直接写、不加前缀，写了作品／丛编就管它名下所有版本。归属以 book-index 为准：`landing_policy.BookIndexLineage` 读 `GUJI_BOOK_INDEX` 检出里的 Book.work_id、contained_in（丛编嵌套向上走、防环，作品的 contained_in 也算）；没配或查不到的书只认它自己的 ID。只在 `--policy rules` 下生效，缺省 auto 行为不变。
+
 - PATCH（11-28，GM4，仅文档，L0）：清理 manager 文档里整张换单、rev、人裁事件、批号的旧说法。「人裁事件」统一改称「裁定事件」（总纲文件改名为 `doc/00-总览/待审条目-裁定事件-book-text格子.md`）；第四步 wiki／doc（待审条目上线〔原出单上线〕、收单、收单落票、反馈迭代-步骤、常见坑、1.0 发布／验收标准、命令速查等）按 `guji land`＋`guji collect`＋`guji pending-settle` 重写；整张换单时代的页移入 `doc/archive/`（换线上人审单、精校流程自动化方案、设计-待审单进KV、设计-待审条目化）并建索引；`doc/数据库/中心库.md`、`网站收件箱.md`、`wiki/数据库表一览.md` 按 11-28 线上 D1（32 张表＋4 视图）对齐；`doc/数据库/待审条目与裁定事件.md` 为现行基准页。
 - MINOR（11-28，网站会员身份提交 · 落票规则）：`feedback/landing_policy` 加 `rules` 策略（缺省仍是 auto，行为不变）：身份（`Standing`＝等级＋负责的书，名册 `GUJI_MEMBER_ROSTER` JSON，匿名＝anon、没列的会员＝member）、规则（`Rules`：solo_tiers、book_owner_solo、quorum、quorum_min_tier，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 整份盖）、策略三步分开，`decide(cell, votes, book)` 加 `book` 参数（旧策略兼容）。`cellvotes draft` 把 `--site-book` 传给策略。editor 以上与本书负责人一票即落，匿名永远不直接落地。
 

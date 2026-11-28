@@ -11,11 +11,15 @@
 三步，各自独立可换：
 1. **身份**：``Standing(tier, books)``。``roster(voter)`` 回答「这位投票人是谁」——匿名（16 位 hex）＝``anon``；会员号查名册，
    没列的会员＝``member``；名册里有等级和负责的书。名册现在读 JSON（``GUJI_MEMBER_ROSTER``，旧名 ``GUJI_REVIEWER_TIERS``
-   也认）：``{"<会员号>": {"tier": "editor", "books": ["<网站书id>", …]}}``，值写成字符串＝只有等级。将来换成读网站会员接口，
+   也认）：``{"<会员号>": {"tier": "editor", "books": [<范围>, …]}}``，值写成字符串＝只有等级。将来换成读网站会员接口，
    只换 ``load_roster``。等级阶梯 ``TIERS``：anon < member < reviewer < editor < admin < owner（网站角色 reader／reviewer／
    editor／admin 对应 member／reviewer／editor／admin；owner 是站方本人）。
+   **负责的范围** ``books`` 是个 ID 列表，每项直接写 ID，不加前缀：版本（Book）、作品（Work）、丛编（Collection）的 ID 都行
+   （11-28 用户定）。写了作品或丛编，就管它名下**所有版本**。归属以 book-index 为准：Book 的 ``work_id``、``contained_in``
+   （丛编可嵌套，丛编的 ``contained_in`` 指向上层丛编；作品也可 ``contained_in`` 丛编）。读法在 ``BookIndexLineage``
+   （``GUJI_BOOK_INDEX`` 指向 book-index 检出）；没配或查不到的书只认它自己的 ID。测试可传一个 ``{书id: [祖先 id…]}`` 的 dict。
 2. **规则**：``Rules`` 一个数据类，可由 JSON（``GUJI_LANDING_RULES`` 或 ``rules:<路径>``）整份盖掉：
-   ``solo_tiers``（缺省 editor、admin、owner：一票即落）、``book_owner_solo``（缺省真：名册里 ``books`` 含这本书的人，一票即落）、
+   ``solo_tiers``（缺省 editor、admin、owner：一票即落）、``book_owner_solo``（缺省真：名册里 ``books`` 覆盖这本书（版本／作品／丛书）的人，一票即落）、
    ``quorum``（缺省 0＝不开：其余人无论几票都不直接落；设 N＝至少 N 个 ``quorum_min_tier`` 以上的人同一结论才落）、
    ``quorum_min_tier``（缺省 member：匿名永远不计入）。
 3. **策略**：``auto``（有票就落）、``quorum:N``（旧，保留）、``rules``（按上面两步判）。选策略 ``--policy`` 或 ``GUJI_LANDING_POLICY``。
@@ -72,6 +76,72 @@ def load_roster(path: str | os.PathLike | None = None) -> dict[str, Standing]:
         if isinstance(v, dict):
             out[str(voter)] = Standing(str(v.get("tier") or DEFAULT_TIER), frozenset(map(str, v.get("books") or ())))
     return out
+
+
+# ───────────── 1b. 负责范围：版本／作品／丛书 ─────────────
+
+class BookIndexLineage:
+    """从 book-index 检出读版本的归属（source of truth）：Book.work_id、Book.contained_in[].id，丛编再往上沿
+    ``contained_in`` 走（防环），作品自己的 ``contained_in`` 也算。文件路径 ``<Book|Work|Collection>/<id 尾三字符各一级>/<id>-<题名>.json``
+    （同 book-index-manager ``storage.shard_dirs``）。读到的结果缓存。"""
+
+    def __init__(self, root: str | os.PathLike):
+        self.root = Path(root)
+        self._cache: dict[tuple[str, str], dict | None] = {}
+
+    def _rec(self, kind: str, id_: str) -> dict | None:
+        k = (kind, id_)
+        if k not in self._cache:
+            rec = None
+            if len(id_) >= 3 and "/" not in id_ and "\\" not in id_ and ".." not in id_:
+                d = self.root / kind / id_[-3] / id_[-2] / id_[-1]
+                for f in (sorted(d.glob(f"{id_}-*.json")) + [d / f"{id_}.json"]) if d.is_dir() else []:
+                    try:
+                        rec = json.loads(f.read_text(encoding="utf-8"))
+                        break
+                    except (OSError, ValueError):
+                        continue
+            self._cache[k] = rec
+        return self._cache[k]
+
+    def ancestors(self, book: str) -> set[str]:
+        out: set[str] = set()
+        todo: list[tuple[str, str]] = []
+        b = self._rec("Book", book)
+        if b:
+            if b.get("work_id"):
+                out.add(b["work_id"])
+                todo.append(("Work", b["work_id"]))
+            todo += [("Collection", c["id"]) for c in b.get("contained_in") or () if isinstance(c, dict) and c.get("id")]
+        seen: set[tuple[str, str]] = set()
+        while todo:
+            kind, i = todo.pop()
+            if (kind, i) in seen:
+                continue
+            seen.add((kind, i))
+            out.add(i)
+            r = self._rec(kind, i)
+            for c in (r or {}).get("contained_in") or ():
+                if isinstance(c, dict) and c.get("id"):
+                    todo.append(("Collection", c["id"]))
+        out.discard(book)
+        return out
+
+
+def load_lineage(root: str | os.PathLike | None = None):
+    """归属来源：``GUJI_BOOK_INDEX`` 指向的 book-index 检出；没配＝没有归属信息（每本书只属于它自己）。"""
+    r = root or os.environ.get("GUJI_BOOK_INDEX")
+    return BookIndexLineage(r) if r and Path(r).is_dir() else {}
+
+
+def scope_keys(book: str | None, lineage=None) -> set[str]:
+    """一本书（版本）算在哪些范围里：自己的 ID、所属作品、所属各丛编（含上层）的 ID。``lineage`` 可以是
+    ``BookIndexLineage``，或 ``{书id: [祖先 id…]}``。"""
+    if not book:
+        return set()
+    ln = load_lineage() if lineage is None else lineage
+    anc = ln.ancestors(book) if hasattr(ln, "ancestors") else (ln.get(book) or ())
+    return {book, *anc}
 
 
 def standing_of(voter: str, roster: dict[str, Standing] | None = None) -> Standing:
@@ -149,18 +219,21 @@ class RulesPolicy:
     「一票即落」只认这个人**自己**那一票：一格上别人的票不一致由 ``triage`` 的闸挂起，不在这里管。"""
     name = "rules"
 
-    def __init__(self, rules: Rules | None = None, roster: dict[str, Standing] | None = None):
+    def __init__(self, rules: Rules | None = None, roster: dict[str, Standing] | None = None,
+                 lineage=None):
         self.rules = rules or Rules.load()
         self.roster = load_roster() if roster is None else roster
+        self.lineage = load_lineage() if lineage is None else lineage
 
     def decide(self, cell: str, votes: list[dict], book: str | None = None) -> Decision:
         r = self.rules
         sts = [(v, standing_of(v.get("voter") or "", self.roster)) for v in votes]
+        scope = scope_keys(book, self.lineage)
         for v, st in sts:
             if st.tier in r.solo_tiers:
                 return Decision(True, f"{st.tier} 一票即落")
-            if r.book_owner_solo and book and book in st.books:
-                return Decision(True, "负责本书")
+            if r.book_owner_solo and scope & st.books:
+                return Decision(True, "负责本书（%s）" % "、".join(sorted(scope & st.books)))
         if r.quorum:
             tally: dict[tuple, int] = {}
             for v, st in sts:
