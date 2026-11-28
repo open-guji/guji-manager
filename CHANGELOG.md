@@ -6,7 +6,11 @@
 
 ## [未发版]
 
+## [0.7.13] - 2026-11-28
+
 - PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
+
+- PATCH（11-28，#1290）：`guji bench void` 作废中心库结果（不删行，status=void、去基线、记原因）。
 
 ## [0.7.12] - 2026-11-28
 
