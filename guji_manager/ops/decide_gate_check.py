@@ -9,7 +9,9 @@ cv 的 `decide_gate` 挂在 `seed_admit` 出口，**只检测、不判断**：�
 
 `DETECT_ONLY_STEPS`：只检测、不出字的步。这类步「没跑」（cv 升级后老册还没补跑）不是产物过期，
 close-check 1a、看板过期数、部署检查都不把它算进坏账；它有没有跑、查出什么由 close-check 2e 单独报。
-补跑：`guji pipeline <管线> <册> --from seed_admit`（seed_admit 新鲜会跳过，只补跑 gate，几秒一页）。
+补跑：先 `guji pipeline status` 看 seed_admit 新鲜，再 `guji pipeline <管线> <册> --from seed_admit`（seed_admit 新鲜会跳过，
+只补跑 gate，几秒一页）；seed_admit 过期时这条会连它重算，出过 v0.1 的册别这样补（CV4 11-28）。
+gate 有自己的页级指纹，上游重跑后它自己过期：过期的 gate 产物不进汇总，单列页数（`stale`）。
 """
 from __future__ import annotations
 
@@ -37,16 +39,26 @@ def _read(store, book: str, pg: int) -> dict | None:
     return d.get(STEP, d) if isinstance(d, dict) else None
 
 
-def summarize(book: str, pages, store, rows_max: int = 500) -> dict:
+def gate_page_status(eng, pages) -> dict[int, str]:
+    """decide_gate 各页的新鲜度（fresh／stale／missing…）；cv 没有这一步时返回空。"""
+    row = (eng.status(pages=list(pages))["steps"] or {}).get(STEP) or {}
+    return {int(pg): str(r.get("status")) for pg, r in (row.get("pages") or {}).items()}
+
+
+def summarize(book: str, pages, store, rows_max: int = 500, page_status: dict[int, str] | None = None) -> dict:
     """读这些页的 decide_gate 产物 → 汇总。
 
     返回 `{"pages": 页数, "checked": 有产物的页数, "missing": [没产物的页], "fail_pages": [有 fail 的页],
-    "fails": {name: 条数}, "flags": {name: 条数}, "rows": [每条 fail：page, name, unit, key, reason]}`。"""
+    "fails": {name: 条数}, "flags": {name: 条数}, "rows": [每条 fail：page, name, unit, key, reason], "stale": [过期的页]}`。
+    给了 `page_status`（`gate_page_status`）时，状态不是 fresh 的页即使有产物也不读，记进 `stale`。"""
     pages = [int(p) for p in pages]
     out = {"pages": len(pages), "checked": 0, "missing": [], "fail_pages": [],
-           "fails": {}, "flags": {}, "rows": []}
+           "fails": {}, "flags": {}, "rows": [], "stale": []}
     for pg in pages:
         g = _read(store, book, pg)
+        if g is not None and page_status is not None and page_status.get(pg, "fresh") != "fresh":
+            out["stale"].append(pg)
+            continue
         if g is None:
             out["missing"].append(pg)
             continue
@@ -76,6 +88,8 @@ def describe(s: dict) -> str:
     nfl = sum(s["flags"].values())
     if nfl:
         parts.append(f"flag {nfl} 条只留证据不计（" + "、".join(f"{k} {v}" for k, v in sorted(s["flags"].items())) + "）")
-    if s["missing"] and s["checked"]:
-        parts.append(f"{len(s['missing'])} 页没出 decide_gate（`guji pipeline … --from seed_admit` 补跑）")
+    if s.get("stale"):
+        parts.append(f"{len(s['stale'])} 页 decide_gate 已过期、不计（上游重跑过；seed_admit 新鲜时 `--from seed_admit` 补跑）")
+    if s["missing"] and (s["checked"] or s.get("stale")):
+        parts.append(f"{len(s['missing'])} 页没出 decide_gate（先看 status：seed_admit 新鲜才用 `--from seed_admit` 补跑）")
     return "；".join(parts)

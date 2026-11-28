@@ -19,7 +19,7 @@
   12 Step9 产物在（reports/<册>/<册>.md 与对勘 html）
   7/13 避諱表、收尾记录在（给了 --notes 才查）
   2e 第四步出口检查 decide_gate（cv #2005）：按 fail 汇总（step_error／ref_shift／char_not_in_evidence／admit_blank_cell），
-     flag 只计数不告警；终校档有 fail 判未过，粗校档只报数；册里一页都没有 decide_gate 产物（cv 早于 #2005、没补跑）记 skip。
+     flag 只计数不告警；终校档有 fail 判未过，粗校档只报数；gate 自己过期的页不计；没有可用的 decide_gate 产物记 skip。
      只检测的步「没跑」不进 1a 坏账（`decide_gate_check.DETECT_ONLY_STEPS`）。11-28 GM2 加
   15 国内书影（COS srcbw）：账在、对象数＝旁车源图数、抽查线上对象与墨迹 IoU（`datastore/cos_tier.check`；
      册没有页表指针记 skip）。11-27 GM2 加（用户 11-26：上 COS 的必须是压缩版、压缩是流程一步）
@@ -276,17 +276,21 @@ def _fallback(book: str, pages, store) -> dict:
                   "recut_bad": r["recut_bad"][:50], "hot_pages": r["hot_pages"][:200]} if bad else None)
 
 
-def _decide_gate(book: str, pages, store, tier: str = "final") -> dict:
-    """2e 第四步出口检查（cv `decide_gate`）：fail 汇总。flag 只计数。"""
-    from .decide_gate_check import describe, summarize
+def _decide_gate(book: str, pages, store, tier: str = "final", eng=None) -> dict:
+    """2e 第四步出口检查（cv `decide_gate`）：fail 汇总。flag 只计数。给了 `eng` 就按 gate 自己的页级新鲜度
+    剔掉过期产物（上游重跑后旧 gate 结果不作数，CV4 11-28）。"""
+    from .decide_gate_check import describe, gate_page_status, summarize
     name = "第四步出口检查"
-    s = summarize(book, pages, store)
+    s = summarize(book, pages, store, page_status=gate_page_status(eng, pages) if eng is not None else None)
     if not s["checked"]:
-        return _item("2e", name, SKIP, f"{s['pages']} 页都没有 decide_gate 产物（cv 早于 #2005，或没补跑："
-                                        "`guji pipeline … --from seed_admit`）")
+        why = (f"{len(s['stale'])} 页产物已过期、{len(s['missing'])} 页没有" if s["stale"]
+               else f"{s['pages']} 页都没有 decide_gate 产物（cv 早于 #2005，或没补跑）")
+        return _item("2e", name, SKIP, why + "；先看 status，seed_admit 新鲜才用 `guji pipeline … --from seed_admit` 补跑",
+                     {"stale": s["stale"][:200]} if s["stale"] else None)
     nf = sum(s["fails"].values())
     data = {"fails": s["fails"], "flags": s["flags"], "fail_pages": s["fail_pages"][:200],
-            "missing": s["missing"][:200], "rows": s["rows"]} if (nf or s["missing"] or s["flags"]) else None
+            "missing": s["missing"][:200], "stale": s["stale"][:200], "rows": s["rows"]} \
+        if (nf or s["missing"] or s["stale"] or s["flags"]) else None
     if tier == "rough":
         return _item("2e", name, PASS, describe(s) + ("（粗校档只报数，终校档才计）" if nf else ""), data)
     return _item("2e", name, FAIL if nf else PASS, describe(s), data)
@@ -416,7 +420,7 @@ def run(eng, ws: Path, pages, export_dir: Path | None = None, chapter: str | Non
         ("2c", "□ 有去向", lambda: [_lacuna(book, export_dir, chapter, pending)] if export_dir else
          [_item("2c", "□ 有去向", SKIP, "没给 --export-dir")]),
         ("2d", "整理本对不上的列有交代", lambda: [_fallback(book, pages, eng.store)]),
-        ("2e", "第四步出口检查", lambda: [_decide_gate(book, pages, eng.store, tier)]),
+        ("2e", "第四步出口检查", lambda: [_decide_gate(book, pages, eng.store, tier, eng)]),
         ("8", "字形库与人裁已推进中心库", lambda: [_store_committed(ws)]),
         ("8b", "字形库 edition 是书 ID", lambda: [_glyph_edition(ws)]),
         ("10", "lines.md／pages.json", lambda: _export(export_dir, chapter) if export_dir else

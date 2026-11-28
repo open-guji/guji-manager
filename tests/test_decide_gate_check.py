@@ -64,3 +64,15 @@ def test_fresh_ignores_detect_only_gate_not_run():
     assert CC._fresh(eng, [1, 2, 3])["status"] == CC.PASS
     steps["seed_admit"] = _row(fresh=2, missing=1)
     assert CC._fresh(eng, [1, 2, 3])["status"] == CC.FAIL                # 真正出字的步缺页照旧判失败
+
+
+def test_stale_gate_not_counted(tmp_path):
+    """上游重跑后 gate 自己过期：旧产物里的 fail 不作数，单列过期页（CV4 11-28）。"""
+    _gate(tmp_path, "b", 1, [_c("ref_shift", "fail", "3")])
+    _gate(tmp_path, "b", 2, [_c("rare_codepoint", "flag")])
+    eng = SimpleNamespace(status=lambda pages: {"steps": {"decide_gate": {
+        "pages": {1: {"status": "stale"}, 2: {"status": "fresh"}}}}})
+    r = CC._decide_gate("b", [1, 2], _Store(tmp_path), eng=eng)
+    assert r["status"] == CC.PASS and r["data"]["stale"] == [1] and "1 页 decide_gate 已过期" in r["detail"]
+    eng1 = SimpleNamespace(status=lambda pages: {"steps": {"decide_gate": {"pages": {1: {"status": "stale"}}}}})
+    assert CC._decide_gate("b", [1], _Store(tmp_path), eng=eng1)["status"] == CC.SKIP
