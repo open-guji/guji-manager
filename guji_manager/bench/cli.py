@@ -77,10 +77,21 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
             m = central_marker(ws)
             res["data"] = str(dh / str((m or {}).get("branch") or "main") / str(m["ws"])) if m else str(ws)
         env["central"] = R.central_rev(dh, ws, Path(res["data"]))
+        pv = R.pins(ws, dh, list(plan)) if plan else {}
+        if pv:
+            env["pins"] = pv                               # 整份钉子与来源层（同 guji job precheck），可原样复现
+        if pv and spec.mode == "run":
+            bad, warn = R.drift(ws, dh, pv, env.get("cv"))
+            if bad:
+                raise R.Missing("code", "；".join(bad), "书仓 git pull 到含该 k 的提交，或先出新 k")
+            if warn:
+                env["pin_warnings"] = warn
+                for w in warn:
+                    print(f"    ⚠ {w}", file=sys.stderr)
         if "glyph_lib" in need:
             if not plan:
                 raise R.Missing("glyph_lib", f"{spec.id} 没给册清单（plan 或 --vol），不知道建哪版字形库")
-            env["glyph_pin"] = R.glyph_pins(ws, dh, list(plan))
+            env["glyph_pin"] = R.glyph_pins(ws, dh, list(plan), pv)
         if "raw" in need:
             n = 0
             if not plan:
@@ -114,7 +125,8 @@ def run_one(spec, book: str, a, params: str | None = None, against: Path | None 
     work = R.cache_root(a.cache) / "work" / spec.id / book / stamp
     work.mkdir(parents=True, exist_ok=True)
     try:
-        ctx = prepare(spec, book, a, work, params=params)
+        with R.lock(R.cache_root(a.cache), book):         # 同机同书备资源串行（书仓、db pull、钉版库都写同一缓存）
+            ctx = prepare(spec, book, a, work, params=params)
     except R.Missing as e:
         ctx0 = B.BenchCtx(book, _vols_arg(a), work, {}, env=_versions())
         r = B.skipped(spec, ctx0, str(e))
@@ -193,7 +205,8 @@ def cmd_fetch(a) -> None:
     work = R.cache_root(a.cache) / "work" / spec.id / a.book / "fetch"
     work.mkdir(parents=True, exist_ok=True)
     try:
-        ctx = prepare(spec, a.book, a, work)
+        with R.lock(R.cache_root(a.cache), a.book):
+            ctx = prepare(spec, a.book, a, work)
     except R.Missing as e:
         print(f"– {e}")
         sys.exit(2)
@@ -268,7 +281,7 @@ def cmd_guard(a) -> None:
 def cmd_show(a) -> None:
     if a.central:
         from . import publish as P
-        for x in P.history(a.bench, a.book):
+        for x in P.history(a.bench, a.book, all_status=a.all_status):
             print(f"  {x['ran_at']}  {x['status']:9s} {x['primary_name']}={x['primary_value']}  n={x['n']}  "
                   f"cv={x['cv']}{'  [基线]' if x['baseline'] else ''}  {x['by'] or ''}")
         return
@@ -308,7 +321,8 @@ def add_parser(sub) -> None:
     p.add_argument("--heavy", action="store_true", help="guard：连 heavy 级一起跑")
     p.add_argument("--legacy", action="store_true", help="guard：连老框架 guards/*.yaml 一起验（P2 前发版要带）")
     p.add_argument("--history", action="store_true", help="show：列历次（本机结果目录）")
-    p.add_argument("--central", action="store_true", help="show：列中心库 bench_runs 里的历次")
+    p.add_argument("--central", action="store_true", help="show：列中心库 bench_runs 里的历次（缺省只列 ok／regressed）")
+    p.add_argument("--all-status", action="store_true", help="show --central：连 skipped／no_gold 一起列")
     p.add_argument("--publish", action="store_true", help="run／ab／guard：结果写进中心库 bench_runs（不带就只在本机）")
     p.add_argument("--baseline", action="store_true", help="配 --publish：标为基线")
     p.add_argument("--note", default=None, help="配 --publish：一句说明")
