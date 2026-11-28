@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
 - PATCH（11-28，GM2）：执行方遇到不认的单型记 blocked 并说明「交单方 manager 更新、等自更新后 retry」，不再掉进 command 分支报 `TypeError: 'NoneType' object is not iterable`（CV4 #18365：kind=bench 落到还没更新的执行方）。
 
 ## [0.7.12] - 2026-11-28
