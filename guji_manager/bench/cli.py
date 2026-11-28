@@ -77,6 +77,10 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
             m = central_marker(ws)
             res["data"] = str(dh / str((m or {}).get("branch") or "main") / str(m["ws"])) if m else str(ws)
         env["central"] = R.central_rev(dh, ws, Path(res["data"]))
+        if "glyph_lib" in need:
+            if not plan:
+                raise R.Missing("glyph_lib", f"{spec.id} 没给册清单（plan 或 --vol），不知道建哪版字形库")
+            env["glyph_pin"] = R.glyph_pins(ws, dh, list(plan))
         if "raw" in need:
             n = 0
             for v, pages in plan.items():

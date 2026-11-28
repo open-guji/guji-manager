@@ -171,6 +171,28 @@ def central_rev(dh: Path, ws: Path, data: Path | None = None) -> str | None:
             return None
 
 
+def glyph_pins(ws: Path, dh: Path, vols) -> dict[str, int | None]:
+    """各册钉的字形库版本，缺的钉版库按 `guji glyph-db pin-build` 建到工作区 `output/glyph-g<N>.db`（同执行机）。"""
+    from ..jobs.precheck import pins_of
+    out: dict[str, int | None] = {}
+    with env(GUJI_WORKSPACE=ws, GUJI_DATA_HOME=dh):
+        for v in vols:
+            try:
+                n = pins_of(v)["glyph_pin"][0]
+            except Exception as e:                         # noqa: BLE001
+                raise Missing("glyph_lib", f"读不了册 {v} 的钉子（{type(e).__name__}: {e}）") from e
+            out[v] = n
+    for n in sorted({n for n in out.values() if isinstance(n, int)}):
+        if (ws / "output" / f"glyph-g{n}.db").exists():
+            continue
+        e = {**os.environ, "GUJI_DATA_HOME": str(dh), "GUJI_WORKSPACE": str(ws), "PYTHONIOENCODING": "utf-8"}
+        r = subprocess.run([guji_exe(), "glyph-db", "pin-build", "-w", str(ws), "--pin", str(n)], env=e,
+                           capture_output=True, text=True)
+        if r.returncode:
+            raise Missing("glyph_lib", f"建钉版字形库 g{n} 失败：{(r.stderr or r.stdout).strip()[-300:]}")
+    return out
+
+
 # ------------------------------------------------------------------ 原图、产物
 def raw(ws: Path, dh: Path, vol: str, pages: list[int]) -> int:
     """只取金标涉及的页，落到册 yaml 的原图目录（`raw_path`）。返回新写页数。"""
