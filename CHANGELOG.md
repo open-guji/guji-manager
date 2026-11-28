@@ -6,6 +6,10 @@
 
 ## [未发版]
 
+## [0.7.5] - 2026-11-28
+
+- PATCH（11-28，网站会员身份提交，挑拣自 dev #1198／#1201／#1204，只带这三个 PR）：①网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`；事件另带 `payload.voters={member,anon}`；level 仍 human、channel 仍 web_vote。②`feedback/landing_policy` 加 `rules` 策略（缺省仍 auto，行为不变）：身份（`Standing`＝等级＋负责的 ID，名册 `GUJI_MEMBER_ROSTER` JSON）、规则（`Rules`，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 盖）、策略三步分开，`decide(cell, votes, book)`；editor 以上与负责人一票即落，匿名永远不直接落地。③负责范围写 ID（版本／作品／丛编，不加前缀），归属读 book-index（`BookIndexLineage`，`GUJI_BOOK_INDEX`）。
+
 ## [0.7.4] - 2026-11-28
 
 基于 v0.7.3，只带 #1206、#1219（候选字线，CV3；dev 上另有 MINOR 待发，不在本版），外加跟 cv dev 的守卫修复（manager CI 检出 cv dev，cv #1998、#2001 让 4 条测试报红）。
