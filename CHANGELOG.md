@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2）：执行方遇到不认的单型记 blocked 并说明「交单方 manager 更新、等自更新后 retry」，不再掉进 command 分支报 `TypeError: 'NoneType' object is not iterable`（CV4 #18365：kind=bench 落到还没更新的执行方）。
+
 ## [0.7.12] - 2026-11-28
 
 - PATCH（11-28，CV4 #1288，GM2 审改）：`products_io.active_step()` 改问 cv `decide_names.ADMIT_STEP_ACTIVE`。原先查 `STEPS`，步模块没导入时是空注册表、恒判旧名 seed_admit：`guji exp`／`guji bench` 在改名版 cv（v0.9.16 起、cv dev #2033 起）上把 `eval: use_human_verdicts: false` 挂在旧键 `seed_admit:`，引擎忽略，**评测带着人裁在跑**（殿本 vol01 decide 1114 格有 1024 格走 admit:human）。v0.7.6–v0.7.11 配改名版 cv 跑出的 exp/bench 收尾类结果要复核。L0。
