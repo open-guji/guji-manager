@@ -701,8 +701,12 @@ def _ensure_book_edition(dbp) -> None:
 
 
 def _borrowed_ids(dbp) -> frozenset[str]:
-    """库里借来的别书刻例 id（``borrowed`` 表）；没借、读不了都是空。"""
+    """进库会贴错图的同号 id：库里借来的别书刻例（``borrowed`` 表）。没借、读不了都是空；装的 cv 自己会摘掉
+    借来那份（cv #1989，见 ``consumers.cv_handles_borrow_clash``）时也是空，本书同号格照常选、照常进。"""
     import sqlite3
+    from ..feedback.consumers import cv_handles_borrow_clash
+    if cv_handles_borrow_clash():
+        return frozenset()
     try:
         with sqlite3.connect(f"file:{dbp}?mode=ro", uri=True) as c:
             return frozenset(r[0] for r in c.execute("SELECT instance_id FROM borrowed"))
