@@ -114,3 +114,25 @@ def attach(cards: list[dict], cands: dict[str, dict]) -> int:
             c["cands"] = x
             n += 1
     return n
+
+
+_CELL = __import__("re").compile(r"^(-?\d+):(-?\d+):(-?\d+)([ab]?)$")
+
+
+def cards_of_items(book: str, items: list[dict]) -> list[dict]:
+    """开着的待审条目 → `cands_for_cards` 要的卡（条目是现行真源，不再经整张单的 `review.cards`）。
+
+    格号 `页:列:格[a|b]`；3a 候选取条目 doc 的 `lib_top`（`[{c, s}]`，分是覆盖分）、整理本字取 `refc`／`ref.c`。
+    都没有也行：只出 3c 图像序＋上下文序。`u` 带上，并入时与条目的 u 核对。"""
+    out = []
+    for r in items:
+        m = _CELL.match(str(r.get("cell") or ""))
+        if not m:
+            continue
+        d = r.get("doc") or {}
+        ref = d.get("refc") or (d.get("ref") or {}).get("c")
+        cand = [[x["c"], x["s"]] for x in (d.get("lib_top") or []) if isinstance(x, dict) and x.get("c") and x.get("s") is not None]
+        out.append({"id": f"{book}:{r['cell']}", "page": int(m[1]), "col": int(m[2]), "slot": int(m[3]), "sub": m[4],
+                    "u": r.get("u"), "ref": {"char": ref} if isinstance(ref, str) and len(ref) == 1 else None,
+                    "db": {"candidates": cand}})
+    return out
