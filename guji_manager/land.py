@@ -460,15 +460,40 @@ def alt_pending(ws: Path, book: str, text_id: str, chapter: str, res: dict | Non
     return any(cell in have for cell in hand_without_alt(ws, book, text_id, chapter))
 
 
+CANDS_TIMEOUT = 40 * 60
+
+
+def ensure_cands(ws: Path, book: str) -> bool:
+    """候选字线：给这册待审卡现算 cands/1（``guji audit cands``：3c 按图候选＋4b 上下文排序，不重跑整册），
+    读 ``cards.alt.json`` 的卡、写 ``cards.cands.json``，``load_cards`` 再并进条目 doc。缺字块图、缺 r5／全字表向量包、
+    超时都只告警、不拦 land（卡上没有 cands，网站退回旧候选；条目里原有的 cands 由 keep_old_alt 保留）。"""
+    rep = ws / "reports" / book
+    alt_f = rep / f"{book}.cards.alt.json"
+    cmd = [sys.executable, "-m", "open_guji_cv.cli_v2", "audit", "cands", book, "-w", str(ws), "--cards-out", str(rep / f"{book}.cards.cands.json")]
+    if alt_f.exists():
+        cmd += ["--cards", str(alt_f)]
+    try:
+        rc = subprocess.run(cmd, env={**os.environ, "GUJI_WORKSPACE": str(ws)}, timeout=CANDS_TIMEOUT).returncode
+    except subprocess.TimeoutExpired:
+        print(f"⚠ {book} audit cands 超时（{CANDS_TIMEOUT // 60} 分钟），这次不带 cands", file=sys.stderr)
+        return False
+    if rc:
+        print(f"⚠ {book} audit cands 没出（退出码 {rc}；缺字块图或向量包？guji cache pull-rare-index），这次不带 cands", file=sys.stderr)
+    return not rc
+
+
 def keep_old_alt(store: P.ItemStore, cells: list[dict]) -> list[dict]:
     """新判里这格没算出 alt（卡片对不上、audit alt 没出）：宁可保留条目里原有的 alt，也不要冲掉（QTW 11-25：019/027 册 22 格候选字没了）。"""
     out = []
     for c in cells:
-        if not c.get("alt"):
+        if not c.get("alt") or not c.get("cands"):
             live = store.find(c.get("cell") or "")
-            old = (live[0].get("doc") or {}).get("alt") if live else None
-            if old:
-                c = {**c, "alt": old}
+            odoc = (live[0].get("doc") or {}) if live else {}
+            if not c.get("alt") and odoc.get("alt"):
+                c = {**c, "alt": odoc["alt"]}
+            # 候选字线 cands/1 同理：这次没现算（cards.cands.json 缺、换了台机器 land）就留条目里原有的，别让卡上的候选当天消失
+            if not c.get("cands") and odoc.get("cands"):
+                c = {**c, "cands": odoc["cands"]}
         out.append(c)
     return out
 
@@ -512,6 +537,8 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
             lines = Path(a.recheck).read_text(encoding="utf-8").splitlines() if a.recheck else []
             extra_f.write_text("\n".join(lines + hand) + "\n", encoding="utf-8")
         ensure_alt_cards(ws, book, [c["cell"] for c in res["cells"]], str(extra_f) if extra_f else None, need_alt=hand)
+    if getattr(a, "audit_cands", False):
+        ensure_cands(ws, book)
     from .u_stamp import u_map
     us0 = u_map(book, [c["cell"] for c in res["cells"]])
     cells = _E.merge_cards(res["cells"], _E.load_cards(ws, book), _E.load_dian(ws, book), us0, book)    # 点校 AI 摘要按（册，u）挂
@@ -549,6 +576,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--disk-report", action="store_true", help="只列工作区／数据目录／book-text 各项占多大、哪些能删，不动任何东西")
     p.add_argument("--keep-files", action="store_true", help="每册收完不清 _packs／导出／单格图（缺省清，盘紧的执行机用）")
     p.add_argument("--no-audit-alt", action="store_true", help="卡片缺格时不自动先跑 guji audit alt")
+    p.add_argument("--audit-cands", action="store_true", help="先给待审卡现算候选字 cands/1（guji audit cands，要字块图和 r5／全字表向量包），并进条目 doc；缺省不算")
     p.add_argument("--no-enrich", action="store_true", help="不并卡片字段（只比结构：增减、挪格、图变）")
     p.add_argument("--apply", action="store_true", help="真写条目文件（缺省只出计划）")
     p.add_argument("--run", nargs=argparse.REMAINDER, default=None,

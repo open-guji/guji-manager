@@ -276,6 +276,30 @@ def test_load_cards_keys_by_bare_cell_and_old_alt_kept(tmp_path):
     assert not plan["改"]                                  # alt 没被冲掉：没变
 
 
+def test_cands_overlay_reaches_item_doc_and_is_kept(tmp_path):
+    """候选字线：`guji audit cands` 的 cards.cands.json 按裸格号并进卡 → merge_cards 带出 cands → 条目 doc；
+    这次没现算 cands 时保留条目里原有的，不冲掉；坏文件当没有。"""
+    from guji_manager import land_enrich as E
+    d = tmp_path / "reports" / "vol19"
+    d.mkdir(parents=True)
+    (d / "vol19.cards.alt.json").write_text(json.dumps([{"id": "vol19:1:1:1", "cell": "1:1:1", "alt": [{"c": "柳"}]}, {"id": "vol19:2:2:2", "cell": "2:2:2"}]), encoding="utf-8")
+    cands = {"v": "cands/1", "by": "t", "top": 2, "list": [{"c": "柳", "p": 0.5, "src": {"a": 1}}, {"c": "桺", "src": {"c": 1}}], "p_other": None}
+    (d / "vol19.cards.cands.json").write_text(json.dumps([{"id": "vol19:1:1:1", "cell": "1:1:1", "cands": cands}, {"id": "vol19:9:9:9", "cands": cands}]), encoding="utf-8")
+    cards = E.load_cards(tmp_path, "vol19")
+    assert cards["1:1:1"]["cands"] == cands and "cands" not in cards["2:2:2"] and "9:9:9" not in cards   # 不在 alt 卡里的格不凭空多出
+    cells = E.merge_cards([_cell("1:1:1"), _cell("2:2:2")], cards)
+    assert cells[0]["cands"] == cands and "cands" not in cells[1]
+    st = _store(tmp_path, [{**_cell("1:1:1"), "cands": cands}])
+    kept = land.keep_old_alt(st, [_cell("1:1:1")])
+    assert kept[0]["cands"] == cands
+    plan = land.plan_book(st, kept, src="land")
+    assert not plan["改"] and plan["_store"].find("1:1:1")[0]["doc"]["cands"] == cands
+    fresh = land.plan_book(_store(tmp_path / "x", []), cells, src="land")
+    assert fresh["_store"].find("1:1:1")[0]["doc"]["cands"] == cands          # 新开的条目 doc 带 cands
+    (d / "vol19.cards.cands.json").write_text("{半截", encoding="utf-8")
+    assert "cands" not in E.load_cards(tmp_path, "vol19")["1:1:1"]
+
+
 def test_clean_book_cache_and_products(tmp_path):
     for d in ("cache/b1", "products/b1", "_packs/x/b1"):
         (tmp_path / d).mkdir(parents=True)
