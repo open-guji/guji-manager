@@ -194,19 +194,23 @@ def glyph_pins(ws: Path, dh: Path, vols) -> dict[str, int | None]:
 
 
 # ------------------------------------------------------------------ 原图、产物
-def raw(ws: Path, dh: Path, vol: str, pages: list[int]) -> int:
-    """只取金标涉及的页，落到册 yaml 的原图目录（`raw_path`）。返回新写页数。"""
+def raw(ws: Path, dh: Path, vol: str, pages: list[int] | None) -> int:
+    """取原图落到册 yaml 的原图目录（`raw_path`）：给了页只取这些页，None＝整册（按页表）。返回新写页数。"""
     from .._cv import load_book
     from .._cv import sources as S
     from ..cli_source import _locate, _src
     with env(GUJI_WORKSPACE=ws, GUJI_DATA_HOME=dh):
         bk = load_book(vol)
-        need = [p for p in pages if not bk.raw_path(p).exists()]
-        if not need:
+        if pages is not None and all(bk.raw_path(p).exists() for p in pages):
             return 0
         src = _src()
         book_id, v = _locate(src, S, vol)
         table = S.read_table(src, book_id, v, bk.source_rev)
+        if pages is None:
+            pages = [x["page"] for x in table["pages"]]
+        need = [p for p in pages if not bk.raw_path(p).exists()]
+        if not need:
+            return 0
         want = set(need)
         table = {**table, "pages": [x for x in table["pages"] if x["page"] in want]}
         got = {x["page"] for x in table["pages"]}

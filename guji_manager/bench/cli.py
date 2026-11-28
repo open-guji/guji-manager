@@ -83,10 +83,10 @@ def prepare(spec, book: str, a, work: Path, params: str | None = None):
             env["glyph_pin"] = R.glyph_pins(ws, dh, list(plan))
         if "raw" in need:
             n = 0
+            if not plan:
+                raise R.Missing("raw", f"{spec.id} 没给册清单（plan 或 --vol），不知道取哪册原图")
             for v, pages in plan.items():
-                if pages is None:
-                    raise R.Missing("raw", f"{spec.id} 没给页清单（plan），不整册拉原图")
-                n += R.raw(ws, dh, v, pages)
+                n += R.raw(ws, dh, v, pages)              # pages 为 None＝整册
             env["raw_pulled"] = n
         if "products" in need:
             link = cache / "products" / book / f"_run-{work.name}"

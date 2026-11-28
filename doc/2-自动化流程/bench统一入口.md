@@ -27,7 +27,7 @@
 | code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`（本机 `~/guji-workspace` 或 `GUJI_BOOKS_DIR` 有就从本机克隆）；`--ws` 用现成的 |
 | config | `guji db pull --no-glyph`，跳过事件、身份账、待审单、审阅、output（部分副本，bench 不写库）；底库、PUA 表、组配置进 `datahome/main/.borrowed/` |
 | glyph_lib | 改成整拉 `guji db pull`（连钉版字形库与借库） |
-| raw | 只取金标涉及的页（bench 的 `plan`），按册钉的页表版本 |
+| raw | 只取金标涉及的页（bench 的 `plan` 给了页时），否则整册；按册钉的页表版本 |
 | products | 各册 main 指针的产物包（`--label` 改），按标签缓存 |
 | models、corpus | cv 运行时按钉子自己取回，这里只核令牌 |
 | torch、gpu、ocr | 只核环境 |
