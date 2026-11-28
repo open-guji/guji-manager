@@ -3,7 +3,7 @@
 脚本：`scripts/collect_all.py`（不需要 AI）。每轮：读中心库 `web_inbox` 有票的书 → 每本 `guji collect --books auto --fresh` → 有落格的册触发 kaiyuanguji-web 的 `proofing-sync.yml`（target=production, parts=publish, only=书/册）。
 
 ## 机器要求
-- guji-manager 须含 v0.7.5 以后的会员号热修（网站新票的 `voter` 是 8 位会员号、迁移前票带 `voter_prev`；身份识别在 `guji_manager/voter.py` 的 `voter_ident`，collect 里写人裁事件的「意见来源」用它，脚本本身只数票、不碰这字段）。
+- guji-manager 须 ≥ v0.7.7（含 v0.7.5 的会员号热修与 v0.7.7 的配置组层）（网站新票的 `voter` 是 8 位会员号、迁移前票带 `voter_prev`；身份识别在 `guji_manager/voter.py` 的 `voter_ident`，collect 里写人裁事件的「意见来源」用它，脚本本身只数票、不碰这字段）。
 - Python 3.12 venv，装 open-guji-cv（tag v0.9.9 或更新）与 guji-manager（本分支/main），`guji model fetch` 取过模型。
 - 磁盘：每本书工作区在 `--ws-root` 下，数据目录 `$GUJI_DATA_HOME`（缺省 ~/.guji-data）；book-text 检出（dev 分支，可稀疏，只需 scripts、docs 与要收的书目录）。
 - `gh` 已登录，且能触发 open-guji/kaiyuanguji-web 的 workflow。
