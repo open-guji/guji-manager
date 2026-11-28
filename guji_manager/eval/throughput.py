@@ -14,7 +14,7 @@
 """
 
 from __future__ import annotations
-from ..products_io import decide_dir
+from ..products_io import DECIDE_STEPS, decide_dir
 from ..products_io import read_decide
 
 import statistics as _stats
@@ -105,7 +105,12 @@ def step_timing(book: str, st: ProductStore) -> dict:
     （cache 命中的页 `Engine` 根本不会写新的 manifest 行，天然只统计到真跑的）。
     """
     per_step = []
+    # 定字收尾两名（seed_admit／char_decide）只出一行：取 `decide_dir` 选中的那个目录（新旧并存以新名为准），
+    # 不然 migrate-name 后旧目录残留会把同一批页算两遍
+    chosen = decide_dir(st.root, book).name
     for sid in _STEPS:
+        if sid in DECIDE_STEPS and sid != chosen:
+            continue
         mf = st.manifest(book, sid)
         elapsed = [e.elapsed for e in mf.all().values() if e.status == "ok" and e.elapsed]
         if not elapsed:

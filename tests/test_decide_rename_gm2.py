@@ -39,3 +39,45 @@ def test_perf_hooks_mirror_new_module(monkeypatch):
     h = cli_perf.all_hooks()
     assert h["open_guji_cv.steps.char_decide"]["funcs"] == h["open_guji_cv.steps.seed_admit"]["funcs"]
     assert cli_perf.RETIRED_STAGE["seed_admit"] == "decide"
+
+
+def _manifest_line(key, elapsed):
+    import json
+    return json.dumps({"key": key, "status": "ok", "elapsed": elapsed, "fingerprint": "x"}) + "\n"
+
+
+def test_throughput_timing_counts_decide_once(tmp_path):
+    """新旧目录并存（migrate-name 后旧目录残留）：step_timing 只出 char_decide 一行。"""
+    from guji_manager._cv import ProductStore
+    from guji_manager.eval.throughput import step_timing
+    for s in ("seed_admit", "char_decide"):
+        d = tmp_path / "b" / s
+        d.mkdir(parents=True)
+        (d / "_manifest.jsonl").write_text(_manifest_line("p0001", 1.0) + _manifest_line("p0002", 2.0), encoding="utf-8")
+    rows = {r["step"]: r for r in step_timing("b", ProductStore(tmp_path))["steps"]}
+    assert "seed_admit" not in rows and rows["char_decide"]["n_pages"] == 2
+
+
+def test_fetch_steps_extracts_both_names_reader_picks_new(tmp_path):
+    """取包 steps 过滤把两名都解出来；读端 decide_dir 以 char_decide/ 为准，不会两份都读。"""
+    import io
+    import tarfile
+
+    from guji_manager.products_io import DECIDE_STEPS, decide_pages, is_decide_step
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name in ("b/seed_admit/p0001.json", "b/char_decide/p0001.json", "b/row_segment/p0001.json"):
+            data = b"{}"
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tf.addfile(ti, io.BytesIO(data))
+    buf.seek(0)
+    want = {"seed_admit", "align_ref"}
+    if any(is_decide_step(s) for s in want):
+        want |= set(DECIDE_STEPS)
+    from pathlib import Path
+    with tarfile.open(fileobj=buf, mode="r:gz") as tf:
+        mem = [m for m in tf.getmembers() if Path(m.name).parts[1] in want]
+        tf.extractall(tmp_path, members=mem, filter="data")
+    assert (tmp_path / "b" / "seed_admit").is_dir() and not (tmp_path / "b" / "row_segment").exists()
+    assert [p.parent.name for p in decide_pages(tmp_path, "b")] == ["char_decide"]
