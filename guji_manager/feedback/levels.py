@@ -41,7 +41,7 @@ def event_level(e) -> str | None:
     """先认 `payload.level`；没有的：`actor` 不是 model 的算 human，是 model 的批次在 `HUMAN_MODEL_BATCHES` 算 human、
     其余算 ai。看图结论、文意裁定、模型判断来源的给 None。`e` 可以是 Event，也可以是事件 dict。"""
     g = e.get if isinstance(e, dict) else (lambda k, d=None: getattr(e, k, d))
-    if g("kind") in ("vision_check", "ctx_ruling"):
+    if g("kind") in ("vision_check", "ctx_ruling", "vis_glyph"):   # vis_glyph：cv 第三步看图缓存（CV3 11-28），不算钉
         return None
     p = g("payload") or {}
     if p.get("source") in MODEL_JUDGMENT_SOURCES:
