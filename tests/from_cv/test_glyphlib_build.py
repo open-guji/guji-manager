@@ -99,7 +99,8 @@ def test_build_copies_patches_and_borrows_as_borrowed_human(src_ws, tmp_path):
     assert len(ev) == 3 and ev[0]["kind"] == "promote" and ev[0]["payload"]["from_ws"] == "srcbook"
 
     db = tmp_path / "borrower.sqlite"                                   # 别的书借它：记成借来的人裁，不当本书铁证
-    rebuild_from_store(data / "output/glyph_store", db, extra_stores=[store])
+    # 借的书这里拿 srcbook 自己的库当本书：cv #2032 起缺省按本书前缀跳过自己的例，这里传空 self_ids 看借法本身
+    rebuild_from_store(data / "output/glyph_store", db, extra_stores=[store], self_ids=())
     c = sqlite3.connect(db)
     try:
         st = dict(c.execute("SELECT label_status, COUNT(*) FROM instances WHERE instance_id LIKE 'srcbook:%' "
@@ -107,6 +108,14 @@ def test_build_copies_patches_and_borrows_as_borrowed_human(src_ws, tmp_path):
     finally:
         c.close()
     assert st == {"borrowed_human": 3}
+
+    db2 = tmp_path / "self.sqlite"                                      # 缺省：本书（工作区名 srcbook）自己的例不再借进来
+    rebuild_from_store(data / "output/glyph_store", db2, extra_stores=[store])
+    c = sqlite3.connect(db2)
+    try:
+        assert c.execute("SELECT COUNT(*) FROM instances WHERE instance_id LIKE 'srcbook:%'").fetchone()[0] == 0
+    finally:
+        c.close()
 
 
 def test_build_refuses_bad_name_and_empty_selection(src_ws):
