@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -94,6 +95,7 @@ def lock(cache: Path, book: str, timeout: float = 3600):
 
 # ------------------------------------------------------------------ 金标
 DATASET_REPO = "https://github.com/open-guji/open-guji-dataset"
+LEGACY_WS_REPO = "https://github.com/open-guji/guji-workspace"   # 迁仓过渡期旧总仓（同 jobs.runner.LEGACY_WORKSPACE_REPOS）
 
 
 def dataset_root(opt: str | None = None, *, cache: Path | None = None, rels: list[str] | None = None,
@@ -152,10 +154,35 @@ def gold_dir(spec, book: str, vols: list[str], ds: Path) -> Path | None:
 
 # ------------------------------------------------------------------ 书仓与中心库
 def _local_repo(book: str) -> Path | None:
-    """本机已有的书仓（`GUJI_BOOKS_DIR`，缺省 `~/guji-workspace`）：从它克隆，省一次网络。"""
-    root = Path(os.environ.get("GUJI_BOOKS_DIR") or Path.home() / "guji-workspace").expanduser()
+    """本机已有的书仓：从它克隆，省一次网络、也不用另要凭据。
+
+    找的地方与跑批准备（cv `scripts/rerun_prep.sh`）一致：`~/<书仓名>`（会话 add_repo 挂上的、或准备脚本克隆过的），
+    再找 `GUJI_BOOKS_DIR`（缺省 `~/guji-workspace`）下的 `<书id>-*` 书仓。"""
+    from ..jobs.spec import WS_REPOS
+    home = Path.home()
+    repo = WS_REPOS.get(book, "")
+    if repo and (home / repo.rsplit("/", 1)[-1] / ".git").exists():
+        return home / repo.rsplit("/", 1)[-1]
+    hit = [p for p in home.glob(f"{book}-*") if (p / ".git").exists() and (p / "workspace.yaml").exists()]
+    if len(hit) == 1:
+        return hit[0]
+    root = Path(os.environ.get("GUJI_BOOKS_DIR") or home / "guji-workspace").expanduser()
     hit = [p for p in root.glob(f"{book}-*") if (p / ".git").exists()] + \
         ([root / book] if (root / book / ".git").exists() else [])
+    return hit[0] if len(hit) == 1 else None
+
+
+def _legacy_ws(book: str) -> Path | None:
+    """迁仓过渡期的旧总仓 open-guji/guji-workspace 里这部书的目录（准备脚本读不了书仓时也退回这里，内容相同）。
+
+    本机没有旧总仓就克隆一份到 `~/guji-workspace`，与准备脚本同一路径；读不了返回 None。"""
+    gw = Path(os.environ.get("GUJI_LEGACY_WS") or Path.home() / "guji-workspace").expanduser()
+    if not (gw / ".git").exists():
+        r = subprocess.run(["git", "clone", "-q", "--depth", "1", LEGACY_WS_REPO, str(gw)],
+                           capture_output=True, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        if r.returncode:
+            return None
+    hit = [p for p in gw.glob(f"{book}-*") if (p / "workspace.yaml").exists() and not (p / ".git").exists()]
     return hit[0] if len(hit) == 1 else None
 
 
@@ -178,6 +205,23 @@ def _find_repo(book: str) -> str:
     return hit[0]
 
 
+def _pull_cache(book: str, p: Path) -> subprocess.CompletedProcess:
+    """更新缓存里的书仓。本机有 `~/<书仓名>` 就同准备脚本先 fetch 它（会话挂上的仓才有凭据），再从它快进；
+    没有才直接 pull GitHub。"""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    src = _local_repo(book)
+    if src is None:
+        return subprocess.run(["git", "pull", "-q", "--ff-only"], cwd=p, capture_output=True, text=True, env=env)
+    r = subprocess.run(["git", "fetch", "-q", "origin", "main"], cwd=src, capture_output=True, text=True, env=env)
+    if r.returncode:
+        return r
+    r = subprocess.run(["git", "fetch", "-q", str(src), "refs/remotes/origin/main"], cwd=p,
+                       capture_output=True, text=True, env=env)
+    if r.returncode:
+        return r
+    return subprocess.run(["git", "merge", "-q", "--ff-only", "FETCH_HEAD"], cwd=p, capture_output=True, text=True, env=env)
+
+
 def book_ws(book: str, cache: Path, ws_opt: str | None = None, update: bool = True) -> Path:
     """书仓：给了 `--ws` 用它（不改它），否则克隆／更新到缓存。"""
     if ws_opt:
@@ -188,7 +232,7 @@ def book_ws(book: str, cache: Path, ws_opt: str | None = None, update: bool = Tr
     p = cache / "books" / book
     if (p / ".git").exists():
         if update:
-            r = subprocess.run(["git", "pull", "-q", "--ff-only"], cwd=p, capture_output=True, text=True)
+            r = _pull_cache(book, p)
             if r.returncode:                               # 拉不动就别拿旧检出冒充最新（GM2 审 #1269）
                 raise Missing("code", f"更新缓存里的书仓 {p} 失败：{(r.stderr or r.stdout).strip()[-200:]}",
                               "查网络／令牌；或 --offline 明说用缓存，或 --ws 指本机书仓")
@@ -196,9 +240,16 @@ def book_ws(book: str, cache: Path, ws_opt: str | None = None, update: bool = Tr
     local = _local_repo(book)
     url = str(local) if local else f"https://github.com/guji-workspace/{_find_repo(book)}"
     p.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(["git", "clone", "-q", url, str(p)], capture_output=True, text=True)
+    r = subprocess.run(["git", "clone", "-q", url, str(p)], capture_output=True, text=True,
+                       env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     if r.returncode:
-        raise Missing("code", f"克隆书仓 {url} 失败：{r.stderr.strip()[-200:]}")
+        shutil.rmtree(p, ignore_errors=True)
+        legacy = None if local else _legacy_ws(book)
+        if legacy:                                     # 同准备脚本：书仓读不了（会话没挂）退回旧总仓目录（不对它做 git 操作）
+            print(f"⚠️ 读不了 {url}（会话里 add_repo 就走新仓），退回旧总仓目录 {legacy}", file=sys.stderr)
+            return legacy
+        raise Missing("code", f"克隆书仓 {url} 失败：{r.stderr.strip()[-200:]}",
+                      "会话里 add_repo 这个书仓，或 --ws 指本机书仓")
     if local:                                          # 远端仍指 GitHub，以后 pull 拿正式版本
         o = _git("remote", "get-url", "origin", cwd=local)
         _git("remote", "set-url", "origin", o, cwd=p)

@@ -25,7 +25,7 @@
 | needs | 取法 |
 |---|---|
 | gold | 测试集仓（`--dataset`，缺省 `GUJI_DATASET_DIR` 或 cv 旁边的 open-guji-dataset），记 commit。都没有（干净云会话、执行机）就自动稀疏克隆到 `bench-cache/dataset/`，只检出要的分片与 `guards/`；`--dataset-ref` 钉版本 |
-| code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`（本机 `~/guji-workspace` 或 `GUJI_BOOKS_DIR` 有就从本机克隆）；`--ws` 用现成的。缓存里已有就 `git pull --ff-only`，拉不动报缺资源（`--offline` 才用旧检出） |
+| code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`。取法同跑批准备（cv `rerun_prep.sh`）：本机有 `~/<书仓名>`（会话挂上的）就从它克隆、更新时先 fetch 它再快进；其次 `GUJI_BOOKS_DIR`（缺省 `~/guji-workspace`）下的书仓；都没有才直连 GitHub，克隆不了（会话没挂、没凭据）退回旧总仓 open-guji/guji-workspace 里这本书的目录。`--ws` 用现成的。更新拉不动报缺资源（`--offline` 才用旧检出） |
 | config | `guji db pull --no-glyph`，跳过事件、身份账、待审单、审阅、output（部分副本，bench 不写库）；底库、PUA 表、组配置进 `datahome/main/.borrowed/` |
 | glyph_lib | 改成整拉 `guji db pull`（连借库）并重建 `glyph.db`（没钉 glyph_pin 的册用它）；钉了版的册按 `guji glyph-db pin-build` 建 `glyph-g<N>.db` |
 | raw | 只取金标涉及的页（bench 的 `plan` 给了页时），否则整册；按册钉的页表版本 |
