@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import pin_state, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_settle, cli_parity, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
+from . import pin_state, cli_launch, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_settle, cli_parity, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .uid import cli as _uid_cli
@@ -43,6 +43,7 @@ COMMANDS: dict = {
     **cli_products.COMMANDS,   # products（拆分 P4）
     **cli_perf.COMMANDS,       # perf（拆分 P4）
     **cli_runs.COMMANDS,       # rerun、pagekinds、cache、product（拆分 P4）
+    **cli_launch.COMMANDS,     # launch（新书首发 prepare，GM4 11-28）
     **cli_closeout.COMMANDS,   # closeout（标 main 后收尾，A32 11-09）
     **swap.COMMANDS,           # swap（换单 driver，A32 11-05）
     **pin_state.COMMANDS,      # pinstate（钉状态流：删钉／过期／重新生效，GM4 11-26）

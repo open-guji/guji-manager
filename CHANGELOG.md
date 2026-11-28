@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- MINOR（11-28，GM4）：新增 `guji launch prepare <册> --label <main 包> -w <工作区> …`＝原 `tools/开书/出v01.py` 搬进包（`guji_manager/launch/v01.py`，tools 里留薄壳）：判停→交接单→第五步产物→导出→book-text 本地加章→local_check，不推任何东西；册已有 `_land/landed.json` 拒绝（非首发）。能进任务库 command 单并行。后续加 ship 段。L0。
+
 - PATCH（CV0 11-28，GM2 问）：`datastore/schema_d1.sql` 对齐线上 guji-data-main——events 的 payload／target 改为由 raw 现算的虚拟列，加 u／level 虚拟列（与线上同式），pending_items 加 reason 虚拟列，补线上早已手加的 7 条索引与 voids 视图。线上不变（导入按 pragma_table_info 取列，本来就不写虚拟列）；只影响本机 SQLite（测试、备份还原），`settle_sync` 按 `e.u` 查在本机也能跑了。
 - PATCH（11-28，待审清理）：去掉 `progress_volume.pending_rev`：`progress-sync` 不再读写它，`datastore/progress.py` 的 `VOLUME_FIELDS` 与 `schema_d1.sql` 删列；D1 上的 `DROP COLUMN` 在本版发布后执行。`cellvotes draft` 不再读整张单（`--sheet`）。
 
