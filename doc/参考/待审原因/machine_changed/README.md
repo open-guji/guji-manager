@@ -28,9 +28,9 @@
 
 人裁永远优先于机器，不要自动覆盖。
 
-## 换单默认（用户 11-07 定）
+## 收尾默认（用户 11-07 定）
 
-无票的机器改字直接按新结果进文本，换新一轮单时整批清掉，不送人审、不保留旧单；新一轮结果一般更好，真有错在新一轮里再查。只有机器推翻最新人裁的格（人看图定的字）才退回人裁字、进复审，用户 11-07 确认保留。代码：open-guji-cv `proof_cycle.py` 的 `split_changes`（cv#1148）；`guji feedback swap run` 经 `auto_cycle` 调它，无需开关。
+无票的机器改字直接按新结果进文本，下一轮 `guji land` 对账时整批关掉条目，不送人审、不保留旧条目；新一轮结果一般更好，真有错在新一轮里再查。只有机器推翻最新人裁的格（人看图定的字）才退回人裁字、进复审，用户 11-07 确认保留。代码：manager `swap/resolve.resolve`（原 cv `proof_cycle.split_changes`，cv#1148，已随 proof_cycle 删除）；`guji land --text-apply`、`guji feedback swap run` 调它，无需开关。
 
 ## 现状（2026-11-06，★main 包口径，正文页）
 

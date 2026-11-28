@@ -1,5 +1,8 @@
 # 待审原因（pending_reason）
 
+> **术语说明（2026-11-28）**：本目录里按日期记的深挖、benchmark 写于整张换单时代。文中的「出单」＝`guji land` 开／改待审条目、给每格判原因；「线上单」＝网站按章现拼的待审条目视图；「换单」＝新一轮包到来后条目对账。现在没有整张单、没有 rev，结构见 [待审条目与裁定事件](../../数据库/待审条目与裁定事件.md)；旧做法存档在 [archive](../../archive/README.md)。数字与结论仍是当时的记录，不随术语改。
+
+
 > 粗校 S3 [决策层漏斗](../../../wiki/自动化流程/决策层漏斗.md) 按它分流；每个原因一个子文件夹，写怎么处理。
 
 ## 是什么
@@ -25,15 +28,15 @@
 
 ## 在哪里产生
 
-1. **出单**：`guji land`（经 cv `pending-cells`／`pending_list.py`）出待审单时，对每格调 `reasons_for_pending`，写 `pending_reason`、`pending_reason_detail`（读该版产物包的 seed_admit、align_ref、glyph_match）。
-2. **复审格**：换单 `proof_cycle` 里机器推翻人裁的格进复审（X03）；其余 `--recheck` 格是 X04。
+1. **land 对账条目时**：`guji land`（经 cv `pending-cells`／`pending_list.py`）开／改条目，对每格调 `reasons_for_pending`，写进条目 `raw.doc.pending_reason`、`pending_reason_detail`（读该版产物包的 seed_admit、align_ref、glyph_match）；`pending_items.reason` 虚拟列就是它。
+2. **复审格**：机器推翻已落定裁定的格进复审（X03）；其余 `--recheck` 格是 X04。
 3. **补单**：同字对照自检（`seg_defect --gate`）补上的格带 `src: seg_selfcheck`，原因 S04。
 4. **回填**：老单、老事件用 cv `scripts/zhengli/backfill_pending_reason.py`、`backfill_event_reason.py` 补。
 5. **控制台卡片**：`review/cards.py` `stamp_cards`。
 
 ## 在哪里用到
 
-- **统计**：`guji pipeline pending-stats`（线上单口径：读出单时写进单子的值，判法改了要重新出单才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
+- **统计**：`guji pipeline pending-stats`（线上条目口径：读条目里写进去的值，判法改了要重新 land 才变；改名的旧值按 yaml `renamed` 换成新名计数。要看现行判法下的数，用 ★main 包现算，见 ai-team `三书待审原因统计/run3.py`）、`iterate round-report`（每轮报告）、ai-team `domain/CV/质检/三书待审原因统计/`（三套书 ★main 包口径）。
 - **分流**：`route`／`reviewer` 决定进大模型统一审（`llm_queue`）、算法、人审页还是留后；`iterate leverage` 按它排杠杆。
 - **人审页与网站**：网站卡片按 `ui`、`hint` 出形态和说明（kaiyuanguji-web、guji-console 的 `pendingReasons.ts` 是副本，改 yaml 后要用 `--json` 导出同步）。
 - **book-text**：11-09 起不录 `pending_reason`（只录首选字，待审的字和别的字看起来一样）；原因只在待审单里（中心库 → 网站）。三者分工见 [待审条目-裁定事件-book-text格子](../../00-总览/待审条目-裁定事件-book-text格子.md)。

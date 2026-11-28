@@ -15,7 +15,7 @@
 |---|---|
 | enum 定义 | `guji_manager/review/pending_reason.py`（2026-11-04 拆分时从 cv 搬来）（`PendingReason`，字段名常量 `FIELD = "pending_reason"`） |
 | 配置（码、显示名、去向、负责人、卡片形态、判法说明、旧字段对应） | `guji_manager/review/pending_reasons.yaml` |
-| 判一格的原因 | `guji_manager/review/reasons.py`：`classify(cell, ctx)`；整张单 `reasons_for_pending()` ＋ `stamp()`；控制台卡 `stamp_cards()` |
+| 判一格的原因 | `guji_manager/review/reasons.py`：`classify(cell, ctx)`；整册条目 `reasons_for_pending()` ＋ `stamp()`；控制台卡 `stamp_cards()` |
 | 导出给别的仓 | `python -m guji_manager.review.pending_reason --json`（键 version／field／categories／routes／reasons） |
 | manager 里取 | `from guji_manager.review.pending_reason import specs`（`guji_manager._cv.pending_reason_specs` 是同一个，本仓本地名字） |
 
@@ -68,7 +68,7 @@
 
 | 数据 | 写法 | 谁写 |
 |---|---|---|
-| 待审单 `feedback/lists/proofing/<文本号>/<章>.pending.json` | 每格 `pending_reason`（必有）＋`pending_reason_detail`；另有成因码细分 `pending_reason_cause`（A1…I，`review/causes.py`）＋`pending_reason_cause_detail`，派单按它细分 | `guji land` 出单（原 cv `republish.py`）（公众单、团队单都写） |
+| 待审条目 `feedback/lists/pending/<书>/<章>.items.jsonl`（`raw.doc`；land 导出的 `proofing/<文本号>/<章>.pending.json` 同值） | 每格 `pending_reason`（必有）＋`pending_reason_detail`；另有成因码细分 `pending_reason_cause`（A1…I，`review/causes.py`）＋`pending_reason_cause_detail`，派单按它细分 | `guji land` 开／改条目（原 cv `republish.py`，已删） |
 | 控制台待审卡 | 每张卡 `pending_reason`／`pending_reason_detail`，控制台显示「原因：显示名（补充）」 | manager `review/cards.py` → `stamp_cards` |
 | 裁定事件 `feedback/events/*.jsonl`（`confirm` 等） | `payload.pending_reason`：裁的时候这格在单上的原因 | manager `cellvotes`（网站票落事件）；手写事件照写，不知道写 `unknown` |
 | 文意裁定 `feedback/rulings/*.jsonl`（`ctx_ruling`） | `payload.pending_reason`：问的时候这格的原因 | 出裁定的脚本；字组裁定写 `group_abstain` 等 |
@@ -96,7 +96,7 @@
 1. 改 `pending_reasons.yaml`（新值加在对应大类里，给新 `code`、`priority`）和 `PendingReason`，在 `reasons.py` 里加判法；补测试。
 2. **码永不复用**；改名不直接改，旧值在 yaml 标 `deprecated_by` 指向新值，并在 `parse()` 里把旧值映射到新值（目前还没有弃用过的值）。
 3. 合进 guji-manager dev 后，`python -m guji_manager.review.pending_reason --json` 重新导出，同步上表各仓副本。找 GM2。
-4. 判法变了不影响任何 Step 指纹（原因在 review 层），下次出单就生效；要改现有单，用 cv `scripts/zhengli/backfill_pending_reason.py`。
+4. 判法变了不影响任何 Step 指纹（原因在 review 层），下次 `guji land` 对账就生效；要改现有条目，用 cv `scripts/zhengli/backfill_pending_reason.py`。
 
 ## 七、迁移记录（2026-11-03～04）
 
@@ -106,7 +106,7 @@
 | 北行日录 1 张单 | 同上 | 351 格，unknown 0 |
 | 历史事件 | `backfill_event_reason.py`：按 group／route／subclass／via／来源推，推不出 `unknown` | 殿本 65,617 条（rev 690917）、北行 1,766 条 |
 | book-text 殿本 99 册、北行 | 按现行单给 char 写 `pending_reason`、去待审格的 `lacuna`，文本线升 patch（dev） | 殿本 18,427 格、北行 351 格 |
-| 史记、全唐文 | 还没进 book-text；下次出单自动带原因 | — |
+| 史记、全唐文 | 还没进 book-text；下次 land 自动带原因 | — |
 
 - **切坏格细分（11-04，SJ 史記第 8 轮）**：`seg_defect` 不新增取值，细分写进 `pending_reason_detail`：`merged`（两字并一格）、`clipped`（字被切掉一边或半截）、`bleed`（邻格笔画溢入）、`frame_residue`（框线残笔当成笔画）。来源是格上的 `seg_kind` 字段：第二期由 seed_admit 写进 `evidence.seg_kind`，release_gates 写单时抄到单上同名字段；why 码照旧只写 `seg_defect`（带冒号的条目会被 `doubt_codes` 当说明丢掉）。判法见 `review/reasons.py` 的 `SEG_KINDS`／`seg_kind_of`。
 
