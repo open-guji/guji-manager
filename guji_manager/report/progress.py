@@ -31,6 +31,7 @@ from .._cv import default_pipeline_id, load_pipeline
 from .._cv import page_key
 from .._cv import ProductStore
 from .._cv import ADMIT_STEP, CELLS_KIND, cells_step, page_slots
+from ..products_io import exists_decide
 
 COLS = ("stale", "review_new", "review_decided", "cut", "defect", "excluded", "cols_bad", "rebind")
 TODO = tuple(k for k in COLS if k not in ("excluded", "review_decided"))
@@ -78,7 +79,7 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
             row["cols_bad"] = sum(1 for c in cells.columns
                                   if not c.ok and "non_body_column" not in (c.error or "")
                                   and "table_column" not in (c.error or ""))
-        if st.exists(book, ADMIT_STEP, page_key(pg)) and cells is not None:
+        if exists_decide(st, book, page_key(pg)) and cells is not None:
             try:
                 for s in page_slots(st, book, pg, []):
                     if s.kind == "blank":

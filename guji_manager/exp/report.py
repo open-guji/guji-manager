@@ -26,8 +26,9 @@ def build(edir: str | Path, *, same=None, write: bool = True) -> dict:
         raise BadRequest(f"{edir} 不是跑过的实验（没有 exp.yaml）")
     cfg = from_dict(dict(st["config"]))
     step = st["steps"][-1]
-    if step != "seed_admit":
-        raise BadRequest(f"报告目前只比 seed_admit 产物（本实验 to={step}）")
+    from ..products_io import is_decide_step
+    if not is_decide_step(step):
+        raise BadRequest(f"报告目前只比收尾（char_decide／seed_admit）产物（本实验 to={step}）")
 
     cells: dict[str, dict] = {}
     for v in cfg.variants:

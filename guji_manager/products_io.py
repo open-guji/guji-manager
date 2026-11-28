@@ -28,6 +28,40 @@ DECIDE_STEPS = (DECIDE_NEW, DECIDE_OLD)
 RULING_STEP = DECIDE_OLD
 
 
+def active_step() -> str:
+    """本机 cv 现在用的收尾步名：cv 改名版（open-guji-cv#2033）起是 char_decide，之前是 seed_admit。"""
+    try:
+        from ._cv import STEPS
+        return DECIDE_NEW if DECIDE_NEW in STEPS else DECIDE_OLD
+    except Exception:  # noqa: BLE001
+        return DECIDE_OLD
+
+
+def fold_params(params: dict | None) -> dict | None:
+    """一层参数 `{step_id: {…}}` 里收尾两个键并成本机 cv 生效的那个（cv `fold_admit_params` 的同口径；
+    两个键同时写 → ValueError，不猜谁生效）。没写收尾键原样返回。"""
+    if not isinstance(params, dict):
+        return params
+    present = [k for k in DECIDE_STEPS if k in params]
+    act = active_step()
+    if not present or present == [act]:
+        return params
+    if len(present) == 2:
+        raise ValueError(f"参数里 {DECIDE_NEW}: 与 {DECIDE_OLD}: 同时写了：同一层只留一处")
+    out = {k: v for k, v in params.items() if k not in DECIDE_STEPS}
+    out[act] = params[present[0]]
+    return out
+
+
+def pipeline_step(name: str, steps) -> str:
+    """`--from/--to` 之类写的步名 → 管线里真有的那个（收尾新旧名互认）；别的步名原样。"""
+    if name in DECIDE_STEPS:
+        for s in DECIDE_STEPS:
+            if s in steps:
+                return s
+    return name
+
+
 def is_decide_step(step: Any) -> bool:
     f = _cv_attr("is_admit_step")
     return bool(f(step)) if f else step in DECIDE_STEPS
