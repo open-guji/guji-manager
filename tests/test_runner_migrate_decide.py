@@ -8,7 +8,7 @@ from guji_manager.jobs import runner as R
 
 def _job(tmp_path, cv_new: bool):
     j = object.__new__(R.Job)
-    j.dry, j.dir, j.spec = False, tmp_path, {"book": "03"}
+    j.dry, j.dir, j.spec, j.ws = False, tmp_path, {"book": "03", "pipeline": "keben_body_v2"}, "/ws/x"
     j._cv_roots = lambda: (str(tmp_path / "products"), str(tmp_path / "feedback"))
     j.env = lambda write=False: {}
     j.calls, j.evs = [], []
@@ -22,7 +22,9 @@ def test_migrates_old_book_on_renamed_cv(tmp_path, monkeypatch):
     j, run = _job(tmp_path, True)
     monkeypatch.setattr(subprocess, "run", run)
     j._migrate_decide_name()
-    assert j.calls and j.calls[0][1:] == ["-m", "open_guji_cv", "decide", "migrate-name", "03"]   # 不走 bin/guji-cv（#18361）
+    # 不走 bin/guji-cv（#18361）；-w 必给（#18364）
+    assert j.calls and j.calls[0][1:] == ["-m", "open_guji_cv", "decide", "migrate-name", "03", "-w", "/ws/x",
+                                          "--pipeline", "keben_body_v2"]
     assert "原地改名" in j.evs[0]
 
 

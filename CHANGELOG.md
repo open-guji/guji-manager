@@ -6,6 +6,10 @@
 
 ## [未发版]
 
+## [0.7.16] - 2026-11-28
+
+- PATCH（11-28，GM2，执行方报 #18364）：跑批收尾改名护栏补 `-w <工作区>`（cv 带册命令必须显式给，不读 GUJI_WORKSPACE）和 `--pipeline <本单管线>`（指纹按同一条换算）。v0.7.13–0.7.15 的护栏一触发就退出码 2。L0。
+
 ## [0.7.15] - 2026-11-28
 
 - PATCH（11-28，GM2，#18365 第 4 次＋CV0 提）：任务单可带执行方 manager 版本下限 `manager_min`（`guji job submit --manager-min`；`guji bench run --job` 缺省填交单机版本）；新版执行方领单 SQL 按自己版本过滤，旧执行方由 D1 触发器 `attempt_manager_min` 挡（schema_d1.sql，`guji job init` 才建）。不给就不写进单子，旧单指纹不变。
