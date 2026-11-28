@@ -268,3 +268,17 @@ def test_version_n():
     assert SP.version_n("0.7.14") == 7014 and SP.version_n("1.2.3.dev4") == 1_002_003
     with pytest.raises(SP.SpecError):
         SP.version_n("0.7")
+
+
+def test_init_split_keeps_manager_min_trigger():
+    """正式库靠 store_d1.init 建表：它按「;换行」切、丢掉以 -- 开头的段。触发器要整条留下、能编译。"""
+    import sqlite3
+    from importlib import resources
+    text = resources.files(store_d1.__package__).joinpath("schema_d1.sql").read_text(encoding="utf-8")
+    stmts = [s.strip() for s in text.split(";\n") if s.strip() and not s.strip().startswith("--")]
+    trig = [s for s in stmts if "attempt_manager_min" in s]
+    assert len(trig) == 1 and trig[0].rstrip().endswith("END")
+    c = sqlite3.connect(":memory:")
+    c.executescript(text)
+    c.execute("DROP TRIGGER attempt_manager_min")
+    c.execute(trig[0])
