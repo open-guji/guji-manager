@@ -6,7 +6,7 @@
 
 ## [未发版]
 
-- PATCH（11-28，GM3，接 cv #2008，CV4 P3 通知）：收尾步 seed_admit→char_decide 过渡期两名并认。新增 `admit_names`：产物目录与页顶层键先新后旧（`final_dir`／`page_body`）、书级参数 `params.char_decide`／`params.seed_admit` 二选一（两个都有报错）、事件写入统一常量 `RULING_STEP`（现仍 seed_admit，cv 改名版发布后改一处）。改 ruling_hits／ruling_anchor／collect／ctx_ruling／final_review／write_go；取包步名列表加 char_decide；`_cv._FALLBACK` 登记 cv #2008 新导出。判法不变。
+- PATCH（11-28，GM3，接 cv #2008，CV4 P3 通知）：收尾步 seed_admit→char_decide 过渡期两名并认。新增 `admit_names`：产物目录与页顶层键先新后旧（`final_dir`／`page_body`）、书级参数 `params.char_decide`／`params.seed_admit` 二选一（两个都有报错）、事件写入统一常量 `RULING_STEP`（现仍 seed_admit，cv 改名版发布后改一处）。改 ruling_hits／ruling_anchor／collect／ctx_ruling／final_review／write_go；取包步名列表加 char_decide；`_cv._FALLBACK` 登记 cv #2008 新导出。判法不变。cv 依赖下限 ≥ 0.9.14（见 COMPAT.md）。
 
 - PATCH（11-28，GM2，接 cv #2005，CV4 通报）：接 cv 第四步出口检查 `decide_gate`（挂 seed_admit 出口，只检测不判断）。新增 `ops/decide_gate_check`（按 fail 汇总 step_error／ref_shift／char_not_in_evidence／admit_blank_cell，flag 只计数）；`close-check` 加 **2e 第四步出口检查**：终校档有 fail 判未过，粗校档只报数（不挡 v0.1），gate 自己的页级指纹过期（上游重跑过）的页旧结果不计、单列页数，没有可用产物记 skip。只检测的步「没跑」（cv 升级后老册未补跑，status 多一行全 missing）不再算进 close-check 1a、看板过期数（`report/progress`）、部署检查过期表。补跑：先看 status 确认 seed_admit 新鲜，再 `guji pipeline <管线> <册> --from seed_admit`（只补跑 gate）；seed_admit 过期时这条会连它重算，出过 v0.1 的册别这样补。L0。
 
