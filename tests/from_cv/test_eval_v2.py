@@ -53,6 +53,9 @@ NOT_REGISTRY_SHAPED = {
     "context_guard",  # G1（overview#333）Step7 context 护栏对比：--base/--variant 指沙箱里
                       # 各开关各跑一份的 seed_admit 产物目录，--labels 由工作区人裁事件现做，
                       # 不是数据集分片；用法见 research/context_guard/README.md
+    "context_correction",  # 已搬进 cv bench（CV4 cv#2094，11-28）：`guji bench run context-correction`，旧 `guji eval` 不再登记
+    "confusable_lm",  # 同上：`guji bench run confusable-lm`
+    "llm_context",  # 同上：`guji bench run llm-context`（读 dataset context-correction/llm-cache 快照，不在线问）
     "fold",  # 己已巳、日曰评测折叠表（A23，cv #1079）：被别的 eval_ 脚本 import 的辅助模块，没有命令行
     "font_family",  # 字体族实测（A23，cv #1093）：三书人裁分片互为查询与库，--shard/--lib 可重复，库是剥过的本机 glyph.db 副本，
                     # 不是单一分片位置参数；结果见 ai-team 字形领域「字体族实测」
