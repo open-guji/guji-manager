@@ -101,9 +101,9 @@ def check_versions(r: Report, manager: str | None = None, cv: str | None = None)
     if manager is None:
         from .. import __version__ as manager
     if cv is None:
-        try:
-            from importlib.metadata import version
-            cv = version("open-guji-cv")
+        try:      # cv 自己的口径；importlib.metadata 在可编辑安装下报的是上次重装时的旧号
+            from .._cv import core_cv_version as CVV
+            cv = CVV.describe()[0]
         except Exception:  # noqa: BLE001
             cv = None
     for name, got, (low, why) in (("manager 版本", manager, MIN_MANAGER), ("cv 版本", cv, MIN_CV)):

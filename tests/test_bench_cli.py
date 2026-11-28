@@ -132,5 +132,106 @@ def test_baseline_keeps_only_latest(fake, monkeypatch):
     _, o2 = cli.run_one(spec, "bk", a, tag="y")
     P.publish(o1, conn=conn, baseline=True)
     P.publish(o2, conn=conn, baseline=True)
-    h = {x["run_id"].rsplit("-", 1)[1]: x["baseline"] for x in P.history("t-fake", "bk", conn=conn)}
+    h = {x["run_id"].rsplit("-", 2)[1]: x["baseline"] for x in P.history("t-fake", "bk", conn=conn)}
     assert h == {"x": 0, "y": 1}
+
+
+# ── 取资源层（GM2 审 #1269 后改） ──────────────────────────────────────
+def test_publish_run_id_suffix_utc_and_history_filter(fake, monkeypatch):
+    spec, ds, tmp = fake
+    monkeypatch.setenv("GUJI_DATA_SQLITE", str(tmp / "c2.db"))
+    from guji_manager.bench import publish as P
+    from guji_manager.datastore import d1conn
+    a = cli._fix(_args(ds, tmp, extra=["--book", "bk"]))
+    _, out = cli.run_one(spec, "bk", a)
+    row = P.row_of(out)
+    assert row["run_id"].startswith(f"t-fake/bk/{out.name}-") and len(row["run_id"].rsplit("-", 1)[1]) == 8
+    assert row["ran_at"].endswith("Z") and "T" in row["ran_at"]
+    conn = d1conn.connect()
+    P.publish(out, conn=conn)
+    r2, out2 = cli.run_one(spec, "nobook", a)                # 没金标 → no_gold，也能发，但缺省 history 不列
+    assert r2.status == "no_gold"
+    P.publish(out2, conn=conn)
+    assert P.history("t-fake", "nobook", conn=conn) == []
+    assert len(P.history("t-fake", "nobook", conn=conn, all_status=True)) == 1
+
+
+def test_lock_serializes(tmp_path):
+    import threading
+    import time as _t
+    seen = []
+
+    def hold(tag):
+        with R.lock(tmp_path, "bk"):
+            seen.append(f"{tag}+")
+            _t.sleep(0.3)
+            seen.append(f"{tag}-")
+    ts = [threading.Thread(target=hold, args=(i,)) for i in "ab"]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert seen[0][0] == seen[1][0] and seen[2][0] == seen[3][0]   # 一个放了另一个才进
+
+
+def test_book_ws_pull_failure_is_missing(tmp_path, monkeypatch):
+    p = tmp_path / "books" / "bk"
+    (p / ".git").mkdir(parents=True)                         # 假仓：git pull 一定失败
+    with pytest.raises(R.Missing) as e:
+        R.book_ws("bk", tmp_path, None, update=True)
+    assert e.value.kind == "code"
+    assert R.book_ws("bk", tmp_path, None, update=False) == p   # --offline 明说用缓存
+
+
+def test_drift_blocks_code_warns_cv(monkeypatch, tmp_path):
+    import guji_manager.jobs.precheck as PC
+    monkeypatch.setattr(PC, "code_problems", lambda n, ws: [f"k{n} 有 drift"] if n == 3 else [])
+    pv = {"v1": {"code": [3, "基础配置"], "cv_version": ["0.9.1", "基础配置"]},
+          "v2": {"code": [3, "基础配置"], "cv_version": ["0.9.1", "基础配置"]}}
+    bad, warn = R.drift(tmp_path, tmp_path, pv, "0.9.16")
+    assert bad == ["k3 有 drift"] and warn and "0.9.16" in warn[0]
+    bad, warn = R.drift(tmp_path, tmp_path, {"v1": {"code": [None, ""], "cv_version": ["0.9.16", "x"]}}, "0.9.16")
+    assert bad == [] and warn == []
+
+
+def test_central_rebuilds_glyph_db(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr("guji_manager._cv.central_marker", lambda ws: {"ws": "w1", "branch": "main"}, raising=False)
+
+    class _R:
+        returncode = 0
+        stdout = stderr = ""
+    monkeypatch.setattr(R.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or _R())
+    R.central(tmp_path, tmp_path / "dh", glyph=True)
+    R.central(tmp_path, tmp_path / "dh", glyph=False)
+    assert "--no-rebuild" not in calls[0] and "--no-glyph" not in calls[0]
+    assert "--no-rebuild" in calls[1] and "--no-glyph" in calls[1]
+
+
+def test_products_fetch_via_tmp(monkeypatch, tmp_path):
+    from guji_manager.datastore import packs as P
+
+    def fetch(vol, root, label=None):
+        (root / vol).mkdir(parents=True)
+        (root / vol / "x.json").write_text("{}")
+    monkeypatch.setattr(P, "main_label", lambda vol: "L1")
+    monkeypatch.setattr(P, "fetch_products", fetch)
+    root, lab = R.products(tmp_path, "bk", "v1", tmp_path)
+    assert lab == "L1" and (root / "v1" / "x.json").exists()
+    assert not list(root.parent.glob(".tmp-*"))
+
+    def broken(vol, root, label=None):
+        (root / vol).mkdir(parents=True)
+        raise OSError("断了")
+    monkeypatch.setattr(P, "fetch_products", broken)
+    with pytest.raises(OSError):
+        R.products(tmp_path, "bk", "v2", tmp_path)
+    assert not (root / "v2").exists() and not list(root.parent.glob(".tmp-*"))
+
+
+def test_versions_use_cv_own_describe(monkeypatch):
+    """cv 版本走 cv 自己的 describe，不读 importlib.metadata（可编辑安装下是旧号，CV0 11-28）。"""
+    import importlib.metadata as md
+    from guji_manager import _cv
+    monkeypatch.setattr(md, "version", lambda d: "0.0.0-stale")
+    monkeypatch.setattr(_cv.core_cv_version, "describe", lambda repo=None: ("9.9.9", "c" * 40))
+    v = cli._versions()
+    assert v["cv"] == "9.9.9" and v["manager"] != "0.0.0-stale"

@@ -63,6 +63,34 @@ def env(**kv):
                 os.environ[k] = v
 
 
+@contextmanager
+def lock(cache: Path, book: str, timeout: float = 3600):
+    """同机同书的备资源串行：书仓 git pull、`db pull`、钉版库建库都写缓存里同一个目录，执行机上同时领到两张 bench 单
+    （或本机开两个终端）会互相踩。`fcntl.flock` 锁 `<cache>/locks/<书>.lock`，等不到报 Missing；没有 fcntl（Windows）就不锁。"""
+    try:
+        import fcntl
+    except ImportError:                                    # pragma: no cover
+        yield
+        return
+    import time
+    d = cache / "locks"
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / f"{book}.lock", "w") as fh:
+        t0 = time.time()
+        while True:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() - t0 > timeout:
+                    raise Missing("lock", f"等同书 {book} 的另一次备资源超过 {timeout:.0f} 秒") from None
+                time.sleep(2)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 # ------------------------------------------------------------------ 金标
 def dataset_root(opt: str | None = None) -> Path:
     from .._cv import default_dataset_root
@@ -117,7 +145,10 @@ def book_ws(book: str, cache: Path, ws_opt: str | None = None, update: bool = Tr
     p = cache / "books" / book
     if (p / ".git").exists():
         if update:
-            subprocess.run(["git", "pull", "-q", "--ff-only"], cwd=p, check=False)
+            r = subprocess.run(["git", "pull", "-q", "--ff-only"], cwd=p, capture_output=True, text=True)
+            if r.returncode:                               # 拉不动就别拿旧检出冒充最新（GM2 审 #1269）
+                raise Missing("code", f"更新缓存里的书仓 {p} 失败：{(r.stderr or r.stdout).strip()[-200:]}",
+                              "查网络／令牌；或 --offline 明说用缓存，或 --ws 指本机书仓")
         return p
     local = _local_repo(book)
     url = str(local) if local else f"https://github.com/guji-workspace/{_find_repo(book)}"
@@ -145,15 +176,18 @@ LIGHT_EXCLUDE = ("feedback/events/", "feedback/uid/", "feedback/consumed/", "fee
 
 
 def central(ws: Path, dh: Path, glyph: bool) -> Path:
-    """`guji db pull` 拉册配置、语料、组配置等共享层；glyph 时整拉（连字形库与借库），否则跳过字形库与 `LIGHT_EXCLUDE`
-    （部分副本，push 会被拒；bench 不写库）。返回数据目录。"""
+    """`guji db pull` 拉册配置、语料、组配置等共享层；glyph 时整拉（连字形库与借库）**并重建 glyph.db**，否则跳过字形库与
+    `LIGHT_EXCLUDE`（部分副本，push 会被拒；bench 不写库）。返回数据目录。
+
+    glyph 时不带 `--no-rebuild`：没钉 glyph_pin 的册读的是工作区 `output/glyph.db`，带了它会拿缓存里的旧库（或空库）去量，
+    正是 workcopy 缩水闸（11-18）防的那个洞（GM2 审 #1269）。钉了版的册另由 `glyph_pins` 建 `glyph-g<N>.db`。"""
     from .._cv import central_marker
     m = central_marker(ws)
     if not m:
         return ws                                          # 没迁中心库的旧工作区：数据就在工作区里
-    cmd = [guji_exe(), "db", "pull", "-w", str(ws), "--no-rebuild"]
+    cmd = [guji_exe(), "db", "pull", "-w", str(ws)]
     if not glyph:
-        cmd += ["--no-glyph"] + [x for p in LIGHT_EXCLUDE for x in ("--exclude", p)]
+        cmd += ["--no-rebuild", "--no-glyph"] + [x for p in LIGHT_EXCLUDE for x in ("--exclude", p)]
     e = {**os.environ, "GUJI_DATA_HOME": str(dh), "GUJI_WORKSPACE": str(ws), "PYTHONIOENCODING": "utf-8"}
     r = subprocess.run(cmd, env=e, capture_output=True, text=True)
     if r.returncode:
@@ -171,17 +205,42 @@ def central_rev(dh: Path, ws: Path, data: Path | None = None) -> str | None:
             return None
 
 
-def glyph_pins(ws: Path, dh: Path, vols) -> dict[str, int | None]:
-    """各册钉的字形库版本，缺的钉版库按 `guji glyph-db pin-build` 建到工作区 `output/glyph-g<N>.db`（同执行机）。"""
+def pins(ws: Path, dh: Path, vols) -> dict[str, dict[str, list]]:
+    """各册生效的钉子与来源层：{册: {键: [值, 层名]}}，与交单预检 `guji job precheck` 同一个读法（`jobs.precheck.pins_of`，
+    含配置组层 `_group`）。整份记进结果 env，事后能原样复现、也能和正式跑批对上。"""
     from ..jobs.precheck import pins_of
-    out: dict[str, int | None] = {}
+    out: dict[str, dict[str, list]] = {}
     with env(GUJI_WORKSPACE=ws, GUJI_DATA_HOME=dh):
         for v in vols:
             try:
-                n = pins_of(v)["glyph_pin"][0]
+                out[v] = {k: [val, src] for k, (val, src) in pins_of(v).items()}
             except Exception as e:                         # noqa: BLE001
-                raise Missing("glyph_lib", f"读不了册 {v} 的钉子（{type(e).__name__}: {e}）") from e
-            out[v] = n
+                raise Missing("config", f"读不了册 {v} 的钉子（{type(e).__name__}: {e}）") from e
+    return out
+
+
+def drift(ws: Path, dh: Path, pins_by_vol: dict, cv_version: str | None) -> tuple[list[str], list[str]]:
+    """run 模式开跑前核钉子：返回（拦住的问题，只提醒的）。
+
+    - 书仓 `code/` 与册钉的 `k<N>` 不一致、或没有那版清单：拦（pipeline 本身也会拒跑，早报省一趟）；
+    - 册钉的 `cv_version` 与本机 cv 不同：只提醒、记进 env——bench 本来就常拿新 cv 量老书，不能拦。"""
+    from ..jobs.precheck import code_problems
+    bad, warn = [], []
+    codes = sorted({p["code"][0] for p in pins_by_vol.values() if isinstance(p.get("code", [None])[0], int)})
+    with env(GUJI_WORKSPACE=ws, GUJI_DATA_HOME=dh):
+        for n in codes:
+            bad += code_problems(n, ws)
+    cvs = sorted({str(p["cv_version"][0]) for p in pins_by_vol.values() if p.get("cv_version", [None])[0]})
+    if cv_version and cvs and cvs != [str(cv_version).lstrip("v")]:
+        warn.append(f"册钉 cv_version {'、'.join(cvs)}，本机 cv {cv_version}：结果量的是本机 cv")
+    return bad, warn
+
+
+def glyph_pins(ws: Path, dh: Path, vols, pins_by_vol: dict | None = None) -> dict[str, int | None]:
+    """各册钉的字形库版本，缺的钉版库按 `guji glyph-db pin-build` 建到工作区 `output/glyph-g<N>.db`（同执行机）。
+    没钉的册（None）用 `central(glyph=True)` 重建过的现行 `output/glyph.db`。"""
+    pv = pins_by_vol if pins_by_vol is not None else pins(ws, dh, vols)
+    out: dict[str, int | None] = {v: pv[v]["glyph_pin"][0] for v in vols}
     for n in sorted({n for n in out.values() if isinstance(n, int)}):
         if (ws / "output" / f"glyph-g{n}.db").exists():
             continue
@@ -232,7 +291,16 @@ def products(ws: Path, book: str, vol: str, cache: Path, label: str | None = Non
             raise Missing("products", f"{book}/{vol} 没有标过 main 的产物包", "用 --label 指一个包")
         root = cache / "products" / book / lab
         if not (root / vol).exists():
-            P.fetch_products(vol, root, label=lab)
+            # 先取到临时目录、取完整了再改名：中途断了不留半截目录给下次当完整的用（GM2 审 #1269）
+            tmp = root.parent / f".tmp-{lab}-{os.getpid()}"
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                P.fetch_products(vol, tmp, label=lab)
+                root.mkdir(parents=True, exist_ok=True)
+                os.replace(tmp / vol, root / vol)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
     return root, lab
 
 

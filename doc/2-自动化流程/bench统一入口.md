@@ -1,7 +1,7 @@
 # benchmark 统一入口 `guji bench`
 
 2026-11-28 起（Sheldon 定「每个 benchmark 统一接口、命令接进 guji-manager」）。任何一本书上测任何一个 bench，一条命令，资源自动取。
-登记表与结果格式在 cv `open_guji_cv/eval/bench.py`，各 bench 的实现在 cv `eval/benches/`；本仓只管取资源（`guji_manager/bench/resources.py`）与命令。
+登记表与结果格式在 cv `open_guji_cv/eval/bench.py`，各 bench 的实现在 cv `eval/benches/`；本仓只管取资源（`guji_manager/bench/resources.py`，GM2 维护）与命令。
 分派与接入验收：ai-team `domain/CV/规范/bench统一接口-2026-11-28.md`。
 
 ## 命令
@@ -24,13 +24,17 @@
 | needs | 取法 |
 |---|---|
 | gold | 测试集仓（`--dataset`，缺省 `GUJI_DATASET_DIR` 或 cv 旁边的 open-guji-dataset），记 commit |
-| code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`（本机 `~/guji-workspace` 或 `GUJI_BOOKS_DIR` 有就从本机克隆）；`--ws` 用现成的 |
+| code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`（本机 `~/guji-workspace` 或 `GUJI_BOOKS_DIR` 有就从本机克隆）；`--ws` 用现成的。缓存里已有就 `git pull --ff-only`，拉不动报缺资源（`--offline` 才用旧检出） |
 | config | `guji db pull --no-glyph`，跳过事件、身份账、待审单、审阅、output（部分副本，bench 不写库）；底库、PUA 表、组配置进 `datahome/main/.borrowed/` |
-| glyph_lib | 改成整拉 `guji db pull`（连钉版字形库与借库） |
+| glyph_lib | 改成整拉 `guji db pull`（连借库）并重建 `glyph.db`（没钉 glyph_pin 的册用它）；钉了版的册按 `guji glyph-db pin-build` 建 `glyph-g<N>.db` |
 | raw | 只取金标涉及的页（bench 的 `plan` 给了页时），否则整册；按册钉的页表版本 |
-| products | 各册 main 指针的产物包（`--label` 改），按标签缓存 |
+| products | 各册 main 指针的产物包（`--label` 改），按标签缓存；先取到临时目录、完整了再改名 |
 | models、corpus | cv 运行时按钉子自己取回，这里只核令牌 |
 | torch、gpu、ocr | 只核环境 |
+
+**钉子**：各册生效的 cv_version、code、glyph_pin、corpus、model 及来自哪一层（含配置组），与 `guji job precheck` 同一读法（`jobs.precheck.pins_of`），整份记进 `env.pins`。`mode: run` 的 bench 开跑前再核：书仓 `code/` 与钉的 `k<N>` 不一致报缺资源；册钉的 cv_version 与本机 cv 不同只提醒（记 `env.pin_warnings`），因为 bench 本来常拿新 cv 量老书。
+
+同机同书备资源串行（`bench-cache/locks/<书>.lock`），执行机同时领到两张 bench 单不会抢同一缓存。
 
 缺任何一样报 `skipped` 并写明怎么补，不出半截结果；不回退到本机别处的字形库或产物。不写任何正式数据（`--arg update=…` 直接拒）。
 
@@ -41,4 +45,4 @@ status 只有 ok、regressed、skipped、no_gold，跑崩了记 failed（护栏�
 
 ## 写进中心库（`--publish`）
 
-Sheldon 11-28 定：建 `bench_runs` 表，只有带 `--publish` 才写（`run`、`ab` 的 B、`guard` 都认），`--baseline` 标基线、`--note` 写一句。一次 run 一行（主键 `<bench>/<书>/<时间>`，重发不重写），存 result.json 原样与常用列（状态、主指标、cv／manager 版本、测试集、中心库 rev、参数、谁跑的），不存逐样本。跑崩的不发。`guji bench show <bench> --book <书> --central` 看库里历次。要写令牌与 `GUJI_ACTOR`。
+Sheldon 11-28 定：建 `bench_runs` 表，只有带 `--publish` 才写（`run`、`ab` 的 B、`guard` 都认），`--baseline` 标基线、`--note` 写一句。一次 run 一行（主键 `<bench>/<书>/<时间>-<result.json 短 sha>`，重发不重写；`ran_at` 是 UTC），存 result.json 原样与常用列（状态、主指标、cv／manager 版本、测试集、中心库 rev、参数、谁跑的），不存逐样本。跑崩的不发。`guji bench show <bench> --book <书> --central` 看库里历次（缺省只列 ok／regressed，`--all-status` 全列）。要写令牌与 `GUJI_ACTOR`。
