@@ -525,6 +525,7 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
     added = _E.seg_added_cells(rows, kinds, {c["cell"] for c in res["cells"]})
     if added:
         res = cv_pending_cells(ws, book, out_dir, extra=list(rc) + hand + added)
+    cv_reasons = _E.cv_reason_snapshot(res["cells"])      # cv 收尾直写的送审原因（merge_cards 之前取）
     gone = [h for h in hand if h not in {c["cell"] for c in res["cells"]}]
     if gone:           # cv 没给这些格（取不到格图／不在册）：条目不会对账，也补不上 alt
         print(f"⚠ {book} 有 {len(gone)} 个开着没相似字的条目，cv 没给出它们的格（取不到格图？先 source pull＋cache warm）：{gone[:8]}", file=sys.stderr)
@@ -546,7 +547,10 @@ def prepare(ws: Path, book: str, a) -> tuple[dict, Path]:
         cells = _E.merge_recheck(cells, rc)
     if rows:
         cells, _ = _E.apply_seg(cells, rows, kinds, set(added))
-    cells = _E.add_causes(cells, products, book)
+    cells = _E.add_causes(cells, products, book, cv_reasons=cv_reasons)
+    if cv_reasons:                      # 过渡期对账：cv 直写的原因与 manager 反推的差异表（一两轮后切读产物）
+        stat = _E.write_reason_diff(out_dir / "pending-reason-diff.tsv", book, cells, cv_reasons)
+        print(f"  {book} 送审原因对账：cv 直写 {stat['cv_written']} 格，与 manager 反推不同 {stat['differ']} 格（{out_dir / 'pending-reason-diff.tsv'}）", file=sys.stderr)
     if a.export_char and a.text_vdir:
         cells, _ = _E.anchor_reasons(cells, Path(a.export_char), Path(a.text_vdir), chapter_of(book))
     cells, alt_sprites = _E.alt_glyph_images(cells, out_dir)

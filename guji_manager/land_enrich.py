@@ -81,13 +81,72 @@ def merge_recheck(cells: list[dict], rc: dict[str, dict]) -> list[dict]:
     return out
 
 
-def add_causes(cells: list[dict], products: Path, book: str, glyph_db: Path | None = None) -> list[dict]:
-    """第 4 步：待审原因与成因码细分（同 cv republish.add_causes，只是在内存 doc 上做）。"""
+#: 送审原因取谁的（cv P3：收尾 char_decide 直接写第四步名下的原因，cv 副本见 doc/参考/待审原因）：
+#: ``manager``（缺省，过渡期照旧反推，只对账出差异表）｜``cv``（cv 写了的格，且 manager 自判结果不归别人时取 cv 值）。
+REASON_SOURCE_ENV = "GUJI_PENDING_REASON_SOURCE"
+
+
+def cv_reason_snapshot(cells: list[dict]) -> dict[str, dict]:
+    """cv ``pending_cells`` 给的原因三字段（收尾直写；旧产物都是 None）。在 merge_cards 之前取，免得被卡上的值冲掉。"""
+    out = {}
+    for c in cells:
+        if c.get("pending_reason") or c.get("form_src"):
+            out[c["cell"]] = {k: c.get(k) for k in ("pending_reason", "pending_reason_detail", "form_src")}
+    return out
+
+
+def reason_diff(cells: list[dict], cv: dict[str, dict]) -> list[tuple]:
+    """cv 写了原因、却和 manager 反推不同的格：(格号, cv 值, manager 值)。cv 留 None 的格（归别人的）不比。"""
+    return [(c["cell"], cv[c["cell"]].get("pending_reason"), c.get("pending_reason"))
+            for c in cells if c["cell"] in cv and cv[c["cell"]].get("pending_reason")
+            and cv[c["cell"]]["pending_reason"] != c.get("pending_reason")]
+
+
+def write_reason_diff(path: Path, book: str, cells: list[dict], cv: dict[str, dict]) -> dict:
+    """``pending-reason-diff.tsv``（格号／cv／manager／cv 说明）＋计数；写不出不挡 land。"""
+    diff = reason_diff(cells, cv)
+    n_cv = sum(1 for v in cv.values() if v.get("pending_reason"))
+    try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        lines = ["格号\tcv\tmanager\tcv_detail"] + [
+            f"{book}:{k}\t{a}\t{b}\t{cv[k].get('pending_reason_detail') or ''}" for k, a, b in diff]
+        Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return {"cv_written": n_cv, "differ": len(diff), "total": len(cells)}
+
+
+def add_causes(cells: list[dict], products: Path, book: str, glyph_db: Path | None = None,
+               cv_reasons: dict[str, dict] | None = None) -> list[dict]:
+    """第 4 步：待审原因与成因码细分（同 cv republish.add_causes，只是在内存 doc 上做）。
+
+    原因：manager 先反推（``reasons_for_pending``），cv 直写的值（``cv_reasons``）``GUJI_PENDING_REASON_SOURCE=cv`` 时
+    才取——且仅当 manager 自判的原因归第四步（owner＝CV4）或 unknown：切分、遮挡、库刻例、复审等 manager 判的类照旧覆盖。"""
+    import os
     from .review.causes import book_causes
+    from .review.pending_reason import PendingReason, specs
     from .review.reasons import reasons_for_pending, stamp
     res = book_causes(products, book)
     doc = {"cells": [dict(c) for c in cells]}
     stamp(doc, reasons_for_pending(doc, products, book, glyph_db=glyph_db))
+    if cv_reasons and os.environ.get(REASON_SOURCE_ENV, "manager") == "cv":
+        sp = specs()
+        for c in doc["cells"]:
+            v = (cv_reasons.get(c["cell"]) or {}).get("pending_reason")
+            if not v:
+                continue
+            try:
+                new = PendingReason(v)
+                mine = PendingReason(c.get("pending_reason"))
+            except ValueError:
+                continue                         # cv 值不认识／manager 值异常：保持 manager
+            if mine == PendingReason.UNKNOWN or (mine in sp and sp[mine].owner == "CV4"):
+                c["pending_reason"] = new.value
+                d = cv_reasons[c["cell"]].get("pending_reason_detail")
+                if d:
+                    c["pending_reason_detail"] = d
+                else:
+                    c.pop("pending_reason_detail", None)
     for c in doc["cells"]:
         r = res.get(c["cell"])
         if not r:
