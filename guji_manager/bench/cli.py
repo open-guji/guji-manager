@@ -146,7 +146,7 @@ def _print(r, out: Path) -> None:
     print(f"{mark} {r.bench} · {r.book}（{'、'.join(r.vols) or '—'}）{r.status}"
           f"{('：' + r.reason) if r.reason else ''}  {r.primary}={pv}  n={r.n}  {r.seconds:.0f}s")
     for g in r.guards:
-        if g["status"] != "ok":
+        if g["status"] not in ("ok", "n/a"):
             print(f"    护栏 {g['metric']} {g['dir']} {g['limit']}：{g['value']} → {g['status']}")
     if r.against:
         print(f"    对照：好转 {r.against['better']}、变坏 {r.against['worse']}、其他 {r.against['other']}")
@@ -253,6 +253,13 @@ def cmd_guard(a) -> None:
             _print(r, out)
             _maybe_publish(a, r, out)
             bad |= r.status in ("regressed", "failed")
+            unv = [g["metric"] for g in r.guards if g["status"] == "unverified"]
+            if unv and r.status not in ("skipped", "no_gold"):
+                print(f"    ✗ 护栏没验到（指标没出数）：{'、'.join(unv)}——发版护栏按不过算")
+                bad = True
+            if r.status in ("skipped", "no_gold") and spec.gold_books() and book in spec.gold_books():
+                print("    ✗ 登记了金标却没跑成，发版护栏按不过算")
+                bad = True
     if a.legacy:
         bad |= legacy.guard(a)
     sys.exit(1 if bad else 0)

@@ -1,6 +1,6 @@
 """`guji bench run|ab|guard --publish`：一次结果写进中心库 `bench_runs` 表（Sheldon 11-28 定：建表、只有 --publish 才写）。
 
-一次 run 一行，主键 `run_id`（`<bench>/<书>/<时间目录名>`），重复发布同一次不重写。存 `result.json` 原样（`result` 列）
+`--baseline` 标基线：同一 bench＋书只留最新标的那一条（旧的自动取消）。一次 run 一行，主键 `run_id`（`<bench>/<书>/<时间目录名>`），重复发布同一次不重写。存 `result.json` 原样（`result` 列）
 与常用列，不存逐样本（items 留在本机结果目录，翻转清单要它就带上结果目录）。不挂 workspaces 外键、不进 files 同步、
 不按分支（只写 main）；建表语句随本模块，首次发布时 `CREATE TABLE IF NOT EXISTS`。
 """
@@ -70,6 +70,10 @@ def publish(out: Path, conn=None, **kw) -> str:
     ph = ", ".join(["%s"] * len(COLS))
     conn.execute(f'INSERT INTO {TABLE} ({cols}) VALUES ({ph}) ON CONFLICT ("run_id") DO NOTHING',
                  [r[c] for c in COLS])
+    if r["baseline"]:                                      # 同一 bench＋书只留最新标的一条基线
+        conn.execute(f'UPDATE {TABLE} SET baseline = 1 WHERE run_id = %s', [r["run_id"]])
+        conn.execute(f'UPDATE {TABLE} SET baseline = 0 WHERE bench = %s AND book = %s AND run_id <> %s AND baseline = 1',
+                     [r["bench"], r["book"], r["run_id"]])
     conn.commit()
     return r["run_id"]
 

@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（CV0 11-28，CV2／CV4 审 bench 后）：`guji bench guard` 护栏没验到（指标没出数）或登记了金标却 skipped／no_gold 时按不过算、退出码 1；翻转类护栏不带对照时记 n/a，不再打印。`--publish --baseline` 同一 bench＋书只留最新一条基线（旧的自动取消）。
+
 - 新命令 `guji bench list|fetch|run|ab|guard|show`（CV0 2026-11-28，Sheldon 定「每个 benchmark 统一接口、命令接进 guji-manager」；要求 cv 含 `eval/bench.py`）：任何书上测任何 bench 一条命令，按 bench 登记的 needs 自动备资源（测试集仓、书仓克隆、中心库还原册配置／组配置、只取金标涉及页的原图、main 产物包、整拉字形库），缺什么报 skipped 并说怎么补；结果统一落 `bench-results/<bench>/<书>/<时间>/`（result.json schema 1、items.jsonl、report.md）；`ab` 出 B 对 A 翻转清单；老评测器经 `guji bench run <id>` 照旧跑（`bench/legacy.py`）。`--publish` 把结果写进中心库新表 `bench_runs`（Sheldon 11-28 定建表、只有 --publish 才写；`bench/publish.py`，首次发布自建表，schema_d1.sql 同步加），`show --central` 看库里历次。文档 `doc/2-自动化流程/bench统一入口.md`，新测 `tests/test_bench_cli.py`。
 - PATCH（11-28，GM2，执行方总管报北行 #18319）：`guji job submit` 交单前核册名（新模块 `jobs/book_check.py`）：按 ws_glob 在中心库 `workspaces`／`books` 表找到这部书，册名是现名放过；是册 yaml `aliases` 里的旧名、或按数值相等（`1`／`01`／`001`）就换成现名并提示；都不是就拒，列出同数字的册名（殿本交 `01` 提示 `vol01`）。连不上库只提示不挡；`--no-book-check` 跳过。执行方：准备脚本拉完库还 `ls books/<册>.yaml` 找不到，判配置错、不再当环境问题连领三次，失败原因带「册名写错或已改名」提示。起因：北行 bxgb 11-28 按册号位数统一改名为 1，CV2 仍按 bxgb 交（#18319）；CV4 交殿本 `01` 而殿本仍是 vol01（#18292）。
 - PATCH（11-28，GM2，执行方报 #18346）：改册名漏了 R2 原图登记（`source/by-ws/<ws>/<册>.json` 只有旧名），取原图 404。`ops.rename_volume --apply` 末尾给新名补指针（指向旧名同一书同一册，旧的不删；`--no-r2` 不补）；新 `--r2-only --ws <工作区> --map 旧=新 … [--apply]` 给已改名的书补。`guji source pull` 找不到新名指针时按册 yaml `aliases` 用旧名指针取并提示。已给北行 1、幼學 1、脉经 1、朱楓林集 1–5 补登记。

@@ -108,3 +108,29 @@ def test_publish_to_sqlite(fake, monkeypatch):
     assert P.publish(out, conn=conn) == rid                  # 同一次再发不重写
     h = P.history("t-fake", "bk", conn=conn)
     assert len(h) == 1 and h[0]["baseline"] == 1 and h[0]["primary_value"] == 1.0 and h[0]["status"] == "ok"
+
+
+def test_guard_fails_on_unverified(fake, monkeypatch):
+    spec, ds, tmp = fake
+    import dataclasses
+    s2 = dataclasses.replace(spec, guards=(B.Guard("not_there", "max", 0),))
+    monkeypatch.setattr(B, "all_specs", lambda: [s2])
+    a = cli._fix(_args(ds, tmp, action="guard", bench=[]))
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_guard(a)
+    assert e.value.code == 1
+
+
+def test_baseline_keeps_only_latest(fake, monkeypatch):
+    spec, ds, tmp = fake
+    monkeypatch.setenv("GUJI_DATA_SQLITE", str(tmp / "c2.db"))
+    from guji_manager.bench import publish as P
+    from guji_manager.datastore import d1conn
+    a = cli._fix(_args(ds, tmp, extra=["--book", "bk"]))
+    conn = d1conn.connect()
+    _, o1 = cli.run_one(spec, "bk", a, tag="x")
+    _, o2 = cli.run_one(spec, "bk", a, tag="y")
+    P.publish(o1, conn=conn, baseline=True)
+    P.publish(o2, conn=conn, baseline=True)
+    h = {x["run_id"].rsplit("-", 1)[1]: x["baseline"] for x in P.history("t-fake", "bk", conn=conn)}
+    assert h == {"x": 0, "y": 1}
