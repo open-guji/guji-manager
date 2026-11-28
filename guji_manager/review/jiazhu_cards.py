@@ -5,6 +5,7 @@
 只动了函数名、`ProductStore`／`EventLog` 改成可注入、延迟 import 提到模块级。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 
 from .._cv import load_book
 from .._cv import cell_key, page_key
@@ -44,7 +45,7 @@ def jiazhu_segments(book: str = "vol02", pages: str = "jz",
 
     out: list[dict] = []
     for pg in pgs:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         cells = st.read(book, "row_segment", page_key(pg), "cells")
         if a is None:
             continue

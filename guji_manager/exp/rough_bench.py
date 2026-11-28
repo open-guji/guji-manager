@@ -26,6 +26,7 @@
 只读快照与中心库，只写基准目录（建）或实验目录（跑）。不碰任何 Step，`code_hash` 不变。
 """
 from __future__ import annotations
+from ..products_io import is_decide_step
 
 import json
 import random
@@ -73,7 +74,7 @@ def human_labels(snapshot: Path, books, log=None) -> list[dict]:
     for e in sorted(iter_events_readonly(log or EventLog()), key=lambda e: (e.ts, e.batch, e.seq)):
         if e.kind != "confirm" or e.target.unit != "cell" or not counts_as_human(e):
             continue
-        if (e.target.step or "seed_admit") != "seed_admit":
+        if not is_decide_step(e.target.step or "seed_admit"):
             continue
         try:
             book, page, *_ = _split_key(e.target.key)

@@ -12,6 +12,7 @@
 CLI 只看 `id`/`char`/`doubts` 那几列就行；换成别的形状会动到前端，不在本轮。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 from .._cv import read_view as _read_view   # alt_cut：读挑中的那套切法
 
 import json
@@ -354,7 +355,7 @@ def cards(book: str, pages: str = "dev_set", limit: int = 400,
     # 字段（判的字、模型名）。只送审、不改字；人裁过（`decided`）的照旧不出——人裁压过模型。
     vflags = vision_flags(book)
     for pg in pgs:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         m = _read_view(st, book, "glyph_match", page_key(pg), "glyph_match")
         d = _read_view(st, book, "context_decide", page_key(pg), "context_decision")
         if a is None:
@@ -670,7 +671,7 @@ def blocking_cutline_cases(book: str, pgs: list[int], st: ProductStore,
 _CASES_MEM: dict = {}
 _CASES_MEM_MAX = 8
 _CASES_IRRELEVANT = frozenset({"glyph_match", "ocr_candidates", "rare_candidates", "align_ref",
-                               "context_decide", "seed_admit", "page_survey"})
+                               "context_decide", "seed_admit", "char_decide", "page_survey"})
 """识别段的步：切线用例只看切分产物（row_segment 的 cells）与列图，不读它们。键里剔掉——
 人裁一条 confirm 就会把那一页的 seed_admit 标失效（manifest 追加一行），不剔的话每提交一批
 记忆就作废。只剔**确知无关**的；新加的步默认进键（宁可多算一次，不会读到旧的）。

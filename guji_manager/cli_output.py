@@ -9,6 +9,7 @@
 全部只读产物。原来 cv 起子进程跑 `scripts/` 下的脚本，现在同进程调本包模块，口径不变。
 """
 from __future__ import annotations
+from .products_io import decide_pages
 
 import argparse
 import sys
@@ -20,7 +21,7 @@ def _export_pages(book: str, pipeline: str, spec: str) -> tuple[str, list[int]]:
     from ._cv import _engine, products_root
     eng = _engine(book, pipeline, quiet=True)
     pages = eng.book.resolve_pages(spec)
-    have = {int(f.stem[1:]) for f in (products_root() / eng.book.id / "seed_admit").glob("p*.json")}
+    have = {int(f.stem[1:]) for f in decide_pages(products_root() / eng.book.id)}
     skipped = [p for p in pages if p not in have]
     if skipped:
         print(f"（跳过 {len(skipped)} 页：没有 seed_admit 产物 {skipped[:10]}{'…' if len(skipped) > 10 else ''}）",

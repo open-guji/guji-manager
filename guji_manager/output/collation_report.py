@@ -54,6 +54,7 @@
 """
 
 from __future__ import annotations
+from ..products_io import exists_decide, read_decide
 
 import argparse
 import base64
@@ -116,12 +117,12 @@ def body_pages(book: str, st: ProductStore) -> list[int]:
             a = r.get("anchor") or {}
             if str(a.get("book")) == book and (r.get("expected") or {}).get("page_type") == "body":
                 body.add(int(a["page"]))
-    return sorted(p for p in body if st.exists(book, "seed_admit", page_key(p)))
+    return sorted(p for p in body if exists_decide(st, book, page_key(p)))
 
 
 def page_slots(book: str, page: int, st: ProductStore, truth: dict[str, str]) -> list[dict]:
     """→ 阅读顺序的字位列表，每格 {id,col,slot,sub,char,source,admit,excluded}。"""
-    a = st.read(book, "seed_admit", page_key(page), "seed_admit")
+    a = read_decide(st, book, page_key(page))
     m = st.read(book, "glyph_match", page_key(page), "glyph_match")
     o = None   # Step5-c `ocr_candidates` 已删（2026-10-18），OCR 这一路恒缺席
     d = st.read(book, "context_decide", page_key(page), "context_decision")

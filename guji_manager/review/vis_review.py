@@ -19,6 +19,7 @@ prompt_ver `vis-o1`，子类按原因码），seed_admit 的 `vis_rulings`（`_v
 seed_admit 只收 `_VIS_RULING_SUBCLASSES` 里的子类（cv #1184 起含 L04）；别的原因要用这条路，先请 cv 加子类。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 from ..ruling_write import append_rulings
 
@@ -73,7 +74,7 @@ def answers_to_events(rows: list[dict], *, batch: str, subclass: str, model: str
                    "subclass": subclass, "ref": a.get("ref_align") or "", "coord_ref": a.get("ref") or "",
                    "machine": a.get("lib_top") or "", "admit_ok": conf == "high" and not other and ch == a.get("ref"),
                    "pending_reason": a.get("reason") or "unknown", "detail": a.get("detail") or ""}
-        evs.append(make_event(batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=a["id"], book=a["id"].split(":")[0]),
+        evs.append(make_event(batch, n, KIND, EventTarget(step=RULING_STEP, unit="cell", key=a["id"], book=a["id"].split(":")[0]),
                               payload, actor="model", ts=ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
     return evs
 

@@ -47,6 +47,9 @@ seg_check:
 `guji seg check --recall <尺子.tsv>` 只拿「修在本页产物之后」的列（产物里错还在）量各检查的查全。
 """
 from __future__ import annotations
+from .products_io import decide_dir
+from .products_io import layer_strict
+from .products_io import decide_pages
 
 import collections
 import csv
@@ -138,14 +141,14 @@ def seg_causes(products_dir: Path, book: str) -> dict[tuple[int, int], list[tupl
     """{(页, 列): [(格号, 原因码, 本列有○)]}，只要切分／对位类原因码。产物没有 seed_admit 就空。"""
     from .review.causes import book_causes
     root = Path(products_dir) / book
-    if not (root / "seed_admit").exists():
+    if not decide_dir(root).exists():
         return {}
     hits = {k: r for k, r in book_causes(products_dir, book).items() if r["cause"] in SEG_CAUSES}
     if not hits:
         return {}
     circ = set()   # 列里有○（evidence.symbol）的列：整理本不录○，整列对位会错开，A 码多由此来
-    for f in sorted((root / "seed_admit").glob("p*.json")):
-        for col in json.loads(f.read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+    for f in sorted(decide_pages(root)):
+        for col in layer_strict(json.loads(f.read_text(encoding="utf-8")))["columns"]:
             for c in col["chars"]:
                 ev = c.get("evidence") or {}
                 if ev.get("symbol") == "○" or c.get("char") == "○":

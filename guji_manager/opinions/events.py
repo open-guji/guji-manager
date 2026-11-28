@@ -12,6 +12,7 @@ revise 真写 book-text（非 dry-run、带 PR）后，对每个改了字／新�
 - batch 名 ``opinion-<册>-<章>-<日期>``，不带「~」（带「~」的批次按口径算人裁）。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 import datetime as dt
 from dataclasses import dataclass, field
@@ -100,7 +101,7 @@ def build(book: str, vol: str, applied: list, statuses: dict, char: dict, cord: 
                        "channel": "opinion"}
             out.events.append({
                 "batch": batch, "kind": "confirm", "actor": actor,
-                "target": {"step": "seed_admit", "unit": "cell", "key": f"{book}:{a}", "book": book,
+                "target": {"step": RULING_STEP, "unit": "cell", "key": f"{book}:{a}", "book": book,
                            "page": page, "col": int(col), "slot": int(slot.rstrip("ab")), "anchor": anchor},
                 "payload": payload})
     return out

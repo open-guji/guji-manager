@@ -9,6 +9,7 @@
   guji-manager final-review write    --out <工作目录> --ruling-dir <feedback/rulings 目录> --batch llm-ctx-YYYYMMDD-m1
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 import argparse
 import csv
@@ -220,7 +221,7 @@ def cmd_write(a) -> int:
         if r.get("via"):
             payload["via"] = r["via"]
             payload["ref_lead"] = {"layer": r.get("layer"), "lead": r.get("lead")}
-        evs.append(make_event(a.batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
+        evs.append(make_event(a.batch, n, KIND, EventTarget(step=RULING_STEP, unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
                               actor="model", ts=a.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
     from ..u_stamp import stamp_strict
     stamp_strict(evs)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）

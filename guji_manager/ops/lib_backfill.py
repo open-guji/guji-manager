@@ -38,6 +38,9 @@
 用法、数字与边界见 `wiki/自动化流程/放行格回库.md`。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_STEPS
+from ..products_io import decide_pages, is_decide_step
+from ..products_io import RULING_STEP
 
 import collections
 import datetime
@@ -270,7 +273,7 @@ def lib_patches(db_path: Path | str, ch: str) -> list[bytes]:
 
 def _seed_cells(root: Path, book: str, step: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    for f in sorted((root / book / step).glob("p*.json")):
+    for f in sorted(decide_pages(root, book) if is_decide_step(step) else (root / book / step).glob("p*.json")):
         d = json.loads(f.read_text(encoding="utf-8"))
         pm = d[next(iter(d))]
         for col in (pm.get("columns") or pm.get("char_index", {}).get("columns") or []):
@@ -648,7 +651,7 @@ def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
         bk, pg, col, slot = k.split(":")
         slot = slot.rstrip("ab")          # 半格（19a／19b）：格号取数字部分，键仍带后缀（同库里现有刻例）
         evs.append(make_event(batch, base + i, "confirm",
-                              EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
+                              EventTarget(step=RULING_STEP, unit="cell", key=k, book=bk,
                                           page=int(pg), col=int(col), slot=int(slot)),
                               backfill_payload(ch, meta, v),
                               actor="model"))
@@ -747,7 +750,7 @@ def auto_backfill(args, eng, steps: list[str]) -> None:
     import os
     if os.environ.get("GUJI_AUTO_BACKFILL", "1") == "0":
         return
-    if str(getattr(args, "pages", "")) != "all" or "seed_admit" not in steps:
+    if str(getattr(args, "pages", "")) != "all" or not (set(steps) & set(DECIDE_STEPS)):
         return
     book = eng.book.id
     try:

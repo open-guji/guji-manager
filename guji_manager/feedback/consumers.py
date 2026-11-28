@@ -7,6 +7,7 @@ P1 只实现 `gold_add`（事件 → 金标条目），另外两个（glyphdb_ad
 """
 
 from __future__ import annotations
+from ..products_io import DECIDE_NEW, DECIDE_OLD, DECIDE_STEPS, is_decide_step
 
 import json
 import os
@@ -323,7 +324,7 @@ def _occluded_lookup(book: str, page: int):
             from .._cv import ImageCache
             from .._cv import ProductStore
             ctx = RunContext(load_book(book), ProductStore(), ImageCache(), log=lambda *_: None)
-            got = (ctx, ctx.params_for(STEPS["seed_admit"]))
+            got = (ctx, ctx.params_for(STEPS.get(DECIDE_NEW) or STEPS[DECIDE_OLD]))
             if books is not None:
                 books[book] = got
         ctx, p = got
@@ -1001,17 +1002,19 @@ def product_invalidate(events, product_store=None, dry_run: bool = False, **kw) 
             res.skipped += 1
             res.errors.append(f"{e.id}: 路由没给 extra.step，或事件没 book/page 且 key {t.key!r} 反解不出")
             continue
-        key = (book, step, page_key(page))
-        if key in done:
-            continue
-        done.add(key)
-        if dry_run:
-            res.added += 1
-            continue
-        if st.manifest(book, step).invalidate(key[2], f"人裁 {e.kind} {e.id}"):
-            res.added += 1
-        else:
-            res.skipped += 1
+        # 定字步 seed_admit／char_decide 两名并认：同时失效两名（没跑过的名不算错）
+        for stp in (DECIDE_STEPS if is_decide_step(step) else (step,)):
+            key = (book, stp, page_key(page))
+            if key in done:
+                continue
+            done.add(key)
+            if dry_run:
+                res.added += 1
+                continue
+            if st.manifest(book, stp).invalidate(key[2], f"人裁 {e.kind} {e.id}"):
+                res.added += 1
+            else:
+                res.skipped += 1
     return res
 
 

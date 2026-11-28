@@ -61,22 +61,20 @@ def resolve_step_dir(root: Path | str, book: str, step: str) -> Path:
 def read_decide(store: Any, book: str, pk: str) -> dict | None:
     """`ProductStore.read` 的两名版；返回定字层（没有该页返回 None）。"""
     for s in DECIDE_STEPS:
-        a = store.read(book, s, pk, s)
+        try:
+            a = store.read(book, s, pk, s)
+        except (KeyError, ValueError, LookupError):     # 旧 cv 不认新步名／新 cv 撤了旧名
+            continue
         if a is not None:
             return a
     return None
 
 
 def exists_decide(store: Any, book: str, pk: str) -> bool:
-    return any(store.exists(book, s, pk) for s in DECIDE_STEPS)
-
-
-def manifest_decide(store: Any, book: str):
-    """manifest 先新后旧（新目录有登记就用新的）。"""
-    m = store.manifest(book, DECIDE_NEW)
-    try:
-        if m is not None and (len(m.get_all()) if hasattr(m, "get_all") else 1):
-            return m
-    except Exception:  # noqa: BLE001
-        pass
-    return store.manifest(book, DECIDE_OLD)
+    for s in DECIDE_STEPS:
+        try:
+            if store.exists(book, s, pk):
+                return True
+        except (KeyError, ValueError, LookupError):
+            continue
+    return False

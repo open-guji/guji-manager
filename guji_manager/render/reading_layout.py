@@ -65,6 +65,7 @@
    情况语气弱，是"已按规则处理，标注供检查"。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 from .._cv import read_view as _read_view   # alt_cut：读挑中的那套切法
 
 import re
@@ -138,9 +139,9 @@ def _column_last_slot(store: ProductStore, book: str, page: int, col: int) -> in
     """这一列全部 `AdmitRec` 里最大的正文 slot（`sub is None`）。
     没有任何正文记录（比如整列都是抬头/夹注，或没跑到）时返回 None。
     """
-    admit: PageAdmit | None = store.read(book, ADMIT_STEP, page_key(page), ADMIT_KIND)  # type: ignore[assignment]
+    admit: PageAdmit | None = read_decide(store, book, page_key(page))  # type: ignore[assignment]
     if admit is None:
-        raise ProductMissing(f"{book} 第 {page} 页没有 {ADMIT_STEP} 产物（先跑到 Step7）")
+        raise ProductMissing(f"{book} 第 {page} 页没有定字（char_decide／seed_admit）产物（先跑到 Step7）")
     col_admit = next((c for c in admit.columns if c.col == col), None)
     if col_admit is None or not col_admit.chars:
         return None

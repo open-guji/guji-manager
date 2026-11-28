@@ -12,6 +12,7 @@
 细则见 cv doc/参考/受控重跑.md。
 """
 from __future__ import annotations
+from .products_io import decide_dir
 
 import os
 import sys
@@ -116,7 +117,7 @@ def book_versions(book: str, root: Path | None = None) -> dict:
             pass
     if root is not None:
         from ._cv import Manifest
-        m = Path(root) / book / "seed_admit" / "_manifest.jsonl"
+        m = decide_dir(root, book) / "_manifest.jsonl"
         if m.exists():
             revs: dict[str, int] = {}
             for e in Manifest(m).all().values():

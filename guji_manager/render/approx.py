@@ -20,6 +20,7 @@
 没勾）就撤掉——与 `feedback/lookup.human_chars` 同一套口径（不过绑定表，按编号认格）。
 """
 from __future__ import annotations
+from ..products_io import read_decide
 
 APPROX_MODES = ("sidecar", "inline_ids", "off")
 DEFAULT_APPROX_MODE = "sidecar"
@@ -54,10 +55,9 @@ def approx_marks(book: str, log=None) -> dict[str, dict]:
 def matched_marks(store, book: str, pages: list[int]) -> dict[str, dict]:
     """Step7 靠近似例自动放行的格（`seed_admit` 产物 `evidence.approx`，overview#276 选 C）。"""
     from .._cv import page_key
-    from .._cv import ADMIT_KIND, ADMIT_STEP
     out: dict[str, dict] = {}
     for pg in pages:
-        admit = store.read(book, ADMIT_STEP, page_key(pg), ADMIT_KIND)
+        admit = read_decide(store, book, page_key(pg))
         if admit is None:
             continue
         for cc in admit.columns:

@@ -53,7 +53,8 @@ def chars_fresh(store, book: str, key: str) -> bool:
     只重切到 cell_shrink、没再跑识字时，seed_admit 是旧切分的结果，按格号取字会整列错位（11-25 试点 vol28 p3：「業」格拆半，
     旧字把沿用 u 判给了后半小块），这时不取字、只按框对照。"""
     try:
-        e = store.manifest(book, "seed_admit").get(key)
+        from ..products_io import DECIDE_STEPS
+        e = next((x for x in (store.manifest(book, st).get(key) for st in DECIDE_STEPS) if x), None)   # char_decide 先，seed_admit 后
         return bool(e) and e.upstream.get("char_index") == store.sha(book, "cell_shrink", key)
     except Exception:  # noqa: BLE001 —— 拿不到 manifest：当它不新鲜
         return False
