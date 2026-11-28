@@ -332,9 +332,11 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
 # 套里只放自带图块或不碰库的，一台干净机器 `--allow heavy` 就能跑。
 SUITES: dict[str, tuple[str, ...]] = {
     "read-3a": ("advset", "advset_shiji", "advset_qtw", "match_pool", "match_pool_shiji"),
-    "read-3b": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
+    "read-rare": ("rare_siku_v2", "rare_shiji", "rare_qtw", "rare_qtw_firstseen"),
 }
-SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
+# 旧套名：11-28 起「3b」指形近字组分析 glyph_near（`@near`），旧生僻字候选改叫 `@read-rare`；`@read-3b` 留作别名（P2 收口时删）
+SUITES["read-3b"] = SUITES["read-rare"]
+SUITES["read"] = SUITES["read-3a"] + SUITES["read-rare"]
 # 要全唐文字形库的（先 export GUJI_GLYPH_DB=<全唐文 glyph.db>）：5a 相似度、A6 形近字组、A3 归一图端到端
 # 识字候选线（3c／4b／卡片），见 open-guji-dataset/char-candidates/README.md
 SUITES["cands"] = ("cands",)
