@@ -17,6 +17,7 @@
      u 账 ``cells_sha`` 按产物 sha 对照表换（不换就按新切分查不到 u）；
    - ``feedback/verdicts/**/*.jsonl``、``config/*.jsonl``：内容里的格号换新名（文件名不变）。
    - 按册的目录 ``feedback/anchor_patches/<旧>/`` → ``<新>/``（cv ``anchor.patch_path`` 按册名找图块）。
+   - 语料钉子账 ``config/corpus-pack/pins/<旧>.json`` → ``<新>.json``（只挪，内容无册名）；册层语料目录有就拒。
    - 数据目录里其余 json／jsonl（``feedback/rulings/``、``config/groups/``、``review/batches/``、``touch_label_verdicts`` 等）：
      格号换新名，内容里出现的产物 sha（如 ``cells_sha``）按改写前后对照表换（11-28 殿本演练查出这几类原先只报不改）。
    改完由执行方 ``guji db push -w <工作区> --allow-delete`` 推回中心库。
@@ -60,6 +61,11 @@ PER_BOOK = ("feedback/anchors", "feedback/uid", "feedback/notes", "feedback/list
 MARKER = "_renamed.json"
 CONTENT_GLOBS = ("feedback/verdicts/**/*.jsonl", "config/*.jsonl")
 PER_BOOK_DIRS = ("feedback/anchor_patches",)
+#: 按册存、只挪不改内容的文件：语料钉子账 ``pins/<册>.json``（cv ``corpus_pin.pins_path``，内容里没有册名）。
+#: 漏挪时 cv 找不到账，语料指纹退回旧写法 ``corpus-vN``，殿本各册 align_ref 起整串判过期（11-28 vol01 演练查出）。
+PER_BOOK_PLAIN = ("config/corpus-pack/pins",)
+#: 册层语料（清单里的路径带册名，挪了清单就对不上）：有就拒，要先人工处理。
+PER_BOOK_LAYERS = ("config/corpus-pack/vol", "config/corpus-vol")
 #: 只报不改：事件只追加；字形库实例 id 不透明；corpus 钉 sha；待审单归 renumber／网站。
 REPORT_ONLY = ("feedback/events/", "output/glyph_store/", "corpus/", "feedback/lists/pending/")
 _HEX = re.compile(r"[0-9a-f]{64}")
@@ -172,6 +178,11 @@ def build_plan(amap: dict[str, str], data_dir: Path | None, products: Path | Non
                 (plan.uid if sub == "feedback/uid" else plan.rewrite_json).append(str(dst))
         for sub in PER_BOOK_DIRS:
             _move(plan, data_dir / sub / old, data_dir / sub / new)
+        for sub in PER_BOOK_PLAIN:
+            _move(plan, data_dir / sub / f"{old}.json", data_dir / sub / f"{new}.json")
+        for sub in PER_BOOK_LAYERS:
+            if (data_dir / sub / old).exists():
+                plan.conflicts.append(f"{sub}/{old}/ 是册层语料（清单路径带册名），改名工具不处理，先人工迁")
     if data_dir is not None:
         for g in CONTENT_GLOBS:
             for p in sorted(data_dir.glob(g)):
