@@ -236,7 +236,7 @@ def run(cfg: ExpConfig, *, snapshot: str | Path | None = None, root: str | Path 
 
     `book_loader` / `pipeline` / `cache` 供测试注入；缺省读工作区册配置与 `cfg.pipeline`。"""
     from .._cv import Engine, git_rev
-    from .._cv import load_pipeline
+    from .._cv import pipeline_for
     from .._cv import ProductStore
 
     log = log or (lambda s: print(s, flush=True))
@@ -247,10 +247,11 @@ def run(cfg: ExpConfig, *, snapshot: str | Path | None = None, root: str | Path 
     edir = exp_dir(cfg, root)
     guard_root(edir, snap)
     validate_params(cfg)
-    pl = pipeline or load_pipeline(cfg.pipeline)
-    steps = run_steps(cfg, pl)
     if book_loader is None:
         from .._cv import load_book as book_loader  # noqa: N813
+    # 裸 guji_default 按册的版式展开（cv #2055）：一次实验里的册按第一册展开，各册版式要相同
+    pl = pipeline or pipeline_for(book_loader(cfg.books[0]) if cfg.books else None, cfg.pipeline)
+    steps = run_steps(cfg, pl)
 
     edir.mkdir(parents=True, exist_ok=True)
     stamps = prepare_upstream(cfg, edir, snap, steps)

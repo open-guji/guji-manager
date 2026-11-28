@@ -95,7 +95,7 @@ def cmd_cache(args) -> None:
         # 多进程预渲字块（overview#429）：快照导入后 cache/ 是空的，串行步（rare_candidates）
         # 逐格现切字块占了每页九成时间。并发安全的做法见 ops/cache_warm.py 模块头。
         from ._cv import load_book
-        from ._cv import default_pipeline_id, load_pipeline
+        from ._cv import default_pipeline_id, pipeline_for
         from ._cv import RunContext
         from .ops.cache_warm import warm
         from ._cv import ProductStore
@@ -104,7 +104,7 @@ def cmd_cache(args) -> None:
             print("必须给 --book"); sys.exit(1)
         book = load_book(args.book)
         pid = args.pipeline or default_pipeline_id(book)
-        ctx = RunContext(book, ProductStore(), cache, log=lambda _: None, pipeline=load_pipeline(pid))
+        ctx = RunContext(book, ProductStore(), cache, log=lambda _: None, pipeline=pipeline_for(book, pid))
         res = warm(ctx, pid, book.resolve_pages(args.pages), max(1, args.jobs or 1),
                    log=lambda s: print(s, flush=True))
         print(f"预渲完成：{res['pages']} 页，{res['patches']} 个字块，{res['seconds']}s，"
@@ -143,7 +143,7 @@ def cmd_cache(args) -> None:
 
 def _cmd_cache_push_patches(args) -> None:
     """字块页包存 R2（`datastore/patch_packs.py`）：只存缓存戳对得上现行产物、R2 上还没有这个链指纹的页。"""
-    from ._cv import load_book, default_pipeline_id, load_pipeline, RunContext, ProductStore
+    from ._cv import load_book, default_pipeline_id, pipeline_for, RunContext, ProductStore
     from ._cv import steps as _s  # noqa: F401
     from ._cv import ImageCache
     from .datastore import patch_packs as PP
@@ -151,7 +151,7 @@ def _cmd_cache_push_patches(args) -> None:
         print("必须给 --book"); sys.exit(1)
     book = load_book(args.book)
     pid = args.pipeline or default_pipeline_id(book)
-    ctx = RunContext(book, ProductStore(), ImageCache(), log=lambda _: None, pipeline=load_pipeline(pid))
+    ctx = RunContext(book, ProductStore(), ImageCache(), log=lambda _: None, pipeline=pipeline_for(book, pid))
     res = PP.push_book(ctx, book.resolve_pages(args.pages), dry_run=args.dry_run)
     print(("（试算，没传）" if args.dry_run else "") +
           f"字块包：新存 {res['pushed']} 页 {res['bytes'] / 2**20:.1f} MB，已有 {res['already']}，"
