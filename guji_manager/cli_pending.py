@@ -10,6 +10,7 @@
     guji pending import vol04 -w <工作区>                         # 从现行整张单导入（可重复执行，只动有变化的）
     guji pending reconcile vol04 --sheet <新出的 pending.json> [--fps <格号→指纹.json>] --src rev:<rev> -w <工作区>
                                                                   # 机器一轮：按新单逐格比，只动有变化的条目
+    guji pending cands vol04 --cards <vol04.cards.cands.json> -w <工作区>   # 把 `guji audit cands` 的候选列表 cands/1 并进开着的条目（只追加新 ver）
     guji pending audit vol04 -w <工作区> [--sheet <候选单.json>] [--norm <码位归一.json>]
                                                                   # 单子体检：不该进判字单的格（机器无字当推翻人裁、失效旧人裁当被推翻、
                                                                   # 锚点格混在判字单…）；有「拦」的类退出码 1。republish push 上线前也跑它
@@ -37,7 +38,7 @@ WEB_REPO = "open-guji/kaiyuanguji-web"
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("pending", help="待审条目（一格一条）：列、撤下、放回、改说明、加复审、导入、reconcile")
-    p.add_argument("action", choices=["ls", "show", "withdraw", "restore", "note", "set", "add", "resolve",
+    p.add_argument("action", choices=["ls", "show", "withdraw", "restore", "note", "set", "add", "resolve", "cands",
                                       "import", "reconcile", "audit"])
     p.add_argument("book", help="册号（如 vol04）")
     p.add_argument("refs", nargs="*", help="条目 id 或格号；note 的最后一个是说明")
@@ -53,6 +54,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--field", action="append", default=[], help="set：键=JSON 值")
     p.add_argument("--src", default=None, help="add／reconcile：来源（rev:<rev>、pack:<标签>、script:<名>…）")
     p.add_argument("--event", default="", help="resolve：落成的人裁事件 id")
+    p.add_argument("--pipeline", default=None, help="cands：管线（缺省同 `guji audit`）")
+    p.add_argument("--cards", default=None, help="cands：并入现成的 `guji audit cands` 输出；不给就对本章开着的条目现算")
     p.add_argument("--sheet", default=None, help="reconcile：新出的整张 pending.json")
     p.add_argument("--fps", default=None, help="reconcile：{格号: 图块指纹} 的 json")
     p.add_argument("--norm", default=None, help="audit：码位归一表 json {另一码位: 本书码位}")
@@ -256,6 +259,27 @@ def cmd_pending(a) -> int:
             print(f"ⓘ 人工撤下、机器仍判待审 {len(res['撤下仍判待审'])} 格（保持撤下）：{' '.join(res['撤下仍判待审'][:20])}")
         if res.get("图变"):
             print(f"ⓘ 格号对上、图块指纹变了 {len(res['图变'])} 格（条目照旧，标 fp_changed）：{' '.join(res['图变'][:20])}")
+        if a.dry_run:
+            print("（--dry-run，没写）")
+            return 0
+        print(f"条目追加 {store.save()} 行 → {store.path}")
+        _publish(a, ws, chapter, data)
+        return 0
+    if act == "cands":
+        from .review.cands_merge import merge_cands
+        if a.cards:
+            doc = json.loads(Path(a.cards).read_text(encoding="utf-8"))
+            cards = doc["cards"] if isinstance(doc, dict) else doc
+        else:
+            # 缺省：对本章开着的条目现算（要工作区、该册 main 包、r5 全字表向量包：guji cache pull-rare-index）
+            from .review.cands_attach import attach, cands_for_cards, cards_of_items
+            from open_guji_cv import cli_v2
+            eng = cli_v2._engine(a.book, a.pipeline or cli_v2.DEFAULT_PIPELINE, quiet=True)
+            cards = cards_of_items(a.book, store.by_state("open"))
+            attach(cards, cands_for_cards(a.book, cards, ctx=eng.ctx, log=lambda m: print(m, file=sys.stderr)))
+        res = merge_cands(store, cards, by=by or "script:cands-merge",
+                          why=a.why or "补候选字 cands/1（CV3）")
+        print(f"{a.book} {text_id}/{chapter}：" + "、".join(f"{k} {v}" for k, v in res.items()))
         if a.dry_run:
             print("（--dry-run，没写）")
             return 0
