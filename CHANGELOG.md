@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- MINOR（11-28，网站会员身份提交 · 落票规则）：`feedback/landing_policy` 加 `rules` 策略（缺省仍是 auto，行为不变）：身份（`Standing`＝等级＋负责的书，名册 `GUJI_MEMBER_ROSTER` JSON，匿名＝anon、没列的会员＝member）、规则（`Rules`：solo_tiers、book_owner_solo、quorum、quorum_min_tier，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 整份盖）、策略三步分开，`decide(cell, votes, book)` 加 `book` 参数（旧策略兼容）。`cellvotes draft` 把 `--site-book` 传给策略。editor 以上与本书负责人一票即落，匿名永远不直接落地。
+
 - PATCH（11-28，网站会员身份提交）：网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（网站 11-27 起 voter 就是 8 位会员号；`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`（原来是不带前缀的短标识）；事件另带 `payload.voters={member,anon}` 记各几票。level 仍是 human、channel 仍是 web_vote（口径不动，会员／匿名的权重差异不在本改动里）。新增 `voter.voter_by`。
 ## [0.7.1] - 2026-11-27
 
