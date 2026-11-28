@@ -2,6 +2,8 @@
 
 | guji-manager | 支持的 pipeline 契约 | 对应 open-guji-cv |
 |---|---|---|
+| 含 #1251 的版本（须 ≥ v0.7.6） | v1 | 事件 `target.step` 新写 `char_decide`（`products_io.RULING_STEP`）。配 **cv ≥ v0.9.16**（cv 收尾改名版，产物写 char_decide，旧名仍认）；旧册升版后先 `guji-cv decide migrate-name <册>`（不重跑），已出 v0.1 的册不追新版。读端两名并认，旧事件不改。 |
+| 含 #1224／#1225 的版本（下一版） | v1 | **下限不提高**。收尾 seed_admit→char_decide 两名并认的读口 manager 自带（`products_io`，旧 cv 上退回本地实现），已出 v0.1 的书留在 0.7.x／0.9.2 patch 线照常用。只有两件要新 cv：原地改名 `guji-cv decide migrate-name` 与 cv 读口 `read_final` 等要 cv ≥ 0.9.14（v0.9.13＋#2008）；cv 写新名那一版（改名版）出来后，manager 必须 ≥ 本版才读得到。 |
 | 0.6.22–0.6.23 | v1 | 同 0.6.9（建议 ≥ 0.9.0，**下限不因 W1 提高**）。W1（11-25）起只有新册钉 cv 0.9.x（全唐文 031 往后 0.9.4＋底库 b35）；已出 v0.1 的书（殿本、史記、脉经、全唐文 001–030）留在各自 0.7.x／0.9.2 patch 线照常用。manager 读 0.9.2 起切字五小步的产物布局，新旧步都认（#1001）。 |
 | 0.6.12 | v1 | 同 0.6.9。 |
 | 0.6.11 | v1 | 同 0.6.9。 |

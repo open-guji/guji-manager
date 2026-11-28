@@ -35,6 +35,7 @@ draft 给 `--pack rev-004-r6`，就取回这个包当产物根（缓存在 `<产
 `--rev` 给现行单的 rev，`--pack` 给现行单的产物包。write 时这些条目标 `resolved`（记事件 id），整张单随之重导。
 """
 from __future__ import annotations
+from .products_io import RULING_STEP
 
 import datetime as dt
 import hashlib
@@ -70,6 +71,11 @@ def _fetch_kv(site_book: str, rev: str, token: str, site: str = SITE) -> list[di
             return items
 
 
+def _chap(args) -> str:
+    """章号：``--chapter``（没有整张单后的写法），或旧写法 ``--rev 004-r3`` 的前半。"""
+    return str(args.chapter) if getattr(args, "chapter", None) else str(args.rev).split("-r")[0]
+
+
 def _item_votes(args) -> tuple[list[dict], str]:
     """按条目记的票 → 按现行格号记的票（a＝条目现在的格号，rev＝--rev）。条目找不到的丢掉（计数）。"""
     from ._cv import feedback_root
@@ -82,7 +88,7 @@ def _item_votes(args) -> tuple[list[dict], str]:
         if not p.exists():
             raise SystemExit(f"没有 {p}（先 guji db pull；票刚投、还没同步就用 --from-kv）")
         raw, where = load_votes(p), str(p)
-    chap = args.rev.split("-r")[0]
+    chap = _chap(args)
     store = P.ItemStore.open(feedback_root().parent, args.site_book, chap)
     out, lost = [], 0
     mine = [v for v in raw if str(v.get("vol") or "").zfill(3) == chap.zfill(3)]
@@ -175,7 +181,7 @@ def _votes(args) -> tuple[list[dict], str]:
         args._n_rev_raw = len(items)                       # 按单版读到几条（读失败会直接抛，到这里就是读全了）
         if items:
             # 两种记法并存（旧网站按单版、新网站按条目）：只读了其中一种，另一种的票不会落——11-13 第五册 005-r13 的 25 票就这么漏的
-            chap = args.rev.split("-r")[0].zfill(3)
+            chap = _chap(args).zfill(3)
             n_item = sum(1 for v in _live_items(args) if str(v.get("vol") or "").zfill(3) == chap)
             if n_item:
                 _print(f"⚠ 这一册还有 {n_item} 条按条目记的票没读（本次按单版读了 {len(items)} 票）：另跑一遍 --items 落它们，别漏。")
@@ -234,21 +240,6 @@ def _use_pack(book: str, label: str) -> Path:
         _print(f"已取出单版产物包 {info['name']} → {root}")
     os.environ["GUJI_PRODUCTS_DIR"] = str(root)
     return root
-
-
-def _sheet(args) -> dict | None:
-    """投票时网站上那张单（读 `prior`：投票人看到的旧人裁）。--sheet 给了就用；否则数据目录线上单 rev 对得上就用它。"""
-    from ._cv import feedback_root
-    if getattr(args, "sheet", None):
-        p = Path(args.sheet)
-    else:
-        p = feedback_root() / "lists" / "proofing" / args.site_book / f"{args.rev.split('-r')[0].zfill(3)}.pending.json"
-    if not p.exists():
-        return None
-    doc = json.loads(p.read_text(encoding="utf-8"))
-    if doc.get("rev") != args.rev:
-        return None
-    return {**doc, "_path": str(p)}
 
 
 def _route(t, out: Path, rev: str) -> dict:
@@ -461,7 +452,7 @@ def cmd_draft(args) -> None:
     item_tab = None
     if getattr(args, "items", False):
         from .review import pending_items as P
-        item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, args.rev.split("-r")[0]).items
+        item_tab = P.ItemStore.open(feedback_root().parent, args.site_book, _chap(args)).items
     shown_now = None
     if getattr(args, "char_json", None):
         from .swap.booktext import _chars
@@ -484,7 +475,7 @@ def cmd_draft(args) -> None:
     votes, dropped = latest_votes(raw, args.site_book, args.rev, u_any_rev=True)   # 带 u 的旧 rev 票也收（T2）
     from .feedback import landing_policy as LP
     policy = LP.get_policy(getattr(args, "policy", None))
-    votes, waiting = LP.apply_policy(policy, votes)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
+    votes, waiting = LP.apply_policy(policy, votes, args.site_book)       # 落票策略：按审阅人身份决定自动落还是等多人（缺省 auto＝都落）
     if waiting:
         _print(f"落票策略 {policy.name}：{len(waiting)} 格没到门槛，不落（票留在收件箱，条目仍开着；见 waiting.tsv）")
     human = human_all
@@ -496,17 +487,13 @@ def cmd_draft(args) -> None:
         _print(f"旧人裁在现行产物上没生效（绑定不是 valid／rebound 到本格）{len(unbound)} 格：不算「已有人裁」，这些格的票照写新事件"
                + "（" + "、".join(f"{a} {why}" for a, why in unbound[:8]) + ("…" if len(unbound) > 8 else "") + "）")
     check = _box_checker(args.book, Path(args.cord), args.tol) if args.cord else None
-    sheet = _sheet(args)
-    sheet_prior = {c["cell"]: (c.get("prior") or {}).get("id") for c in (sheet or {}).get("cells", [])
-                   if (c.get("prior") or {}).get("id")}
     from .charnorm import load_norm
-    t = triage(votes, args.book, human, include_none=args.include_none, check=check, sheet_prior=sheet_prior,
+    t = triage(votes, args.book, human, include_none=args.include_none, check=check,
                same=load_norm(args.book).same)
-    # 待审原因（sheldon 11-03 定）：照投票时那张单上的 pending_reason 写进事件；单对不上或格不在单上就 unknown
-    sheet_reason = {c["cell"]: c.get("pending_reason") or "unknown" for c in (sheet or {}).get("cells", [])}
+    # 整张单已撤，没有「投票时那张单」可读：待审原因一律 unknown
     for d in t.drafts:
         if d.payload:
-            d.payload["pending_reason"] = sheet_reason.get(d.a, "unknown")
+            d.payload["pending_reason"] = "unknown"
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -538,7 +525,7 @@ def cmd_draft(args) -> None:
             f.write("\t".join(r) + "\n")
     n_over = sum(1 for d in t.ready if d.payload.get("overrides"))
     meta = {"book": args.book, "site_book": args.site_book, "rev": args.rev, "votes_from": where,
-            "recheck": len(rc), "overrides": n_over, "sheet": (sheet or {}).get("_path"),
+            "recheck": len(rc), "overrides": n_over,
             "cord": str(args.cord) if args.cord else None, "pack": args.pack, "items": bool(getattr(args, "items", False)),
             "products_root": str(pack_root) if pack_root else None, "n_raw": len(raw), "n_votes": len(votes),
             "dropped": dropped, "old_sheet": len(old), "old_landed": n_old_in,
@@ -590,7 +577,7 @@ def cmd_write(args) -> None:
     # 幂等键：同一份草稿重跑 write 不重复写（控制台写入路径按 payload.request_id 判重）
     rid = "cellvotes-" + hashlib.sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
     res = write_events(EventLog(feedback_root()), BatchStore(batches_root()), GoldStore(verdicts_root()),
-                       ProductStore(None), batch=args.batch, step="seed_admit", unit="cell", kind="confirm",
+                       ProductStore(None), batch=args.batch, step=RULING_STEP, unit="cell", kind="confirm",
                        events=rows, request_id=rid, consume=not args.no_consume, reviewer=args.reviewer)
     _print(json.dumps(res, ensure_ascii=False, indent=1))
     if args.no_consume and not res.get("duplicate"):
@@ -680,8 +667,7 @@ def _resolve_items(meta: dict, rows: list[dict], res: dict, by: str) -> None:
             n += 1
     if n:
         store.save()
-        from .cli_pending import export
-        _print(f"条目标已裁 {n} 条；整张单 → {export(store, data)}")
+        _print(f"条目标已裁 {n} 条")
 
 
 def cmd_migrate(args) -> None:
@@ -810,7 +796,8 @@ def add_parser(sub) -> None:
     p.add_argument("book", help="cv 册 id，如 vol04")
     p.add_argument("dir", nargs="?", default=None, help="write：draft 的输出目录")
     p.add_argument("--site-book", help="draft：网站书 id，如 96mid1ogzk")
-    p.add_argument("--rev", help="draft：待审单版本，如 004-r3")
+    p.add_argument("--chapter", default=None, help="draft：章号 NNN（整张单已撤，按条目收票；缺省按旧写法 --rev 推）")
+    p.add_argument("--rev", help="draft：旧写法，待审单版本如 004-r3（整张单已撤，只用来推章号；给了 --chapter 可不给）")
     p.add_argument("--cord", default=None, help="draft：出单那一版 book-text 的 <册>.cord.json")
     p.add_argument("--policy", default=None, help="draft：落票策略（auto 缺省＝有票就落；quorum:N＝高等级一票即定、其余要 N 人同一结论；也读 GUJI_LANDING_POLICY）")
     p.add_argument("--char-json", default=None, help="draft --items：现行 book-text 的 <册>.char.json；旧单条目票并入前核「页面显示字＝现格字」（格号改过的对不上，不落）；不给则旧单票一律不并入")
@@ -819,8 +806,6 @@ def add_parser(sub) -> None:
                    help="draft：「与已有人裁一致」不核旧人裁在现行产物上的绑定（缺省核：绑不上的旧人裁不算已有，票照写）")
     p.add_argument("--pack", default=None, help="draft：出单版产物包标签（republish 存的 rev-<rev>），取回当产物根，免重跑")
     p.add_argument("--tol", type=float, default=8.0, help="draft：格框容差（像素，缺省 8）")
-    p.add_argument("--sheet", default=None, help="draft：投票时的待审单（读 prior：复审格上有意推翻旧人裁）；"
-                                                 "缺省数据目录里同 rev 的线上单")
     p.add_argument("--include-none", action="store_true", default=True, help="draft：「无字」也写（2026-11-10 起缺省就写，此项保留兼容）")
     p.add_argument("--no-none", dest="include_none", action="store_false", help="draft：「无字」票不写（挂起）")
     p.add_argument("--from", dest="from_file", default=None, help="draft：票从文件读")
@@ -851,6 +836,8 @@ def add_parser(sub) -> None:
 
 def cmd_cellvotes(args) -> None:
     if args.action == "draft":
+        if getattr(args, "chapter", None) and not args.rev:
+            args.rev = f"{args.chapter}-items"        # 整张单已撤：内部仍要一个标记串，用它认「这一趟按条目收」
         missing = [k for k in ("site_book", "rev", "out") if not getattr(args, k)]
         if missing:
             raise SystemExit("draft 要 " + "、".join("--" + k.replace("_", "-") for k in missing))

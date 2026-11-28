@@ -155,8 +155,8 @@ def classify(rel: str) -> str | None:
     if len(parts) == 2 and parts[0] == "books" and p.suffix == ".yaml":
         return "books"
     if parts[0] == "feedback":
-        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid") and p.suffix == ".jsonl":
-            return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）
+        if len(parts) == 3 and parts[1] in ("events", "vision", "rulings", "uid", "vis_glyph") and p.suffix == ".jsonl":
+            return "events"                # uid：字格身份账（每行一页一次切分入账，只追加，CV0 11-24）；vis_glyph：cv 第三步看图缓存（CV3 11-28，单开目录，旧 cv 扫 rulings/ 不会碰到）
         if len(parts) == 3 and parts[1] == "pins" and p.name.endswith(".state.jsonl"):
             return "events"                # 钉状态流（删钉／过期，GM4 11-26）：事件形状，stream=pin_state
         if len(parts) == 3 and parts[1] == "consumed" and p.suffix == ".jsonl":
@@ -248,11 +248,28 @@ def _pick(rec: dict, names: Iterable[str], conv=None) -> dict:
 
 
 # 各逐行表：把一条 json 记录 → (key, cols)
+def _event_book(tgt):
+    """`events.book`（册）：取 `target.book`；没有且是格事件、`target.key` 是完整格号（四段）时取第一段当册
+    （11-27 清理计划 2.3：网站票落的事件 key＝`01:11:6:10`，册名数字开头 `parse_card_id` 不认，book 曾为空）。
+    同 Worker `events.ts::eventColumns`，两处要一起改。"""
+    if not tgt:
+        return None
+    b = tgt.get("book")
+    if b not in (None, ""):
+        return _str(b)
+    key = tgt.get("key")
+    if tgt.get("unit") == "cell" and isinstance(key, str):
+        parts = key.split(":")
+        if len(parts) == 4 and parts[0]:
+            return parts[0]
+    return _str(b)
+
+
 def _events(rec, rel, line):
     tgt = rec.get("target") if isinstance(rec.get("target"), dict) else None
     cols = {
         "stream": "pin_state" if rel.endswith(".state.jsonl") else PurePosixPath(rel).parts[1],
-        "book": _str(tgt.get("book")) if tgt else None,
+        "book": _event_book(tgt),
         "batch": _str(rec.get("batch")), "seq": _int(rec.get("seq")),
         "kind": _str(rec.get("kind")), "actor": _str(rec.get("actor")),
         "reviewer": _str(rec.get("reviewer")), "ts": _str(rec.get("ts")),

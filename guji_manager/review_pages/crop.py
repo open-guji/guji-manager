@@ -8,6 +8,8 @@ bbox_page 是右上角原点（x 从右往左数）：x_img = W − 1 − x。
 需要 Pillow（只在裁图时导入）。
 """
 from __future__ import annotations
+from ..products_io import decide_dir
+from ..products_io import layer_strict
 
 import json
 from collections import defaultdict
@@ -132,9 +134,9 @@ def column_images(ids, shrink_dir: str, pages_dir: str, out_dir, page_name: str 
         im = Image.open(pg).convert("RGB")
         chars: dict[str, str] = {}
         if pack_dir:
-            sa = Path(_fmt(pack_dir, v, p)) / "seed_admit" / f"p{p:04d}.json"
+            sa = decide_dir(Path(_fmt(pack_dir, v, p))) / f"p{p:04d}.json"
             if sa.exists():
-                for col in json.loads(sa.read_text(encoding="utf-8"))["seed_admit"]["columns"]:
+                for col in layer_strict(json.loads(sa.read_text(encoding="utf-8")))["columns"]:
                     for c in col["chars"]:
                         chars[c["id"]] = c.get("char") or ""
 

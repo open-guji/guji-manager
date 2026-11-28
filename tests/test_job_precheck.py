@@ -64,3 +64,21 @@ def test_code_release_checked_once_per_pinned_k(ws, monkeypatch):
     monkeypatch.setattr(P, "code_problems", lambda n, w: seen.append(n) or [f"没有 k{n}"])
     res = P.check(["vol01", "vol02"], {})
     assert seen == [3] and "没有 k3" in res["problems"]
+
+
+def test_shows_config_group(ws, monkeypatch):
+    """书引了配置组（cv #2064）：表里多一列「配置组」；组层不出钉子，钉子来源照旧。"""
+    real = CV.book_config_layers
+
+    def with_group(path, **kw):
+        return [("组 wyg@1", {"params": {"row_segment": {"x": 1}}})] + list(real(path, **kw))
+
+    monkeypatch.setattr(CV, "book_config_layers", with_group, raising=False)
+    p = P.pins_of("vol01")
+    assert p["_group"] == ("wyg@1", "组 wyg@1") and p["code"] == (3, "基础配置")
+    res = P.check(["vol01", "vol02"], {"cv_version": "0.7.58", "code": 3, "glyph_pin": None, "corpus": None})
+    assert res["problems"] == []
+    out = P.render(res)
+    assert "配置组" in out.splitlines()[0] and out.splitlines()[1].endswith("\twyg@1")
+    monkeypatch.setattr(CV, "book_config_layers", real, raising=False)
+    assert P.render(P.check(["vol01"], {})).splitlines()[1].endswith("\t—")

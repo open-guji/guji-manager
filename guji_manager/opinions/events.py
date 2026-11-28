@@ -12,6 +12,7 @@ revise 真写 book-text（非 dry-run、带 PR）后，对每个改了字／新�
 - batch 名 ``opinion-<册>-<章>-<日期>``，不带「~」（带「~」的批次按口径算人裁）。
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 import datetime as dt
 from dataclasses import dataclass, field
@@ -58,9 +59,10 @@ class Built:
 
 
 def build(book: str, vol: str, applied: list, statuses: dict, char: dict, cord: dict, *, text_version: str | None,
-          ledger=None, cells_sha_of=None, batch: str | None = None) -> Built:
+          ledger=None, cells_sha_of=None, batch: str | None = None, adopter: str | None = None) -> Built:
     """``applied``＝revise 的 Applied 列表；``statuses``＝意见 id → 状态（派生状态，采纳时的）；
-    ``char``／``cord``＝写完之后的现行文件；``ledger``＝uid Ledger（B′ 核账用）；``cells_sha_of(page)``＝现行切分戳。"""
+    ``char``／``cord``＝写完之后的现行文件；``ledger``＝uid Ledger（B′ 核账用）；``cells_sha_of(page)``＝现行切分戳；
+    ``adopter``＝采纳人账号（写 `payload.by`；不给：accepted 记 `opinion:<意见 id>`，auto_accepted 记规则名 `auto_accept`）。"""
     out = Built()
     batch = batch or batch_name(book, vol)
     sha_cache: dict = {}
@@ -94,10 +96,12 @@ def build(book: str, vol: str, applied: list, statuses: dict, char: dict, cord: 
                 anchor["content_sha"] = ccell["content_sha"]
             col, slot = a.split(":")[1], a.split(":")[2]
             payload = {"v": "confirm", "shape": cell["c"], "source": "opinion", "opinion": ap.opinion,
-                       "text_version": text_version, "level": level, "no_glyph_lib": True}
+                       "text_version": text_version, "level": level, "no_glyph_lib": True,
+                       "by": adopter or (f"opinion:{ap.opinion}" if level == "human" else "auto_accept"),
+                       "channel": "opinion"}
             out.events.append({
                 "batch": batch, "kind": "confirm", "actor": actor,
-                "target": {"step": "seed_admit", "unit": "cell", "key": f"{book}:{a}", "book": book,
+                "target": {"step": RULING_STEP, "unit": "cell", "key": f"{book}:{a}", "book": book,
                            "page": page, "col": int(col), "slot": int(slot.rstrip("ab")), "anchor": anchor},
                 "payload": payload})
     return out

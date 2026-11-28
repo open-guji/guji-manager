@@ -16,7 +16,7 @@ sync 按追加合并（`datastore.workcopy`），不会冲突。
 | `fp` | 图块指纹：字块图（Step4 `char_patch`）的 sha1，同人裁锚的 `content_sha`；没有产物时为空 |
 | `state` | `open` 待审、`withdrawn` 人工撤下、`resolved` 已有人裁（留着显示结果）、`closed` 机器不再判待审 |
 | `doc` | 网站卡片要的全部字段（与 `pending.json` 的一格相同：`why`、候选、`img`、`note`、`prior`、`recheck`…） |
-| `src` | 谁开的：`pack:<产物包>`／`import:<rev>`／`human:<谁>`／`script:<名>` |
+| `src` | 谁开的（origin，不带批号）：`pipeline`／`human:<谁>`／`script:<名>`；历史行还有 `land:<书>`／`pack:<包>`／`rev:<批>`／`import:<rev>`，不改，读的时候都当机器出的 |
 | `ver`／`op`／`by`／`at`／`why` | 版本号与这次改动 |
 
 格号与指纹**两个都记**（sheldon 11-10）：reconcile 先按 u 认（有账的册），再按指纹认，认不出再按格号认；按格号认上但指纹变了的，条目照旧、
@@ -46,12 +46,27 @@ def now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _numeric_twin(p: Path, chapter: str, suffix: str) -> Path:
+    """册号按数值认（用户 11-27 册号位数统一）：字面路径不在、章号是数字时，找同一目录里数值相同的那份
+    （改号后旧单 rev `001-r3` 仍指向 `1.items.jsonl`）。都不在就给字面路径（新建按调用方给的写）。"""
+    if p.exists() or not chapter.isdigit() or not p.parent.is_dir():
+        return p
+    n = int(chapter)
+    for q in sorted(p.parent.glob(f"*{suffix}")):
+        stem = q.name[: -len(suffix)]
+        if stem.isdigit() and int(stem) == n:
+            return q
+    return p
+
+
 def items_path(data: Path, text_id: str, chapter: str) -> Path:
-    return Path(data) / "feedback" / "lists" / "pending" / text_id / f"{chapter}.items.jsonl"
+    p = Path(data) / "feedback" / "lists" / "pending" / text_id / f"{chapter}.items.jsonl"
+    return _numeric_twin(p, str(chapter), ".items.jsonl")
 
 
 def sheet_path(data: Path, text_id: str, chapter: str) -> Path:
-    return Path(data) / "feedback" / "lists" / "proofing" / text_id / f"{chapter}.pending.json"
+    p = Path(data) / "feedback" / "lists" / "proofing" / text_id / f"{chapter}.pending.json"
+    return _numeric_twin(p, str(chapter), ".pending.json")
 
 
 def norm_cell(x: str) -> str:

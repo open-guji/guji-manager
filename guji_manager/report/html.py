@@ -67,6 +67,11 @@ GRADE_NOTE = {
 GRADE_ORDER = ("suspect", "misanchor", "gap", "human", "taboo", "systematic", "variant")
 
 
+
+def _wacc(w: dict) -> str:
+    """报告 JSON 里证人的准确度档（新报告 `accuracy`，旧报告 `quality`）。"""
+    return w.get("accuracy") or w.get("quality") or "low"
+
 def _e(s) -> str:
     return html.escape("" if s is None else str(s), quote=True)
 
@@ -99,7 +104,7 @@ def render(doc: dict, console: str = "") -> str:
         c = s.get("counts", {})
         n_un = len(doc["unanchored"].get(w["label"], []))
         wrows.append(
-            f"<tr><td>{_e(w['label'])}</td><td><span class='q q-{_e(w['quality'])}'>{_e(w['quality'])}</span></td>"
+            f"<tr><td>{_e(w['label'])}</td><td><span class='q q-{_e(_wacc(w))}'>{_e(_wacc(w))}</span></td>"
             f"<td class='num'>{s.get('n_equal', 0):,}</td>"
             + "".join(f"<td class='num'>{c.get(k, 0) or ''}</td>" for k in DETAIL_KINDS)
             + f"<td class='num muted'>{n_un}</td>"
@@ -274,7 +279,7 @@ nav a:hover{background:var(--acc);color:#fff}
 .gl{font-family:"Noto Serif TC",serif}
 .big{font-size:21px;margin:0 10px 0 3px}
 .q{font-size:11px;padding:1px 7px;border-radius:9px;color:#fff}
-.q-best{background:#2f6b3a}.q-mid{background:#8a6b2e}.q-low{background:#9a9488}
+.q-very_high,.q-best{background:#1f5a2c}.q-high{background:#2f6b3a}.q-mid{background:#8a6b2e}.q-low{background:#9a9488}
 .ent{background:#fff;border:1px solid var(--line);border-radius:7px;padding:9px 12px;margin:7px 0}
 .head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:4px}
 .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mut)}

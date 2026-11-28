@@ -88,3 +88,18 @@ def test_nearform_headline_and_context_pairs_apart():
     ms, err = extract("nearform", data)
     v = _names(ms)
     assert err == "" and v["对家误认"] == 2 and v["test 对家误认"] == 1 and v["文意三对 对家误认"] == 2
+
+
+def test_near_headline_and_lock(tmp_path):
+    data = {"methods_sha": {"995ejelvk0": "rr_shape:rr=rr_shape=abc"},
+            "headline": [{"book": "995ejelvk0", "group": "rr", "method": "rr_shape", "cells": 1000, "triggered": 40,
+                          "scored": 40, "decided": 30, "right": 29, "wrong": 1, "acc": 0.9667, "abstain_rate": 0.25,
+                          "ms_per_cell": 1.5, "coverage": {"n": 20, "covered": 19, "rate": 0.95},
+                          "ece": 0.03, "ece_n": 25, "calib_version": "tmp-1"}]}
+    ms, err = extract("near", data)
+    d = _names(ms)
+    assert not err and d["995ejelvk0 rr_shape:rr 准确率"] == 96.67 and d["995ejelvk0 rr_shape:rr 覆盖率"] == 95.0
+    assert d["995ejelvk0 rr_shape:rr ECE"] == 0.03
+    lock = bench_lock("near", tmp_path, tmp_path, data)
+    assert lock["methods_sha"] == data["methods_sha"] and "glyph_db" not in lock
+    assert "methods_sha" not in bench_lock("nearform", tmp_path, tmp_path, data)

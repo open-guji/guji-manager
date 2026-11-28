@@ -60,10 +60,10 @@ PAGE_TYPES: dict[str, PageType] = {p.key: p for p in [
              "L4 同字聚合后的形近对（畫/書、全/今、文/又…）；选 A/B/都不是/看不清/切分有问题，点即存；"
              "可带 near_shape 差异区高亮；结果经 `pair_audit` 出 relabel/confirm 事件",
              options=("a", "b", "neither", "unclear", "seg"), doc_prefix="review_np"),
-    PageType("lib_audit", "库内刻例审阅卡（按字头列刻例，标错的改字或撤库）", "lib_audit.tpl.html", "1.0.1",
+    PageType("lib_audit", "库内刻例审阅卡（按字头列刻例，标错的改字或撤库）", "lib_audit.tpl.html", "1.2.0",
              "体检/形近字对比发现的库标错（官/宫、之/史…）；点刻例标「这条标错」并填应为的字；"
-             "结果经 `pair_audit` 出 glyph_audit relabel/evict/near_form 事件",
-             options=("relabel", "evict", "near_form"), doc_prefix="review_la"),
+             "结果经 `pair_audit` 出 glyph_audit relabel/evict（evict_keep 不带 review）/near_form 事件",
+             options=("relabel", "evict_keep", "evict", "near_form"), doc_prefix="review_la"),
     PageType("glyph_quality", "字块质量（干净/带框/切笔/污渍/看不清）", "glyph_quality.tpl.html", "1.1.0",
              "切分字块验收（列端框线等）；单块或同格新旧两版同倍放大并排，按字块 sha 锚定；"
              "输入可直接用 dataset 金标信封（如 frame-end-crop），结果用 gq-apply 回写（见 glyph_quality.py）",

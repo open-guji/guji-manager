@@ -27,6 +27,7 @@
 格键是按切分编号的，两轮切分变了的格会对不上号；只比两轮都有的格，换切分的轮次结果会偏少，报告里记两边格数。
 """
 from __future__ import annotations
+from ..products_io import decide_dir
 
 import collections
 import datetime
@@ -130,7 +131,7 @@ def run(books: list[str], before: str | Path, after: str | Path, *, batches: set
     stat: collections.Counter = collections.Counter()
     missing = []
     for b in books:
-        if not (before / b / "seed_admit").is_dir() or not (after / b / "seed_admit").is_dir():
+        if not decide_dir(before, b).is_dir() or not decide_dir(after, b).is_dir():
             missing.append(b)
             continue
         r = compare(_seed_cells(before, b, "seed_admit"), _seed_cells(before, b, "glyph_match"),

@@ -14,6 +14,7 @@
 同一格多个来源：human > gold > vision；真值不一致的记 `conflicts`。
 """
 from __future__ import annotations
+from ..products_io import is_decide_step
 
 import json
 from dataclasses import dataclass, field
@@ -86,7 +87,7 @@ def load_human_events(spec: dict, books: list[str]) -> list[Label]:
         for f, r in iter_event_records(Path(d)):   # H 道批名不带册前缀（H-M7-…），按 target.book 筛
             batch = f.stem
             t = r.get("target") or {}
-            if t.get("step") != "seed_admit" or t.get("unit") != "cell" or t.get("book") != book:
+            if not is_decide_step(t.get("step")) or t.get("unit") != "cell" or t.get("book") != book:
                 continue
             if r.get("kind") not in ("confirm", "verdict") or r.get("actor") != "user":
                 continue

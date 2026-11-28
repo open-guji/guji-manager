@@ -15,6 +15,11 @@ from typing import Any
 #: 名字 → (cv 内模块, 属性名；None 表示模块本身)；与 cv `manager_api._EXPORTS` 同步，只给旧 cv 兜底用。
 _FALLBACK: dict[str, tuple[str, str | None]] = {
     "WorkerSource": ("datastore.client", "WorkerSource"),
+    # 候选字线（CV3 2026-11-28）：`guji audit cands`
+    "glyph_candidate_mod": ("steps.glyph_candidate", None),
+    "bench_mod": ("eval.bench", None),   # benchmark 统一接口（cv #2083，`guji bench`）
+    "context_rank_mod": ("steps.context_rank", None),
+    "ctx_fill_mod": ("clustering.ctx_fill", None),
     "pending_cells": ("feedback.pending_cells", "pending_cells"),   # 换包收尾：产物→待审格（cv #1835，GM4 11-24）
     "machine_pending": ("feedback.pending_cells", "machine_pending"),
     "groups_of": ("groups.registry", "groups_of"),
@@ -85,6 +90,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "release_pin": ("core.corpus_pin", "release_pin"),
     "core_corpus_files": ("core.corpus_files", None),
     "GlyphDB": ("clustering.glyph_db", "GlyphDB"),
+    "clustering_glyph_db": ("clustering.glyph_db", None),
     "assert_workspace_declared": ("core.workspace", "assert_workspace_declared"),
     "glyph_store_path": ("core.workspace", "glyph_store_path"),
     "clustering_font_pack": ("clustering.font_pack", None),
@@ -108,6 +114,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
     "book_config_layers": ("core.book_config", "layers"),   # guji job precheck：钉子来自哪一层（2026-11-17）
     "book_config_effective": ("core.book_config", "effective_book_dict"),   # corpus 缺省号认运行覆盖（2026-11-26）
+    # 配置组层（CV0 2026-11-28，cv #2064）：书级生效配置、解析 groups:、组配置禁写检查
+    "effective_defaults": ("core.book_config", "effective_defaults"),
+    "book_groups": ("core.book_config", "book_groups"),
+    "check_group_layer": ("core.book_config", "check_group_layer"),
     "lib_pins_expand": ("core.lib_pins", "expand_layer"),
     "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
@@ -312,6 +322,20 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "pack_root": ("core.corpus_pin", "pack_root"),
     "versions": ("core.corpus_pin", "versions"),
     "NEVER_MATCH_FAMILIES": ("clustering.match", "NEVER_MATCH_FAMILIES"),
+    "near_registry_pairs": ("clustering.confusable", "registry_pairs"),
+    # 收尾步 seed_admit→char_decide 兼容读口（cv #2008，P3a-1，11-28）
+    "ADMIT_STEPS": ("core.decide_names", "ADMIT_STEPS"),
+    "LEGACY_ADMIT_STEP": ("core.decide_names", "LEGACY_ADMIT_STEP"),
+    "NEW_ADMIT_STEP": ("core.decide_names", "NEW_ADMIT_STEP"),
+    "is_admit_step": ("core.decide_names", "is_admit_step"),
+    "same_admit_step": ("core.decide_names", "same_admit_step"),
+    "fold_admit_params": ("core.decide_names", "fold_admit_params"),
+    "read_final": ("steps.decide_final", "read_final"),
+    "read_final_store": ("products.final_read", "read_final_store"),
+    "final_page_dict": ("core.decide_names", "final_page_dict"),
+    "final_dir": ("core.decide_names", "final_dir"),
+    "ruling_by_u": ("feedback.decide_events", "ruling_by_u"),
+    "invalidate_final": ("feedback.decide_events", "invalidate_final"),
     "collect_vol": ("core.corpus_pin", "collect_vol"),
     "vol_manifest_path": ("core.corpus_pin", "vol_manifest_path"),
     "vol_versions": ("core.corpus_pin", "vol_versions"),
@@ -447,6 +471,8 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
 #: 已搬进本包的名字 → (guji_manager 内模块, 属性名)。先查这张表：模块已不在 cv，不再问 cv 门面。
 #: 老代码 `from ._cv import X` 照样能用；新代码直接 import 本包模块。
 _LOCAL: dict[str, tuple[str, str | None]] = {
+    # cv 三链合一（#2055，11-28）：按册展开管线，老 cv 退回 load_pipeline(pid)
+    "pipeline_for": ("pipeline_ref", "pipeline_for"),
     # 写入以字格永久编号 u 为准（11-25）：append 前盖 u，册有账写不出 u 整批报错
     "EventLog": ("u_stamp", "EventLog"),
     "RulingLog": ("u_stamp", "RulingLog"),

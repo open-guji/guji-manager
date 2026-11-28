@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+from .pipeline_ref import norm_pipeline
+
 
 def _root(args) -> Path:
     if getattr(args, "workspace", None):
@@ -57,7 +59,7 @@ def _pick(rs: list[dict], run: str | None) -> dict:
 #: 不在任何管线里的步（测试里的合成步、已退役的步）归这一组
 OTHER = "其他"
 #: 已从管线里拿掉、但任务库里还有记录的步（看历史时仍归对大步）
-RETIRED_STAGE = {"row_segment_gate": "cut"}
+RETIRED_STAGE = {"row_segment_gate": "cut", "seed_admit": "decide"}   # seed_admit：cv P3 改名 char_decide，历史 perf 行仍是旧名
 STAGE_TITLE = {"layout": "1 版面", "cut": "2 切字", "read": "3 识字", "decide": "4 定字", OTHER: "其他"}
 
 
@@ -209,7 +211,7 @@ def cmd_show(args) -> None:
         return
     run, m = r["run"], r["run"].get("machine") or {}
     wall = (r["end"] or {}).get("wall_s")
-    print(f"{run['run_id']}  {run['book']}  {run.get('pipeline')}  cv {run.get('cv_version')}  "
+    print(f"{run['run_id']}  {run['book']}  {norm_pipeline(run.get('pipeline'), run.get('layout'))}  cv {run.get('cv_version')}  "
           f"墙钟 {_fmt_s(wall)}{'（中断）' if r['end'] is None or r['end'].get('stopped') else ''}")
     print(f"机器 {m.get('host')}（{m.get('kind')}，{m.get('cpus')} 核，{m.get('mem_gb')} GB）  --jobs {run.get('jobs')}"
           + (f"  任务库 #{run['job_id']}" if run.get("job_id") else ""))
@@ -357,8 +359,11 @@ PERF_HOOKS: dict[str, dict] = {
     "open_guji_cv.steps.seed_admit_common": {"funcs": ("_page_patch", "_hard_blocked")},
     "open_guji_cv.steps.seed_admit_lanes": {
         "funcs": ("_edge_pair_pass", "_follow_ref_pass", "_human_unbound_pass", "_pua_rule_pass", "_rare_ref_pass",
-                  "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass", "_symbol_ref_blank_pass"),
+                  "_ref_lib_coord_pass", "_ref_topk_pass", "_review_lanes_pass"),
     },
+    # cv #1998（11-28，CV4 P1a）把 seed_admit 按位置拆成 cell_state／groups／pick／veto／altcut／reasons／page_params，
+    # `_symbol_ref_blank_pass` 搬到 seed_admit_cell_state（旧 cv 没这模块，import 失败就跳过）
+    "open_guji_cv.steps.seed_admit_cell_state": {"funcs": ("_symbol_ref_blank_pass",)},
     "open_guji_cv.steps.seed_admit_shapes": {
         "funcs": ("_book_knn_pass", "_near_knn_pass", "_pair_shape_pass", "_rr_shape_pass"),
     },
@@ -408,6 +413,26 @@ def _render_hooks() -> dict[str, dict]:
 def all_hooks() -> dict[str, dict]:
     """`PERF_HOOKS` ＋ 各步 render。同一模块两边都有时合并。"""
     out = {m: {"funcs": tuple(v.get("funcs", ())), "methods": dict(v.get("methods", {}))} for m, v in PERF_HOOKS.items()}
+    # cv P3（11-28）：seed_admit 改名 char_decide，steps.seed_admit 只留转发垫片——钩子挂在垫片上计不到，
+    # 同样的函数在新模块（char_decide、char_decide_*）上再挂一份；只在本机 cv 有新模块时加（旧 cv 没有）。
+    import importlib
+    import importlib.util
+    for m in list(out):
+        if m.startswith("open_guji_cv.steps.seed_admit"):
+            new = m.replace(".seed_admit", ".char_decide", 1)
+            try:
+                found = importlib.util.find_spec(new) is not None
+            except (ImportError, ValueError):
+                found = False
+            if not found:
+                continue
+            try:   # 兼容版的 char_decide 只是转发入口（cv #2008），本体还在 seed_admit：只挂新模块里真有的函数
+                mod = importlib.import_module(new)
+            except Exception:  # noqa: BLE001
+                continue
+            funcs = tuple(f for f in out[m]["funcs"] if callable(getattr(mod, f, None)))
+            if funcs and new not in out:
+                out[new] = {"funcs": funcs, "methods": {}}
     for m, v in _render_hooks().items():
         e = out.setdefault(m, {"funcs": (), "methods": {}})
         for c, meths in v["methods"].items():

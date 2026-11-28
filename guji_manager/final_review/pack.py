@@ -4,6 +4,8 @@
 cv 的读序（sort_by_reading）和字组表（GROUPS）由调用方传入，测试可换假的。
 """
 from __future__ import annotations
+from ..products_io import decide_pages
+from ..products_io import layer_strict
 
 import glob
 import json
@@ -25,7 +27,7 @@ def _pageno(f):
 
 
 def _load_steps(pkg, vol):
-    seed = {_pageno(f): json.load(open(f, encoding="utf-8"))["seed_admit"] for f in glob.glob(f"{pkg}/{vol}/seed_admit/p*.json")}
+    seed = {_pageno(f): layer_strict(json.load(open(f, encoding="utf-8"))) for f in map(str, decide_pages(f"{pkg}/{vol}"))}
     align, anchored = {}, {}
     for f in glob.glob(f"{pkg}/{vol}/align_ref/p*.json"):
         ar = json.load(open(f, encoding="utf-8"))["align_ref"]

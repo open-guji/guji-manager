@@ -39,7 +39,9 @@ IDLE_BOARD_S = 300           # 空闲执行方刷新看板的节流（秒）
 #: rerun_prep.sh 里失败多半是网络／库的段（失败了换个会话重试）；其余段（钉子账、建字形库、语料校验…）是配置问题
 _PREP_ENV_PARTS = {"cv", "克隆工作区", "db-pull", "取原图", "模板索引", "基线包"}
 #: 准备脚本输出里这些错是配置问题（不是网络／库），换会话重试也一样
-_CONFIG_ERR = re.compile(r"\bBookConfigError\b")
+_CONFIG_ERR = re.compile(r"\bBookConfigError\b|/books/[^/'\s]+\.yaml'?: No such file")
+#: 拉完库还找不到册 yaml＝册名不对（改过名、交错书），不是网络（11-28 北行 #18319 bxgb→1、殿本 #18292 01≠vol01 各白领三次）
+_NO_BOOK_YAML = re.compile(r"/books/([^/'\s]+)\.yaml'?: No such file")
 _TOKEN_RE = re.compile(r"(TOKEN|SECRET|KEY|PASS|DSN)[A-Z_]*=\S+|postgres(ql)?://\S+|Bearer \S+", re.I)
 
 
@@ -109,6 +111,12 @@ def _token(name: str) -> str | None:
     if v and v.startswith("$"):                 # 面板里写成 $GUJI_DATA_TOKEN_PROD 的字面量
         v = os.environ.get(v.strip("${}"))
     return v or None
+
+
+# 问本单 cv 收尾步现在叫什么（11-28 GM2：原先查 `core.step.STEPS`，可那是空注册表、步模块没导入前恒为空，
+# 护栏在执行方从没触发过）。cv ≥0.9.14 有 decide_names.ADMIT_STEP_ACTIVE；更老的 cv 没有，就是 seed_admit。
+DECIDE_NAME_PROBE = ("try:\n from open_guji_cv.core.decide_names import ADMIT_STEP_ACTIVE as a\n"
+                     "except ImportError:\n a = 'seed_admit'\nprint(a)")
 
 
 class Job:
@@ -302,7 +310,12 @@ class Job:
             part = heads[-1] if heads else "?"
             # 网络／库段里报的配置错（册 yaml 写了这版 cv 不认的东西）换会话重试也必败，不算环境类（11-25 全唐文 052／054）
             env = part in _PREP_ENV_PARTS and not _CONFIG_ERR.search(str(e))
-            raise StageError("failed", f"准备「{part}」段失败：{e}", e.code, env=env) from None
+            hint = ""
+            m = _NO_BOOK_YAML.search(str(e))
+            if m:
+                hint = (f"；中心库这部书没有册 {m.group(1)}：多半是册名写错或已改名（看 books/*.yaml 的 aliases），"
+                        f"改 --book 重交（新版 guji job submit 交单时会核册名）")
+            raise StageError("failed", f"准备「{part}」段失败：{e}{hint}", e.code, env=env) from None
         m = re.search(r"^WS=(\S+)", out, re.M)
         self.ws = m.group(1) if m else self.ws
         m = re.search(r"^OVERRIDE=(.*)$", out, re.M)
@@ -431,8 +444,31 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "output", "recheck", data={"tail": redact(tail)[-2000:]})
         self.ev(f"按 g{sp['glyph_diff']}→g{sp['book_overrides'].get('glyph_pin')} 点名受影响的格")
 
+    def _migrate_decide_name(self) -> None:
+        """cv 改名版（收尾 Step 叫 char_decide，cv #2033）配上还是 `seed_admit/` 的老册：先原地改名换指纹，再跑 pipeline。
+
+        不迁就跑，cv 会把收尾判缺失、整册重算（出过 v0.1 的册等于违规重跑，CV4 11-28）。只在本机产物
+        有 `seed_admit/`、没有 `char_decide/`、且本单 cv 的 STEPS 里有 char_decide 时迁；迁移只改名、结果不变。"""
+        if self.dry:
+            return
+        prod, _fb = self._cv_roots()
+        base = Path(prod) / self.spec["book"]
+        if not (base / "seed_admit").is_dir() or (base / "char_decide").is_dir():
+            return
+        r = subprocess.run([str(VENV / "bin" / "python"), "-c", DECIDE_NAME_PROBE], capture_output=True, text=True,
+                           env=self.env(), cwd=str(self.dir), timeout=120)
+        if r.returncode != 0:
+            self.ev("问不到本单 cv 收尾步现名，没迁 seed_admit/：" + redact(r.stderr.strip()[-300:]), level="warn")
+            return
+        if r.stdout.strip().splitlines()[-1:] != ["char_decide"]:
+            return                       # 旧 cv：收尾仍叫 seed_admit，不用迁
+        out = self.sh([str(VENV / "bin" / "guji-cv"), "decide", "migrate-name", self.spec["book"]], write=True)
+        self.ev("收尾目录 seed_admit/→char_decide/ 原地改名（cv 改名版配老册，免整册重算）："
+                + redact(out.strip().splitlines()[-1] if out.strip() else "")[:300])
+
     def run_pipeline(self) -> None:
         sp = self.spec
+        self._migrate_decide_name()
         args = ["pipeline", sp["pipeline"], sp["book"], "-w", self.ws or "", "--pages", sp["pages"], "--no-pack"]
         if sp["steps"]["from"]:
             args += ["--from", sp["steps"]["from"]]
@@ -805,15 +841,19 @@ def _refresh_runner() -> bool:
 
     失败原因（merge 的 stderr、超时）写进日志，不再静默：11-18 多台 runner 同时「拉不动」自退，检出其实是干净的 detached HEAD，
     当时看不出是超时还是 merge 报错。"""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     if not _refresh_manager():
         return False
     try:
-        r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "merge", "--ff-only", "-q", "origin/dev"], capture_output=True,
-                           text=True, timeout=REFRESH_TIMEOUT_S, env=env)
-        if r.returncode != 0:
-            print(f"[runner 自更新] git merge --ff-only origin/dev 失败（退出码 {r.returncode}）："
-                  f"{(r.stderr or r.stdout).strip()[-400:]}", flush=True)
+        # 未跟踪文件挡路（如 config/groups/wu/rules.yaml 新进 dev 跟踪）：同 Job.checkout，只备份、移走报出的那几个再试
+        say = lambda m: print(m[:800], flush=True)      # noqa: E731
+        try:
+            SC.run(RUNNER_ROOT, ["merge", "--ff-only", "-q", "origin/dev"], label="自更新 merge --ff-only origin/dev",
+                   say=say, timeout=REFRESH_TIMEOUT_S)
+            merged = True
+        except SC.CheckoutError as e:
+            merged = False
+            print(f"[runner 自更新] git merge --ff-only origin/dev 失败：{str(e)[-400:]}", flush=True)
+        if not merged:
             # 准备脚本会把这个检出切到单上钉的 cv（tag、rc 头、功能分支提交），HEAD 于是不在 origin/dev 的祖先线上，
             # ff 必败。检出是执行方自用的、工作区干净时（没有未提交改动）直接切到 origin/dev 的 detached HEAD，不丢任何东西。
             # 只对 detached HEAD 这么做：在分支上有本地提交（人手改过 runner 检出）一律不动，免得丢提交
@@ -824,11 +864,10 @@ def _refresh_runner() -> bool:
             if br.returncode == 0 or st.returncode != 0 or st.stdout.strip():
                 print("[runner 自更新] 检出在分支上、有未提交改动或状态读不了，不切换", flush=True)
                 return False
-            r = subprocess.run(["git", "-C", str(RUNNER_ROOT), "checkout", "-q", "--detach", "origin/dev"],
-                               capture_output=True, text=True, timeout=REFRESH_TIMEOUT_S, env=env)
-            if r.returncode != 0:
-                print(f"[runner 自更新] git checkout --detach origin/dev 失败：{(r.stderr or r.stdout).strip()[-400:]}",
-                      flush=True)
+            try:
+                SC.checkout(RUNNER_ROOT, "origin/dev", extra=("-q", "--detach"), say=say, timeout=REFRESH_TIMEOUT_S)
+            except SC.CheckoutError as e:
+                print(f"[runner 自更新] git checkout --detach origin/dev 失败：{str(e)[-400:]}", flush=True)
                 return False
             print("[runner 自更新] HEAD 不在 origin/dev 线上（多半是上一单钉的 cv），已切到 origin/dev", flush=True)
         head = subprocess.run(["git", "-C", str(RUNNER_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
@@ -935,6 +974,7 @@ def work(*, once: bool = False, until_empty: bool = True, idle_minutes: float = 
                 if got is None:
                     _maybe_uid_audit(say)
                     _maybe_uid_checku(say)
+                    _maybe_pending_settle(say)
                     # 空闲时不碰中心库（看板写在中心库；当初是怕 40 个执行方每 5 分钟写一次让 Neon 不休眠，11-05 用户定，迁 D1 后照旧省读写）；
                     # 看板在领单、收尾、心跳与交单时更新
                     if slow_tick:
@@ -1045,6 +1085,36 @@ def _maybe_uid_checku(say=print) -> None:
         say("；".join(tail[-8:]) if tail else f"人裁 check-u 报告退出码 {r.returncode}")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"人裁 check-u 报告没跑成：{e}")
+
+
+#: 待审条目对账（格已落定 → 条目标 resolved，清理计划 2.2；秒，缺省 0＝不跑）。只在一台执行方上开：它会写中心库的条目文件
+PENDING_SETTLE_S = int(os.environ.get("GUJI_PENDING_SETTLE_S", "0"))
+_pending_settle_next: float | None = None
+
+
+def _maybe_pending_settle(say=print) -> None:
+    global _pending_settle_next
+    if PENDING_SETTLE_S <= 0:
+        return
+    now = time.time()
+    if _pending_settle_next is not None and now < _pending_settle_next:
+        return
+    _pending_settle_next = now + PENDING_SETTLE_S
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "GUJI_WORKSPACE")}
+    tok = _token("GUJI_DATA_TOKEN") or _token("GUJI_DATA_TOKEN_READ")
+    if tok:
+        env["GUJI_DATA_TOKEN"] = tok
+    try:
+        r = subprocess.run([str(VENV / "bin" / "guji"), "pending-settle", "--roots", str(HOME.parent), "--pull", "--apply", "--sync"],
+                           capture_output=True, text=True, timeout=3600, env=env)
+        tail = [x for x in (r.stdout + r.stderr).splitlines() if "resolved" in x or x.startswith("✗")]
+        say("；".join(tail[-8:]) if tail else f"待审条目对账退出码 {r.returncode}")
+        # 看板待审数跟着条目走（清理计划 2.7）：对账后顺手刷 open 数与最后变更时间
+        r = subprocess.run([str(VENV / "bin" / "guji"), "progress-sync", "--fix", "--pending-only"],
+                           capture_output=True, text=True, timeout=1800, env=env)
+        say(f"看板待审数刷新退出码 {r.returncode}：{(r.stdout.splitlines() or [''])[0]}")
+    except (OSError, subprocess.SubprocessError) as e:
+        say(f"待审条目对账没跑成：{e}")
 
 
 ENV_STREAK_PAUSE = 3

@@ -99,7 +99,7 @@ def test_log_is_append_only(tmp_path):
     assert [json.loads(x)["ver"] for x in lines] == [1, 2]
 
 
-def test_cli_import_withdraw_export(tmp_path, capsys):
+def test_cli_import_withdraw_no_sheet_export(tmp_path, capsys):
     from guji_manager.commands import run
     sheet = P.sheet_path(tmp_path, "bk", "004")
     sheet.parent.mkdir(parents=True)
@@ -107,8 +107,8 @@ def test_cli_import_withdraw_export(tmp_path, capsys):
     base = ["--data", str(tmp_path), "--text-id", "bk", "--chapter", "004"]
     run(["pending", "import", "vol04", *base])
     run(["pending", "withdraw", "vol04", "1:1:2", "--why", "不用看", "--by", "sheldon", *base])
-    doc = json.loads(sheet.read_text(encoding="utf-8"))
-    assert [c["cell"] for c in doc["cells"]] == ["1:1:1"] and doc["withdrawn"][0]["cell"] == "1:1:2"
+    # 整张单已撤（11-28）：改条目不再写回整张 pending.json，单文件保持导入时的样子
+    assert [c["cell"] for c in json.loads(sheet.read_text(encoding="utf-8"))["cells"]] == ["1:1:1", "1:1:2"]
     run(["pending", "ls", "vol04", "--state", "all", *base])
     assert "withdrawn" in capsys.readouterr().out
 

@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+from guji_manager.products_io import active_step
+
 import hashlib
 import json
 from pathlib import Path
@@ -115,7 +117,7 @@ def test_config_overlay_and_eval_defaults():
     cfg = _cfg()
     assert [v.name for v in cfg.variants] == ["A", "B"]
     assert cfg.run_params(cfg.base) == {"t_exp_down_step": {"flag": False},
-                                        "seed_admit": {"use_human_verdicts": False}}
+                                        active_step(): {"use_human_verdicts": False}}   # 收尾步名随本机 cv（#2033）
     assert cfg.run_params(cfg.variant("B"))["t_exp_down_step"] == {"flag": False, "gain": 2.0}
     # 变体压过评测口径
     cfg2 = _cfg(variants={"B": {"params": {"t_exp_down_step": {"flag": True}}}})

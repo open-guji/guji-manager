@@ -11,7 +11,7 @@
              rows:{字:{adm?, kr?, img?(同 glyphs), tiles:[[格号, 图]…]}}}（见 codepoint.py）
   seg_cause：{key, vol, page, cause, cause_name, advice, detail, flags, pre, cells[{id, reason, img}]}（seg_causes.build_cards 出）
   near_pair：{key, a, b, ex_a:[[实例号, 图]…], ex_b:[…], diff?(差异区高亮图), cells:[{id, img, ctx?, sa?, sb?, inst?(是库里的刻例), cur?(现标的字)}]}
-  lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?}]}（id 是库里的实例号）
+  lib_audit：{char, tiles:[{id, img, ctx?, prov?, score?, sug?}]}（id 是库里的实例号；sug＝建议改成的字，「改成」一点即填）
   gold_sample：{id, pre, left, right, cands:{字:[来源…]}, img?, kind?(pending_reason，页内可筛选), fact?, pilot?,
                ref_char?(整理本字，上下文里标【】), strip?[图…](横向邻格条), strip_at?(目标格下标，红框)}
   closeout：{id, label, n, rate?, examples?[格号 或 {id, img, note?}…], pre?(放行|留人审|算法再处理)}；img 按 cell_shrink 字框裁

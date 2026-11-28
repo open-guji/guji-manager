@@ -38,6 +38,9 @@
 用法、数字与边界见 `wiki/自动化流程/放行格回库.md`。
 """
 from __future__ import annotations
+from ..products_io import DECIDE_STEPS
+from ..products_io import decide_pages, is_decide_step
+from ..products_io import RULING_STEP
 
 import collections
 import datetime
@@ -270,7 +273,7 @@ def lib_patches(db_path: Path | str, ch: str) -> list[bytes]:
 
 def _seed_cells(root: Path, book: str, step: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    for f in sorted((root / book / step).glob("p*.json")):
+    for f in sorted(decide_pages(root, book) if is_decide_step(step) else (root / book / step).glob("p*.json")):
         d = json.loads(f.read_text(encoding="utf-8"))
         pm = d[next(iter(d))]
         for col in (pm.get("columns") or pm.get("char_index", {}).get("columns") or []):
@@ -429,6 +432,7 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
     picks, rejected, steal = [], [], []
     blocked: set[str] = set()      # 抢首位核验拦下的字：同一次跑后面的册不再选
     cache = ImageCache()
+    clash_ids = _borrowed_ids(dbp)
     embs: dict[str, list] = {}     # 字 → 已有例（库里的＋这次已挑中的）的向量
     pooled: list[dict] = []
     for b in books:
@@ -454,6 +458,9 @@ def run(books: list[str], *, apply: bool = False, batch: str | None = None,
             weak = [k for k in keys if sa[k].get("channel") in tier_c] if have < thin else []
             ok = []       # 核验过的候选：(格键, 是否丙档, 库图 png, meta, 核验结果, 向量)
             for k in spread(strong, room * TRIES) + weak[:min(room, thin - have) * TRIES]:
+                if f"v2:{k}" in clash_ids:
+                    stat["与借来的刻例同号"] += 1     # 见 consumers.borrowed_clash：进了会贴错图
+                    continue
                 pk = (cs.get(k) or {}).get("patch_key")
                 try:
                     img = ctx.image("char_patch", pk) if pk else None
@@ -613,6 +620,17 @@ def run_pools(paths: list[str], *, apply: bool = False, batch: str | None = None
     return rep
 
 
+def backfill_payload(ch: str, meta: dict, verify: dict) -> dict:
+    """放行格回库 `confirm` 事件的 payload。OCR 通道原叫 `payload.channel`，与裁定事件的来源 `channel` 撞名
+    （2026-11-27）：改叫 `ocr_channel`；来源三字段写 `machine／lib_backfill／script`。重放读法见
+    `feedback/consumers.py::_backfill_meta`（老事件没有 `ocr_channel`，其 `channel` 就是 OCR 通道）。"""
+    from ..feedback.levels import provenance
+    return {"v": "confirm", "shape": ch, "source": "auto", "backfill": True,
+            **{x: y for x, y in meta.items() if x != "channel"},
+            "ocr_channel": meta.get("channel"), "verify": verify,
+            **provenance("machine", "lib_backfill", "script")}
+
+
 def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
     """把挑好的格（字, 格键, 库图 png, meta, 核验结果）入库：先写可重放的 `confirm` 事件，再进库、记账、导出账本。"""
     from .._cv import (EventLog, EventTarget, GlyphDB, ProductStore, enrich_events, export_store, glyph_db_path,
@@ -620,16 +638,22 @@ def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
     dbp = dbp or glyph_db_path()
     elog = elog or EventLog()
     rep: dict = {}
+    clash = _borrowed_ids(dbp)
+    if clash:      # 选格时已跳过；`--from-pool` 等别的来路再挡一道，进了会贴错图（consumers.borrowed_clash）
+        n0 = len(picks)
+        picks = [x for x in picks if f"v2:{x[1]}" not in clash]
+        if len(picks) != n0:
+            rep["borrowed_clash"] = n0 - len(picks)
+    _ensure_book_edition(dbp)
     base = elog.latest_seq(batch)
     evs = []
     for i, (ch, k, png, meta, v) in enumerate(picks, 1):
         bk, pg, col, slot = k.split(":")
         slot = slot.rstrip("ab")          # 半格（19a／19b）：格号取数字部分，键仍带后缀（同库里现有刻例）
         evs.append(make_event(batch, base + i, "confirm",
-                              EventTarget(step="seed_admit", unit="cell", key=k, book=bk,
+                              EventTarget(step=RULING_STEP, unit="cell", key=k, book=bk,
                                           page=int(pg), col=int(col), slot=int(slot)),
-                              {"v": "confirm", "shape": ch, "source": "auto", "backfill": True, **meta,
-                               "verify": v},
+                              backfill_payload(ch, meta, v),
                               actor="model"))
     # 先补锚（带产物页表的 source_rev）、先写事件日志，再进库：换过图源的册（yaml 有 source_rev）
     # 不带锚的事件会被日志拒写，原先这时库里已进了刻例、却没有事件，重放会丢（史记 36、42 册，11-18）
@@ -655,13 +679,48 @@ def admit(picks: list[tuple], batch: str, *, dbp=None, elog=None) -> dict:
     return rep
 
 
+def _ensure_book_edition(dbp) -> None:
+    """新书第一次回库时本书字形库还没有 ``meta.book_edition``，``admit_instance`` 会拒写——而那时事件已经写进日志，
+    留下半截（汉书 01，GM2 11-28）。所以写事件之前先补：取 ``workspace.yaml`` 的 ``id``（书 id），只写 meta 一行。
+    不用 ``guji glyph-db set-edition``：它把库里**所有**刻本字形行（含借来的别书刻例）改归本书，导出时借来的就混进本书真源。"""
+    import yaml
+    from .._cv import GlyphDB, workspace_root
+    db = GlyphDB(dbp)
+    try:
+        if db.book_edition():
+            return
+        y = Path(workspace_root()) / "workspace.yaml"
+        ws_id = str(((yaml.safe_load(y.read_text(encoding="utf-8")) or {}) if y.exists() else {}).get("id") or "")
+        if not ws_id:
+            raise SystemExit("✗ 放行格回库没入库：本书字形库没有 meta.book_edition，workspace.yaml 也没写 id；"
+                             "先在本书字形库 meta.jsonl 写 book_edition（书 id）")
+        db.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('book_edition', ?)", (ws_id,))
+        db.conn.commit()
+    finally:
+        db.close()
+
+
+def _borrowed_ids(dbp) -> frozenset[str]:
+    """进库会贴错图的同号 id：库里借来的别书刻例（``borrowed`` 表）。没借、读不了都是空；装的 cv 自己会摘掉
+    借来那份（cv #1989，见 ``consumers.cv_handles_borrow_clash``）时也是空，本书同号格照常选、照常进。"""
+    import sqlite3
+    from ..feedback.consumers import cv_handles_borrow_clash
+    if cv_handles_borrow_clash():
+        return frozenset()
+    try:
+        with sqlite3.connect(f"file:{dbp}?mode=ro", uri=True) as c:
+            return frozenset(r[0] for r in c.execute("SELECT instance_id FROM borrowed"))
+    except sqlite3.Error:
+        return frozenset()
+
+
 def summary(rep: dict) -> str:
     s = rep["stat"]
     line = (f"缺例字的放行格 {s.get('缺例字的放行格', 0)}，核验过 {rep['picks']} 格（{rep['chars']} 字），"
             f"核验不过 {s.get('核验不过', 0)}，取不到字块 {s.get('取不到字块', 0)}")
     if s.get("没有底座模型没挑"):
         line += f"（⚠ 没有 {SIM_MODEL}，{s['没有底座模型没挑']} 格没按区别挑、按序取的：先 guji model fetch）"
-    for k in ("match_ref 分差不足", "与已有例重复", "离群没进"):
+    for k in ("match_ref 分差不足", "与已有例重复", "离群没进", "与借来的刻例同号"):
         if s.get(k):
             line += f"，{k} {s[k]}"
     if s.get("抢常用字首位"):
@@ -695,7 +754,7 @@ def auto_backfill(args, eng, steps: list[str]) -> None:
     import os
     if os.environ.get("GUJI_AUTO_BACKFILL", "1") == "0":
         return
-    if str(getattr(args, "pages", "")) != "all" or "seed_admit" not in steps:
+    if str(getattr(args, "pages", "")) != "all" or not (set(steps) & set(DECIDE_STEPS)):
         return
     book = eng.book.id
     try:

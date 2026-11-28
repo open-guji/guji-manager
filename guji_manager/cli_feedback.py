@@ -23,7 +23,7 @@ def cmd_events(args) -> None:
         _import_vision(args)
         return
     if args.action == "lint":
-        # 按 doc/formats/人裁事件规范.md 体检事件日志（只读）；有 E- 级问题以 1 退出
+        # 按 doc/formats/裁定事件规范.md 体检事件日志（只读）；有 E- 级问题以 1 退出
         from ._cv import lint
         rep = lint(EventLog().root)
         print(json.dumps(rep.to_dict(), ensure_ascii=False, indent=1) if args.json else rep.render())

@@ -24,6 +24,7 @@
 里也带 `grade_counts`/`n_settled`/`n_todo`。`report/html.py` 从 `grade` 分区渲染。
 """
 from __future__ import annotations
+from ..products_io import exists_decide
 
 import json
 import time
@@ -39,6 +40,14 @@ from .._cv import adapt_diff, misanchored_pages
 from .._cv import collation_grade_summarize as grade_summarize
 from .._cv import Witness
 
+
+
+def _acc(w) -> str:
+    """证人的参校本准确度档（cv 0.9.17 起 `Witness.accuracy`；旧 cv 只有 `quality`，best→high 换过来）。"""
+    a = getattr(w, "accuracy", None)
+    if a:
+        return a
+    return {"best": "high"}.get(getattr(w, "quality", "") or "", getattr(w, "quality", "") or "low")
 
 def collate_book(book: str, pages: list[int], witnesses: list[Witness],
                  store: ProductStore | None = None, progress=None) -> dict:
@@ -102,7 +111,7 @@ def collate_book(book: str, pages: list[int], witnesses: list[Witness],
         "built_at": time.strftime("%Y-%m-%d %H:%M"),
         "elapsed_s": round(time.time() - t0, 1),
         "pages": pages,
-        "witnesses": [{"name": w.name, "label": w.label, "quality": w.quality,
+        "witnesses": [{"name": w.name, "label": w.label, "accuracy": _acc(w),
                        "line_is_column": w.line_is_column,
                        "n_chars": len(w.text)} for w in witnesses],
         "unanchored": unanchored,
@@ -179,7 +188,7 @@ def summarize(diffs: list[Diff], cols: list[dict], pages_out: list[dict],
         variant_pairs = Counter((d.char, d.ref) for d in wd if d.kind.startswith("variant"))
         n_equal = sum(p["witnesses"].get(w.label, {}).get("n_equal", 0) for p in pages_out)
         by_witness[w.label] = {
-            "quality": w.quality,
+            "accuracy": _acc(w),
             "n_equal": n_equal,
             "counts": dict(Counter(d.kind for d in wd)),
             "by_kind_channel": {k: dict(v) for k, v in kind_channel.items()},
@@ -211,4 +220,4 @@ def body_pages(book: str, store: ProductStore | None = None) -> list[int]:
     会自己落进 `unanchored`，不必先筛。"""
     store = store or ProductStore()
     bk = load_book(book)
-    return [p for p in bk.resolve_pages("all") if store.exists(book, "seed_admit", f"p{p:04d}")]
+    return [p for p in bk.resolve_pages("all") if exists_decide(store, book, f"p{p:04d}")]

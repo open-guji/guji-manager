@@ -307,3 +307,83 @@ def test_steal_check_default_off():
     """真格实测分不开好坏（史記第 02 册），缺省关；要用的书在 workspace.yaml 开。"""
     import inspect
     assert LB.STEAL_CHECK is False and inspect.signature(LB.run).parameters["steal_check"].default is False
+
+
+def test_backfill_payload_ocr_channel_and_provenance():
+    from guji_manager.feedback.consumers import _backfill_meta
+    from guji_manager.feedback.levels import event_level
+    meta = {"channel": "rare_ref", "tier": "b", "verdict": "same", "cov": 0.9, "patch_key": "pk"}
+    p = LB.backfill_payload("曰", meta, {"ok": True})
+    assert p["ocr_channel"] == "rare_ref"
+    assert (p["level"], p["by"], p["channel"]) == ("machine", "lib_backfill", "script")
+    assert event_level({"kind": "confirm", "actor": "model", "payload": p}) is None   # 仍不算钉
+    # 重放：新事件读 ocr_channel，老事件（无 ocr_channel）读 channel
+    assert _backfill_meta(p)["channel"] == "rare_ref"
+    assert _backfill_meta({"channel": "rare_ref", "tier": "b"})["channel"] == "rare_ref"
+
+
+def _glyph_db(tmp_path, borrowed=(), edition=None):
+    from guji_manager._cv import GlyphDB
+    db = GlyphDB(tmp_path / "g.db")
+    db.conn.execute("CREATE TABLE IF NOT EXISTS borrowed (instance_id TEXT PRIMARY KEY, store TEXT)")
+    for i in borrowed:
+        db.conn.execute("INSERT INTO borrowed VALUES (?, 'x')", (i,))
+    if edition:
+        db.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('book_edition', ?)", (edition,))
+    db.conn.commit()
+    return db
+
+
+def test_borrowed_clash_and_ids(tmp_path, monkeypatch):
+    """汉书 01 借史記（史記也有 01 册）：v2:01:… 同号的实例是别书那格；旧 cv 上回库／人裁都不能进（GM2 11-28）。"""
+    from guji_manager.feedback import consumers as C
+    monkeypatch.setattr(C, "cv_handles_borrow_clash", lambda: False)
+    db = _glyph_db(tmp_path, borrowed=["v2:01:105:4:5"])
+    assert C.borrowed_clash(db, "v2:01:105:4:5") and not C.borrowed_clash(db, "v2:01:105:4:6")
+    assert C.clash_blocks(db, "v2:01:105:4:5")
+    db.close()
+    assert LB._borrowed_ids(tmp_path / "g.db") == {"v2:01:105:4:5"}
+    assert LB._borrowed_ids(tmp_path / "none.db") == frozenset()
+
+
+def test_borrowed_clash_lifted_when_cv_drops_borrowed(tmp_path, monkeypatch):
+    """cv #1989 起 admit_instance 遇同号先摘借来那份、本书例照本格图进：同号格照常选、照常进（不再一律跳过）。"""
+    from guji_manager.feedback import consumers as C
+    assert C.cv_handles_borrow_clash()           # 测试装的 cv dev 已含 #1989
+    monkeypatch.setattr(C, "cv_handles_borrow_clash", lambda: True)
+    db = _glyph_db(tmp_path, borrowed=["v2:01:105:4:5"])
+    assert C.borrowed_clash(db, "v2:01:105:4:5") and not C.clash_blocks(db, "v2:01:105:4:5")
+    db.close()
+    assert LB._borrowed_ids(tmp_path / "g.db") == frozenset()
+
+
+def test_borrowed_clash_no_table(tmp_path):
+    from guji_manager._cv import GlyphDB
+    from guji_manager.feedback.consumers import borrowed_clash
+    db = GlyphDB(tmp_path / "g.db")
+    assert not borrowed_clash(db, "v2:01:1:1:1")
+    db.close()
+
+
+def test_ensure_book_edition_writes_meta_only(tmp_path, monkeypatch):
+    """新书第一次回库：只补 meta.book_edition，不动借来的字形行（set-edition 会把它们改归本书）。"""
+    (tmp_path / "workspace.yaml").write_text("id: 988g89tszv\n", encoding="utf-8")
+    monkeypatch.setattr("guji_manager._cv.workspace_root", lambda: tmp_path, raising=False)
+    db = _glyph_db(tmp_path)
+    db.conn.execute("INSERT INTO glyphs (edition_tag, char, status, n_confirmed, updated_at) VALUES ('988g3f0wsu','王','sparse',1,'t')")
+    db.conn.commit()
+    db.close()
+    LB._ensure_book_edition(tmp_path / "g.db")
+    db = _glyph_db(tmp_path)
+    assert db.book_edition() == "988g89tszv"
+    assert db.conn.execute("SELECT edition_tag FROM glyphs").fetchall() == [("988g3f0wsu",)]
+    db.close()
+
+
+def test_ensure_book_edition_keeps_existing(tmp_path, monkeypatch):
+    monkeypatch.setattr("guji_manager._cv.workspace_root", lambda: tmp_path / "nope", raising=False)
+    _glyph_db(tmp_path, edition="abc").close()
+    LB._ensure_book_edition(tmp_path / "g.db")
+    db = _glyph_db(tmp_path)
+    assert db.book_edition() == "abc"
+    db.close()

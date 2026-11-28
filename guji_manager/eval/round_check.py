@@ -27,6 +27,7 @@
 """
 
 from __future__ import annotations
+from ..products_io import read_decide
 
 from .._cv import _edge_sources, _same_char, _variant_graph, _variant_map  # noqa: F401  拆分 P5 挪去 pipeline
 
@@ -156,7 +157,7 @@ def accuracy(book: str, pages: list[int], store=None) -> dict:
     oki = ni = okr = nr = 0          # independent（剔 fallback）/ replace 段
     errors: list[dict] = []
     for pg in pages:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:
@@ -256,7 +257,7 @@ def jiazhu_rates(book: str, pages: list[int], store=None) -> dict:
         suffixes, max_len = (), 20
     by_type: dict[str, list[int]] = {"T1": [0, 0], "T2": [0, 0]}
     for pg in pages:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:
@@ -315,7 +316,7 @@ def review_rate(book: str, pages: list[int], store=None) -> dict:
     tot = auto = excluded = 0
     per: Counter = Counter()
     for pg in pages:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:
@@ -471,7 +472,7 @@ def next_batch(book: str, n: int = 12, store=None, root=None) -> dict:
                   and (r.get("expected") or {}).get("page_type") == "body")
     st = store or ProductStore()
     todo = [p for p in body
-            if st.read(book, "seed_admit", page_key(p), "seed_admit") is None]
+            if read_decide(st, book, page_key(p)) is None]
     return {"body_total": len(body), "done": len(body) - len(todo),
             "todo": len(todo), "batch": todo[:n]}
 
@@ -554,7 +555,7 @@ def form_fidelity(book: str, pages: list[int], store=None) -> dict:
     hit_auto = n_auto = 0
     errors: list[dict] = []
     for pg in pages:
-        a = st.read(book, "seed_admit", page_key(pg), "seed_admit")
+        a = read_decide(st, book, page_key(pg))
         if a is None:
             continue
         for cc in a.columns:

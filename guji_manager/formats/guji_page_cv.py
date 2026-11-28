@@ -21,6 +21,7 @@ v0.2「记录先行」（用户 10-02 裁定 #361·10）：每个字框补 `cand
 | `ref` | Step5-d `align_ref` | 过闸对齐的 `align_char`，没有则坐标对位的 `ref_char`（非空） |
 """
 from __future__ import annotations
+from ..products_io import read_decide
 from .._cv import read_view as _read_view   # alt_cut：读挑中的那套切法
 
 import json
@@ -72,7 +73,8 @@ def _candidates(store: ProductStore, book: str, key: str) -> dict[str, dict[str,
 
 def _manifest_row(store: ProductStore, book: str, step: str, key: str) -> dict | None:
     """该步该页 `_manifest.jsonl` 里最后一条记录（指纹、上游 sha、code_rev）。"""
-    p = store.step_dir(book, step) / "_manifest.jsonl"
+    from ..products_io import decide_dir, is_decide_step
+    p = (decide_dir(store.root, book) if is_decide_step(step) else store.step_dir(book, step)) / "_manifest.jsonl"   # 收尾新旧名并认
     if not p.exists():
         return None
     row = None
@@ -135,7 +137,7 @@ def from_cv_products(store: ProductStore, book: str, page: int, meta: dict,
         raise ProductMissing(f"{book} 第 {page} 页没有 {cstep} 产物")
     stale: list[str] = []
     slots = page_slots(store, book, page, stale)
-    admit_raw = store.read(book, "seed_admit", key, "seed_admit")
+    admit_raw = read_decide(store, book, key)
     admit_by_id = {r.id: r for c in admit_raw.columns for r in c.chars} if admit_raw else {}
     cands = _candidates(store, book, key)
 

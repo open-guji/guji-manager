@@ -60,12 +60,13 @@ from pathlib import Path
 from typing import Callable
 
 from ..formats.guji_char_cord import UNK_DEFAULT
-from ..voter import voter_ident, voter_tag
+from ..voter import is_member, voter_by, voter_ident, voter_tag
+from .levels import SETTLED_VS, settles_cell
 
 CHOICES = ("char", "none", "unsure", "cut", "jiazhu", "main", "figure", "unrec", "damaged")
 A_RE = re.compile(r"^(\d+):(\d+):(-?\d+)([ab]?)$")
 #: 人裁里算「定了这一格」的 payload.v
-HUMAN_VS = ("confirm", "seg_defect", "not_a_char", "damaged", "figure")
+HUMAN_VS = SETTLED_VS  # 口径只在 feedback/levels.py 定义一处（清理计划 1.8）
 BOX_TOL = 8.0
 
 
@@ -149,14 +150,11 @@ def latest_human(events) -> dict[str, object]:
     """每格最后一条算钉的 confirm（`feedback.levels.counts_as_pin`：人裁＋AI 钉），key → Event。``events`` 是 Event 的可迭代。
     带 `target.anchor.u` 且册有字格身份账的（T2）：key 用这个 u **现在**的格号（重切、补删字后格号变了也跟着走）；
     u 已作废的不算任何一格的人裁。"""
-    from .levels import counts_as_pin
     from ..u_stamp import current_cell
     last: dict[str, object] = {}
     for e in events:
         t = e.target
-        if e.kind != "confirm" or t.unit != "cell" or (e.payload or {}).get("v") not in HUMAN_VS:
-            continue
-        if not counts_as_pin(e):
+        if not settles_cell(e):   # confirm＋格＋v∈HUMAN_VS＋算钉，口径在 levels 一处
             continue
         key = current_cell({"cell": t.key, "u": (t.anchor or {}).get("u")})
         if key is None:
@@ -254,7 +252,13 @@ class Draft:
         """控制台 ``/api/events`` 一行。"""
         ids = "、".join(f"{voter_tag(voter_ident(v))[:16]}" for v in self.votes)
         note = "；".join(v["note"] for v in self.votes if v.get("note"))
-        return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}"}
+        # 来源三字段：网站投票落成的裁定＝人裁（读者点的），channel＝web_vote（2026-11-27，2.4）。
+        # by＝投票人，会员写 ``member:<会员号>``、匿名写 ``anon:<短标识>``（多人用「、」连），另记会员／匿名各几票。
+        by = "、".join(dict.fromkeys(voter_by(v) for v in self.votes))
+        n_mem = sum(1 for v in self.votes if is_member(str(v.get("voter") or "")))
+        prov = {"level": "human", "channel": "web_vote", **({"by": by} if by else {}),
+                "voters": {"member": n_mem, "anon": len(self.votes) - n_mem}}
+        return {"id": self.key, **self.payload, "note": note, "source": f"{source}；意见来源 {ids}", **prov}
 
 
 @dataclass

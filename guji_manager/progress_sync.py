@@ -1,14 +1,15 @@
 """后台「文本整理」看板自动对账（A31，2026-11-08，sheldon：看板的意义是监控最新数据，所有数据都要自动更新到最新，不能每次手动改）。
 
 看板（open-guji.com/admin/text）读 progress.volume／progress.metric。这些数靠流程各步顺手写：
-标 main 钩子写 `a31.main`、包口径 `cv.pack`、迭代轮次；换单后写 `pending_review`／`pending_rev`。任何一步在某台机器上失败
+标 main 钩子写 `a31.main`、包口径 `cv.pack`、迭代轮次；待审数 `pending_review`／`pending_at` 由本命令直接从条目现算。任何一步在某台机器上失败
 （缺 ai-team 检出、换单后那次刷新读到旧单……），看板就停在旧数，而且没人知道。11-08 就是这样：21 册 pending_review 没刷、
 第 6／7 轮人审率一直是「待统计」、顶栏停在第 5 轮。
 
 本命令不信任何一步：每次对一遍中心库里的事实，落后的就补：
 
-  1. 线上单 rev（files 表 feedback/lists/proofing/<书>/<册>.pending.json 的 rev）≠ progress.volume.pending_rev
-     → 跑 cv `progress_report.py` 重算该册。
+  1. 待审数：中心库 `pending_current`（每条目最新版本）里该册 open 条目数 ≠ progress.volume.pending_review，
+     或最后一次条目变更时间 ≠ pending_at → 直接写这两个数（11-27 起，待审清理计划 2.7：没有 rev／批次，
+     看板不再比线上单 rev，也不再调 cv `progress_report.py`）。
   2. `a31.main` 的标签 ≠ `cv.pack` 的标签（标 main 后包口径没跟上）
      → 取 ★main 包重算并写看板（ai-team `按包统计人审率/run.py --pick main --push-progress`；没有 ai-team 检出就浅克隆一份）。
   3. 某一轮的所有标 main 的册包口径都到了，但「迭代轮次」里这一轮还是占位（没有人审率）
@@ -19,6 +20,7 @@
   guji-manager progress-sync                    # 只报告哪里落后（退出码 1＝有落后）
   guji-manager progress-sync --fix              # 报告并补
   guji-manager progress-sync --fix --book 96mid1ogzk --no-packs
+  guji-manager progress-sync --fix --pending-only   # 只刷待审数（执行方在待审条目对账后定时跑）
 
 连库：中心库（D1）经 Worker，要 GUJI_DATA_TOKEN（2026-11-18 起）。--fix 的写库需要有写看板的权限。
 """
@@ -43,17 +45,25 @@ RUN_PY = ("domain", "CV", "质检", "按包统计人审率", "run.py")
 
 # ---------------------------------------------------------------- 找落后的（纯函数，可测）
 
+def vol_key(vol: str) -> str:
+    """册号比较口径：纯数字去前导零（看板 `01`、条目 `001` 是同一册；11-27 册号位数还在统一中）。"""
+    v = str(vol or "")
+    return str(int(v)) if v.isdigit() else v
+
+
 def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
-    """vols：progress.volume 行 {book, vol, ws, pending_rev, extra}；lists：{(book, vol): 线上单 rev}；
+    """vols：progress.volume 行 {book, vol, ws, pending_review, pending_at, extra}；
+    lists：{(book, vol_key): {"open": open 条目数, "at": 最后变更时间}}（`pending_current` 现算）；
     rounds：{(book, key): {"rate": 人审率或 None, "verdict": 结论或 None}}。
     返回 {"lists": [...], "packs": [...], "rounds": [...]}，每项是能直接交给补的函数的一条记录。"""
     out: dict = {"lists": [], "packs": [], "rounds": []}
     by_round: dict = {}
     for v in vols:
         book, vol, ex = v["book"], v["vol"], v.get("extra") or {}
-        rev = lists.get((book, vol))
-        if rev and rev != v.get("pending_rev"):
-            out["lists"].append({"book": book, "vol": vol, "online": rev, "board": v.get("pending_rev")})
+        live = lists.get((book, vol_key(vol)))
+        if live and (live["open"] != v.get("pending_review") or live["at"] != v.get("pending_at")):
+            out["lists"].append({"book": book, "vol": vol, "open": live["open"], "at": live["at"],
+                                 "board": v.get("pending_review"), "board_at": v.get("pending_at")})
         main = (ex.get("a31.main") or {}).get("label")
         if not main:
             continue
@@ -77,14 +87,17 @@ def find_stale(vols: list[dict], lists: dict, rounds: dict) -> dict:
 
 def load(conn, books: list[str] | None = None) -> tuple[list[dict], dict, dict]:
     """从中心库取三份事实。"""
-    vols = [dict(zip(("book", "vol", "ws", "pending_rev", "extra"), r)) for r in conn.execute(
-        "SELECT book_id, vol, ws, pending_rev, extra FROM progress.volume").fetchall()]
-    lists = {}
-    from .central_gc import _file_rows                # 大文件（body_r2）的 doc 不在表里，要去 R2 取
-    for _ws, path, _raw, doc in _file_rows(conn, "feedback/lists/proofing/%.pending.json"):
-        parts = path.split("/")
-        rev = doc.get("rev") if isinstance(doc, dict) else None
-        lists[(parts[3], parts[4][:-len(".pending.json")])] = None if rev is None else str(rev)
+    vols = [dict(zip(("book", "vol", "ws", "pending_review", "pending_at", "extra"), r)) for r in conn.execute(
+        "SELECT book_id, vol, ws, pending_review, pending_at, extra FROM progress.volume").fetchall()]
+    lists: dict = {}
+    for book, vol, n_open, at in conn.execute(
+            "SELECT book, vol, sum(CASE WHEN state = 'open' THEN 1 ELSE 0 END), max(at) FROM pending_current "
+            "GROUP BY book, vol").fetchall():
+        k = (book, vol_key(vol))
+        cur = lists.get(k)
+        if cur:   # 同一册两种写法的条目文件（001／01）并存时合并
+            n_open, at = int(n_open or 0) + cur["open"], max(filter(None, (at, cur["at"])), default=None)
+        lists[k] = {"open": int(n_open or 0), "at": at}
     rounds = {}
     for book, key, rate, verdict in conn.execute(
             "SELECT book_id, key, value, detail->>'verdict' FROM progress.metric "
@@ -115,29 +128,19 @@ def ensure_ai_team() -> Path | None:
     return None
 
 
-def _cv_dir() -> Path | None:
-    for c in (os.environ.get("GUJI_CV"), os.environ.get("GUJI_CV_REPO"), "/home/user/open-guji/open-guji-cv", "/home/user/open-guji-cv"):
-        if c and Path(c, "scripts", "zhengli", "progress_report.py").is_file():
-            return Path(c)
-    return None
-
-
 def fix_lists(stale: list[dict]) -> dict[str, str]:
-    """重算线上单换了但看板没刷的册。返回 {book/vol: 结果}。"""
+    """待审数落后的册：直接写 open 条目数与最后变更时间。返回 {book/vol: 结果}。"""
+    from ._cv import connect
     res: dict[str, str] = {}
-    cv = _cv_dir()
-    by_book: dict[str, list[tuple[str, str]]] = {}
-    for s in stale:
-        if not cv:
-            res[f"{s['book']}/{s['vol']}"] = "fail: 找不到 cv 仓（设 GUJI_CV）"
-        else:
-            by_book.setdefault(s["book"], []).append((s["vol"], _cv_name(s["book"], s["vol"])))
-    for book, pairs in by_book.items():
-        r = subprocess.run([sys.executable, str(cv / "scripts" / "zhengli" / "progress_report.py"), "--books", ",".join(n for _, n in pairs), "--text-id", book],
-                           capture_output=True, text=True, env={**os.environ, "PYTHONPATH": str(cv)})
-        ok = r.returncode == 0 and "已写 progress" in r.stdout
-        for vol, _ in pairs:
-            res[f"{book}/{vol}"] = "ok" if ok else f"fail: {(r.stdout + r.stderr).strip()[-200:]}"
+    with connect() as conn:
+        for s in stale:
+            k = f"{s['book']}/{s['vol']}"
+            try:
+                payload = json.dumps({"pending_review": s["open"], "pending_at": s["at"]}, ensure_ascii=False)
+                conn.execute("SELECT progress.put_volume(%s, %s, %s::jsonb, %s)", (s["book"], s["vol"], payload, "progress-sync"))
+                res[k] = "ok"
+            except Exception as e:  # noqa: BLE001
+                res[k] = f"fail: {e}"
     return res
 
 
@@ -223,10 +226,12 @@ def fix_rounds(stale: list[dict]) -> dict[str, str]:
     return res
 
 
-def run(books: list[str] | None, fix: bool, packs: bool = True) -> int:
+def run(books: list[str] | None, fix: bool, packs: bool = True, pending_only: bool = False) -> int:
     from ._cv import connect
     with connect() as conn:
         stale = find_stale(*load(conn, books))
+    if pending_only:
+        stale = {"lists": stale["lists"], "packs": [], "rounds": []}
     n = sum(len(v) for v in stale.values())
     print(f"落后：线上单 {len(stale['lists'])} 册、包口径 {len(stale['packs'])} 册、迭代轮次 {len(stale['rounds'])} 轮")
     for kind in ("lists", "packs", "rounds"):
@@ -257,8 +262,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--book", action="append", help="只对这本书（书 id，可重复）；缺省全部")
     ap.add_argument("--fix", action="store_true", help="补落后的；不给只报告")
     ap.add_argument("--no-packs", action="store_true", help="不重算包口径（慢，要下包）")
+    ap.add_argument("--pending-only", action="store_true", help="只对待审数（open 条目数＋最后变更时间），执行方定时对账后顺手跑")
     a = ap.parse_args(argv)
-    return run(a.book, a.fix, not a.no_packs)
+    return run(a.book, a.fix, not a.no_packs, a.pending_only)
 
 
 if __name__ == "__main__":

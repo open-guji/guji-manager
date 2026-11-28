@@ -9,6 +9,7 @@
   guji-manager final-review write    --out <工作目录> --ruling-dir <feedback/rulings 目录> --batch llm-ctx-YYYYMMDD-m1
 """
 from __future__ import annotations
+from ..products_io import RULING_STEP
 
 import argparse
 import csv
@@ -123,7 +124,7 @@ def cmd_finalize(a) -> dict:
     got = _outputs(a.out)
     over = {g for g in (a.whitelist or "").split(",") if g}
     if getattr(a, "book_yaml", None):
-        ya = core.override_groups_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"))
+        ya = core.override_groups_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"), core.effective_defaults_of(a.book_yaml))
         if ya is None and not a.whitelist:
             print("⚠ 册 yaml 没写 params.seed_admit.ruling_override_groups：按空名单（一律不许越过参校本）判；管线侧缺省也不核，建议写上", file=sys.stderr)
         elif ya is not None and a.whitelist and ya != over:
@@ -140,7 +141,7 @@ def cmd_finalize(a) -> dict:
         lib_n = lambda ch: cnt.get(ch, 0)   # noqa: E731
     glyph, ref_lead, oov = None, None, None
     if getattr(a, "book_yaml", None):
-        sp = core.seed_admit_params_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"))
+        sp = core.seed_admit_params_from_yaml(Path(a.book_yaml).read_text(encoding="utf-8"), core.effective_defaults_of(a.book_yaml))
         if sp["ruling_glyph_min_score"] is not None or sp["ruling_glyph_min_margin"] is not None:
             glyph = (sp["ruling_glyph_min_score"], sp["ruling_glyph_min_margin"])
         if sp["ruling_ref_lead_min_unseen"] is not None or sp["ruling_ref_lead_min_oov"] is not None:
@@ -220,7 +221,7 @@ def cmd_write(a) -> int:
         if r.get("via"):
             payload["via"] = r["via"]
             payload["ref_lead"] = {"layer": r.get("layer"), "lead": r.get("lead")}
-        evs.append(make_event(a.batch, n, KIND, EventTarget(step="seed_admit", unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
+        evs.append(make_event(a.batch, n, KIND, EventTarget(step=RULING_STEP, unit="cell", key=r["id"], book=r["id"].split(":")[0]), payload,
                               actor="model", ts=a.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
     from ..u_stamp import stamp_strict
     stamp_strict(evs)  # 盖 u 并核：册有账写不出 u 整批报错（log 不一定是 manager 的守卫子类）

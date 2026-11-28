@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sys
 
-REPLAY_FROM = ("context_decide", "seed_admit")
+REPLAY_FROM = ("context_decide", "char_decide", "seed_admit")   # 定字收尾两名并认（cv P3 改名，历史任务单仍写旧名）
 
 
 def compress(pages) -> str:

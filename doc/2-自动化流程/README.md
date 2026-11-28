@@ -13,7 +13,7 @@
 | 2d 形近字处理 | Z（字组）、N（形近护栏）、V（异体）类待审；反复出现的字对 | 每组判法（刻形模板／CNN、码位归一、书级形近表，或交第三步）；金标；码位口径 | `guji pipeline groups`、`promote mine`、`pair-attr`、`model` | [形近字处理](../../wiki/自动化流程/形近字处理.md) |
 | 出 v0.1 | 本批 b–d 判停 | 收口单、R1–R6 验收、book-text 文本线 0.1.0 | `tools/开书/出v01.py`、`guji pipeline close-check --tier rough` | [出v0.1与导入book-text](出v0.1与导入book-text.md) |
 
-人审进库（人裁事件 harvest、落字形库）在本步做（cv 原 Step8 移来）。不用 AI；靠文意才能定的字留给[第三步](../3-文意与知识/)。
+人审进库（裁定事件 harvest、落字形库）在本步做（cv 原 Step8 移来）。不用 AI；靠文意才能定的字留给[第三步](../3-文意与知识/)。
 
 ## 规格与事实
 

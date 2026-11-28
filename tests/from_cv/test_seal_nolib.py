@@ -185,7 +185,7 @@ def test_default_lookup_builds_seed_admit_params_once_per_book(lib, monkeypatch)
     real = RunContext.params_for
 
     def counting(self, step):
-        if step.spec.id == "seed_admit":
+        if step.spec.id in ("seed_admit", "char_decide"):   # cv #2033 改名
             seen.append(self.book.id)
         return real(self, step)
     monkeypatch.setattr(RunContext, "params_for", counting)

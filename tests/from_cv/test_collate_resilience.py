@@ -32,7 +32,7 @@ def _slot(i: int, char: str | None, *, admit: bool = True, guess: str | None = N
 
 
 def _witness(text: str = TRUTH) -> Witness:
-    return Witness(name="w", label="w", quality="best", text=text,
+    return Witness(name="w", label="w", accuracy="high", text=text,
                   index=build_ngram_index(text), text_norm=text)
 
 

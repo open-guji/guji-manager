@@ -43,8 +43,14 @@ def _item(eid: str, name: str, ok: bool | None, detail: str = "") -> dict:
 
 def find_chapter(index: dict, chapter: str) -> dict | None:
     for ch in index.get("chapters", []):
-        if str(ch.get("file")) == chapter or f"{int(ch.get('n', -1)):03d}" == chapter:
+        if str(ch.get("file")) == chapter:
             return ch
+    # 位数不同也认（1、01、001 同一章；用户 11-27 册号位数统一）
+    if chapter.isdigit():
+        for ch in index.get("chapters", []):
+            f = str(ch.get("file"))
+            if (f.isdigit() and int(f) == int(chapter)) or ch.get("n") == int(chapter):
+                return ch
     return None
 
 

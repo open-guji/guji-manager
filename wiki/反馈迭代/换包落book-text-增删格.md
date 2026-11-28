@@ -1,8 +1,8 @@
 # 换包落 book-text：格号变了（增删格、改号）怎么走
 
 > 状态：**已定，在用**（2026-11-10，sheldon 同意 ZM 的整理：格号变动只走这一条路；殿本 vol15、17、19、20 实跑）。
-> 口径以 [待审单-人裁事件-book-text格子](https://github.com/open-guji/guji-manager/blob/dev/doc/00-总览/待审单-人裁事件-book-text格子.md) 总纲为准，本文只写**做法**。
-> 代码：`guji_manager/swap/booktext.py`；cv `republish.py` 的 `bump_book_text` 遇增删格自动调它。
+> 口径以 [待审条目-裁定事件-book-text格子](https://github.com/open-guji/guji-manager/blob/dev/doc/00-总览/待审条目-裁定事件-book-text格子.md) 总纲为准，本文只写**做法**。
+> 代码：`guji_manager/swap/booktext.py`；`guji land --text-apply` 遇增删格自动调它（cv `republish.py` 已删）。
 
 ## 有字格永久编号 u 以后（现行，2026-11-25 起）
 
@@ -30,20 +30,20 @@ book-text 每格都有 `u`（[字格永久编号 u 与身份账](字格永久编
 
 ## 什么时候自动走
 
-`guji feedback swap run`（auto_cycle → proof_cycle → `republish issue/push --book-text`）里，导出的 char 与 book-text 现文**格号集合或次序不同**时，
-`bump_book_text` 不再走「待重标清单」，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev、出新单。
-只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时 auto_cycle 报 **guard-stop**（旧称 need-A33），线上单不换：切坏的交切分线重出包，锚点挪不了的交 GM3，修好后用下面的命令补落、补推单。
+`guji feedback swap run`（每批每册取 main 包后 `guji land --apply`，带 `--book-text` 时 `--text-apply`）里，导出的 char 与 book-text 现文**格号集合或次序不同**时，
+`bump_book_text` 不再走「待重标清单」，而是交 `swap.booktext.remap_in_repo`，过了守卫就照常升版、本地检查、提交推 dev，条目照常对账。
+只换字（格号不变）的册仍走原路；格号不变但有增删字的也交它（cv#1393）。守卫或本地检查不过时报 **guard-stop**（旧称 need-A33），book-text 不动：切坏的交切分线重出包，锚点挪不了的交 GM3，修好后用下面的命令补落，再 `guji land <册> --apply` 让条目跟上。
 
 ## 手动补（已导出、没落成的册）
 
 ```
-guji feedback swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text 仓> --cv <cv 仓> --push --sheet
+guji feedback swap book-text --books vol17,vol19 -w <工作区> --book-text <book-text 仓> --cv <cv 仓> --push
 ```
 
 - 导出缺省取 `reports/<册>/_cycle/` 下最新的 `export/`（`--export` 指定）。
 - 在独立 worktree 里做（缺省 `<book-text>-swap`，稀疏检出，每册重置到 origin/dev）：swap run 在共享目录里会 `checkout -- .`，不能混用。
 - `--push`：0.x 推 dev；1.x 推 `swap/<册>-1x` 分支，PR 由人或会话开（全流程第七节 C 类通道）。
-- `--sheet`：guard-stop 时 auto_cycle 停在推库之前，新单（`reports/<册>/_publish/<rev>`）没换上线；落好文本后补推这张单并 `guji db sync`。网站随下一次发布上线。
+- 落好文本后 `guji land <册> --apply`（自带 `db sync --only`）让条目对上新格号；网站随下一次读就是新的。
 
 ## 每册做什么（顺序）
 
@@ -68,7 +68,7 @@ guji feedback swap finish-merged --books vol17,vol19 -w <工作区> --book-text 
 
 - **对照表入库**：`swap book-text` 提交前把对照表放进 `<版本目录>/lineage/revisions/<册>-<run>.tsv`（随文本提交走，中心库不另存）。
 - **旧格号 redirect**：就是这些对照表。`finish-merged` 沿历次表串成 `reports/_swap/finish/<册>/redirects.tsv`（旧格→现行格，删了的现行格为空），网站链接与意见池里的旧格号按它迁。册1 #419、#436 等更早的增删格没有对照表，补不出来。
-- **无锚人裁**（ZM 11-10）：人裁按旧格号挂，改号的格上 iou=0 的 backfill 旧人裁会错位还被优先采信。命令把「对照表里改号的格上的人裁」写成 `republish --recheck` 清单 `reports/_swap/finish/<册>/recheck_unanchored.tsv`，进下一张单让用户重投覆盖；删掉的格（及对照表里没有的人裁格）没有新格号，只在报告里列。
+- **无锚人裁**（ZM 11-10）：人裁按旧格号挂，改号的格上 iou=0 的 backfill 旧人裁会错位还被优先采信。命令把「对照表里改号的格上的人裁」写成 `guji land --recheck` 清单 `reports/_swap/finish/<册>/recheck_unanchored.tsv`，进下一张单让用户重投覆盖；删掉的格（及对照表里没有的人裁格）没有新格号，只在报告里列。
 - **度量**：`reports/_swap/metrics.jsonl` 追加一行。
 - **票要先落库**：网站已投未落的票须在换包**前**用 `guji feedback cellvotes` 落库；本命令不替做。
 
@@ -76,7 +76,7 @@ guji feedback swap finish-merged --books vol17,vol19 -w <工作区> --book-text 
 
 | 坑 | 做法 |
 |---|---|
-| need-A33 后新单没上线（线上还是旧 rev） | `--sheet` 补推；或 `republish.py push --book <册> --rev <rev> --yes --no-pack` 后 `guji db sync` |
+| guard-stop 修好后线上条目还是旧格号 | `guji land <册> --apply`（自带 `db sync --only`） |
 | 按格号比「新包为 □ 就保持现字」 | 格号挪了会把别的块图的字放回来；只能按对照表比（本命令已做） |
 | 失败的册留下改动带进下一册 | worktree 每册 `reset --hard origin/dev` 后再做（本命令已做） |
 | `guji db sync` 报要操作人 | 设 `GUJI_ACTOR`（本命令缺省 `swap-book-text`） |
