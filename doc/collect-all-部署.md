@@ -11,7 +11,7 @@
 ## 环境变量（值由 Deploy 从密钥库取，不进仓）
 - `GUJI_DATA_URL=https://data.open-guji.com`
 - `GUJI_DATA_TOKEN_PROD`（写中心库）、`GUJI_DATA_TOKEN_READ`（只读，可选）
-- `GUJI_BOOK_TEXT=<book-text dev 检出路径>`；推 dev 要有 book-text 的推送令牌（git 凭据）
+- `GUJI_BOOK_TEXT=<book-text dev 检出路径>`；推 dev 要有能写 open-guji/book-text 的令牌（密钥库里只有 GH_ORG_TOKEN 一个 GitHub 令牌；先 `git push --dry-run` 验证有写权限）
 - `GUJI_ACTOR=GM4`、`GUJI_JOBS_WHO=GM4`
 - `GH_TOKEN_WEB`（可触发 kaiyuanguji-web workflow 的令牌；缺省用 gh 当前登录）
 - `COLLECT_EXCLUDE`：不收的书 ID，逗号分隔（见下）

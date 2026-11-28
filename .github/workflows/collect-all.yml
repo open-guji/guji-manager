@@ -64,7 +64,7 @@ jobs:
       - name: book-text dev 稀疏检出（只取要用的书，避免整仓 7G）
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
-          BT_TOKEN: ${{ secrets.GUJI_BOOK_TEXT_PUSH_TOKEN }}
+          BT_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
         run: |
           git clone --depth 1 --branch dev --filter=blob:none --no-checkout \
             "https://x-access-token:${BT_TOKEN}@github.com/open-guji/book-text" book-text
