@@ -374,7 +374,7 @@ def cmd(a) -> None:
         print(f"按产物窗口补写文意裁定 {n} 条、终审裁定 {nv} 条（批次 {a.batch}）；guji db sync 推库后重放 seed_admit 即命中", file=sys.stderr)
 
 
-FETCH_STEPS = ("seed_admit", "align_ref")
+FETCH_STEPS = ("char_decide", "seed_admit", "align_ref")   # 定字两名并认（cv P3）
 ANCHOR_FETCH_STEPS = FETCH_STEPS + ("row_segment", "row_segment_runs", "cell_shrink")   # page_cells_sha 要读的两份产物
 
 

@@ -346,7 +346,10 @@ def fetch_products(book: str, dest_root: Path, label: str | None = None, force: 
                 raise ValueError(f"包里有不合规的路径：{m.name}")
         mem = None
         if steps:
+            from ..products_io import DECIDE_STEPS, is_decide_step
             want = set(steps)
+            if any(is_decide_step(s) for s in want):   # 旧包目录永远是 seed_admit/，新包是 char_decide/（cv P3）
+                want |= set(DECIDE_STEPS)
             mem = [m for m in tf.getmembers() if len(Path(m.name).parts) == 2 or Path(m.name).parts[1] in want]
         if hasattr(tarfile, "data_filter"):
             tf.extractall(dest_root, members=mem, filter="data")

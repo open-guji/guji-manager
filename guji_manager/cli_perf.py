@@ -57,7 +57,7 @@ def _pick(rs: list[dict], run: str | None) -> dict:
 #: 不在任何管线里的步（测试里的合成步、已退役的步）归这一组
 OTHER = "其他"
 #: 已从管线里拿掉、但任务库里还有记录的步（看历史时仍归对大步）
-RETIRED_STAGE = {"row_segment_gate": "cut"}
+RETIRED_STAGE = {"row_segment_gate": "cut", "seed_admit": "decide"}   # seed_admit：cv P3 改名 char_decide，历史 perf 行仍是旧名
 STAGE_TITLE = {"layout": "1 版面", "cut": "2 切字", "read": "3 识字", "decide": "4 定字", OTHER: "其他"}
 
 
@@ -411,6 +411,26 @@ def _render_hooks() -> dict[str, dict]:
 def all_hooks() -> dict[str, dict]:
     """`PERF_HOOKS` ＋ 各步 render。同一模块两边都有时合并。"""
     out = {m: {"funcs": tuple(v.get("funcs", ())), "methods": dict(v.get("methods", {}))} for m, v in PERF_HOOKS.items()}
+    # cv P3（11-28）：seed_admit 改名 char_decide，steps.seed_admit 只留转发垫片——钩子挂在垫片上计不到，
+    # 同样的函数在新模块（char_decide、char_decide_*）上再挂一份；只在本机 cv 有新模块时加（旧 cv 没有）。
+    import importlib
+    import importlib.util
+    for m in list(out):
+        if m.startswith("open_guji_cv.steps.seed_admit"):
+            new = m.replace(".seed_admit", ".char_decide", 1)
+            try:
+                found = importlib.util.find_spec(new) is not None
+            except (ImportError, ValueError):
+                found = False
+            if not found:
+                continue
+            try:   # 兼容版的 char_decide 只是转发入口（cv #2008），本体还在 seed_admit：只挂新模块里真有的函数
+                mod = importlib.import_module(new)
+            except Exception:  # noqa: BLE001
+                continue
+            funcs = tuple(f for f in out[m]["funcs"] if callable(getattr(mod, f, None)))
+            if funcs and new not in out:
+                out[new] = {"funcs": funcs, "methods": {}}
     for m, v in _render_hooks().items():
         e = out.setdefault(m, {"funcs": (), "methods": {}})
         for c, meths in v["methods"].items():

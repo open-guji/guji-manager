@@ -76,3 +76,13 @@ def test_stale_gate_not_counted(tmp_path):
     assert r["status"] == CC.PASS and r["data"]["stale"] == [1] and "1 页 decide_gate 已过期" in r["detail"]
     eng1 = SimpleNamespace(status=lambda pages: {"steps": {"decide_gate": {"pages": {1: {"status": "stale"}}}}})
     assert CC._decide_gate("b", [1], _Store(tmp_path), eng=eng1)["status"] == CC.SKIP
+
+
+def test_fresh_hints_migrate_name(tmp_path):
+    """cv P3 改名后老册没迁移：char_decide 全缺、seed_admit/ 还在 → 1a 提示 migrate-name（不是重跑）。"""
+    (tmp_path / "b" / "seed_admit").mkdir(parents=True)
+    steps = {"char_decide": _row(missing=2)}
+    eng = SimpleNamespace(status=lambda pages, code_ok: {"steps": steps},
+                          store=SimpleNamespace(root=tmp_path), book=SimpleNamespace(id="b"))
+    r = CC._fresh(eng, [1, 2])
+    assert r["status"] == CC.FAIL and "migrate-name" in r["detail"]

@@ -68,6 +68,17 @@ def load_baseline(book, ws: Path) -> dict:
     raise FreezeError(f"工作区 git 里找不到快照分支 {ref}（先 `git fetch origin {ref}`）")
 
 
+def _decide_alias(root: Path, sub: str) -> Path | None:
+    """`<册>/seed_admit/<文件>` 与 `<册>/char_decide/<文件>` 互为别名（cv P3 改名；冻结快照是旧名，
+    `guji-cv decide migrate-name` 原地改名后文件在新名目录，内容不变）。不是定字步返回 None。"""
+    from ..products_io import DECIDE_NEW, DECIDE_OLD
+    parts = sub.split("/")
+    if len(parts) < 3 or parts[1] not in (DECIDE_NEW, DECIDE_OLD):
+        return None
+    parts[1] = DECIDE_OLD if parts[1] == DECIDE_NEW else DECIDE_NEW
+    return root.joinpath(*parts)
+
+
 def compare_products(baseline: dict, products_root: Path) -> dict:
     """快照里每个产物文件与现有产物逐个比 sha256。返回 {same, changed[], missing[]}。"""
     same, changed, missing = 0, [], []
@@ -80,6 +91,8 @@ def compare_products(baseline: dict, products_root: Path) -> dict:
         # 快照里的路径是 `products/<册>/<步>/<文件>`，落到产物根下去掉 `products/`
         sub = rel[len("products/"):] if rel.startswith("products/") else rel
         f = Path(products_root) / sub
+        if not f.is_file():
+            f = _decide_alias(Path(products_root), sub) or f
         if not f.is_file():
             missing.append(rel)
         elif sha256_file(f) != meta.get("sha256"):
