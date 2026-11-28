@@ -8,6 +8,8 @@
 
 - PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。
 
+- PATCH（11-28，GM4）：修 #1238 让 dev CI 红的两条：`launch/v01.py` 的 `chapter_of` 改走 `_cv` 门面；`launch` 归进步骤表第四步（feedback）。L0。
+
 - MINOR（11-28，GM4）：新增 `guji launch prepare <册> --label <main 包> -w <工作区> …`＝原 `tools/开书/出v01.py` 搬进包（`guji_manager/launch/v01.py`，tools 里留薄壳）：判停→交接单→第五步产物→导出→book-text 本地加章→local_check，不推任何东西；册已有 `_land/landed.json` 拒绝（非首发）。能进任务库 command 单并行。后续加 ship 段。L0。
 
 - PATCH（CV0 11-28，GM2 问）：`datastore/schema_d1.sql` 对齐线上 guji-data-main——events 的 payload／target 改为由 raw 现算的虚拟列，加 u／level 虚拟列（与线上同式），pending_items 加 reason 虚拟列，补线上早已手加的 7 条索引与 voids 视图。线上不变（导入按 pragma_table_info 取列，本来就不写虚拟列）；只影响本机 SQLite（测试、备份还原），`settle_sync` 按 `e.u` 查在本机也能跑了。
