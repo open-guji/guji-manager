@@ -87,6 +87,8 @@ def fill(p: argparse.ArgumentParser) -> None:
     s.add_argument("--after", type=int, action="append", default=[], help="等这条任务成功后再跑（可多次）")
     s.add_argument("--again", action="store_true", help="同配置已跑过也再跑一次")
     s.add_argument("--no-base-check", action="store_true", help="不核 base 包在不在（缺省交单前查 R2，查到没有就拒）")
+    s.add_argument("--no-book-check", action="store_true",
+                   help="不核册名（缺省交单前查中心库：没有这册就拒；是改名前的旧名或按数值相等就换成现名）")
     s.add_argument("--dry-run", action="store_true", help="只打印规整后的定义和指纹，不交")
 
     s = js.add_parser("ls", help="列任务")
@@ -313,6 +315,11 @@ def cmd_job(a) -> None:
     if act == "submit":
         try:
             raw = _spec_from_args(a)
+            if not getattr(a, "no_book_check", False):
+                from .book_check import check as _book_check
+                bad = _book_check(raw, default_glob=SP.DEFAULT_WS_GLOB)
+                if bad:
+                    sys.exit(f"✗ {bad}（确定要交加 --no-book-check）")
             from .auto_pages import resolve as _auto_pages
             _auto_pages(raw)            # 缺省只重放受影响的页（用户 11-20 定）；--pages all 整册
             if raw.get("db_rev") is None:
