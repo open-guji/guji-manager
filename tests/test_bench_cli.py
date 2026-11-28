@@ -270,3 +270,41 @@ def test_bench5b_missing(monkeypatch, tmp_path):
     with pytest.raises(R.Missing) as e:
         R.bench5b()
     assert e.value.kind == "bench5b" and "冻结包不在" in str(e.value)
+
+
+def test_guard_convention_gold_books_from_dataset(fake, monkeypatch):
+    """约定式分片：guard 看测试集仓里有哪些书目录；有金标却 skipped 按不过算。"""
+    spec, ds, tmp = fake
+    import dataclasses
+    (ds / "conv" / "bk1").mkdir(parents=True)
+    s2 = dataclasses.replace(spec, id="t-conv", gold="conv", needs=("gold", "torch"))
+    monkeypatch.setattr(B, "all_specs", lambda: [s2])
+    monkeypatch.setattr(R, "check_env", lambda needs: [R.Missing("torch", "没装 torch")])
+    assert cli._gold_books(s2, cli._fix(_args(ds, tmp, action="guard", bench=[]))) == ["bk1"]
+    a = cli._fix(_args(ds, tmp, action="guard", bench=[]))
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_guard(a)
+    assert e.value.code == 1
+
+
+def test_corpus_resource(monkeypatch, tmp_path):
+    from guji_manager import _cv
+    from guji_manager.ops import corpus_pack as CP
+    (tmp_path / "corpus").mkdir()
+    (tmp_path / "corpus" / "bk.txt").write_text("書")
+    (tmp_path / "ext.txt").write_text("通")
+    man = {"items": [{"group": "reference", "root": "ws", "path": "corpus/bk.txt", "sha256": "a"},
+                     {"group": "reference", "root": "repo", "path": "ext.txt", "sha256": "b"},
+                     {"group": "freq", "root": "ws", "path": "corpus/bk.txt", "sha256": "a"}]}
+    monkeypatch.setattr(CP, "fetch_blobs", lambda ws, n, v: {"not_in_r2": [], "differ_not_overwritten": []})
+    monkeypatch.setattr(_cv, "core_corpus_pin_load_manifest", lambda ws, n, v: man, raising=False)
+    monkeypatch.setattr(_cv, "_base", lambda root, path, ws: tmp_path, raising=False)
+    monkeypatch.setattr(_cv, "_not_corpus", lambda root, path: False, raising=False)
+    res, env = R.corpus(tmp_path, tmp_path, ["01"], {"01": {"corpus": [7, "基础配置"]}})
+    assert res["pin"] == [7] and res["book_corpus"] == [str(tmp_path / "corpus/bk.txt")]
+    assert res["general_corpus"] == [str(tmp_path / "ext.txt")] and env["01"]["pin"] == 7 and env["01"]["items"] == 3
+    with pytest.raises(R.Missing, match="没钉 corpus"):
+        R.corpus(tmp_path, tmp_path, ["02"], {"02": {"corpus": [None, ""]}})
+    monkeypatch.setattr(CP, "fetch_blobs", lambda ws, n, v: {"not_in_r2": ["x.txt"], "differ_not_overwritten": []})
+    with pytest.raises(R.Missing, match="R2 缺 1"):
+        R.corpus(tmp_path, tmp_path, ["01"], {"01": {"corpus": [7, "册 yaml"]}})
