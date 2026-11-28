@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，CV4 报 #18365 第 2 次）：`guji bench` 取书仓改成与跑批准备同一取法——先用本机 `~/<书仓名>`（会话挂上的私仓，更新也经它 fetch），直连 GitHub 克隆不了再退回旧总仓目录；不再在没凭据的执行机上直接克隆私有书仓报 could not read Username。
+
 ## [0.7.13] - 2026-11-28
 
 - PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
