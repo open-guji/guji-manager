@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
+
 ## [0.7.12] - 2026-11-28
 
 - PATCH（11-28，CV4 #1288，GM2 审改）：`products_io.active_step()` 改问 cv `decide_names.ADMIT_STEP_ACTIVE`。原先查 `STEPS`，步模块没导入时是空注册表、恒判旧名 seed_admit：`guji exp`／`guji bench` 在改名版 cv（v0.9.16 起、cv dev #2033 起）上把 `eval: use_human_verdicts: false` 挂在旧键 `seed_admit:`，引擎忽略，**评测带着人裁在跑**（殿本 vol01 decide 1114 格有 1024 格走 admit:human）。v0.7.6–v0.7.11 配改名版 cv 跑出的 exp/bench 收尾类结果要复核。L0。
