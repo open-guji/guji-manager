@@ -10,7 +10,11 @@
 3. 线上单（``feedback/lists/proofing/<书>/<章>.pending.json``）的 ``cv_commit`` 对得上的最新一份包；
 4. ``--keep-days`` 天内存的包（缺省 14，留给对比和返工）；
 5. 任务库里排队／在跑的任务点名的包（``base``／``compare_to``），以及这些任务依赖的任务存的包；
-6. 标签以 ``freeze-`` 开头的包。
+6. 标签以 ``freeze-`` 开头的包；
+7. 测试集仓（open-guji-dataset）各 bench 分片 ``bench.yaml`` 点名的冻结包：``snapshot_packs``（``{册: 标签}``、
+   ``{册: {ws, pack}}`` 或 ``[{ws, vol, pack}]``；以后冻结包都写这里），以及 ``books: [{ws, vol, pack}]``（decide-bench 的写法）。
+   bench 的冻结快照多是冻结当时的 main 包，换两次 main 就过了第 1 条（11-28 rough-bench 冻结包被清，CV4）。
+   读不了测试集仓时 ``--apply`` 拒删。
 
 其余列为可删。缺省只列清单（``--out`` 写 TSV），``--apply`` 才删，要正式令牌（``GUJI_DATA_TOKEN_PROD``）。
 main 指针（``main-ptr/``）、非 products 前缀（原图、字体库、模板索引）、实验桶一律不动。
@@ -171,6 +175,81 @@ def db_refs(conn, jobs_conn=None) -> dict:
     return {"freeze": freeze, "online": online, "jobs": job_refs(jobs_conn)}
 
 
+DATASET_REPO = "https://github.com/open-guji/open-guji-dataset"
+
+
+def _snap_entries(doc) -> list[tuple[str | None, str, str]]:
+    """一份 bench.yaml → [(ws 或 None, 册, 包标签)]。"""
+    out: list[tuple[str | None, str, str]] = []
+    if not isinstance(doc, dict):
+        return out
+
+    def add(ws, vol, pack):
+        if vol is not None and isinstance(pack, str) and pack:
+            out.append((str(ws) if ws else None, str(vol), pack.strip("/").rsplit("/", 1)[-1]))
+    sp = doc.get("snapshot_packs")
+    if isinstance(sp, dict):
+        for vol, v in sp.items():
+            if isinstance(v, str):
+                add(None, vol, v)
+            elif isinstance(v, dict):
+                add(v.get("ws"), v.get("vol", vol), v.get("pack") or v.get("label"))
+    elif isinstance(sp, list):
+        for v in sp:
+            if isinstance(v, dict):
+                add(v.get("ws"), v.get("vol"), v.get("pack") or v.get("label"))
+    for v in doc.get("books") or []:
+        if isinstance(v, dict) and v.get("pack"):
+            add(v.get("ws"), v.get("vol"), v["pack"])
+    return out
+
+
+def bench_snapshot_refs(root=None, cache=None) -> set[tuple[str | None, str, str]] | None:
+    """测试集仓里所有 ``bench.yaml`` 点名的冻结包 → {(ws 或 None, 册, 标签)}；读不了返回 None。
+
+    本机有测试集仓（``GUJI_DATASET_DIR`` 或 cv 旁边的 open-guji-dataset）就读工作副本；没有就无内容克隆
+    （``--filter=blob:none --no-checkout``）到 ``cache``（缺省 ``$GUJI_DATA_HOME/bench-cache/dataset-gc``），
+    只按需取 bench.yaml 这几个文件，取默认分支最新。"""
+    import subprocess
+    from pathlib import Path
+
+    import yaml
+    try:
+        if root is None:
+            from ._cv import default_dataset_root
+            root = default_dataset_root()
+        root = Path(root)
+        docs: list[str] = []
+        if root.exists():
+            docs = [q.read_text(encoding="utf-8") for q in sorted(root.glob("**/bench.yaml")) if ".git" not in q.parts]
+        else:
+            if cache is None:
+                from ._cv import data_home
+                cache = data_home() / "bench-cache" / "dataset-gc"
+            cache = Path(cache)
+
+            def git(*a):
+                return subprocess.run(["git", *a], cwd=cache if (cache / ".git").exists() else None,
+                                      capture_output=True, text=True, check=True).stdout
+            if not (cache / ".git").exists():
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                git("clone", "-q", "--depth", "1", "--filter=blob:none", "--no-checkout", DATASET_REPO, str(cache))
+            else:
+                git("fetch", "-q", "--depth", "1", "origin", "HEAD")
+                git("update-ref", "HEAD", "FETCH_HEAD")
+            names = [n for n in git("ls-tree", "-r", "--name-only", "HEAD").splitlines()
+                     if n == "bench.yaml" or n.endswith("/bench.yaml")]
+            docs = [git("show", f"HEAD:{n}") for n in names]
+        refs: set[tuple[str | None, str, str]] = set()
+        for t in docs:
+            refs.update(_snap_entries(yaml.safe_load(t)))
+        return refs
+    except Exception as e:                                # noqa: BLE001 —— 没网、没权限、yaml 坏了
+        print(f"⚠️ 读不了测试集仓的 bench.yaml（{type(e).__name__}: {str(e)[:160]}）：不按 bench 冻结包保留",
+              file=sys.stderr)
+        return None
+
+
 def _vol_key(book: str) -> str:
     m = re.search(r"(\d+)$", book)
     return m.group(1).zfill(3) if m else book
@@ -207,6 +286,9 @@ def plan(packs: dict[tuple, Pack], mains: dict[tuple, list[str]], refs: dict, *,
             jobs = refs.get("jobs") or set()
             if (bk, pk.label) in jobs or ("*", pk.label) in jobs:
                 pk.keep.append("排队任务要用")
+            snaps = refs.get("bench") or set()
+            if (ws, bk, pk.label) in snaps or (None, bk, pk.label) in snaps:
+                pk.keep.append("bench 冻结包")
     return sorted((p for p in packs.values() if not p.keep), key=lambda p: (p.ws, p.book, p.created or ""))
 
 
@@ -261,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     from ._cv import connect
     with connect() as conn:
         refs = db_refs(conn)
+    refs["bench"] = bench_snapshot_refs()
     drop = plan(packs, mains, refs, keep_days=a.keep_days, keep_mains=a.keep_mains)
     if a.from_list:
         with open(a.from_list, encoding="utf-8") as f:
@@ -274,6 +357,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--apply 要配 --from-list（先出清单、给用户看过再删）")
         if refs["jobs"] is None:
             raise SystemExit("--apply 要能读任务库（排队／在跑的单点名的包不能删）：先配好 [jobs] 的令牌")
+        if refs["bench"] is None:
+            raise SystemExit("--apply 要能读测试集仓 bench.yaml（bench 冻结包不能删）：克隆 open-guji-dataset 或设 GUJI_DATASET_DIR")
         n, b = apply(src, drop)
         s["deleted_objects"], s["deleted_bytes"] = n, b
     if a.json:
