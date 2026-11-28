@@ -6,6 +6,13 @@
 
 ## [未发版]
 
+## [0.7.4] - 2026-11-28
+
+基于 v0.7.3，只带 #1206、#1219（候选字线，CV3；dev 上另有 MINOR 待发，不在本版）。
+
+- PATCH（11-28，CV3，候选字线，L0：缺省不变）：`guji land` 把 `guji audit cands` 的输出并进条目 doc——`land_enrich.load_cards` 读 `reports/<册>/<册>.cards.cands.json`，按裸格号把 `cands`（cands/1）并进 alt 卡里已有的格，`pending_fields` 原样带出，网站（kaiyuanguji-web #965）先读它；`keep_old_alt` 这次没现算 cands 就保留条目里原有的；新参数 `land --audit-cands`（缺省关）先跑 `guji audit cands`，失败只告警。没有 `cards.cands.json`、不带参数时行为不变（此前 audit cands 的输出没人读，cands 到不了 Worker／网站）。
+- PATCH（11-28，CV3，候选字线，L0）：`review/cands_field.pick_fields` 返回键 `pick_src` 改名 `pick_from`，避开网站票里同名但意思不同的 `pick_src`（候选／相似字／机器字…）；没有别处调用。
+
 ## [0.7.3] - 2026-11-28
 
 基于 v0.7.2，只带 #1177（执行机热修；dev 上另有 MINOR 待发，不在本版）。
