@@ -327,6 +327,7 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "ADMIT_STEPS": ("core.decide_names", "ADMIT_STEPS"),
     "LEGACY_ADMIT_STEP": ("core.decide_names", "LEGACY_ADMIT_STEP"),
     "NEW_ADMIT_STEP": ("core.decide_names", "NEW_ADMIT_STEP"),
+    "ADMIT_STEP_ACTIVE": ("core.decide_names", "ADMIT_STEP_ACTIVE"),   # 本 cv 收尾步现名（v0.9.16 起 char_decide）
     "is_admit_step": ("core.decide_names", "is_admit_step"),
     "same_admit_step": ("core.decide_names", "same_admit_step"),
     "fold_admit_params": ("core.decide_names", "fold_admit_params"),
