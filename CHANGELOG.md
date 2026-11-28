@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
+
 - PATCH（11-28，GM2，cv P3 seed_admit→char_decide 两名并认，GM2 名下；读口用 `products_io`）：冻结比对 `ops/freeze.compare_products` 把快照里的 `seed_admit/` 路径映射到 `char_decide/`（`guji-cv decide migrate-name` 后不误报缺文件）；包导入降级检查 `snap/importer.downgraded_steps` 跨两名取新鲜数；`jobs/auto_pages.REPLAY_FROM`、`ruling_hits.FETCH_STEPS`、取包 `datastore/packs.fetch_products` 的 steps 过滤两名都认；`lib_text_check` 失效两名都打、整册钩子认两名；`cli_perf` 历史 perf 行 seed_admit 归「4 定字」，本机 cv 有 `steps.char_decide*` 时同样挂分段钩子；close-check 1a 在 char_decide 缺页而 seed_admit/ 还在时提示先跑 migrate-name。写端（事件 target.step、suggest 补丁键）仍写旧名，等 CV4 切换通知。L0。
 
 - PATCH（11-28，GM4，cv P3 第一版：seed_admit／char_decide 两名并认读口，L0 不改行为）：新增 `products_io`（`decide_dir／decide_pages／layer／read_decide／exists_decide／RULING_STEP`…）；产物目录、页顶层键、manifest、`product_invalidate`（同时失效两名）、`STEPS` 取参、`reasons._load_layer` 等读口先新后旧，新旧目录并存以 `char_decide/` 为准；事件 `target.step` 读端两名并认（永久），写端经 `RULING_STEP`，现仍写旧名，cv 读口上线且各读端全认新名后再切。pending_reason 读产物与回退差异表留下一个 PR。GM2 的 close-check／perf／freeze 等另 PR。

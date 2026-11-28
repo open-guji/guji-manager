@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS events (
        CASE WHEN json_type(raw, '$.payload.u') = 'integer' THEN json_extract(raw, '$.payload.u') END)) VIRTUAL,
   level TEXT GENERATED ALWAYS AS (CASE
        WHEN stream = 'uid' THEN 'ledger'
-       WHEN stream IN ('rulings', 'vision') THEN 'ai'
+       WHEN stream IN ('rulings', 'vision', 'vis_glyph') THEN 'ai'      -- vis_glyph：cv 第三步看图缓存，不论 actor/source 一律 ai（CV3 11-28）
        WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
        WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'model'
        WHEN json_extract(raw, '$.payload.level') IN ('human', 'ai', 'machine') THEN json_extract(raw, '$.payload.level')
