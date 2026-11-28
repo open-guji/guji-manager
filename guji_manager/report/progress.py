@@ -47,7 +47,10 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
     eng = Engine(bk, load_pipeline(default_pipeline_id(bk)), store=st, log=lambda s: None)
     status = eng.status(pages=pages)
     stale_steps: dict[int, list[str]] = {pg: [] for pg in pages}
+    from ..ops.decide_gate_check import DETECT_ONLY_STEPS
     for sid, d in status["steps"].items():
+        if sid in DETECT_ONLY_STEPS:      # 只检测的出口 gate 没跑不算过期（cv decide_gate，11-28）
+            continue
         for pg, row in d["pages"].items():
             if row["status"] != "fresh":
                 stale_steps[int(pg)].append(f"{sid}:{row['status']}")

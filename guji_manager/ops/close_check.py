@@ -18,6 +18,9 @@
   10/11 lines.md 与 pages.json 自洽（给了 --export-dir 才查）
   12 Step9 产物在（reports/<册>/<册>.md 与对勘 html）
   7/13 避諱表、收尾记录在（给了 --notes 才查）
+  2e 第四步出口检查 decide_gate（cv #2005）：按 fail 汇总（step_error／ref_shift／char_not_in_evidence／admit_blank_cell），
+     flag 只计数不告警；终校档有 fail 判未过，粗校档只报数；册里一页都没有 decide_gate 产物（cv 早于 #2005、没补跑）记 skip。
+     只检测的步「没跑」不进 1a 坏账（`decide_gate_check.DETECT_ONLY_STEPS`）。11-28 GM2 加
   15 国内书影（COS srcbw）：账在、对象数＝旁车源图数、抽查线上对象与墨迹 IoU（`datastore/cos_tier.check`；
      册没有页表指针记 skip）。11-27 GM2 加（用户 11-26：上 COS 的必须是压缩版、压缩是流程一步）
 其余（3 4 5 6 9 14）只列为 manual，由人或会话按 runbook 逐项确认。
@@ -87,8 +90,9 @@ def _fresh(eng, pages, strict_cv: bool = False) -> dict:
 
     只因共享输入被别处更新而过期（`SHARED_PARAMS`，见 `_split_shared`）也不算失败，另起一句点名字段，
     冻结时记一笔（1.0 发布标准 I）；本册自己的变动照旧判失败，原因里两类都列。"""
+    from .decide_gate_check import DETECT_ONLY_STEPS
     st = eng.status(pages=pages, code_ok=not strict_cv)
-    bad, shared = _split_shared(st["steps"])
+    bad, shared = _split_shared({k: v for k, v in st["steps"].items() if k not in DETECT_ONLY_STEPS})
     n_code = sum(d.get("code_only", 0) for d in st["steps"].values())
     vers: dict[str, int] = {}
     for d in st["steps"].values():
@@ -272,6 +276,22 @@ def _fallback(book: str, pages, store) -> dict:
                   "recut_bad": r["recut_bad"][:50], "hot_pages": r["hot_pages"][:200]} if bad else None)
 
 
+def _decide_gate(book: str, pages, store, tier: str = "final") -> dict:
+    """2e 第四步出口检查（cv `decide_gate`）：fail 汇总。flag 只计数。"""
+    from .decide_gate_check import describe, summarize
+    name = "第四步出口检查"
+    s = summarize(book, pages, store)
+    if not s["checked"]:
+        return _item("2e", name, SKIP, f"{s['pages']} 页都没有 decide_gate 产物（cv 早于 #2005，或没补跑："
+                                        "`guji pipeline … --from seed_admit`）")
+    nf = sum(s["fails"].values())
+    data = {"fails": s["fails"], "flags": s["flags"], "fail_pages": s["fail_pages"][:200],
+            "missing": s["missing"][:200], "rows": s["rows"]} if (nf or s["missing"] or s["flags"]) else None
+    if tier == "rough":
+        return _item("2e", name, PASS, describe(s) + ("（粗校档只报数，终校档才计）" if nf else ""), data)
+    return _item("2e", name, FAIL if nf else PASS, describe(s), data)
+
+
 def _store_committed(ws: Path) -> dict:
     from .._cv import central_marker
     if central_marker(Path(ws)):
@@ -396,6 +416,7 @@ def run(eng, ws: Path, pages, export_dir: Path | None = None, chapter: str | Non
         ("2c", "□ 有去向", lambda: [_lacuna(book, export_dir, chapter, pending)] if export_dir else
          [_item("2c", "□ 有去向", SKIP, "没给 --export-dir")]),
         ("2d", "整理本对不上的列有交代", lambda: [_fallback(book, pages, eng.store)]),
+        ("2e", "第四步出口检查", lambda: [_decide_gate(book, pages, eng.store, tier)]),
         ("8", "字形库与人裁已推进中心库", lambda: [_store_committed(ws)]),
         ("8b", "字形库 edition 是书 ID", lambda: [_glyph_edition(ws)]),
         ("10", "lines.md／pages.json", lambda: _export(export_dir, chapter) if export_dir else
@@ -411,7 +432,7 @@ def run(eng, ws: Path, pages, export_dir: Path | None = None, chapter: str | Non
         except Exception as e:  # noqa: BLE001 —— 一项算不出来不拖垮整张体检表
             items.append(_item(no, name, ERROR, f"{type(e).__name__}: {e}"))
     items.extend(_item(no, txt, MANUAL) for no, txt in MANUAL_ITEMS)
-    order = {s: i for i, s in enumerate(["1a", "1b", "1c", "2", "2b", "2c", "2d", "3", "4", "5", "6", "7", "8", "8b", "9",
+    order = {s: i for i, s in enumerate(["1a", "1b", "1c", "2", "2b", "2c", "2d", "2e", "3", "4", "5", "6", "7", "8", "8b", "9",
                                          "10", "11", "12", "13", "14", "15"])}
     items.sort(key=lambda it: order.get(it["no"], 99))
     machine = [it for it in items if it["status"] not in (MANUAL, SKIP)]
