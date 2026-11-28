@@ -39,14 +39,28 @@ def test_steps_and_store():
     assert exists_decide(S(), "b", "p0001")
 
 
-def test_active_step_registers_steps_first():
-    """没先导入 cv 的 Step 时 STEPS 为空，active_step 不能误判成旧名（否则评测口径写在旧键上，被引擎忽略）。"""
-    import subprocess, sys
-    code = ("from guji_manager import products_io as P; "
-            "from guji_manager import _cv; "
-            "assert not _cv.STEPS or True; "
-            "import sys; print(P.active_step())")
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.strip().splitlines()[-1]
+def test_active_step_fresh_process_matches_cv():
+    """新进程里没导入任何 cv Step（STEPS 是空注册表）时，active_step 也得跟 cv 的现名一致（11-28 CV4：误判旧名，
+    exp 的 use_human_verdicts: false 挂在旧键被忽略）。"""
+    import subprocess
+    import sys
+    code = "from guji_manager import products_io as P; print(P.active_step())"
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert r.returncode == 0, r.stderr
+    try:
+        from open_guji_cv.core.decide_names import ADMIT_STEP_ACTIVE as want
+    except ImportError:
+        want = "seed_admit"
+    assert r.stdout.strip().splitlines()[-1] == want
+
+
+def test_active_step_ignores_empty_registry(monkeypatch):
     from guji_manager import _cv
-    from guji_manager._cv import steps  # noqa: F401
-    assert out == ("char_decide" if "char_decide" in _cv.STEPS else "seed_admit")
+    from guji_manager import products_io as P
+    monkeypatch.setitem(vars(_cv), "STEPS", {})
+    monkeypatch.setitem(vars(_cv), "ADMIT_STEP_ACTIVE", "char_decide")
+    assert P.active_step() == "char_decide"
+    assert P.fold_params({"seed_admit": {"eval": {"use_human_verdicts": False}}}) == \
+        {"char_decide": {"eval": {"use_human_verdicts": False}}}
+    monkeypatch.setitem(vars(_cv), "ADMIT_STEP_ACTIVE", "seed_admit")
+    assert P.active_step() == "seed_admit"
