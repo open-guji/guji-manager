@@ -55,6 +55,7 @@ status 只有 ok、regressed、skipped、no_gold，跑崩了记 failed（护栏�
 compare_to、run，output.pack 恒 false）；带 `--publish` 才另写 `bench_runs` 一行（用写令牌）。
 结局：ok／regressed／no_gold 算成功（结论照实在结果里）；skipped（执行机缺资源）记 blocked，补齐后 `guji job retry`；跑崩记 failed。
 不收 `--against`、`--ws`、`--dataset`、`--cache`、`--out`、`--offline`。heavy 级建议这样跑，light 级本机跑更快。
+**版本下限**：单上记 `manager_min`（缺省交单机的 manager 版本，`--manager-min` 改）；低于它的执行方不领，单子留在排队等执行方自更新（新版执行方在领单 SQL 里过滤；还没自更新的旧执行方由任务库触发器 `attempt_manager_min` 挡，领单整批回滚）。`guji job submit --manager-min X.Y.Z` 对别的单型同样可用。
 
 ## 写进中心库（`--publish`）
 

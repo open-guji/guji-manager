@@ -131,6 +131,8 @@ def test_cli_job_dry_run(capsys, monkeypatch):
     out = capsys.readouterr().out
     spec = json.loads(out[:out.index("指纹")])
     assert spec["kind"] == "bench" and spec["cv"] == C1 and spec["bench"]["vols"] == ["01"]
+    from guji_manager import __version__
+    assert spec["manager_min"] == __version__ and spec["manager_min_n"] == SP.version_n(__version__)   # 缺省本机版本
     with pytest.raises(SystemExit, match="--job 不收"):
         cli.cmd_run(cli._fix(p.parse_args(["bench", "run", "cut-2d", "--book", "988g3f0wsu", "--job", "--cv", "dev",
                                            "--ws", "/x"])))
@@ -145,3 +147,16 @@ def test_runner_knows_all_spec_kinds_and_blocks_unknown():
     with pytest.raises(R.StageError) as e:
         R._check_kind("future")
     assert e.value.outcome == "blocked" and "不认 kind='future'" in str(e.value)
+
+
+def test_manager_min_optional_and_not_hashed(monkeypatch):
+    """没给 manager_min 就不写进单子（旧单标准形、指纹都不变）；给了也不进指纹（同一计算不因版本下限另跑）。"""
+    monkeypatch.setattr(SP, "resolve_cv", lambda ref, *a, **k: C1)
+    raw = {"kind": "rerun", "book": "vol01", "cv_ref": "dev", "pages": "all"}
+    a = SP.normalize(dict(raw))
+    assert "manager_min" not in a and "manager_min_n" not in a
+    b = SP.normalize({**raw, "manager_min": "0.7.15", "manager_min_n": 1})
+    assert b["manager_min_n"] == 7015 and SP.spec_hash(a) == SP.spec_hash(b)
+    assert "需 manager≥0.7.15" in SP.summary(b)
+    with pytest.raises(SP.SpecError):
+        SP.normalize({**raw, "manager_min": "new"})
