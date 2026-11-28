@@ -42,7 +42,7 @@ STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "final-review", "rulings-hits", "ctx-ruling",
     )),
     "feedback": ("第四步 反馈迭代", "出单上线、收单落票、更新 book-text、升 1.0、1.0 之后的反馈", (
-        "pending", "pending-settle", "pending-parity", "pinstate", "online-lists", "swap", "land", "collect", "cellvotes", "closeout", "rekey-cells",
+        "pending", "pending-settle", "pending-parity", "pinstate", "online-lists", "swap", "land", "collect", "cellvotes", "closeout", "launch", "rekey-cells",
         "exit-check", "char-diff", "audit", "freeze", "opinions", "progress-sync", "human-conflicts",
     )),
     "output": ("第五步 排版输出", "导出排版文本（md、lines.md／pages.json、维基文库、重排段落）与对勘报告", (
