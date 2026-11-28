@@ -1,5 +1,7 @@
 # 设计：manager 各处改挂字格永久编号 u（T2）
 
+> 2026-11-28 注：文中「旧 rev 票」「`pending.json` 的 `cells[]`」指迁移前的存量与整张单；`cr:<rev>:…` 票已一次性迁成按条目键 `cr:i:<书>:<条目>:<投票人>`，待审单是条目的现算视图。现行结构见 [待审条目与裁定事件](../数据库/待审条目与裁定事件.md)。
+
 > 字格永久编号 u 工作包 T2（CV0 牵头，2026-11-24 Sheldon 定「同意用 u」）。
 > 总方案：https://claude.ai/artifact/NksDge9ZxaEyebAgnS8s8Q ；设计：https://claude.ai/artifact/FdKWkGBkNVyQbVFPugFMtJ ；
 > 格式规范 guji-format PR #34（char v0.6、punct／entity v0.4、norm v0.3）。
