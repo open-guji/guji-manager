@@ -79,8 +79,32 @@ def vol_no(book: str) -> int:
 
 
 def chapter_of(book: str) -> str:
-    """book-text 章号（三位，殿本、全唐文、史記都是一册一章、三位）。"""
-    return f"{vol_no(book):03d}"
+    """book-text 章号。册号位数按全书册数统一（用户 11-27 定）：读册 yaml 的生效配置（``volume_width``，
+    迁移期间没改号的书还写着 ``chapter_width``，照旧生效）；找不到册 yaml 时，册名是 ``volNN`` 的按老规矩三位，
+    册名纯数字的按册名位数。史記 ``vol17`` → ``17``、脉经 ``1`` → ``1``、殿本改号前 ``vol01`` → ``001``。"""
+    n = vol_no(book)
+    names = list(dict.fromkeys([book, f"{n:02d}", f"{n:03d}", str(n), f"vol{n:02d}"]))
+    try:
+        from importlib import import_module
+        cb = import_module("open_guji_cv.core.book")
+        from .._cv import volume_of
+        for nm in names:
+            try:
+                if cb._book_yaml_path(nm).exists():
+                    ch = volume_of(nm).chapter
+                    if ch:
+                        return ch
+            except Exception:  # noqa: BLE001 —— 没设工作区、yaml 坏了：试下一个名字
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    return f"{n:03d}" if not re.fullmatch(r"\d+", book) else str(n).zfill(len(book))
+
+
+def chapter_variants(ch: str) -> list[str]:
+    """同一章的各种补零写法（1、01、001），去重，原样在前。"""
+    d = ch.lstrip("0") or "0"
+    return list(dict.fromkeys([ch, d, d.zfill(2), d.zfill(3)])) if ch.isdigit() else [ch]
 
 
 def chunks(items: list, n: int):

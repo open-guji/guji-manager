@@ -573,8 +573,7 @@ def book_flags(book: str, store, cache, opts: dict | None = None, *, pages=None,
         rows = [r for r in rows if is_gate_row(r)]
     from .._cv import page_key
     try:
-        from importlib.metadata import version
-        mv = version("guji-manager")
+        from .. import __version__ as mv       # 不用 importlib.metadata：可编辑安装下是旧号
     except Exception:                          # noqa: BLE001
         mv = None
     meta = {"tool": "guji_manager.review.seg_defect", "manager_version": mv, "book": book, "gate": gate,

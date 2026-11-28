@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS events (
        CASE WHEN json_type(raw, '$.payload.u') = 'integer' THEN json_extract(raw, '$.payload.u') END)) VIRTUAL,
   level TEXT GENERATED ALWAYS AS (CASE
        WHEN stream = 'uid' THEN 'ledger'
-       WHEN stream IN ('rulings', 'vision') THEN 'ai'
+       WHEN stream IN ('rulings', 'vision', 'vis_glyph') THEN 'ai'      -- vis_glyph：cv 第三步看图缓存，不论 actor/source 一律 ai（CV3 11-28）
        WHEN json_extract(raw, '$.payload.source') IN ('auto', 'knn_infer') THEN 'machine'
        WHEN json_extract(raw, '$.payload.source') IN ('llm', 'vision') THEN 'model'
        WHEN json_extract(raw, '$.payload.level') IN ('human', 'ai', 'machine') THEN json_extract(raw, '$.payload.level')
@@ -551,3 +551,28 @@ FROM ulr WHERE rn = 1 AND kind = 'u_void'
 UNION ALL
 SELECT ws, book, 'pin_state' AS src, pin_id AS ref, NULL AS cell, reason, by, ts AS at, src_path, src_line
 FROM ps WHERE rn = 1 AND v = 'removed';
+-- benchmark 结果（guji bench --publish，CV0 11-28，Sheldon 定建表）；建表语句真源 guji_manager/bench/publish.py，首次发布时自建
+CREATE TABLE IF NOT EXISTS bench_runs (
+  "run_id" TEXT PRIMARY KEY,
+  "bench" TEXT NOT NULL,
+  "book" TEXT NOT NULL,
+  "vols" TEXT,
+  "status" TEXT NOT NULL,
+  "primary_name" TEXT,
+  "primary_value" REAL,
+  "n" INTEGER,
+  "cv" TEXT,
+  "cv_git" TEXT,
+  "manager" TEXT,
+  "dataset" TEXT,
+  "central" TEXT,
+  "params" TEXT,
+  "seconds" REAL,
+  "baseline" INTEGER NOT NULL DEFAULT 0,
+  "note" TEXT,
+  "by" TEXT,
+  "ran_at" TEXT NOT NULL,
+  "published_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  "result" TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bench_runs_bench_book ON bench_runs ("bench", "book", "ran_at");
