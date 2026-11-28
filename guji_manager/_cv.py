@@ -113,6 +113,10 @@ _FALLBACK: dict[str, tuple[str, str | None]] = {
     "core_book_code": ("core.book_code", None),     # 书级代码 guji code（2026-11-09）
     "book_config_layers": ("core.book_config", "layers"),   # guji job precheck：钉子来自哪一层（2026-11-17）
     "book_config_effective": ("core.book_config", "effective_book_dict"),   # corpus 缺省号认运行覆盖（2026-11-26）
+    # 配置组层（CV0 2026-11-28，cv #2064）：书级生效配置、解析 groups:、组配置禁写检查
+    "effective_defaults": ("core.book_config", "effective_defaults"),
+    "book_groups": ("core.book_config", "book_groups"),
+    "check_group_layer": ("core.book_config", "check_group_layer"),
     "lib_pins_expand": ("core.lib_pins", "expand_layer"),
     "core_lib_pins": ("core.lib_pins", None),
     "core_font_files": ("core.font_files", None),
