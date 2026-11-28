@@ -371,3 +371,16 @@ def test_batch_u_cells_looks_up_u_in_char_and_takes_latest(monkeypatch):
     out, notes = C.batch_u_cells("040", ["B1", "B2"], char)
     assert out == {"1:1:2": ("畝", "B2")}
     assert any("u=99" in n for n in notes)
+
+
+def test_verify_book_checks_site_pending_not_sheet(monkeypatch, tmp_path):
+    """整张单已撤：核对网站 /api/pending（只含开着的格），本趟已落定的格不该还在。"""
+    from types import SimpleNamespace
+    a = SimpleNamespace(text_id="bk")
+    R = SimpleNamespace(st={"done": {"book-text": {"info": {"landed": {"1:1:1": "师"}}}}}, mark=lambda *x, **k: None)
+    monkeypatch.setattr(C, "live_pending", lambda t, ch: {"cells": [{"cell": "1:1:2"}]})
+    assert C.verify_book(a, tmp_path, "vol04", R)["status"] == "done"
+    monkeypatch.setattr(C, "live_pending", lambda t, ch: {"cells": [{"cell": "1:1:1"}, {"cell": "1:1:2"}]})
+    assert C.verify_book(a, tmp_path, "vol04", R)["status"] == "verify-fail"
+    monkeypatch.setattr(C, "live_pending", lambda t, ch: None)
+    assert C.verify_book(a, tmp_path, "vol04", R)["status"] == "verify-fail"

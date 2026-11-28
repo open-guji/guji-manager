@@ -320,3 +320,57 @@ def test_backfill_payload_ocr_channel_and_provenance():
     # 重放：新事件读 ocr_channel，老事件（无 ocr_channel）读 channel
     assert _backfill_meta(p)["channel"] == "rare_ref"
     assert _backfill_meta({"channel": "rare_ref", "tier": "b"})["channel"] == "rare_ref"
+
+
+def _glyph_db(tmp_path, borrowed=(), edition=None):
+    from guji_manager._cv import GlyphDB
+    db = GlyphDB(tmp_path / "g.db")
+    db.conn.execute("CREATE TABLE IF NOT EXISTS borrowed (instance_id TEXT PRIMARY KEY, store TEXT)")
+    for i in borrowed:
+        db.conn.execute("INSERT INTO borrowed VALUES (?, 'x')", (i,))
+    if edition:
+        db.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('book_edition', ?)", (edition,))
+    db.conn.commit()
+    return db
+
+
+def test_borrowed_clash_and_ids(tmp_path):
+    """汉书 01 借史記（史記也有 01 册）：v2:01:… 同号的实例是别书那格，回库／人裁都不能进（GM2 11-28）。"""
+    from guji_manager.feedback.consumers import borrowed_clash
+    db = _glyph_db(tmp_path, borrowed=["v2:01:105:4:5"])
+    assert borrowed_clash(db, "v2:01:105:4:5") and not borrowed_clash(db, "v2:01:105:4:6")
+    db.close()
+    assert LB._borrowed_ids(tmp_path / "g.db") == {"v2:01:105:4:5"}
+    assert LB._borrowed_ids(tmp_path / "none.db") == frozenset()
+
+
+def test_borrowed_clash_no_table(tmp_path):
+    from guji_manager._cv import GlyphDB
+    from guji_manager.feedback.consumers import borrowed_clash
+    db = GlyphDB(tmp_path / "g.db")
+    assert not borrowed_clash(db, "v2:01:1:1:1")
+    db.close()
+
+
+def test_ensure_book_edition_writes_meta_only(tmp_path, monkeypatch):
+    """新书第一次回库：只补 meta.book_edition，不动借来的字形行（set-edition 会把它们改归本书）。"""
+    (tmp_path / "workspace.yaml").write_text("id: 988g89tszv\n", encoding="utf-8")
+    monkeypatch.setattr("guji_manager._cv.workspace_root", lambda: tmp_path, raising=False)
+    db = _glyph_db(tmp_path)
+    db.conn.execute("INSERT INTO glyphs (edition_tag, char, status, n_confirmed, updated_at) VALUES ('988g3f0wsu','王','sparse',1,'t')")
+    db.conn.commit()
+    db.close()
+    LB._ensure_book_edition(tmp_path / "g.db")
+    db = _glyph_db(tmp_path)
+    assert db.book_edition() == "988g89tszv"
+    assert db.conn.execute("SELECT edition_tag FROM glyphs").fetchall() == [("988g3f0wsu",)]
+    db.close()
+
+
+def test_ensure_book_edition_keeps_existing(tmp_path, monkeypatch):
+    monkeypatch.setattr("guji_manager._cv.workspace_root", lambda: tmp_path / "nope", raising=False)
+    _glyph_db(tmp_path, edition="abc").close()
+    LB._ensure_book_edition(tmp_path / "g.db")
+    db = _glyph_db(tmp_path)
+    assert db.book_edition() == "abc"
+    db.close()

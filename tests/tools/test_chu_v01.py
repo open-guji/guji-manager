@@ -66,3 +66,11 @@ def test_bt_add_chapter_no_gaps(tmp_path):
     _mod().bt_add_chapter(bt, tid, "009", ex, "卷九", "t")
     assert "gaps_file" not in _entry(dd)
     assert not (dd / "009.gaps.json").exists()
+
+
+def test_no_retired_cv_scripts():
+    """cv #1974 删了 republish／proof_cycle／auto_cycle 等整张换单脚本：出v01 不再以子进程调它们，导出走 land_text.export_cmd。"""
+    src = _P.read_text(encoding="utf-8")
+    code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+    assert "scripts/zhengli/" not in code
+    assert "LT.export_cmd(" in code

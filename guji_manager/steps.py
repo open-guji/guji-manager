@@ -42,7 +42,7 @@ STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
         "final-review", "rulings-hits", "ctx-ruling",
     )),
     "feedback": ("第四步 反馈迭代", "出单上线、收单落票、更新 book-text、升 1.0、1.0 之后的反馈", (
-        "pending", "pinstate", "online-lists", "swap", "land", "collect", "cellvotes", "closeout", "rekey-cells",
+        "pending", "pending-settle", "pending-parity", "pinstate", "online-lists", "swap", "land", "collect", "cellvotes", "closeout", "rekey-cells",
         "exit-check", "char-diff", "audit", "freeze", "opinions", "progress-sync", "human-conflicts",
     )),
     "output": ("第五步 排版输出", "导出排版文本（md、lines.md／pages.json、维基文库、重排段落）与对勘报告", (
@@ -68,7 +68,7 @@ PASSTHROUGH: dict[str, tuple[str, str]] = {
     "central-gc": ("guji_manager.central_gc:main", "中心库定期清理（产物包按保留规则清）"),
     "triage": ("guji_manager.review_triage.__main__:main", "参校字快审分流（skip/pass/withdraw/review）"),
     "review-pages": ("guji_manager.review_pages.__main__:main", "人审页模板库（预选、一字一卡、版本、台账）"),
-    "progress-sync": ("guji_manager.progress_sync:main", "后台看板自动对账（线上单、包口径、迭代轮次）"),
+    "progress-sync": ("guji_manager.progress_sync:main", "后台看板自动对账（待审数、包口径、迭代轮次）"),
     "iterate": ("guji_manager.iterate.__main__:main", "降人审迭代：轮报告、金标、抽检台账、杠杆排序、冻结日历"),
     "suggest": ("guji_manager.suggest:main", "诊断信号 → 开关建议，点头后写册 yaml"),
     "pair-attr": ("guji_manager.pair_attribution:main", "形近字对归属表（刻形／文意／暂归一）查看与校验"),

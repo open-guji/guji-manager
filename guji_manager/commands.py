@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli_close, cli_db, cli_eval, cli_exp, cli_feedback, cli_glyph, cli_glyph_db, cli_model, cli_ops
-from . import pin_state, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
+from . import pin_state, cli_closeout, cli_code, cli_output, steps, cli_pending, cli_settle, cli_parity, cli_perf, cli_products, cli_runs, cli_seg, collect, ctx_ruling, human_conflicts, land, round_check, ruling_hits, swap
 from .cli_cellvotes import add_parser as _add_cellvotes
 from .jobs import cli as _jobs_cli
 from .uid import cli as _uid_cli
@@ -47,6 +47,8 @@ COMMANDS: dict = {
     **swap.COMMANDS,           # swap（换单 driver，A32 11-05）
     **pin_state.COMMANDS,      # pinstate（钉状态流：删钉／过期／重新生效，GM4 11-26）
     **cli_pending.COMMANDS,    # pending（待审条目，一格一条，A31 11-10）
+    **cli_parity.COMMANDS,     # pending-parity（网站待审数＝中心库 open 数对账，11-28）
+    **cli_settle.COMMANDS,     # pending-settle（格已落定的开着条目标 resolved，清理计划 2.2，11-27）
     **cli_seg.COMMANDS,        # seg pin（整列写定 manual-cells，A22 11-12）
     **_uid_cli.COMMANDS,       # uid（字格身份账：字格永久编号 u，CV0 11-24）
     **collect.COMMANDS,        # collect（收单快路：人裁直接落 book-text，不重放，A31 11-19）
