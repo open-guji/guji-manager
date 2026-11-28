@@ -6,12 +6,22 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，接 #1209，CV3 提）：`glyphdb_admit` 人裁落库字块缓存缺图、改用库里同 id 旧图时，排除 `borrowed` 表里的 id（那是借来的别书刻例、图是别书那格）。与 #1209 的「同号不进」分开挡：cv #1989（本书优先、先摘借来那份再写）发版后放开同号时，这一处仍不会取到别书的图。
+
+- PATCH（11-28，GM2，汉书文渊阁 01 首次回库查出）：借库的书与被借的书册号相同时（汉书 01 借史記 g30 人裁刻例，史記也有 01 册），实例 id `v2:<册>:页:列:格` 不带书、两书同号：回库照常进会把借来那例的字改成汉书的字、图仍是史記那格（贴错图），汉书这例又因 id 在 `borrowed` 表里导不出去（3,415 格撞 68 格）。现在 `glyph-db backfill` 选格时跳过同号格（摘要「与借来的刻例同号 N」）、`admit` 再挡一道；`glyphdb_admit` 的人裁与回库重放遇同号不取图、不进库（`ConsumeResult.borrowed_clash`）。另：新书第一次回库本书字形库没有 `meta.book_edition` 时，原先 `admit_instance` 在事件写完后才拒写、留下半截；现在写事件前按 `workspace.yaml` 的 `id` 只补 meta 一行（不用 `set-edition`，它会把借来的别书字形行一并改归本书）。`db sync` 末尾「人裁事件还没被消费者处理」不再把回库批次的 gold_add／crop_exclude／product_invalidate 报成漏（入库时已直接进库，这几处故意不走，route 了反倒会把整册 seed_admit 判过期）。
+
 - PATCH（11-28，落票规则·负责范围）：名册 `books` 是 ID 列表，版本（Book）、作品（Work）、丛编（Collection）的 ID 直接写、不加前缀，写了作品／丛编就管它名下所有版本。归属以 book-index 为准：`landing_policy.BookIndexLineage` 读 `GUJI_BOOK_INDEX` 检出里的 Book.work_id、contained_in（丛编嵌套向上走、防环，作品的 contained_in 也算）；没配或查不到的书只认它自己的 ID。只在 `--policy rules` 下生效，缺省 auto 行为不变。
 
 - PATCH（11-28，GM4，仅文档，L0）：清理 manager 文档里整张换单、rev、人裁事件、批号的旧说法。「人裁事件」统一改称「裁定事件」（总纲文件改名为 `doc/00-总览/待审条目-裁定事件-book-text格子.md`）；第四步 wiki／doc（待审条目上线〔原出单上线〕、收单、收单落票、反馈迭代-步骤、常见坑、1.0 发布／验收标准、命令速查等）按 `guji land`＋`guji collect`＋`guji pending-settle` 重写；整张换单时代的页移入 `doc/archive/`（换线上人审单、精校流程自动化方案、设计-待审单进KV、设计-待审条目化）并建索引；`doc/数据库/中心库.md`、`网站收件箱.md`、`wiki/数据库表一览.md` 按 11-28 线上 D1（32 张表＋4 视图）对齐；`doc/数据库/待审条目与裁定事件.md` 为现行基准页。
 - MINOR（11-28，网站会员身份提交 · 落票规则）：`feedback/landing_policy` 加 `rules` 策略（缺省仍是 auto，行为不变）：身份（`Standing`＝等级＋负责的书，名册 `GUJI_MEMBER_ROSTER` JSON，匿名＝anon、没列的会员＝member）、规则（`Rules`：solo_tiers、book_owner_solo、quorum、quorum_min_tier，可由 `GUJI_LANDING_RULES`／`rules:<文件>` 整份盖）、策略三步分开，`decide(cell, votes, book)` 加 `book` 参数（旧策略兼容）。`cellvotes draft` 把 `--site-book` 传给策略。editor 以上与本书负责人一票即落，匿名永远不直接落地。
 
 - PATCH（11-28，网站会员身份提交）：网站票落裁定的 `payload.by` 区分会员与匿名：会员＝`member:<会员号>`（网站 11-27 起 voter 就是 8 位会员号；`voter.is_member_code` 按网站同算法验校验位，`is_member` 同时认会员号与旧 uid），匿名＝`anon:<voter 前 16 位>`（原来是不带前缀的短标识）；事件另带 `payload.voters={member,anon}` 记各几票。level 仍是 human、channel 仍是 web_vote（口径不动，会员／匿名的权重差异不在本改动里）。新增 `voter.voter_by`。
+## [0.7.2] - 2026-11-28
+
+基于 v0.7.1，只带 #1211（dev 上另有 MINOR 待发，不在本版）。
+
+- PATCH（11-28，CV0，册号位数统一，L0：只改迁移工具）：`ops/rename_volume` 补全数据目录：按册目录 `feedback/anchor_patches/<册>/` 跟着改名；`feedback/rulings/`、`config/groups/`、`review/batches/` 等其余 json／jsonl 里的格号换新名、内容里的产物 sha（`cells_sha`）按改写前后对照表换；`corpus/`（钉 sha）与 `feedback/lists/pending/`（归 renumber）仍只报不改。新增 `--repair <备份目录> --data-dir … [--apply]`：已用 ≤0.7.1 改过名的书按当时的 rename-log 与 shamap 补做（脉经第 1 册演练数据：只需搬 anchor_patches/01）。新测 2 条。
+
 ## [0.7.1] - 2026-11-27
 
 - PATCH（11-27，GM2，跟 cv #1974 退役整张换单脚本）：`tools/开书/出v01.py` 不再子进程跑 cv `scripts/zhengli/republish.py from-pack`（含 cv #1974 的 cv 版本上这个文件已删，出 v0.1 会在导出那步失败）。导出改用 `land_text.export_meta`＋`export_cmd`（与 `guji land` 收尾同参数：char-cord、`--keys cv`、四庫拆页表），出到 `reports/<册>/_land/export/`；首发时 book-text dev 上还没有这一章，文本版本仍取本机检出、不带 `--prev-char`。末尾打印的推单命令由 `republish.py push` 改成 `guji land <册> … --export-char … --text-vdir …`（先计划、再 `--apply`）。只出 v0.1 的工具与 wiki/doc 第二步那几处文案改，不动 land／online_lists／swap 逻辑。

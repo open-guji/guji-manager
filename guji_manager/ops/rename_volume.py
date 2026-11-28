@@ -16,6 +16,9 @@
    - 按册存的文件 ``feedback/{anchors,uid,notes}/<旧>.jsonl``、``feedback/lists/u_void/<旧>.jsonl``：改名并改写内容；
      u 账 ``cells_sha`` 按产物 sha 对照表换（不换就按新切分查不到 u）；
    - ``feedback/verdicts/**/*.jsonl``、``config/*.jsonl``：内容里的格号换新名（文件名不变）。
+   - 按册的目录 ``feedback/anchor_patches/<旧>/`` → ``<新>/``（cv ``anchor.patch_path`` 按册名找图块）。
+   - 数据目录里其余 json／jsonl（``feedback/rulings/``、``config/groups/``、``review/batches/``、``touch_label_verdicts`` 等）：
+     格号换新名，内容里出现的产物 sha（如 ``cells_sha``）按改写前后对照表换（11-28 殿本演练查出这几类原先只报不改）。
    改完由执行方 ``guji db push -w <工作区> --allow-delete`` 推回中心库。
 
 不改什么
@@ -25,7 +28,11 @@
 - 原图目录（册 yaml ``raw_dir``）：照旧指向原处。
 - book-text 章号、待审单：归 ``ops/renumber``。
 
-改完扫一遍：数据目录其他文件里还挂旧名的，清单里列出（只报不改）。
+- ``corpus/``（钉 sha 的语料，改写会让钉子对不上；cv 读时认 ``aliases``）、``feedback/lists/pending/``（待审单归
+  ``ops/renumber`` 与网站归一）：只报不改，列在清单的 ``leftovers`` 里。
+
+已经改过名、用旧版工具（manager ≤0.7.1）做的书，用 ``--repair <当时的备份目录> --data-dir … --apply`` 补做上面新加的几类：
+按备份里的 ``rename-log.json`` 取改名表、``shamap.json`` 取产物 sha 对照表，只动数据目录，另存一份备份到 ``<备份>/repair-<时间>/``。
 
 用法::
 
@@ -51,6 +58,9 @@ BOOK_FIELDS = ("book", "vol", "book_id", "volume_id")
 PER_BOOK = ("feedback/anchors", "feedback/uid", "feedback/notes", "feedback/lists/u_void")
 MARKER = "_renamed.json"
 CONTENT_GLOBS = ("feedback/verdicts/**/*.jsonl", "config/*.jsonl")
+PER_BOOK_DIRS = ("feedback/anchor_patches",)
+#: 只报不改：事件只追加；字形库实例 id 不透明；corpus 钉 sha；待审单归 renumber／网站。
+REPORT_ONLY = ("feedback/events/", "output/glyph_store/", "corpus/", "feedback/lists/pending/")
 _HEX = re.compile(r"[0-9a-f]{64}")
 
 
@@ -133,7 +143,9 @@ def _move(plan: Plan, src: Path, dst: Path) -> bool:
     return True
 
 
-def build_plan(amap: dict[str, str], data_dir: Path | None, products: Path | None, cache: Path | None) -> Plan:
+def build_plan(amap: dict[str, str], data_dir: Path | None, products: Path | None, cache: Path | None,
+               shamap: dict[str, str] | None = None) -> Plan:
+    """`shamap`（`--repair`）：上次改名的产物 sha 对照表；内容里带这些旧 sha 的数据文件也要改写。"""
     plan = Plan(amap, products_root=products)
     clash = sorted(set(amap) & set(amap.values()))
     if clash:
@@ -157,24 +169,37 @@ def build_plan(amap: dict[str, str], data_dir: Path | None, products: Path | Non
             dst = data_dir / sub / f"{new}.jsonl"
             if _move(plan, data_dir / sub / f"{old}.jsonl", dst):
                 (plan.uid if sub == "feedback/uid" else plan.rewrite_json).append(str(dst))
+        for sub in PER_BOOK_DIRS:
+            _move(plan, data_dir / sub / old, data_dir / sub / new)
     if data_dir is not None:
         for g in CONTENT_GLOBS:
             for p in sorted(data_dir.glob(g)):
                 if rw.json_text(p.read_text(encoding="utf-8"))[1]:
                     plan.rewrite_json.append(str(p))
-        touched = {Path(m["from"]) for m in plan.moves} | {Path(p) for p in plan.rewrite_json}
+        moved = {Path(m["from"]) for m in plan.moves}
+        touched = {Path(p) for p in plan.rewrite_json} | {Path(p) for p in plan.uid} | {Path(p) for p in plan.rewrite_yaml}
+        old_shas = set(shamap or ())
         for p in sorted(data_dir.rglob("*")):
-            if not p.is_file() or p in touched or p.suffix not in (".json", ".jsonl", ".yaml"):
+            if not p.is_file() or p in touched or p in moved or any(d in p.parents for d in moved):
+                continue
+            if p.suffix not in (".json", ".jsonl", ".yaml"):
                 continue
             rel = p.relative_to(data_dir).as_posix()
             if rel.startswith(("feedback/events/", "output/glyph_store/")):
                 continue
             try:
-                n = rw.json_text(p.read_text(encoding="utf-8"))[1]
+                t = p.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if n:
-                plan.leftovers.append(f"{rel}（{n} 处）")
+            n = rw.json_text(t)[1]
+            hit = bool(old_shas) and any(h in old_shas for h in _HEX.findall(t))
+            if not (n or hit):
+                continue
+            if rel.startswith(REPORT_ONLY) or p.suffix == ".yaml":
+                if n:
+                    plan.leftovers.append(f"{rel}（{n} 处）")
+                continue
+            plan.rewrite_json.append(str(p))
     return plan
 
 
@@ -186,7 +211,7 @@ def _backup(src: Path, backup: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def apply(plan: Plan, backup: Path) -> dict:
+def apply(plan: Plan, backup: Path, shamap: dict[str, str] | None = None) -> dict:
     if plan.conflicts:
         raise SystemExit("有冲突，整书不动：\n  " + "\n  ".join(plan.conflicts))
     backup.mkdir(parents=True, exist_ok=True)
@@ -226,13 +251,13 @@ def apply(plan: Plan, backup: Path) -> dict:
     # 下游照实判「上游产物变了」，close-check 拿改名标记里的对照表认出这是改名造成的，见 rename_only_stale）。
     for f in plan.products_json:
         edit(f, rw.json_text)
-    prod_map = dict(cur)
+    prod_map = {**(shamap or {}), **cur}
     for f in plan.manifests:
         edit(f, lambda t: _manifest_text(t, rw, prod_map))
     for f in plan.stamps:
         edit(f, lambda t: remap_shas(t, prod_map))
     for f in plan.rewrite_json:
-        edit(f, rw.json_text)
+        edit(f, lambda t: _uid_text(t, rw, prod_map))       # 格号换名＋内容里的产物 sha（cells_sha 等）换新
     for f in plan.rewrite_yaml:
         edit(f, lambda t: _yaml_book(t, rw))
     for f in plan.uid:
@@ -312,7 +337,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--backup", type=Path, help="--apply 时的备份目录（必填）")
     ap.add_argument("--rollback", type=Path, help="按备份目录还原（配 --apply）")
+    ap.add_argument("--repair", type=Path, help="已用旧版工具改过名的书：按当时的备份目录补改数据目录（配 --data-dir）")
     a = ap.parse_args(argv)
+    if a.repair:
+        if not a.data_dir:
+            ap.error("--repair 要给 --data-dir")
+        log = json.loads((a.repair / "rename-log.json").read_text(encoding="utf-8"))
+        sm = a.repair / "shamap.json"
+        shamap = json.loads(sm.read_text(encoding="utf-8")) if sm.exists() else {}
+        plan = build_plan(log["map"], a.data_dir, None, None, shamap=shamap)
+        print(json.dumps(plan.summary(), ensure_ascii=False, indent=2))
+        for m in plan.moves:
+            print(f"mv {m['from']} → {m['to']}")
+        if not a.apply:
+            return 1 if plan.conflicts else 0
+        import time
+        apply(plan, a.repair / f"repair-{time.strftime('%Y%m%d-%H%M%S')}", shamap=shamap)
+        print(json.dumps(plan.counts, ensure_ascii=False))
+        return 0
     if a.rollback:
         if not a.apply:
             print(f"会按 {a.rollback}/rename-log.json 还原；加 --apply 动手")
