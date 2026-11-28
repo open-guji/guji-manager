@@ -41,6 +41,12 @@ from .._cv import collation_grade_summarize as grade_summarize
 from .._cv import Witness
 
 
+
+def witness_accuracy(w) -> str:
+    """证人准确度档。cv 11-28（#2030）起 `Witness.quality` 改名 `accuracy`（very_high/high/mid/low）；
+    旧 cv 还是 `quality`（best/mid/low）。报告 JSON 的 `quality` 键照旧（html 读它），另加 `accuracy`。"""
+    return getattr(w, "accuracy", None) or getattr(w, "quality", "")
+
 def collate_book(book: str, pages: list[int], witnesses: list[Witness],
                  store: ProductStore | None = None, progress=None) -> dict:
     """整册比对 → 可直接落盘的报告 dict。
@@ -103,7 +109,7 @@ def collate_book(book: str, pages: list[int], witnesses: list[Witness],
         "built_at": time.strftime("%Y-%m-%d %H:%M"),
         "elapsed_s": round(time.time() - t0, 1),
         "pages": pages,
-        "witnesses": [{"name": w.name, "label": w.label, "quality": w.quality,
+        "witnesses": [{"name": w.name, "label": w.label, "quality": witness_accuracy(w), "accuracy": witness_accuracy(w),
                        "line_is_column": w.line_is_column,
                        "n_chars": len(w.text)} for w in witnesses],
         "unanchored": unanchored,
@@ -180,7 +186,7 @@ def summarize(diffs: list[Diff], cols: list[dict], pages_out: list[dict],
         variant_pairs = Counter((d.char, d.ref) for d in wd if d.kind.startswith("variant"))
         n_equal = sum(p["witnesses"].get(w.label, {}).get("n_equal", 0) for p in pages_out)
         by_witness[w.label] = {
-            "quality": w.quality,
+            "quality": witness_accuracy(w), "accuracy": witness_accuracy(w),
             "n_equal": n_equal,
             "counts": dict(Counter(d.kind for d in wd)),
             "by_kind_channel": {k: dict(v) for k, v in kind_channel.items()},

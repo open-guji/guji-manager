@@ -5,6 +5,7 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+- PATCH（11-28，GM2）：跟上 cv dev 两处改动，dev CI 复绿——cv #2030 `Witness.quality` 改名 `accuracy`：`report/run.py`、`guji eval` 证人一行改读 accuracy（旧 cv 退回 quality；报告 JSON 照旧有 `quality` 键，另加 `accuracy`），三个搬来的测试改传 accuracy；cv #2032 借组库缺省跳过本书自己的例：glyphlib 借法测试显式传空 `self_ids`，另加一条缺省跳过的断言。
 
 - PATCH（11-28，GM2，cv P3 seed_admit→char_decide 两名并认，GM2 名下；读口用 `products_io`）：冻结比对 `ops/freeze.compare_products` 把快照里的 `seed_admit/` 路径映射到 `char_decide/`（`guji-cv decide migrate-name` 后不误报缺文件）；包导入降级检查 `snap/importer.downgraded_steps` 跨两名取新鲜数；`jobs/auto_pages.REPLAY_FROM`、`ruling_hits.FETCH_STEPS`、取包 `datastore/packs.fetch_products` 的 steps 过滤两名都认；`lib_text_check` 失效两名都打、整册钩子认两名；`cli_perf` 历史 perf 行 seed_admit 归「4 定字」，本机 cv 有 `steps.char_decide*` 时同样挂分段钩子；close-check 1a 在 char_decide 缺页而 seed_admit/ 还在时提示先跑 migrate-name。写端（事件 target.step、suggest 补丁键）仍写旧名，等 CV4 切换通知。L0。
 
