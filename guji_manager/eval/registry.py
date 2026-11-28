@@ -262,6 +262,13 @@ EVALS: dict[str, EvalSpec] = {s.id: s for s in [
     _e("cands", "char-candidates", pythonpath=True,
        title="识字候选（3c／4b／卡片）", needs=("heavy",),
        note="3c 报 r5 全字表召回@1/10/30/50；4b 报固定池重排与串联、伤害率；卡片报按钮命中，分「金标≠参校字」另看；要 SikuRoBERTa（HF 缓存）"),
+    # 3b 形近字组整体（CV3，2026-11-28；形近字组整体方案第八、十一节 D）：三书各一冻结册（test）＋一册 fit（临时校准按册留出），
+    # 冻结 3a 记录、放行字／人裁标签、被触发格的字块图；模型文件读本书中心库数据目录（$GUJI_DATA_HOME/main/<工作区>/config/groups/…，
+    # 先 `guji db pull -w <工作区>`），缺模型的组报 missing_model。
+    _e("near", "glyph-near/bench3b", pythonpath=True,
+       title="3b 形近字组整体（触发／覆盖／一致率／ECE／耗时）", needs=("heavy", "model"),
+       note="报每书每组每方法的触发量、覆盖率（放行字／人裁落在组内的格被罩住的比例）、准确率与弃权率、方法间一致率、"
+            "有校准表时的 ECE、每格耗时、methods_sha 与模型钉版；--fit-calib DIR 另出临时校准表（只排序展示）"),
     _e("char_ocr", "char-ocr", pythonpath=True,
        title="单字识别", needs=("products", "engine", "heavy"),
        note="⚠ 同上，--out 默认写进数据集仓；且需 rapidocr"),
@@ -332,6 +339,8 @@ SUITES["read"] = SUITES["read-3a"] + SUITES["read-3b"]
 # 识字候选线（3c／4b／卡片），见 open-guji-dataset/char-candidates/README.md
 SUITES["cands"] = ("cands",)
 SUITES["read-qtw-lib"] = ("sim_bench", "nearform", "match_bench_qtw")
+# 3b 形近字组整体（要三书中心库数据目录里的书级模型文件）
+SUITES["near"] = ("near",)
 
 
 def expand_suites(keys: list[str]) -> list[str]:
