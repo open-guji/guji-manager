@@ -6,6 +6,8 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，汉书文渊阁 01 首次回库查出）：借库的书与被借的书册号相同时（汉书 01 借史記 g30 人裁刻例，史記也有 01 册），实例 id `v2:<册>:页:列:格` 不带书、两书同号：回库照常进会把借来那例的字改成汉书的字、图仍是史記那格（贴错图），汉书这例又因 id 在 `borrowed` 表里导不出去（3,415 格撞 68 格）。现在 `glyph-db backfill` 选格时跳过同号格（摘要「与借来的刻例同号 N」）、`admit` 再挡一道；`glyphdb_admit` 的人裁与回库重放遇同号不取图、不进库（`ConsumeResult.borrowed_clash`）。另：新书第一次回库本书字形库没有 `meta.book_edition` 时，原先 `admit_instance` 在事件写完后才拒写、留下半截；现在写事件前按 `workspace.yaml` 的 `id` 只补 meta 一行（不用 `set-edition`，它会把借来的别书字形行一并改归本书）。
+
 ## [0.7.1] - 2026-11-27
 
 - PATCH（11-27，GM2，跟 cv #1974 退役整张换单脚本）：`tools/开书/出v01.py` 不再子进程跑 cv `scripts/zhengli/republish.py from-pack`（含 cv #1974 的 cv 版本上这个文件已删，出 v0.1 会在导出那步失败）。导出改用 `land_text.export_meta`＋`export_cmd`（与 `guji land` 收尾同参数：char-cord、`--keys cv`、四庫拆页表），出到 `reports/<册>/_land/export/`；首发时 book-text dev 上还没有这一章，文本版本仍取本机检出、不带 `--prev-char`。末尾打印的推单命令由 `republish.py push` 改成 `guji land <册> … --export-char … --text-vdir …`（先计划、再 `--apply`）。只出 v0.1 的工具与 wiki/doc 第二步那几处文案改，不动 land／online_lists／swap 逻辑。

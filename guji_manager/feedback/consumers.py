@@ -39,6 +39,7 @@ class ConsumeResult:
     no_products: int = 0       # glyphdb_admit：本机没有这页现行切分产物、绑定算不出，不取图（换到有产物的机器再消费）
     superseded: int = 0        # glyphdb_admit：库里这一格已是更晚的人裁，旧票不再覆盖（非错误）
     withdrawn: int = 0         # glyphdb_admit：更晚的人裁判切坏／非字／破损，撤掉库里旧的人裁刻例
+    borrowed_clash: int = 0    # glyphdb_admit／回库重放：格号与借来的别书刻例同号（如两书都有 01 册），不取图、不进库（GM2 11-28）
     frame_heavy: int = 0       # glyphdb_admit：字块带框重（同字对照，`seg_defect.lib_frame_heavy`），不进库（也计入 no_lib）
     errors: list[str] = None   # type: ignore[assignment]
     frame_heavy_keys: list[str] = None   # type: ignore[assignment]  —— 上面那些格的键与特征，反馈切分查为什么框线没切掉
@@ -53,7 +54,7 @@ class ConsumeResult:
         return {"consumer": self.consumer, "events": self.n_events, "added": self.added,
                 "updated": self.updated, "skipped": self.skipped, "no_lib": self.no_lib,
                 "occluded": self.occluded, "unbound": self.unbound, "no_products": self.no_products,
-                "superseded": self.superseded, "withdrawn": self.withdrawn,
+                "superseded": self.superseded, "withdrawn": self.withdrawn, "borrowed_clash": self.borrowed_clash,
                 "frame_heavy": self.frame_heavy, "frame_heavy_keys": self.frame_heavy_keys,
                 "errors": self.errors}
 
@@ -434,6 +435,17 @@ def glyphdb_admit(events, db_path: str | None = None,
         _OCC_BOOKS.reset(occ_tok)
 
 
+def borrowed_clash(db, db_id: str) -> bool:
+    """``db_id`` 已是库里借来的别书刻例（``borrowed`` 表）。实例 id 是 ``v2:<册>:页:列:格``、不带书，
+    借库的书与被借的书册号相同（汉书 01 借史記，史記也有 01）时同一个 id 指两本书的两格：照常进库会把
+    借来那例的字改成本书的字、图仍是别书那格（贴错图），本机库里本书刻例又因 id 在 ``borrowed`` 表里导不出去
+    （汉书 01 回库 3,415 格撞 68 格，GM2 11-28）。撞号的一律不进，等实例 id 带书再说。"""
+    try:
+        return db.conn.execute("SELECT 1 FROM borrowed WHERE instance_id=?", (db_id,)).fetchone() is not None
+    except Exception:      # noqa: BLE001 —— 没有 borrowed 表＝没借库
+        return False
+
+
 def _is_backfill(e: Event) -> bool:
     p = e.payload or {}
     return e.kind == "confirm" and p.get("source") == "auto" and bool(p.get("backfill")) \
@@ -459,6 +471,10 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
         key = e.target.key[3:] if e.target.key.startswith("v2:") else e.target.key
         db_id, p = f"v2:{key}", e.payload
         ch = p.get("shape") or ""
+        if borrowed_clash(db, db_id):
+            res.borrowed_clash += 1
+            res.skipped += 1
+            continue
         if (db.conn.execute("SELECT 1 FROM admissions WHERE instance_id=?", (db_id,)).fetchone()
                 or db.conn.execute("SELECT 1 FROM evictions WHERE instance_id=?", (db_id,)).fetchone()):
             res.skipped += 1
@@ -616,6 +632,11 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
         from .._cv import resolve_patch_key
         path = cache.get(book, "char_patch", resolve_patch_key(book, ckey))   # alt_cut 换列
         db_id0 = e.target.key if e.target.key.startswith("v2:") else f"v2:{e.target.key}"
+        if borrowed_clash(db, db_id0):
+            # 与借来的别书刻例同号：库里那张图是别书的，不能拿来当本格，也不能撤／改它（见 borrowed_clash）
+            res.borrowed_clash += 1
+            res.no_lib += 1
+            continue
         lib_png = None
         if path is None:
             # 字块缓存会被清（LRU）。这一格**已在库里**（改判）时，图块就用库里那张——
