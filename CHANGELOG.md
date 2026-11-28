@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
 ## [0.7.7] - 2026-11-28
 
 PATCH：配置组层（配 cv #2064，cv 下一版带出）。**书在 book_defaults 写 `groups:` 之前，它的执行方要先升到本版**：老 manager 拉不到组配置，新 cv 会拒跑。本版对老 cv（0.7.x）照常可用，读不到组层时退回读书层。
