@@ -160,8 +160,10 @@ def _single_han(ch: str | None) -> bool:
 def _seed(root: Path, book: str) -> tuple[dict[str, dict], dict[int, str]]:
     cells: dict[str, dict] = {}
     page_at: dict[int, str] = {}
-    made = _manifest_ts(root / book / "seed_admit" / "_manifest.jsonl")
-    for f in sorted((root / book / "seed_admit").glob("p*.json")):
+    from ..products_io import decide_dir
+    d = decide_dir(root, book)                         # 收尾新旧名并认（cv #2033 改名 char_decide）
+    made = _manifest_ts(d / "_manifest.jsonl")
+    for f in sorted(d.glob("p*.json")):
         d = json.loads(f.read_text(encoding="utf-8"))
         pm = d[next(iter(d))]
         try:

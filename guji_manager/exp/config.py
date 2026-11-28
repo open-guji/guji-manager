@@ -101,9 +101,11 @@ class ExpConfig:
 
 def merge_params(*layers: dict[str, dict] | None) -> dict[str, dict]:
     """按 Step 合并多层 `{step: {字段: 值}}`，后者优先（与 `Engine` 的合并口径一致）。"""
+    from ..products_io import fold_params
     out: dict[str, dict] = {}
     for layer in layers:
-        for sid, kv in (layer or {}).items():
+        # 收尾步改名（cv #2033）：书参数 cv 已折成 char_decide，评测口径／旧实验 yaml 还写 seed_admit——合层前各层先并成生效名
+        for sid, kv in (fold_params(layer) or {}).items():
             out.setdefault(sid, {}).update(copy.deepcopy(kv or {}))
     return out
 

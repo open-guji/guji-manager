@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from guji_manager.products_io import active_step  # 收尾步名随本机 cv（cv #2033 改名 char_decide）
+
 import sqlite3
 from pathlib import Path
 
@@ -112,7 +114,7 @@ def _run_seed(tmp_path, monkeypatch, db_path, recs, **params):
                                   columns=[ColumnCells(col=3, ok=True, n_body_slots=3, period=10.0,
                                                        border_top=0.0, cells=cells)]))
     write_product(ctx, "align_ref", 1, align_ref=PageAlignRef(page=1, anchored=False, coord=[]))
-    sa = STEPS["seed_admit"].run_page(ctx, 1)["seed_admit"]
+    sa = STEPS[active_step()].run_page(ctx, 1)[active_step()]
     return {r.slot: r for cc in sa.columns for r in cc.chars}
 
 

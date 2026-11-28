@@ -21,6 +21,8 @@ products 与 cache 分家…）。那段说明本身就是这套测试设计不�
 
 from __future__ import annotations
 
+from guji_manager.products_io import active_step  # 收尾步名随本机 cv（cv #2033 改名 char_decide）
+
 import open_guji_cv.steps  # noqa: F401
 import pytest
 from helpers import make_book, make_ctx, page_decision, page_match, write_product
@@ -126,7 +128,7 @@ def test_near_form_families_never_auto_admit_on_shape_alone(tmp_path, monkeypatc
             dict(slot=2, verdict="unsure", cov=0.995, wmax=0.0,
                  candidates=[(plain, 0.995)]),
         ]))
-    sa = STEPS["seed_admit"].run_page(ctx, PAGE)["seed_admit"]
+    sa = STEPS[active_step()].run_page(ctx, PAGE)[active_step()]
     by_slot = {r.slot: r for cc in sa.columns for r in cc.chars}
 
     assert by_slot[2].admit and by_slot[2].channel in ("match_solo", "match_solo_ocr"), \

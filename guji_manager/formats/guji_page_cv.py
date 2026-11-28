@@ -73,7 +73,8 @@ def _candidates(store: ProductStore, book: str, key: str) -> dict[str, dict[str,
 
 def _manifest_row(store: ProductStore, book: str, step: str, key: str) -> dict | None:
     """该步该页 `_manifest.jsonl` 里最后一条记录（指纹、上游 sha、code_rev）。"""
-    p = store.step_dir(book, step) / "_manifest.jsonl"
+    from ..products_io import decide_dir, is_decide_step
+    p = (decide_dir(store.root, book) if is_decide_step(step) else store.step_dir(book, step)) / "_manifest.jsonl"   # 收尾新旧名并认
     if not p.exists():
         return None
     row = None

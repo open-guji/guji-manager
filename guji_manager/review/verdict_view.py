@@ -215,7 +215,7 @@ def closure_mismatches(book: str, pages: list[int], store=None,
     """
     from .._cv import page_key
     from .._cv import ProductStore
-    from .._cv import ADMIT_KIND, ADMIT_STEP
+    from ..products_io import read_decide
     from .._cv import FAMILY as JYS
     shapes = shape_decided_cells(book, log)
     if not shapes:
@@ -227,7 +227,7 @@ def closure_mismatches(book: str, pages: list[int], store=None,
         ids = want.get(pg)
         if not ids:
             continue
-        a = st.read(book, ADMIT_STEP, page_key(pg), ADMIT_KIND)
+        a = read_decide(st, book, page_key(pg))   # 收尾新旧名并认（cv #2033）
         if a is None:
             continue
         for cc in a.columns:
@@ -266,7 +266,7 @@ def closure_gaps(book: str, pages: list[int], store=None, log: EventLog | None =
     """
     from .._cv import page_key
     from .._cv import ProductStore
-    from .._cv import ADMIT_KIND, ADMIT_STEP
+    from ..products_io import read_decide
     shapes = shape_decided_cells(book, log)
     if not shapes:
         return []
@@ -277,7 +277,7 @@ def closure_gaps(book: str, pages: list[int], store=None, log: EventLog | None =
         ids = want.get(pg)
         if not ids:
             continue
-        a = st.read(book, ADMIT_STEP, page_key(pg), ADMIT_KIND)
+        a = read_decide(st, book, page_key(pg))   # 收尾新旧名并认（cv #2033）
         if a is None:
             continue
         for cc in a.columns:
