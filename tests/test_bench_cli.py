@@ -417,3 +417,41 @@ def test_book_ws_update_goes_through_home_clone(tmp_path, monkeypatch):
     sp.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "n"], cwd=up, check=True)
     assert R.book_ws("zz", tmp_path / "cache", None) == p
     assert (p / "new.txt").exists()
+
+
+def test_gold_extra_goes_into_dataset_rels(fake, monkeypatch):
+    """bench 登记的 `gold_extra`（兄弟分片）随金标一起交给测试集仓取（干净会话里稀疏克隆要一并检出）；旧 cv 没这个字段照旧。"""
+    spec, ds, tmp = fake
+    seen = {}
+    real = R.dataset_root
+
+    def spy(opt=None, *, cache=None, rels=None, ref=None):
+        seen["rels"] = list(rels or [])
+        return real(opt, cache=cache, rels=rels, ref=ref)
+    monkeypatch.setattr(R, "dataset_root", spy)
+    a = cli._fix(_args(ds, tmp, extra=["--book", "bk"]))
+    if "gold_extra" in B.BenchSpec.__dataclass_fields__:
+        import dataclasses
+        spec2 = dataclasses.replace(spec, gold_extra=("char-segmentation/band-ink",))
+        monkeypatch.setitem(B._REGISTRY, "t-fake", spec2)
+        cli.run_one(spec2, "bk", a)
+        assert seen["rels"] == ["fake/bk", "char-segmentation/band-ink"]
+    cli.run_one(spec, "bk", a)
+    assert seen["rels"] == ["fake/bk"]
+
+
+def test_models_fetch(monkeypatch):
+    class _R:
+        returncode = 0
+        stderr = ""
+        stdout = 'x\n{"kind": "model", "registry": 106, "missing": 30, "placed": 30, "not_in_r2": []}'
+    calls = []
+    monkeypatch.setattr(R.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or _R())
+    assert R.models() == {"registry": 106, "missing": 30, "placed": 30}
+    assert calls[0][1:] == ["model", "fetch", "--json"]
+    _R.stdout = '{"registry": 1, "missing": 1, "placed": 0, "not_in_r2": ["models/x.pt"]}'
+    with pytest.raises(R.Missing):
+        R.models()
+    _R.returncode, _R.stderr = 1, "boom"
+    with pytest.raises(R.Missing):
+        R.models()
