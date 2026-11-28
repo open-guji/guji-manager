@@ -14,6 +14,7 @@
 | `guji bench ab <bench> --book <书> --params JSON` | A（现行）、B（加覆盖）各跑一次，出 B 对 A 的翻转清单；有变坏退出码 1 |
 | `guji bench guard [--heavy] [--legacy]` | 发版护栏：每个有护栏的 bench × 登记了金标的书；`--legacy` 连老框架 `guji eval guard` 一起验 |
 | `guji bench show <bench> --book <书> [--history]` | 看最近一次 report.md；`--history` 列历次 |
+| `guji bench run <bench> --book <书> … --job [--cv <tag／分支／提交>]` | 不在本机跑，交任务库由执行机跑（见下「交执行机」） |
 
 例：`guji bench run cut-2d --book 988g3f0wsu`、`guji bench run decide --book 988g3f0wsu --arg set=small`。
 
@@ -23,13 +24,14 @@
 
 | needs | 取法 |
 |---|---|
-| gold | 测试集仓（`--dataset`，缺省 `GUJI_DATASET_DIR` 或 cv 旁边的 open-guji-dataset），记 commit |
+| gold | 测试集仓（`--dataset`，缺省 `GUJI_DATASET_DIR` 或 cv 旁边的 open-guji-dataset），记 commit。都没有（干净云会话、执行机）就自动稀疏克隆到 `bench-cache/dataset/`，只检出要的分片与 `guards/`；`--dataset-ref` 钉版本 |
 | code | 书仓 guji-workspace/<书id>-*，克隆到 `bench-cache/books/<书>/`（本机 `~/guji-workspace` 或 `GUJI_BOOKS_DIR` 有就从本机克隆）；`--ws` 用现成的。缓存里已有就 `git pull --ff-only`，拉不动报缺资源（`--offline` 才用旧检出） |
 | config | `guji db pull --no-glyph`，跳过事件、身份账、待审单、审阅、output（部分副本，bench 不写库）；底库、PUA 表、组配置进 `datahome/main/.borrowed/` |
 | glyph_lib | 改成整拉 `guji db pull`（连借库）并重建 `glyph.db`（没钉 glyph_pin 的册用它）；钉了版的册按 `guji glyph-db pin-build` 建 `glyph-g<N>.db` |
 | raw | 只取金标涉及的页（bench 的 `plan` 给了页时），否则整册；按册钉的页表版本 |
 | products | 各册 main 指针的产物包（`--label` 改），按标签缓存；先取到临时目录、完整了再改名 |
 | models、corpus | cv 运行时按钉子自己取回，这里只核令牌 |
+| bench5b | 5b 评测集 `cache/glyph_bench`、`oov_bench`：缺了按钉死的 sha 核对冻结包 `train_bundle.zip` 再解（`eval/bench_bundle.py`，GM4 交来），包不在或 sha 不符报缺资源 |
 | torch、gpu、ocr | 只核环境 |
 
 **钉子**：各册生效的 cv_version、code、glyph_pin、corpus、model 及来自哪一层（含配置组），与 `guji job precheck` 同一读法（`jobs.precheck.pins_of`），整份记进 `env.pins`。`mode: run` 的 bench 开跑前再核：书仓 `code/` 与钉的 `k<N>` 不一致报缺资源；册钉的 cv_version 与本机 cv 不同只提醒（记 `env.pin_warnings`），因为 bench 本来常拿新 cv 量老书。
@@ -42,6 +44,16 @@
 
 `./bench-results/<bench>/<书>/<时间>/`（`--out` 改）：`result.json`（schema 1：主指标、全部指标、护栏、对照、`env` 里的 cv／manager／测试集／书仓／中心库 rev／产物包标签）、`items.jsonl`（逐样本，翻转清单用）、`report.md`、`ctx.json`（资源路径）。
 status 只有 ok、regressed、skipped、no_gold，跑崩了记 failed（护栏按不过算）。
+
+## 交执行机（`--job`）
+
+`guji bench run <bench> --book <书> [--vol …] [--arg k=v] [--params JSON] [--publish] --job [--cv <ref>] [--why …]`
+交一张 kind=bench 的单（字段见 `guji_manager/jobs/spec.py` 模块头）。`--cv` 缺省本机 cv 的提交（有没提交的改动就拒）。
+执行机照样 `guji bench run`，资源自己备（缓存 `$GUJI_DATA_HOME/bench-cache`，同机同书有锁），把 `result.json`、`report.md`、
+`items.jsonl`（前 200 KB）写回任务结果，`guji job show <号>` 看。**不存包、不推库、永不标 main**（单上不收 book、base、
+compare_to、run，output.pack 恒 false）；带 `--publish` 才另写 `bench_runs` 一行（用写令牌）。
+结局：ok／regressed／no_gold 算成功（结论照实在结果里）；skipped（执行机缺资源）记 blocked，补齐后 `guji job retry`；跑崩记 failed。
+不收 `--against`、`--ws`、`--dataset`、`--cache`、`--out`、`--offline`。heavy 级建议这样跑，light 级本机跑更快。
 
 ## 写进中心库（`--publish`）
 

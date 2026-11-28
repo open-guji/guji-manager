@@ -557,6 +557,60 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "output", "roundcheck", data={"summary": s, "line": line})
         self.ev(line)
 
+    def bench_argv(self) -> list[str]:
+        """kind=bench：拼 `guji bench run` 参数。结果落本单目录 bench-results/；资源缓存用本机共享的
+        `$GUJI_DATA_HOME/bench-cache`（取资源层有同机同书锁，同机两张单不会抢）。"""
+        b = self.spec["bench"]
+        a = ["bench", "run", b["id"], "--book", b["book"], "--out", str(self.dir / "bench-results")]
+        if b["vols"]:
+            a += ["--vol", ",".join(b["vols"])]
+        if b["params"]:
+            a += ["--params", json.dumps(b["params"], ensure_ascii=False, sort_keys=True)]
+        for k, v in b["args"].items():
+            a += ["--arg", f"{k}={v}"]
+        if b["label"]:
+            a += ["--label", b["label"]]
+        if b["dataset"]:
+            a += ["--dataset-ref", b["dataset"]]
+        if b["publish"]:
+            a += ["--publish"] + (["--baseline"] if b["baseline"] else []) + (["--note", b["note"]] if b["note"] else [])
+        return a
+
+    def run_bench(self) -> None:
+        """跑一个 benchmark（`guji bench run`），结果写回任务结果；不存包、不推库（`--publish` 只写 bench_runs 一张表）。
+
+        退出码 0＝ok／no_gold／skipped，1＝regressed 或跑崩：两者都先把结果写回，再按 result.json 的 status 定单的结局——
+        ok／regressed／no_gold 算成功（结论照实在结果里），skipped（本机缺资源）记 blocked，failed 记 failed。"""
+        b = self.spec["bench"]
+        self.guji(*self.bench_argv(), ok=(0, 1), write=bool(b["publish"]))
+        if self.dry:
+            return
+        root = self.dir / "bench-results"
+        outs = sorted(root.glob("*/*/*/result.json"), key=lambda p: p.stat().st_mtime)
+        if not outs:
+            raise StageError("failed", f"guji bench run 没写出 result.json（{root}）")
+        worst = None
+        rank = {"ok": 0, "no_gold": 1, "regressed": 2, "skipped": 3, "failed": 4}
+        for rj in outs:                                     # @套名会出好几份
+            d = json.loads(rj.read_text(encoding="utf-8"))
+            out = rj.parent
+            rep = out / "report.md"
+            items = out / "items.jsonl"
+            txt = items.read_text(encoding="utf-8") if items.is_file() else ""
+            self.db(S.add_result, self.id, self.aid, "output", f"bench {d['bench']} · {d['book']}",
+                    data={"result": d, "report": rep.read_text(encoding="utf-8")[:20_000] if rep.is_file() else None,
+                          "items_head": txt[:200_000], "items_total": txt.count("\n"),
+                          "items_truncated": len(txt) > 200_000})
+            pv = (d.get("primary") or {})
+            self.ev(f"{d['bench']} · {d['book']}：{d['status']}  {pv.get('name')}={pv.get('value')}  n={d.get('n')}"
+                    + (f"（{d['reason'][:200]}）" if d.get("reason") else ""))
+            if worst is None or rank.get(d["status"], 4) > rank.get(worst["status"], 4):
+                worst = d
+        if worst["status"] == "skipped":
+            raise StageError("blocked", f"缺资源，没跑：{worst.get('reason', '')[:500]}（结果已写回；补齐后 guji job retry）")
+        if worst["status"] == "failed":
+            raise StageError("failed", f"bench 跑崩：{worst.get('reason', '')[:500]}")
+
     def _compare_label(self) -> str:
         c = self.spec["compare_to"]
         if isinstance(c, dict):
@@ -638,6 +692,8 @@ class Job:
                 self.step("run", self.run_pipeline)
             elif sp["kind"] == "roundcheck":
                 self.step("run", self.run_roundcheck)
+            elif sp["kind"] == "bench":
+                self.step("run", self.run_bench)
             else:
                 if sp.get("checks"):
                     self.step("check", self.checks)
