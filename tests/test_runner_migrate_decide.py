@@ -54,8 +54,8 @@ def test_probe_reads_active_name_not_empty_registry(tmp_path):
     for active, want in (("char_decide", "char_decide"), ("seed_admit", "seed_admit"), (None, "seed_admit")):
         root = tmp_path / str(active)
         _fake_cv(root, active)
-        r = subprocess.run([sys.executable, "-I", "-c", "import sys;sys.path.insert(0, sys.argv[1]);"
-                            "exec(sys.argv[2])", str(root), R.DECIDE_NAME_PROBE],
-                           capture_output=True, text=True)
+        r = subprocess.run([sys.executable, "-I", "-c", "import sys;sys.path.insert(0, sys.argv[1]);exec(sys.argv[2])",
+                            str(root), R.DECIDE_NAME_PROBE],
+                           capture_output=True, text=True, check=False)
         assert r.returncode == 0, r.stderr
         assert r.stdout.strip() == want
