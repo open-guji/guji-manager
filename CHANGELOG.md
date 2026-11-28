@@ -6,8 +6,6 @@
 
 ## [未发版]
 
-- PATCH（11-28，GM2，修 #1255）：执行方跑批前的收尾改名护栏从没触发过——探针查 `core.step.STEPS`，可那是步模块导入前的空注册表，恒判「旧 cv」。改问 `decide_names.ADMIT_STEP_ACTIVE`（cv ≥0.9.14 有，更老的当 seed_admit）；探针本身报错时记一条 warn 不再静默。实测：殿本 vol01 配 v0.9.16 跑 #18302，铺底包有 seed_admit 205 页却没迁。L0。
-
 - PATCH（CV0 11-28，CV2／CV4 审 bench 后）：`guji bench guard` 护栏没验到（指标没出数）或登记了金标却 skipped／no_gold 时按不过算、退出码 1；翻转类护栏不带对照时记 n/a，不再打印。`--publish --baseline` 同一 bench＋书只留最新一条基线（旧的自动取消）。
 
 - 新命令 `guji bench list|fetch|run|ab|guard|show`（CV0 2026-11-28，Sheldon 定「每个 benchmark 统一接口、命令接进 guji-manager」；要求 cv 含 `eval/bench.py`）：任何书上测任何 bench 一条命令，按 bench 登记的 needs 自动备资源（测试集仓、书仓克隆、中心库还原册配置／组配置、只取金标涉及页的原图、main 产物包、整拉字形库），缺什么报 skipped 并说怎么补；结果统一落 `bench-results/<bench>/<书>/<时间>/`（result.json schema 1、items.jsonl、report.md）；`ab` 出 B 对 A 翻转清单；老评测器经 `guji bench run <id>` 照旧跑（`bench/legacy.py`）。`--publish` 把结果写进中心库新表 `bench_runs`（Sheldon 11-28 定建表、只有 --publish 才写；`bench/publish.py`，首次发布自建表，schema_d1.sql 同步加），`show --central` 看库里历次。文档 `doc/2-自动化流程/bench统一入口.md`，新测 `tests/test_bench_cli.py`。
@@ -17,6 +15,12 @@
 - DOC（11-28，GM4，bench 统一接口，CV0）：`doc/版本号规矩.md` 第三节 rc 测试一条的发版护栏命令写成 `guji bench guard`（取代 `guji eval guard`，旧命令留别名；`skipped`／`no_gold` 不算过）。L0。
 
 - PATCH（11-28，GM3，CV3 vis_glyph）：`schema_d1.sql` events.level 虚拟列把 stream=vis_glyph 并入 'ai' 一档（原先 actor=user 的离线看图导入会落 human）。**线上 D1 的 level 列要另迁**（SQLite 不能改生成列表达式，需 drop 再 add，先问 sheldon）。下游取人裁都按 stream='events'、kind='confirm'、unit='cell' 过滤，不受 vis_glyph 影响。
+
+## [0.7.10] - 2026-11-28
+
+基于 v0.7.9，只带 #1272（dev 上的 bench MINOR 不在本版）。
+
+- PATCH（11-28，GM2，修 #1255）：执行方跑批前的收尾改名护栏从没触发过——探针查 `core.step.STEPS`，可那是步模块导入前的空注册表，恒判「旧 cv」。改问 `decide_names.ADMIT_STEP_ACTIVE`（cv ≥0.9.14 有，更老的当 seed_admit）；探针本身报错时记一条 warn 不再静默。实测：殿本 vol01 配 v0.9.16 跑 #18302，铺底包有 seed_admit 205 页却没迁。L0。
 
 ## [0.7.9] - 2026-11-28
 
