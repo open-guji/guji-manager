@@ -6,6 +6,7 @@
 
 ## [未发版]
 
+- PATCH（11-28，GM2，执行方报 #18361）：跑批收尾改名护栏改用 `python -m open_guji_cv decide migrate-name`。执行方 venv 的 `bin/guji-cv` 是装种子 cv 时生成的、切 cv 不重装，旧脚本指向 `open_guji_cv.__main__:main`，新 cv 没这个名，迁移 ImportError、整单失败。L0。
 - PATCH（11-28，GM2，CV4 急）：`central-gc` 加第 7 条保留规则——测试集仓各 bench 分片 `bench.yaml` 点名的冻结包（`snapshot_packs` 三种写法、decide-bench 的 `books[].pack`）一律保留；读不了测试集仓时 `--apply` 拒删。本机没测试集仓就无内容克隆、只取 bench.yaml。起因：rough-bench 冻结包（冻结当时的 main 包）换两次 main 后被清。现网核过 17 份 bench 冻结包都在 R2、都判保留。
 
 ## [0.7.12] - 2026-11-28

@@ -22,7 +22,7 @@ def test_migrates_old_book_on_renamed_cv(tmp_path, monkeypatch):
     j, run = _job(tmp_path, True)
     monkeypatch.setattr(subprocess, "run", run)
     j._migrate_decide_name()
-    assert j.calls and j.calls[0][1:] == ["decide", "migrate-name", "03"]
+    assert j.calls and j.calls[0][1:] == ["-m", "open_guji_cv", "decide", "migrate-name", "03"]   # 不走 bin/guji-cv（#18361）
     assert "原地改名" in j.evs[0]
 
 
