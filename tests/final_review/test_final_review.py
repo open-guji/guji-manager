@@ -159,3 +159,12 @@ def test_gate_allows_own_book_pua_glyph_only_with_library_and_image_witness():
     assert core.gate_ex(weak, hi(pua), hi(pua), set(), glyph=(0.95, 0.02), lib_n=lib)["why"] == "not_ideograph"   # 图不一致，两个来源不够
     bur = cell("ခ", [("三", 0.99)])
     assert core.gate_ex(bur, hi("ခ"), hi("ခ"), set(), glyph=(0.95, 0.02), lib_n=lambda c: 9)["why"] == "not_ideograph"
+
+
+def test_override_groups_from_group_layer():
+    """组层（cv #2064）把 ruling_override_groups 挪进组配置：册 yaml 没写，要从书级生效配置垫上；册 yaml 写了的盖过组。"""
+    defaults = {"params": {"char_decide": {"ruling_override_groups": ["ly", "dt"], "ruling_glyph_min_score": 0.5}}}
+    assert core.override_groups_from_yaml("a: 1", defaults) == {"ly", "dt"}
+    assert core.override_groups_from_yaml("params:\n  seed_admit:\n    ruling_override_groups: [wm]", defaults) == {"wm"}
+    assert core.override_groups_from_yaml("a: 1") is None
+    assert core.seed_admit_params_from_yaml("a: 1", defaults)["ruling_glyph_min_score"] == 0.5

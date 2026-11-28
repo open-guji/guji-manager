@@ -431,8 +431,29 @@ class Job:
         self.db(S.add_result, self.id, self.aid, "output", "recheck", data={"tail": redact(tail)[-2000:]})
         self.ev(f"按 g{sp['glyph_diff']}→g{sp['book_overrides'].get('glyph_pin')} 点名受影响的格")
 
+    def _migrate_decide_name(self) -> None:
+        """cv 改名版（收尾 Step 叫 char_decide，cv #2033）配上还是 `seed_admit/` 的老册：先原地改名换指纹，再跑 pipeline。
+
+        不迁就跑，cv 会把收尾判缺失、整册重算（出过 v0.1 的册等于违规重跑，CV4 11-28）。只在本机产物
+        有 `seed_admit/`、没有 `char_decide/`、且本单 cv 的 STEPS 里有 char_decide 时迁；迁移只改名、结果不变。"""
+        if self.dry:
+            return
+        prod, _fb = self._cv_roots()
+        base = Path(prod) / self.spec["book"]
+        if not (base / "seed_admit").is_dir() or (base / "char_decide").is_dir():
+            return
+        code = "from open_guji_cv.core.step import STEPS;print('char_decide' in STEPS)"
+        r = subprocess.run([str(VENV / "bin" / "python"), "-c", code], capture_output=True, text=True,
+                           env=self.env(), cwd=str(self.dir), timeout=120)
+        if r.returncode != 0 or r.stdout.strip().splitlines()[-1:] != ["True"]:
+            return                       # 旧 cv：收尾仍叫 seed_admit，不用迁
+        out = self.sh([str(VENV / "bin" / "guji-cv"), "decide", "migrate-name", self.spec["book"]], write=True)
+        self.ev("收尾目录 seed_admit/→char_decide/ 原地改名（cv 改名版配老册，免整册重算）："
+                + redact(out.strip().splitlines()[-1] if out.strip() else "")[:300])
+
     def run_pipeline(self) -> None:
         sp = self.spec
+        self._migrate_decide_name()
         args = ["pipeline", sp["pipeline"], sp["book"], "-w", self.ws or "", "--pages", sp["pages"], "--no-pack"]
         if sp["steps"]["from"]:
             args += ["--from", sp["steps"]["from"]]

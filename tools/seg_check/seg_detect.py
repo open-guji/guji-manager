@@ -27,9 +27,10 @@ for v in vols:
                 if c.get('cell_type')!='char' or not c.get('bbox_col'): continue
                 cn=int(c['id'].split(':')[2]); W=cw.get(cn) or 1
                 meta[c['id']]=dict(pk=c['patch_key'],wide=(c['bbox_col'][2]-c['bbox_col'][0])/W,sub=c.get('sub'),y0=c['bbox_col'][1],y1=c['bbox_col'][3],col=(pg,cn))
-        sa=f.replace('cell_shrink','seed_admit')
-        if os.path.exists(sa):
-            for col in json.load(open(sa))['seed_admit']['columns']:
+        sa=next((x for x in (f.replace('cell_shrink','char_decide'),f.replace('cell_shrink','seed_admit')) if os.path.exists(x)),None)  # cv P3 新旧名并认，新目录优先
+        if sa:
+            _d=json.load(open(sa)); _l=_d.get('char_decide') or _d.get('seed_admit')
+            for col in _l['columns']:
                 for c in col['chars']:
                     if c['id'] in meta: meta[c['id']].update(admit=c.get('admit'),prov=c.get('provenance'),char=c.get('char'))
     ends={}

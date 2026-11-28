@@ -139,6 +139,24 @@ def _match_pool(data: dict) -> list[Metric]:
     return out
 
 
+def _near(data: dict) -> list[Metric]:
+    """3b 形近字组整体（eval_near.py）：每书 test 册每个「方法:组」的触发、覆盖、准确率、弃权、ECE、耗时。"""
+    out: list[Metric] = []
+    for h in data.get("headline") or []:
+        pre = f"{h['book']} {h['method']}:{h['group']} "
+        cov = h.get("coverage") or {}
+        out += [_m(pre + "触发", h.get("triggered"), "格", den=h.get("cells")),
+                _m(pre + "准确率", _pct(h.get("acc")), "%", den=h.get("decided"), num=h.get("right"),
+                   note=f"错 {h.get('wrong')} 格"),
+                _m(pre + "弃权率", _pct(h.get("abstain_rate")), "%", den=h.get("scored")),
+                _m(pre + "每格耗时", h.get("ms_per_cell"), "ms")]
+        if cov.get("n"):
+            out.append(_m(pre + "覆盖率", _pct(cov.get("rate")), "%", den=cov.get("n"), num=cov.get("covered")))
+        if h.get("ece") is not None:
+            out.append(_m(pre + "ECE", h.get("ece"), "", den=h.get("ece_n"), note=str(h.get("calib_version") or "")))
+    return out
+
+
 def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
     """返回 (指标, 错误)。指标为 None 表示这个评测器不归这里管，照通用解析。"""
     if not isinstance(data, dict):
@@ -157,10 +175,12 @@ def extract(eval_id: str, data) -> tuple[list[Metric] | None, str]:
         return _match_pool(data), ""
     if eval_id.startswith("rare_") and eval_id != "rare_char":
         return _rare(data)
+    if eval_id == "near":
+        return _near(data), ""
     return None, ""
 
 
-READ_EVALS_PREFIX = ("advset", "nearform", "match_pool", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
+READ_EVALS_PREFIX = ("near", "advset", "nearform", "match_pool", "match_bench", "match_pairs", "sim_bench", "rare_", "db_match", "match_triplets",
                      "oov", "degradation", "zero_shot")
 
 
@@ -186,6 +206,10 @@ def bench_lock(eval_id: str, cv_root: Path, dataset_root: Path, data: dict | Non
         return {}
     lock = {"cv": _git_head(cv_root), "dataset": _git_head(dataset_root)}
     if eval_id.startswith(("advset", "match_pool")):
+        return lock
+    if eval_id == "near":
+        # 3b 不碰字形库：钉的是各书方法指纹（模型文件、校准表）
+        lock["methods_sha"] = (data or {}).get("methods_sha") or {}
         return lock
     if eval_id.startswith("rare_"):
         # 5b 检索的是字表向量包，不碰字形库：钉字表与模型（模型随 cv 提交）

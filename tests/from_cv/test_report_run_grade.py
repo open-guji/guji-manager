@@ -18,7 +18,7 @@ def _diff(witness, kind, char, ref, *, page=1, human=False, **kw) -> Diff:
 
 
 def _witness(label="证人甲") -> Witness:
-    return Witness(name=label, label=label, quality="best", text="")
+    return Witness(name=label, label=label, accuracy="high", text="")
 
 
 def _page_stat(page, n_slots=10, excluded=0, equal=9):

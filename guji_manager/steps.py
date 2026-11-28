@@ -27,7 +27,7 @@ import sys
 #: 步 → (中文名, 一句话, 成员命令)。成员命令名就是 `guji` 的子命令名（cv 的或本包的）。
 STEPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "start": ("第一步 新书启动", "元数据与资源、页面分析与参数、选页试运行", (
-        "source", "corpus", "code", "pagekinds", "suggest", "glyphlib",
+        "source", "corpus", "code", "pagekinds", "suggest", "glyphlib", "config-group",
     )),
     "pipeline": ("第二步 自动化流程", "跑 CV 管线、切分检查与优化、少见字入库与 OCR 候选、形近字处理", (
         "pipeline", "step", "status", "book", "binarize", "preclean", "split", "locate-gutter", "survey",

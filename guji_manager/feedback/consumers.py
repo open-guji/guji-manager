@@ -447,6 +447,23 @@ def borrowed_clash(db, db_id: str) -> bool:
         return False
 
 
+def cv_handles_borrow_clash() -> bool:
+    """装的 cv 自己会处理借库同号（cv #1989，v0.9.13 起）：``admit_instance`` 遇 ``borrowed`` 表里的同号先摘掉
+    借来那份、本书例照本格图进库，``set_book_edition`` 不并借来的字头与来源。是这样时本书回库／改判的同号格照常进，
+    不再「同号一律不进」；旧 cv 上照旧跳过（进了会贴错图）。按 cv 里有没有摘借来那份的函数判，不按版本号（dev 安装的
+    版本号不准）。"""
+    try:
+        from .._cv import clustering_glyph_db
+        return hasattr(clustering_glyph_db, "_drop_borrowed_instance")
+    except Exception:      # noqa: BLE001
+        return False
+
+
+def clash_blocks(db, db_id: str) -> bool:
+    """这一格因与借来的别书刻例同号而不能进库：同号且装的 cv 不会自己摘掉借来那份。"""
+    return borrowed_clash(db, db_id) and not cv_handles_borrow_clash()
+
+
 def _is_backfill(e: Event) -> bool:
     p = e.payload or {}
     return e.kind == "confirm" and p.get("source") == "auto" and bool(p.get("backfill")) \
@@ -472,7 +489,7 @@ def _admit_backfills(res: ConsumeResult, backfills, db, cache) -> None:
         key = e.target.key[3:] if e.target.key.startswith("v2:") else e.target.key
         db_id, p = f"v2:{key}", e.payload
         ch = p.get("shape") or ""
-        if borrowed_clash(db, db_id):
+        if clash_blocks(db, db_id):
             res.borrowed_clash += 1
             res.skipped += 1
             continue
@@ -633,8 +650,8 @@ def _admit_events(res, admits, db, cache, occ_of, occ_memo, binarize, bind_of,
         from .._cv import resolve_patch_key
         path = cache.get(book, "char_patch", resolve_patch_key(book, ckey))   # alt_cut 换列
         db_id0 = e.target.key if e.target.key.startswith("v2:") else f"v2:{e.target.key}"
-        if borrowed_clash(db, db_id0):
-            # 与借来的别书刻例同号：库里那张图是别书的，不能拿来当本格，也不能撤／改它（见 borrowed_clash）
+        if clash_blocks(db, db_id0):
+            # 与借来的别书刻例同号（且 cv 不会摘掉借来那份）：库里那张图是别书的，不能拿来当本格，也不能撤／改它（见 borrowed_clash）
             res.borrowed_clash += 1
             res.no_lib += 1
             continue

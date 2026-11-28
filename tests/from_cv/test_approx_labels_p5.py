@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from guji_manager.products_io import active_step  # 收尾步名随本机 cv（cv #2033 改名 char_decide）
+
 import sqlite3
 from pathlib import Path
 
@@ -195,7 +197,7 @@ def _run_seed(tmp_path, monkeypatch, db_path, recs, **params):
     img = np.full((600, 600), 255, np.uint8)
     ctx = make_ctx(tmp_path, make_book("tbook"), raw={1: img}, monkeypatch=monkeypatch)
     ctx = RunContext(ctx.book, ctx.store, ctx.cache,
-                     params={"seed_admit": SeedAdmitParams(db_path=str(db_path), **params)},
+                     params={active_step(): SeedAdmitParams(db_path=str(db_path), **params)},
                      log=lambda s: None)
     ctx._raw[1] = img
     cells = [CellRec(slot=s, pos=s, y0=0, y1=10, x0=0, x1=10, kind="char", order=s) for s in (1, 2, 3)]
@@ -207,7 +209,7 @@ def _run_seed(tmp_path, monkeypatch, db_path, recs, **params):
                                   columns=[ColumnCells(col=3, ok=True, n_body_slots=3, period=10.0,
                                                        border_top=0.0, cells=cells)]))
     write_product(ctx, "align_ref", 1, align_ref=PageAlignRef(page=1, anchored=False, coord=[]))
-    sa = STEPS["seed_admit"].run_page(ctx, 1)["seed_admit"]
+    sa = STEPS[active_step()].run_page(ctx, 1)[active_step()]
     return {r.slot: r for cc in sa.columns for r in cc.chars}
 
 

@@ -256,7 +256,7 @@ def bench_pages(bench: dict) -> dict[str, list[int]]:
 def ensure_snapshot(bench: dict, snap: Path, ws: str | None, log=print) -> None:
     """快照缺哪册就从 R2 取哪册的冻结包（`guji products pack fetch --label`）。"""
     for b, label in bench["snapshot_packs"].items():
-        if (snap / b / "seed_admit").is_dir():
+        if any((snap / b / s).is_dir() for s in ("char_decide", "seed_admit")):
             continue
         log(f"取快照 {b} ← {label}")
         cmd = [sys.executable, "-m", "open_guji_cv", "products", "pack", "fetch", b, "--label", label,

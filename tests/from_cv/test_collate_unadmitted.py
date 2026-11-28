@@ -67,7 +67,7 @@ def test_slot_char_and_anchor_char_split():
 
 
 def _witness(text: str) -> Witness:
-    return Witness(name="w", label="w", quality="best", text=text,
+    return Witness(name="w", label="w", accuracy="high", text=text,
                   index=build_ngram_index(text), text_norm=text)
 
 

@@ -30,7 +30,8 @@ from .._cv import Engine
 from .._cv import default_pipeline_id, load_pipeline
 from .._cv import page_key
 from .._cv import ProductStore
-from .._cv import ADMIT_STEP, CELLS_KIND, cells_step, page_slots
+from .._cv import CELLS_KIND, cells_step, page_slots
+from ..products_io import active_step, exists_decide
 
 COLS = ("stale", "review_new", "review_decided", "cut", "defect", "excluded", "cols_bad", "rebind")
 TODO = tuple(k for k in COLS if k not in ("excluded", "review_decided"))
@@ -78,7 +79,7 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
             row["cols_bad"] = sum(1 for c in cells.columns
                                   if not c.ok and "non_body_column" not in (c.error or "")
                                   and "table_column" not in (c.error or ""))
-        if st.exists(book, ADMIT_STEP, page_key(pg)) and cells is not None:
+        if exists_decide(st, book, page_key(pg)) and cells is not None:
             try:
                 for s in page_slots(st, book, pg, []):
                     if s.kind == "blank":
@@ -95,7 +96,7 @@ def page_progress(book: str, pages: list[int], store: ProductStore | None = None
                 row["stale_steps"].append(f"slots:{type(e).__name__}")
                 row["stale"] += 1
         else:
-            row["stale_steps"].append(f"{ADMIT_STEP}:missing" if cells is not None else f"{step3}:missing")
+            row["stale_steps"].append(f"{active_step()}:missing" if cells is not None else f"{step3}:missing")
             row["stale"] = len(row["stale_steps"])
         for k in COLS:
             totals[k] += row[k]

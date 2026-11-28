@@ -45,10 +45,20 @@ SHARED_NAMES = frozenset({"corpus-base", "pua-wyg"})
 #: 单个工作区里按版本目录出的共享层（``corpus-base`` 的 ``b<M>``、``pua-wyg`` 的 ``v<N>``）：升级脚本只能加新版本，
 #: 已有版本目录里的文件一概不许改、不许删（出新版不覆盖）。键＝工作区名，值＝版本目录所在前缀
 VERSIONED_SHARED = {"pua-wyg": "config/pua-wyg/"}
+#: 配置组（cv 组层，CV0 2026-11-28）：每组一个工作区 ``group-<组>``，版本文件 ``config/group/v<N>.yaml`` 只增不改
+GROUP_PREFIX = "group-"
+GROUP_DIR = "config/group/"
 
 
 def is_shared_ws(ws: str) -> bool:
-    return ws.startswith(SHARED_PREFIX) or ws in SHARED_NAMES
+    return ws.startswith(SHARED_PREFIX) or ws.startswith(GROUP_PREFIX) or ws in SHARED_NAMES
+
+
+def versioned_prefix(ws: str) -> str | None:
+    """按版本出的共享层里「已发布不可改」的前缀；不是这种共享层返回 None。"""
+    if ws.startswith(GROUP_PREFIX):
+        return GROUP_DIR
+    return VERSIONED_SHARED.get(ws)
 
 
 class StaleBase(RuntimeError):
@@ -925,6 +935,30 @@ def refresh_pua_table(src, ws_dir: Path, *, cache=None, bucket: str = "main", al
     return rev
 
 
+def refresh_group_configs(src, ws_dir: Path, *, cache=None, bucket: str = "main") -> dict[str, int]:
+    """书的基础配置写了 ``groups.config: <组>@<版>`` 时，把 ``group-<组>`` 拉成只读副本（cv 组层，CV0 2026-11-28）。
+    返回 ``{工作区: rev}``；没引用组返回空。库里没有该组、或副本里没有钉的那一版 → 报错（不能当成没组：
+    入组的书删了同值键后，没组就会整批改值）。"""
+    from ..ops.group_config import config_refs, version_file
+    from .materialize import MaterializeError
+    m = central_marker(Path(ws_dir)) or {}
+    if not m or str(m.get("ws") or "").startswith(GROUP_PREFIX):
+        return {}
+    refs = config_refs(data_dir(Path(ws_dir)))
+    out: dict[str, int] = {}
+    branch = str(m.get("branch") or "main")
+    for name, ver in refs:
+        gws = GROUP_PREFIX + name
+        try:
+            rev, _ = readonly_copy(src, gws, branch, (GROUP_DIR,), cache=cache, bucket=bucket)
+        except MaterializeError as e:
+            raise SystemExit(f"书配置钉了配置组 {name}@{ver}，但中心库里没有 {gws}（{e}）：先 guji config-group publish") from e
+        if not version_file(borrowed_root(gws, branch), ver).is_file():
+            raise SystemExit(f"书配置钉了配置组 {name}@{ver}，但 {gws} 里没有 v{ver}：确认版本号，或先 guji config-group publish")
+        out[gws] = rev
+    return out
+
+
 #: 按需拉取（2026-11-02）：``GUJI_PULL_EXCLUDE``（逗号分隔的路径前缀）或 ``guji db pull --exclude`` 给的前缀不拉。
 #: 只跑 pipeline 的执行方（任务库 rerun_prep）用它跳过用不着、又大又常变的文件（殿本线上单 100 份 110 MB）。
 #: 这样拉下来的数据目录是「部分副本」：状态文件记 ``exclude``，push／sync 一律拒绝，要写库先不带 exclude 整拉一次。
@@ -1011,6 +1045,9 @@ def pull(src, ws_dir: Path, *, cache=None, bucket: str = "main", force: bool = F
     pt = refresh_pua_table(src, ws_dir, cache=cache, bucket=bucket)
     if pt is not None:
         out["pua_table"] = pt
+    gc = refresh_group_configs(src, ws_dir, cache=cache, bucket=bucket)
+    if gc:
+        out["group_configs"] = gc
     fp = (st or {}).get("glyph_db_fp")
     bsig = (st or {}).get("borrow", [])
     # 没重建就记下「库比账本旧」，重建了再清。新机器第一次拉（还没有状态）不记：那时本机多半还没有 glyph.db
@@ -1130,7 +1167,7 @@ def push(conn, ws_dir: Path, *, actor: str | None, dry_run: bool = False, allow_
     if is_shared_ws(sc.ws) and not shared_writer:
         raise SystemExit(f"{sc.ws} 是共享层的只读工作区（共享方案 3.2 节），普通 push／sync 不能写；"
                          f"由升级脚本出新版本")
-    vpre = VERSIONED_SHARED.get(sc.ws)
+    vpre = versioned_prefix(sc.ws)
     if shared_writer and vpre:                         # 按版本目录出的共享层：旧版本只读，只许加新版本
         frozen = sorted(c for c in changed if c.startswith(vpre) and c in st.get("base", {}))
         if frozen:
@@ -1611,6 +1648,9 @@ def sync(src, conn, ws_dir: Path, *, actor: str | None, cache=None, bucket: str 
         pt = refresh_pua_table(src, ws_dir, cache=cache, bucket=bucket)
         if pt is not None:
             out["pua_table"] = pt
+        gc = refresh_group_configs(src, ws_dir, cache=cache, bucket=bucket)
+        if gc:
+            out["group_configs"] = gc
     if not src.changes_since(ws, int(st["rev"]), limit=1):
         if not mine:
             return {**out, "action": "nothing"}

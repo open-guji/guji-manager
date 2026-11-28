@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from guji_manager.products_io import active_step  # 收尾步名随本机 cv（cv #2033 改名 char_decide）
+
 
 import pytest
 
@@ -225,7 +227,7 @@ def test_seed_admit_same_with_or_without_reason(tmp_path, monkeypatch):
         ]))
         EventLog(fb).append([_ev(k, p, i, book="tbook")
                              for i, (k, p) in enumerate(zip(("tbook:1:1:1", "tbook:1:1:2"), _pair(reason)), 1)])
-        sa = STEPS["seed_admit"].run_page(ctx, 1)["seed_admit"]
+        sa = STEPS[active_step()].run_page(ctx, 1)[active_step()]
         out[reason] = [r.model_dump() for cc in sa.columns for r in cc.chars]
     assert out[False] == out[True]
     by = {r["id"]: r for r in out[True]}
