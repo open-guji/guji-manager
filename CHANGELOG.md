@@ -5,6 +5,7 @@
  下加一行、写明档位；切 rc 时改成 `## [X.Y.Z] - 测试中`，发版时改成日期。
 
 ## [未发版]
+- PATCH（11-28，GM2）：跟上 cv dev 两处改动，dev CI 复绿（只动测试；报告读 accuracy 见 #1242）——cv #2030 `Witness.quality` 改名 `accuracy`：三个搬来的测试改传 accuracy；cv #2032 借组库缺省跳过本书自己的例：glyphlib 借法测试显式传空 `self_ids`，另加一条缺省跳过的断言。
 
 - PATCH（11-28，GM2，文渊阁组库 glyphlib-wyg，WYG 提）：`guji glyphlib build` 扩成多来源——`-w` 可多次，实例 id 各带来源前缀；`--with-auto`／`--auto-from <工作区>` 另收放行格回库例（证据带 backfill 与 verify），出库前再过一遍字体模板核验，`label_status` 保留 auto；`--per-char` 为多来源合计、人裁在前；`--diverse` 按 5a 底座向量挑互相不像的；`--suspect-ids 工作区:清单`（认 CV3 带 ws、instance 列的 tsv）、`--suspect-chars`、`--suspect-since` 标记疑点，`--drop-suspect` 剔除，库里留着疑点的拒推。来源书真源缺来源行（借库书首次回库后的汉书）时补一条最小来源行，并核对「选了多少、装进多少」，不一致拒出。单来源用法与输出不变。
 
